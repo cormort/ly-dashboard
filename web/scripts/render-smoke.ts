@@ -189,7 +189,7 @@ expectAll('最近動態（/activity）：站名、導覽、動態／議題／新
 ]);
 check('首頁初始不顯示任何委員', !homeHtml.includes('查看檔案'));
 check('不含示範／假資料字串', !/甲黨|示範資料|林怡安|陳宏宇|乙黨/.test(homeHtml));
-check('/funds 對應基金／機關頁', routeOf('/funds') === 'funds');
+check('/funds、/agencies、/foundations、/administrative 各對應一頁', routeOf('/funds') === 'funds' && routeOf('/agencies') === 'agencies' && routeOf('/foundations') === 'foundations' && routeOf('/administrative') === 'administrative');
 check('/activity 對應最近動態、舊網址 /dashboard 仍是總覽', routeOf('/activity') === 'home' && routeOf('/dashboard') === 'dashboard' && routeOf('/') === 'dashboard');
 
 (window as unknown as { location: { pathname: string } }).location.pathname = '/legislators';

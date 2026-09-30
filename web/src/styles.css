@@ -194,7 +194,9 @@ header {
 .brand b { font-family: var(--serif); font-size: 19px; font-weight: 700; letter-spacing: -0.01em; }
 .brand small { color: var(--muted); font-size: 12px; }
 header nav { display: flex; gap: var(--space-1); }
-header nav a {
+/* 頁內分類（機關／基金四類），樣子同頁首導覽 */
+.subnav { display: flex; gap: var(--space-1); overflow-x: auto; padding-bottom: var(--space-2); border-bottom: 1px solid var(--rule); }
+header nav a, .subnav a {
   padding: 7px 12px;
   text-decoration: none;
   color: var(--ink-2);
@@ -202,8 +204,8 @@ header nav a {
   font-weight: 500;
   transition: background var(--t-fast), color var(--t-fast);
 }
-header nav a:hover { background: var(--rule-soft); color: var(--ink); }
-header nav a[aria-current='page'] { color: var(--accent-ink); background: var(--accent-soft); font-weight: 600; }
+header nav a:hover, .subnav a:hover { background: var(--rule-soft); color: var(--ink); }
+header nav a[aria-current='page'], .subnav a[aria-current='page'] { color: var(--accent-ink); background: var(--accent-soft); font-weight: 600; }
 .search { position: relative; flex: 1; max-width: 420px; margin-left: auto; }
 .search > svg { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); width: 16px; color: var(--muted); }
 .search input {

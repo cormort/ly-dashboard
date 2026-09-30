@@ -16,6 +16,8 @@ import { BillsPage } from './pages/BillsPage';
 import { BudgetPage } from './pages/BudgetPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { FundsPage } from './pages/FundsPage';
+
+const FUND_TYPE = { funds: 'fund', agencies: 'agency', foundations: 'foundation', administrative: 'administrative' } as const;
 import { ComparePage } from './pages/ComparePage';
 import { HomePage } from './pages/HomePage';
 import { LegislatorsPage } from './pages/LegislatorsPage';
@@ -142,7 +144,9 @@ export default function App() {
         {route === 'bills' ? <BillsPage refreshToken={refreshToken} onOpenId={setPendingId} /> : null}
         {route === 'dashboard' ? <DashboardPage refreshToken={refreshToken} onOpenId={setPendingId} onNavigate={navigate} /> : null}
         {route === 'budget' ? <BudgetPage refreshToken={refreshToken} onOpenId={setPendingId} /> : null}
-        {route === 'funds' ? <FundsPage refreshToken={refreshToken} onOpenId={setPendingId} /> : null}
+        {route in FUND_TYPE ? (
+          <FundsPage key={route} type={FUND_TYPE[route as keyof typeof FUND_TYPE]} refreshToken={refreshToken} onOpenId={setPendingId} onNavigate={navigate} />
+        ) : null}
         {route === 'compare' ? <ComparePage refreshToken={refreshToken} onOpenId={setPendingId} /> : null}
         {route === 'rankings' ? <RankingsPage refreshToken={refreshToken} onOpenId={setPendingId} onNavigate={navigate} /> : null}
       </AppShell>

@@ -1,15 +1,17 @@
 import { useEffect, useState } from 'react';
 import { ExternalLink, X } from 'lucide-react';
 import { buildUrl } from '../api/client';
-import type { FundKind, FundsResponse } from '../api/types';
+import type { FundKind, FundsResponse, FundType } from '../api/types';
 import { EmptyState, ErrorState, LoadingState } from '../components/DataStates';
 import { useApi } from '../hooks/useApi';
 import { pathFor } from '../hooks/useRoute';
 import { partyStyle } from '../lib/parties';
 
 export interface FundsPageProps {
+  type: FundType;
   refreshToken: number;
   onOpenId: (id: string) => void;
+  onNavigate: (href: string) => void;
 }
 
 const KIND_LABEL: Record<FundKind, string> = { news: '新聞', post: '臉書', bill: '委員提案', budget: '預算審議', report: '預算中心報告' };
@@ -25,8 +27,15 @@ const readFilters = (): Filters => {
   return { fund: p.get('fund') ?? '', kind: p.get('kind') ?? '' };
 };
 
-/** 基金／機關：總覽各來源中提到基金、國營事業或機關的項目（關鍵字見 server/fund-config.json） */
-export function FundsPage({ refreshToken, onOpenId }: FundsPageProps) {
+const COPY = {
+  fund: { title: '基金', route: 'funds', intro: '提到特種基金或國營事業的項目（清單外含「基金」者歸「其他基金」）。' },
+  agency: { title: '機關', route: 'agencies', intro: '提到中央機關（行政院所屬機關代碼表）的項目。' },
+  foundation: { title: '財團法人', route: 'foundations', intro: '提到財團法人的項目（名稱取自「財團法人○○」；清單外的基金會歸「其他基金會」）。' },
+  administrative: { title: '行政法人', route: 'administrative', intro: '提到行政法人的項目。' },
+} as const;
+
+/** 基金、機關、財團法人、行政法人四頁共用：總覽各來源中提到該類的項目（關鍵字見 server/fund-config.json） */
+export function FundsPage({ type, refreshToken, onOpenId, onNavigate }: FundsPageProps) {
   const [filters, setFilters] = useState<Filters>(readFilters);
   const [page, setPage] = useState(0);
   useEffect(() => {
@@ -39,23 +48,39 @@ export function FundsPage({ refreshToken, onOpenId }: FundsPageProps) {
     const next = { ...filters, ...patch };
     setFilters(next);
     setPage(0);
-    window.history.replaceState(null, '', pathFor('funds', { ...next }));
+    window.history.replaceState(null, '', pathFor(COPY[type].route, { ...next }));
   };
   const goto = (p: number) => {
     setPage(p);
     document.getElementById('fund-results')?.scrollIntoView({ block: 'start' });
   };
 
-  const res = useApi<FundsResponse>(buildUrl('/funds', { ...filters, limit: PAGE, offset: page * PAGE }), { refreshToken });
+  const res = useApi<FundsResponse>(buildUrl('/funds', { type, ...filters, limit: PAGE, offset: page * PAGE }), { refreshToken });
   const data = res.data;
   const pages = data ? Math.max(1, Math.ceil(data.total / PAGE)) : 1;
   const allCount = data ? Object.values(data.kinds).reduce((a, b) => a + b, 0) : 0;
 
   return (
     <>
+      <nav className="subnav" aria-label="機關／基金分類">
+        {(Object.keys(COPY) as FundType[]).map((t) => (
+          <a
+            key={t}
+            href={pathFor(COPY[t].route)}
+            aria-current={t === type ? 'page' : undefined}
+            onClick={(event) => {
+              event.preventDefault();
+              onNavigate(pathFor(COPY[t].route));
+            }}
+          >
+            {COPY[t].title}
+          </a>
+        ))}
+      </nav>
+
       <div className="page-head">
-        <h1>基金／機關</h1>
-        <p className="muted">新聞、臉書、提案、預算審議與預算中心報告中，提到特種基金、國營事業或財團法人的項目。</p>
+        <h1>{COPY[type].title}</h1>
+        <p className="muted">新聞、臉書、提案、預算審議與預算中心報告中，{COPY[type].intro}</p>
       </div>
 
       <div className="filters" role="group" aria-label="篩選條件">
@@ -70,7 +95,7 @@ export function FundsPage({ refreshToken, onOpenId }: FundsPageProps) {
           ))}
         </div>
         {filters.fund ? (
-          <button type="button" aria-pressed="true" onClick={() => change({ fund: '' })} aria-label={`取消基金／機關條件：${filters.fund}`}>
+          <button type="button" aria-pressed="true" onClick={() => change({ fund: '' })} aria-label={`取消${COPY[type].title}條件：${filters.fund}`}>
             {filters.fund}
             <X aria-hidden="true" />
           </button>
@@ -78,7 +103,7 @@ export function FundsPage({ refreshToken, onOpenId }: FundsPageProps) {
       </div>
 
       {data && data.funds.length > 0 && !filters.fund ? (
-        <div className="law-facets" aria-label="最常出現的基金／機關">
+        <div className="law-facets" aria-label={`最常出現的${COPY[type].title}`}>
           {data.funds.map((f) => (
             <button key={f.name} type="button" className="chip" onClick={() => change({ fund: f.name })}>
               {f.name} <span className="muted">{f.count}</span>
@@ -93,8 +118,8 @@ export function FundsPage({ refreshToken, onOpenId }: FundsPageProps) {
           {data ? <span className="muted">{data.total.toLocaleString()} 件</span> : null}
         </div>
         {res.phase === 'loading' && !data ? <LoadingState label="讀取中…" /> : null}
-        {res.phase === 'error' ? <ErrorState title="無法取得基金／機關（/api/v1/funds）" error={res.error} onRetry={res.reload} /> : null}
-        {data && data.items.length === 0 ? <EmptyState message="沒有符合的項目" hint="換個來源，或清除基金／機關條件。" /> : null}
+        {res.phase === 'error' ? <ErrorState title={`無法取得${COPY[type].title}（/api/v1/funds）`} error={res.error} onRetry={res.reload} /> : null}
+        {data && data.items.length === 0 ? <EmptyState message="沒有符合的項目" hint={`換個來源，或清除${COPY[type].title}條件。`} /> : null}
         {data && data.items.length > 0 ? (
           <>
             <ol className="bill-results">

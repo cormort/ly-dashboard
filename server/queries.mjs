@@ -805,35 +805,54 @@ export function listBudgetMeetings(db, { limit = 15 } = {}) {
 }
 
 /**
- * 基金／機關：關鍵字取自 excel_merge 的 fund-config（全名＋不會誤判的簡稱）與政府機關代碼表的中央機關，另外凡含「基金」二字也算
- * （新提設立的基金不會在清單裡），歸到「其他基金」；「基金會」是財團法人，另外歸一類。
+ * 基金、機關、財團法人、行政法人四類，每個名稱只歸一類（行政法人 > 財團法人 > 基金 > 機關）。
+ * - 基金：excel_merge 的 fund-config（全名＋不會誤判的簡稱；國營事業在預算上是營業基金，也算基金）；
+ *   清單外凡含「基金」也算（新提設立的基金不會在清單裡），歸到「其他基金」
+ * - 機關：政府機關代碼表的中央機關
+ * - 行政法人：fund-config.json 的 administrative，加上標題中「行政法人XXX」
+ * - 財團法人：標題中「財團法人XXX」取出的名稱（之後不帶前綴出現也算）；清單外的「基金會」歸到「其他基金會」
  */
 const FUND_CONFIG = JSON.parse(readFileSync(new URL('./fund-config.json', import.meta.url), 'utf8'));
-const FUND_CANON = new Map([...[...FUND_CONFIG.agencies, ...FUND_CONFIG.names].map((n) => [n, n]), ...Object.entries(FUND_CONFIG.aliases)]);
-// 長的排前面：正規式在同一位置會先吃「國立臺灣大學附設醫院作業基金」而非「國立臺灣大學校務基金」的前綴
-const FUND_RE = new RegExp([...FUND_CANON.keys()].sort((a, b) => b.length - a.length).map((k) => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), 'g');
 export const OTHER_FUND = '其他基金';
-export const FOUNDATION = '財團法人基金會';
-export function fundsOf(text) {
-  const t = String(text ?? '');
-  const found = new Set((t.match(FUND_RE) ?? []).map((k) => FUND_CANON.get(k)));
-  if (!found.size && /基金(?!會)/.test(t)) found.add(OTHER_FUND);
-  if (t.includes('基金會')) found.add(FOUNDATION);
-  return [...found];
+export const OTHER_FOUNDATION = '其他基金會';
+export const ENTITY_TYPES = ['fund', 'agency', 'foundation', 'administrative'];
+const LEGAL_RE = /(財團|行政)法人([^\s，、。；：「」『』（）()及和暨]{2,30}?(?:中心基金會|基金會|中心|研究院|協會|醫院|學會|基金|研究所|院|會|社))/g;
+const escapeRe = (k) => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** 依這批標題建立標記函式：回傳每個標題提到的四類名稱（正式名稱） */
+export function makeTagger(texts) {
+  const type = new Map(FUND_CONFIG.agencies.map((n) => [n, 'agency']));
+  for (const n of FUND_CONFIG.names) type.set(n, 'fund');
+  const legal = new Map(FUND_CONFIG.administrative.map((n) => [n, 'administrative']));
+  for (const t of texts) for (const m of String(t ?? '').matchAll(LEGAL_RE)) if (!legal.has(m[2])) legal.set(m[2], m[1] === '行政' ? 'administrative' : 'foundation');
+  for (const [n, k] of legal) type.set(n, k);
+  const canon = new Map([...[...type.keys()].map((n) => [n, n]), ...Object.entries(FUND_CONFIG.aliases)]);
+  // 長的排前面：正規式在同一位置會先吃「國立臺灣大學附設醫院作業基金」而非「國立臺灣大學校務基金」的前綴
+  const re = new RegExp([...canon.keys()].sort((a, b) => b.length - a.length).map(escapeRe).join('|'), 'g');
+  return (text) => {
+    const t = String(text ?? '');
+    const out = Object.fromEntries(ENTITY_TYPES.map((k) => [k, []]));
+    for (const n of new Set((t.match(re) ?? []).map((k) => canon.get(k)))) out[type.get(n)].push(n);
+    const rest = t.replace(re, ''); // 已認得的名稱（如「海外信用保證基金」）不再算進「其他」
+    if (!out.fund.length && /基金(?!會)/.test(rest)) out.fund.push(OTHER_FUND);
+    if (rest.includes('基金會')) out.foundation.push(OTHER_FOUNDATION);
+    return out;
+  };
 }
 
 const FUND_KINDS = ['news', 'post', 'bill', 'budget', 'report'];
 
 /**
- * 總覽各來源（新聞、臉書、委員提案、預算審議、預算中心報告）中與基金或機關相關的項目，依日期新→舊。
- * `fund` 精確篩選（正式名稱或「其他基金」）、`kind` 篩選來源；統計依序在各自條件之前算（同 listBudget）。
+ * 總覽各來源（新聞、臉書、委員提案、預算審議、預算中心報告）中與某一類（`type`：fund／agency／foundation／administrative）相關的項目，依日期新→舊。
+ * `fund` 精確篩選該類的名稱、`kind` 篩選來源；統計依序在各自條件之前算（同 listBudget）。
  * ponytail: 每次請求全表掃描約 2 萬列＋一個正規式（實測數十毫秒）；變慢再在同步時預先標記。
  */
-export function listFunds(db, { fund = '', kind = '', limit = 30, offset = 0 } = {}) {
+export function listFunds(db, { type = 'fund', fund = '', kind = '', limit = 30, offset = 0 } = {}) {
   const resolvedLimit = Math.max(1, Math.min(Number(limit) || 30, 200));
   const resolvedOffset = Math.max(0, Math.trunc(Number(offset) || 0));
   const people = new Map(db.prepare('SELECT id, name, party FROM legislators').all().map((l) => [l.id, { id: l.id, name: l.name, party: l.party }]));
   const lead = new Map(db.prepare('SELECT bill_id, legislator_id FROM bill_sponsors WHERE is_lead = 1').all().map((r) => [r.bill_id, people.get(r.legislator_id)]));
+  const resolvedType = ENTITY_TYPES.includes(type) ? type : 'fund';
   const rows = [
     ...db.prepare('SELECT * FROM news').all().map((r) => ({ kind: 'news', date: r.published_at.slice(0, 10), title: r.title, url: r.url, source: r.source, legislator: people.get(r.legislator_id) })),
     ...db
@@ -843,16 +862,18 @@ export function listFunds(db, { fund = '', kind = '', limit = 30, offset = 0 } =
     ...db.prepare('SELECT * FROM bills').all().map((r) => ({ kind: 'bill', date: r.latest_date, title: r.name, url: r.url, status: r.status, legislator: lead.get(r.id) })),
     ...db.prepare('SELECT * FROM budget_bills').all().map((r) => ({ kind: 'budget', date: r.latest_date, title: r.name, url: r.url, status: r.status, source: r.proposer })),
     ...db.prepare('SELECT * FROM budget_reports').all().map((r) => ({ kind: 'report', date: r.completed, title: r.title, url: r.url, source: r.type })),
-  ]
-    .map((r) => ({ ...r, date: r.date ?? '', legislator: r.legislator ?? null, funds: fundsOf(r.title) }))
+  ];
+  const tag = makeTagger(rows.map((r) => r.title));
+  const tagged = rows
+    .map((r) => ({ ...r, date: r.date ?? '', legislator: r.legislator ?? null, funds: tag(r.title)[resolvedType] }))
     // 同一則新聞會掛在每位被提到的委員底下，只留一則
     .filter((r, i, all) => r.funds.length && (r.kind !== 'news' || all.findIndex((x) => x.kind === 'news' && x.url === r.url) === i))
     .sort((a, b) => b.date.localeCompare(a.date) || a.title.localeCompare(b.title));
 
-  const byKind = FUND_KINDS.includes(kind) ? rows.filter((r) => r.kind === kind) : rows;
+  const byKind = FUND_KINDS.includes(kind) ? tagged.filter((r) => r.kind === kind) : tagged;
   const funds = new Map();
   for (const r of byKind) for (const f of r.funds) funds.set(f, (funds.get(f) ?? 0) + 1);
-  const byFund = fund ? rows.filter((r) => r.funds.includes(fund)) : rows;
+  const byFund = fund ? tagged.filter((r) => r.funds.includes(fund)) : tagged;
   const matching = fund ? byKind.filter((r) => r.funds.includes(fund)) : byKind;
   return {
     meta: envelope(db),

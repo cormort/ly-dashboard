@@ -237,11 +237,11 @@ Query 參數（全部可選）：
 `latest`（委員們最近的貼文／新聞／提案合併後取最新 `per` 則，1–10，預設 3；`{ kind, date, text, url, legislator }`）。
 動態來源與 `/activity` 相同。
 
-## GET /api/v1/funds?fund=&kind=&limit=30&offset=0
+## GET /api/v1/funds?type=fund&fund=&kind=&limit=30&offset=0
 
-基金／機關頁用：新聞、臉書最新貼文、委員提案、預算審議、預算中心報告中，標題提到特種基金、國營事業或財團法人的項目，依日期新→舊（新聞同一網址只留一則）。
-關鍵字在 `server/fund-config.json`（取自 excel_merge 的 fund-config：全名＋不會誤判的簡稱，簡稱歸到正式名稱）與政府機關代碼表（data.gov.tw 7307）中未裁撤的層級 2–3 中央機關；
-清單外凡含「基金」者歸「其他基金」，含「基金會」者歸「財團法人基金會」。
+基金（`type=fund`，預設）、機關（`agency`）、財團法人（`foundation`）、行政法人（`administrative`）四頁用；每個名稱只歸一類（行政法人 > 財團法人 > 基金 > 機關）：新聞、臉書最新貼文、委員提案、預算審議、預算中心報告中，標題提到特種基金、國營事業或財團法人的項目，依日期新→舊（新聞同一網址只留一則）。
+關鍵字在 `server/fund-config.json`（取自 excel_merge 的 fund-config：全名＋不會誤判的簡稱，簡稱歸到正式名稱）與政府機關代碼表（data.gov.tw 7307）中未裁撤的層級 2–3 中央機關（已在基金清單的國營事業只算基金）；
+行政法人另有 `administrative` 清單；財團法人／行政法人也從標題「財團法人○○」「行政法人○○」自動取出名稱（之後不帶前綴出現也算）。清單外凡含「基金」者歸「其他基金」，清單外的「基金會」歸「其他基金會」。
 `fund` 精確篩選（上述名稱）、`kind`（`news|post|bill|budget|report`）。回傳 `kinds`（套用 `fund` 後各來源件數）、
 `funds`（套用 `kind` 後最常出現的前 40 個）、`items`（`{ kind, date, title, url, source?, status?, legislator, funds }`）。
 

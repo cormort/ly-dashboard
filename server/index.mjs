@@ -132,7 +132,7 @@ export function createServer(db) {
           case '/api/v1/regions':
             return sendJson(res, 200, listRegions(db, { per: q.per }));
           case '/api/v1/funds':
-            return sendJson(res, 200, listFunds(db, { fund: q.fund, kind: q.kind, limit: q.limit, offset: q.offset }));
+            return sendJson(res, 200, listFunds(db, { type: q.type, fund: q.fund, kind: q.kind, limit: q.limit, offset: q.offset }));
           case '/api/v1/cosponsors':
             return sendJson(res, 200, listCosponsors(db, { legislator: q.legislator || null, limit: q.limit }));
           case '/api/v1/compare':

@@ -554,6 +554,8 @@ export interface RegionsResponse {
 
 /* ---------- /funds ---------- */
 
+export type FundType = 'fund' | 'agency' | 'foundation' | 'administrative';
+
 export type FundKind = 'news' | 'post' | 'bill' | 'budget' | 'report';
 
 export interface FundItem {
@@ -565,7 +567,7 @@ export interface FundItem {
   source?: string;
   status?: string;
   legislator: { id: string; name: string; party: string } | null;
-  /** 命中的基金／機關正式名稱；清單外含「基金」為「其他基金」，基金會為「財團法人基金會」 */
+  /** 命中的該類正式名稱；清單外含「基金」為「其他基金」，清單外的基金會為「其他基金會」 */
   funds: string[];
 }
 

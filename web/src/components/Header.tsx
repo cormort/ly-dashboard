@@ -23,15 +23,16 @@ export interface HeaderProps {
   refreshing: boolean;
 }
 
-const NAV: { route: Route; label: string }[] = [
+/** 依主題排：總覽與動態 → 委員 → 法案、預算 → 機關／基金（四類在頁內再分） */
+const NAV: { route: Route; label: string; also?: Route[] }[] = [
   { route: 'dashboard', label: '總覽' },
   { route: 'home', label: '最近動態' },
   { route: 'rankings', label: '排行榜' },
   { route: 'legislators', label: '委員查詢' },
+  { route: 'compare', label: '委員比較' },
   { route: 'bills', label: '法案查詢' },
   { route: 'budget', label: '預算審議' },
-  { route: 'funds', label: '基金／機關' },
-  { route: 'compare', label: '委員比較' },
+  { route: 'funds', label: '機關／基金', also: ['agencies', 'foundations', 'administrative'] },
 ];
 
 /** 頁首：站名、三頁導覽、委員搜尋、資料狀態（有問題才用警示色）。 */
@@ -73,7 +74,7 @@ export function Header({
           <a
             key={item.route}
             href={pathFor(item.route)}
-            aria-current={route === item.route ? 'page' : undefined}
+            aria-current={route === item.route || item.also?.includes(route) ? 'page' : undefined}
             onClick={(event) => {
               event.preventDefault();
               onNavigate(pathFor(item.route));

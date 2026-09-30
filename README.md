@@ -62,7 +62,7 @@ cron/啟動排程 (24h)                      server/ingest.mjs
 | `web/src/api/` | 型別化 API client（唯一出口，前端不碰政府端點） |
 | `web/src/lib/urlState.ts` | 篩選條件的 URL 序列化（可分享、可上一頁） |
 | `web/src/hooks/useApi.ts` | `loading / ready / empty / error` 四態資源 hook |
-| `web/src/pages/` | `DashboardPage`（總覽，預設首頁 `/`）、`HomePage`（最近動態 `/activity`）、`RankingsPage`、`LegislatorsPage`（議場席次圖＋名錄）、`BillsPage`（法案查詢）、`BudgetPage`（預算審議）、`FundsPage`（基金／機關 `/funds`）、`ComparePage`（委員比較） |
+| `web/src/pages/` | `DashboardPage`（總覽，預設首頁 `/`）、`HomePage`（最近動態 `/activity`）、`RankingsPage`、`LegislatorsPage`（議場席次圖＋名錄）、`BillsPage`（法案查詢）、`BudgetPage`（預算審議）、`FundsPage`（基金 `/funds`、機關 `/agencies`、財團法人 `/foundations`、行政法人 `/administrative`）、`ComparePage`（委員比較） |
 | `web/src/components/` | Header（導覽＋同步狀態）、Hemicycle（議場席次圖）、LegislatorGrid／LegislatorTable、LegislatorDetail、CommitteeChart（委員會黨籍組成）、SyncStatusBanner、FilterBar、ChangesPanel |
 | `web/src/lib/parties.ts` | 黨籍顏色與順序：介面中「顏色只代表黨籍」的唯一定義處 |
 | `web/scripts/smoke.ts`、`render-smoke.ts` | 前端煙霧測試（26 + 35 項），**只存在於 dev，不進 bundle** |
@@ -233,6 +233,20 @@ warnings: ['游錫堃 在本屆無任何會期委員會紀錄（辭職）', '李
 淺色 canvas + 白卡、14–16px 圓角、兩層柔和陰影、accent `#2563eb`、標題去襯線、導覽改 pill、表格商務化、`:focus-visible` 為 accent 外框。
 **黨籍顏色的語意沒有改變**：顏色仍只代表黨籍（唯一定義處 `web/src/lib/parties.ts`），召委仍用形狀表示，警示色只用在同步問題。
 對比度全部 ≥ 4.5:1（CSS 註解內有實測值）。
+
+### 導覽：維持上方 tab，不改左側可收合工具欄（2026-09-30 評估）
+
+頁首依主題排 8 個入口：總覽｜最近動態｜排行榜｜委員查詢｜委員比較｜法案查詢｜預算審議｜機關／基金。
+基金、機關、財團法人、行政法人四類收在「機關／基金」頁內的子分頁（網址仍各自獨立：`/funds`、`/agencies`、`/foundations`、`/administrative`）。
+
+不改左側欄的理由：
+
+- **項目少**：8 個入口在 800px 寬就放得下；只有兩層，用不到側邊欄的層級能力。
+- **右側已有委員檔案面板**：再加左欄會變成「左欄＋內容＋右欄」三欄，擠壓法案列表、席次圖、縣市卡片等寬內容。
+- **手機沒差**：左欄在手機仍得收成漢堡選單，多一次點擊；上方 tab 在窄螢幕只是橫向捲動，選項一眼可見。
+- **使用情境**：公開資料閱覽網站，使用者多半「看一看就走」；可收合側欄較適合項目多、需頻繁切換的後台工具。
+
+**何時改成左側欄**：頂層入口超過約 10 個、出現第三層（例如機關再依部會細分），或需要常駐的篩選／追蹤清單時。
 
 ## 授權與資料來源
 
