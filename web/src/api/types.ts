@@ -575,6 +575,8 @@ export interface FundsResponse {
   meta: Meta;
   total: number;
   kinds: Record<FundKind, number>;
+  /** 各來源資料期間（YYYY-MM-DD），以全部資料計，不只命中的；沒資料的來源不會出現 */
+  periods: Partial<Record<FundKind, { from: string; to: string }>>;
   funds: { name: string; count: number }[];
   items: FundItem[];
 }

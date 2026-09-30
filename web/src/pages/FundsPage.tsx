@@ -16,6 +16,7 @@ export interface FundsPageProps {
 
 const KIND_LABEL: Record<FundKind, string> = { news: '新聞', post: '臉書', bill: '委員提案', budget: '預算審議', report: '預算中心報告' };
 const PAGE = 30;
+const slash = (d: string) => d.replaceAll('-', '/');
 
 interface Filters {
   fund: string;
@@ -83,6 +84,19 @@ export function FundsPage({ type, refreshToken, onOpenId, onNavigate }: FundsPag
         <p className="muted">新聞、臉書、提案、預算審議與預算中心報告中，{COPY[type].intro}</p>
       </div>
 
+      {data ? (
+        <dl className="period-list" aria-label="各來源資料期間">
+          <dt>資料期間</dt>
+          {(Object.keys(KIND_LABEL) as FundKind[]).map((k) =>
+            data.periods[k] ? (
+              <dd key={k}>
+                <b>{KIND_LABEL[k]}</b> {slash(data.periods[k]!.from)}–{slash(data.periods[k]!.to)}
+              </dd>
+            ) : null,
+          )}
+        </dl>
+      ) : null}
+
       <div className="filters" role="group" aria-label="篩選條件">
         <div className="segmented" role="group" aria-label="來源">
           <button type="button" aria-pressed={!filters.kind} onClick={() => change({ kind: '' })}>
@@ -130,7 +144,7 @@ export function FundsPage({ type, refreshToken, onOpenId, onNavigate }: FundsPag
                     <ExternalLink aria-hidden="true" />
                   </a>
                   <p className="bill-meta">
-                    <span className="kind">{KIND_LABEL[item.kind]}</span>
+                    <span className="fund-kind">{KIND_LABEL[item.kind]}</span>
                     {item.funds.map((f) => (
                       <button key={f} type="button" className="link-button" onClick={() => change({ fund: f })}>
                         {f}

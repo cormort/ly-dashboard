@@ -35,6 +35,10 @@
   --line-soft: var(--rule-soft);
 
   /* ---- accent ---- */
+  /* 卡片立體外框：深一階的灰邊＋底部實心深灰「底座」，只用中性色，不佔用任何黨籍色 */
+  --card-line: #c4cad3;
+  --card-base: 0 3px 0 #8a93a0, 0 6px 14px -6px rgba(16, 24, 40, 0.18);
+  --card-base-hover: 0 5px 0 #6b7480, 0 10px 20px -8px rgba(16, 24, 40, 0.22);
   --accent: #2563eb;
   --accent-hover: #1d4ed8;
   --accent-soft: #eff4ff;
@@ -238,11 +242,16 @@ main { max-width: 1360px; margin: 0 auto; padding: var(--space-6) 20px 64px; dis
 .page-lead { margin: 0; max-width: 760px; color: var(--muted); font-size: 15px; line-height: 1.65; }
 .panel {
   background: var(--surface);
-  border: 1px solid var(--rule);
+  border: 1px solid var(--card-line);
   border-radius: var(--radius-lg);
   padding: 18px 20px;
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--card-base);
 }
+.period-list { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; margin: 0; font-size: 13px; color: var(--muted); }
+.period-list dt { font-weight: 600; color: var(--ink-2); }
+.period-list dd { margin: 0; font-variant-numeric: tabular-nums; }
+.fund-kind { border-radius: var(--radius-pill); padding: 1px 8px; font-size: 12px; font-weight: 600; color: var(--accent-ink); background: var(--accent-soft); }
+.period-list b { font-weight: 500; color: var(--ink-2); }
 .sectionhead { display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); margin-bottom: var(--space-3); }
 .sectionhead h2 { margin: 0; }
 .sectionhead > div { display: flex; align-items: center; gap: var(--space-3); }
@@ -679,9 +688,9 @@ button.chip:hover:not(:disabled) { border-color: var(--accent-line); background:
 .stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--space-3); }
 .stat-tile {
   background: var(--surface);
-  border: 1px solid var(--rule);
+  border: 1px solid var(--card-line);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--card-base);
   padding: 14px var(--space-4);
   display: grid;
   gap: 2px;
@@ -827,8 +836,9 @@ select { max-width: 100%; }
 }
 
 /* ---------- 總覽 ---------- */
-a.stat-tile { text-decoration: none; color: inherit; transition: border-color var(--t-fast), box-shadow var(--t-fast); }
-a.stat-tile:hover { border-color: var(--accent-line); box-shadow: 0 0 0 3px var(--accent-soft); }
+a.stat-tile { text-decoration: none; color: inherit; transition: border-color var(--t-fast), box-shadow var(--t-fast), transform var(--t-fast); }
+/* 可點的方塊滑過時「浮起」：底座變厚、整塊上移 2px */
+a.stat-tile:hover { border-color: #98a2b3; box-shadow: var(--card-base-hover); transform: translateY(-2px); }
 .dash-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: var(--space-4); align-items: start; }
 .dash-card h2 { font-size: 17px; }
 .more-link { display: inline-flex; align-items: center; gap: 2px; font-size: 13px; text-decoration: none; color: var(--accent-ink); white-space: nowrap; }

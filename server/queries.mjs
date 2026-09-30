@@ -864,6 +864,15 @@ export function listFunds(db, { type = 'fund', fund = '', kind = '', limit = 30,
     ...db.prepare('SELECT * FROM budget_reports').all().map((r) => ({ kind: 'report', date: r.completed, title: r.title, url: r.url, source: r.type })),
   ];
   const tag = makeTagger(rows.map((r) => r.title));
+  // 各來源的資料期間（全部資料，不只命中的）：新聞只保留近一個月，件數少要看得出原因
+  const periods = {};
+  for (const r of rows) {
+    const d = String(r.date ?? '').slice(0, 10);
+    if (!d) continue;
+    const p = (periods[r.kind] ??= { from: d, to: d });
+    if (d < p.from) p.from = d;
+    if (d > p.to) p.to = d;
+  }
   const tagged = rows
     .map((r) => ({ ...r, date: r.date ?? '', legislator: r.legislator ?? null, funds: tag(r.title)[resolvedType] }))
     // 同一則新聞會掛在每位被提到的委員底下，只留一則
@@ -879,6 +888,7 @@ export function listFunds(db, { type = 'fund', fund = '', kind = '', limit = 30,
     meta: envelope(db),
     total: matching.length,
     kinds: Object.fromEntries(FUND_KINDS.map((k) => [k, byFund.filter((r) => r.kind === k).length])),
+    periods,
     funds: [...funds].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'zh-Hant')).slice(0, 40).map(([name, count]) => ({ name, count })),
     items: matching.slice(resolvedOffset, resolvedOffset + resolvedLimit),
   };
