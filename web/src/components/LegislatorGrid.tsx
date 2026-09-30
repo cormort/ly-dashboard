@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react';
-import { LayoutGrid, List, MapPin, Star } from 'lucide-react';
+import { Download, LayoutGrid, List, MapPin, Star } from 'lucide-react';
 import type { ApiResource } from '../hooks/useApi';
 import type { Legislator, LegislatorsResponse } from '../api/types';
 import { shortCommittee, text } from '../lib/format';
@@ -22,6 +22,8 @@ export interface LegislatorGridProps {
   hasFilters: boolean;
   mode: DirectoryMode;
   onModeChange: (mode: DirectoryMode) => void;
+  /** 下載目前篩選結果為 CSV */
+  onDownload: () => void;
 }
 
 function LegislatorCard({
@@ -36,9 +38,16 @@ function LegislatorCard({
   onOpen: (legislator: Legislator) => void;
 }) {
   const style = partyStyle(legislator.party);
-  const committeeText =
+  // 召委以小徽章標在該委員會後面，而不是「修憲・召」這種看起來像被截斷的字
+  const committees =
     legislator.committees.length > 0
-      ? legislator.committees.map((item) => shortCommittee(item.id) + (item.is_convener ? '・召' : '')).join('、')
+      ? legislator.committees.map((item, i) => (
+          <span key={item.id}>
+            {i > 0 ? '、' : ''}
+            {shortCommittee(item.id)}
+            {item.is_convener ? <span className="convener-badge">召委</span> : null}
+          </span>
+        ))
       : '未提供';
   const latestPost = legislator.social.map((s) => s.latest_post_date).filter(Boolean).sort().at(-1);
 
@@ -69,7 +78,7 @@ function LegislatorCard({
         <MapPin aria-hidden="true" />
         {text(legislator.area_name)}
       </p>
-      <p className="member-committees">{committeeText}</p>
+      <p className="member-committees">{committees}</p>
 
       <footer>
         <span>
@@ -95,12 +104,19 @@ export function LegislatorGrid({
   hasFilters,
   mode,
   onModeChange,
+  onDownload,
 }: LegislatorGridProps) {
   const head = (count?: string) => (
     <div className="sectionhead">
       <h2>立法委員名錄</h2>
       <div>
         {count ? <span className="muted">{count}</span> : null}
+        {count ? (
+          <button type="button" className="quiet" onClick={onDownload} title="下載目前篩選結果">
+            <Download aria-hidden="true" />
+            CSV
+          </button>
+        ) : null}
         <div className="segmented" role="group" aria-label="顯示方式">
           <button type="button" aria-pressed={mode === 'cards'} onClick={() => onModeChange('cards')}>
             <LayoutGrid aria-hidden="true" />

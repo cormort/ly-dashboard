@@ -27,6 +27,8 @@ import {
   legislatorParams,
 } from '../src/api/client.ts';
 import { legislatorDetailUrl } from '../src/lib/legislators.ts';
+import { billStage } from '../src/lib/billStage.ts';
+import { toCsv } from '../src/lib/csv.ts';
 import { latestSessionId, sessionLabelIndex, sessionScopeLabel } from '../src/lib/sessions.ts';
 import {
   ALL_SESSIONS,
@@ -425,6 +427,17 @@ async function main(): Promise<void> {
   await check('資料集代號有中文標示', () => {
     assert.equal(datasetLabel('id9'), 'ID9 立法委員名錄');
     assert.equal(datasetLabel('unknown'), 'unknown');
+  });
+
+  await check('議案狀態對應立法流程階段；未知狀態不畫', () => {
+    assert.deepEqual(billStage('交付審查'), { index: 1, stopped: false });
+    assert.equal(billStage('三讀')?.index, 4);
+    assert.equal(billStage('審查完畢(三讀)')?.index, 4);
+    assert.equal(billStage('撤案')?.stopped, true);
+    assert.equal(billStage('交付查照'), null);
+  });
+  await check('CSV：逗號、引號、換行要跳脫', () => {
+    assert.equal(toCsv([['a,b', 'say "hi"', 'x\ny', null, 3]]), '"a,b","say ""hi""","x\ny",,3');
   });
 
   console.log(`\n全部通過：${passed} 項`);

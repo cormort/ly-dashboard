@@ -1,11 +1,12 @@
 import { Portrait } from './Portrait';
 import { useEffect, useId, useRef, type CSSProperties, type KeyboardEvent } from 'react';
-import { ExternalLink, MapPin, Star, X } from 'lucide-react';
+import { ExternalLink, GitCompareArrows, MapPin, Star, X } from 'lucide-react';
 import type { Legislator, SourceInfo } from '../api/types';
 import { useEscapeKey } from '../hooks/useEscapeKey';
 import { text } from '../lib/format';
 import { partyStyle } from '../lib/parties';
 import { LegislatorBills } from './LegislatorBills';
+import { LegislatorCosponsors } from './LegislatorCosponsors';
 import { LegislatorNews } from './LegislatorNews';
 
 export interface LegislatorDetailProps {
@@ -16,6 +17,9 @@ export interface LegislatorDetailProps {
   source: SourceInfo | null;
   /** 會期 id → 顯示名稱（來自 /api/v1/meta） */
   sessionLabel: (sessionId: string) => string;
+  /** 開另一位委員的檔案（共同提案人） */
+  onOpenId: (id: string) => void;
+  onCompare: (legislator: Legislator) => void;
 }
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])';
@@ -28,6 +32,8 @@ export function LegislatorDetail({
   onToggleTrack,
   source,
   sessionLabel,
+  onOpenId,
+  onCompare,
 }: LegislatorDetailProps) {
   const panelRef = useRef<HTMLElement | null>(null);
   const closeRef = useRef<HTMLButtonElement | null>(null);
@@ -99,6 +105,10 @@ export function LegislatorDetail({
             >
               <Star className={tracked ? 'active' : undefined} aria-hidden="true" />
               {tracked ? '取消追蹤' : '加入追蹤'}
+            </button>{' '}
+            <button type="button" onClick={() => onCompare(legislator)}>
+              <GitCompareArrows aria-hidden="true" />
+              比較
             </button>
           </div>
         </div>
@@ -135,6 +145,11 @@ export function LegislatorDetail({
         <section className="detail-section">
           <h2>最近提案</h2>
           <LegislatorBills legislatorId={legislator.id} />
+        </section>
+
+        <section className="detail-section">
+          <h2>最常一起提案</h2>
+          <LegislatorCosponsors legislatorId={legislator.id} onOpenId={onOpenId} />
         </section>
 
         <section className="detail-section">

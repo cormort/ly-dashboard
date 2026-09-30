@@ -1,18 +1,20 @@
 import { useCallback, useEffect, useState } from 'react';
 
-export type Route = 'home' | 'legislators' | 'bills' | 'rankings';
+export type Route = 'home' | 'legislators' | 'bills' | 'rankings' | 'compare';
 
 const PATHS: Record<Route, string> = {
   home: '/',
   legislators: '/legislators',
   bills: '/bills',
   rankings: '/rankings',
+  compare: '/compare',
 };
 
 export function routeOf(pathname: string): Route {
   if (pathname.startsWith('/legislators')) return 'legislators';
   if (pathname.startsWith('/bills')) return 'bills';
   if (pathname.startsWith('/rankings')) return 'rankings';
+  if (pathname.startsWith('/compare')) return 'compare';
   return 'home';
 }
 

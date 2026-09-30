@@ -10,6 +10,7 @@ import { SessionSelector } from '../components/SessionSelector';
 import { useApi, type ApiResource } from '../hooks/useApi';
 import type { QueryStateApi } from '../hooks/useQueryState';
 import type { TrackedApi } from '../hooks/useTracked';
+import { downloadCsv } from '../lib/csv';
 import { deriveRegions } from '../lib/legislators';
 import { latestSessionId, sessionScopeLabel } from '../lib/sessions';
 import { readPreference, writePreference } from '../lib/storage';
@@ -129,15 +130,24 @@ export function LegislatorsPage({ query, meta, tracked, refreshToken, onOpen }: 
         trackedCount={tracked.count}
       />
 
-      {roster.data && roster.data.items.length > 0 ? (
-        <Hemicycle
-          roster={roster.data.items}
-          matching={matching}
-          party={filters.party}
-          onPartyToggle={(party) => update({ party: filters.party === party ? null : party }, 'push')}
-          onOpen={onOpen}
+      {/* 席次圖與委員會組成並排：點委員會篩選後，結果就在正下方的名錄 */}
+      <div className="overview">
+        {roster.data && roster.data.items.length > 0 ? (
+          <Hemicycle
+            roster={roster.data.items}
+            matching={matching}
+            party={filters.party}
+            onPartyToggle={(party) => update({ party: filters.party === party ? null : party }, 'push')}
+            onOpen={onOpen}
+          />
+        ) : null}
+        <CommitteeChart
+          committees={committees}
+          sessionScopeLabel={scopeLabel}
+          selected={filters.committee}
+          onSelect={(committee) => update({ committee }, 'push')}
         />
-      ) : null}
+      </div>
 
       <LegislatorGrid
         legislators={list}
@@ -149,17 +159,25 @@ export function LegislatorsPage({ query, meta, tracked, refreshToken, onOpen }: 
         hasFilters={hasFilters}
         mode={mode}
         onModeChange={changeMode}
+        onDownload={() => {
+          const items = (list.data?.items ?? []).filter(visible ?? (() => true));
+          downloadCsv(`legislators-${effectiveSession ?? 'all'}.csv`, [
+            ['姓名', '黨籍', '選區', '委員會', '召委', '提案數', '新聞數', '委員識別碼'],
+            ...items.map((l) => [
+              l.name,
+              l.party,
+              l.area_name,
+              l.committees.map((c) => c.id).join('、'),
+              l.is_convener ? '是' : '',
+              l.bill_count,
+              l.news_count,
+              l.id,
+            ]),
+          ]);
+        }}
       />
 
-      <div className="split">
-        <CommitteeChart
-          committees={committees}
-          sessionScopeLabel={scopeLabel}
-          selected={filters.committee}
-          onSelect={(committee) => update({ committee }, 'push')}
-        />
-        <ChangesPanel refreshToken={refreshToken} />
-      </div>
+      <ChangesPanel refreshToken={refreshToken} />
     </>
   );
 }

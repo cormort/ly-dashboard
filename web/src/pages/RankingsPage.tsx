@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState, type CSSProperties } from 'react';
 import { ExternalLink, Trophy } from 'lucide-react';
 import { buildUrl } from '../api/client';
 import type { RankingBoard, RankingItem, RankingsResponse } from '../api/types';
+import { CosponsorMatrix } from '../components/CosponsorMatrix';
 import { EmptyState, ErrorState, LoadingState } from '../components/DataStates';
 import { useApi } from '../hooks/useApi';
 import { formatDateTime } from '../lib/format';
@@ -143,7 +144,6 @@ export function RankingsPage({ refreshToken, onOpenId }: RankingsPageProps) {
       <p className="page-lead">
         以本屆在職委員為範圍的三種活躍度排行：媒體曝光、臉書發文、法案提案。
         新聞榜依所選區間統計，法案榜為本屆累計，臉書榜依整理表記錄的最新貼文時間。
-        所有數字都來自後端正規化後的資料，前端不做二次統計。
       </p>
 
       {rankings.phase === 'loading' && !rankings.data ? <LoadingState label="載入排行榜…" /> : null}
@@ -175,6 +175,8 @@ export function RankingsPage({ refreshToken, onOpenId }: RankingsPageProps) {
               <RankingBoardView key={board.type} board={board} onOpenId={onOpenId} />
             ))}
           </div>
+
+          <CosponsorMatrix refreshToken={refreshToken} />
 
           <p className="muted">
             資料截至 {formatDateTime(rankings.data.meta.fetched_at, '尚未同步')}

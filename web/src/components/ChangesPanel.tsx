@@ -3,7 +3,7 @@ import { buildUrl } from '../api/client';
 import type { ChangesResponse } from '../api/types';
 import { useApi } from '../hooks/useApi';
 import { formatChangeValue, formatDateTime } from '../lib/format';
-import { EmptyState, ErrorState, LoadingState } from './DataStates';
+import { ErrorState, LoadingState } from './DataStates';
 
 export interface ChangesPanelProps {
   refreshToken: number;
@@ -31,6 +31,8 @@ const FIELD_LABELS: Record<string, string> = {
  */
 export function ChangesPanel({ refreshToken }: ChangesPanelProps) {
   const changes = useApi<ChangesResponse>(buildUrl('/changes', { limit: 50 }), { refreshToken });
+  // 沒有異動時整塊不佔版面（名錄頁最下方原本會留一個空面板）
+  if (changes.phase === 'empty') return null;
 
   return (
     <section className="panel changes" aria-label="最近異動">
@@ -54,9 +56,6 @@ export function ChangesPanel({ refreshToken }: ChangesPanelProps) {
         />
       ) : null}
 
-      {changes.phase === 'empty' ? (
-        <EmptyState message="尚無異動紀錄" hint="同步作業偵測到欄位變更時，會在這裡列出。" />
-      ) : null}
 
       {changes.data && changes.data.items.length > 0 ? (
         <ul className="log-list" role="list">

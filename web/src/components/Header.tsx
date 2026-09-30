@@ -28,6 +28,7 @@ const NAV: { route: Route; label: string }[] = [
   { route: 'rankings', label: '排行榜' },
   { route: 'legislators', label: '委員查詢' },
   { route: 'bills', label: '法案查詢' },
+  { route: 'compare', label: '委員比較' },
 ];
 
 /** 頁首：站名、三頁導覽、委員搜尋、資料狀態（有問題才用警示色）。 */
@@ -80,12 +81,15 @@ export function Header({
         ))}
       </nav>
 
-      <SearchField
-        value={query}
-        onChange={onQueryChange}
-        ariaLabel="關鍵字搜尋立法委員"
-        placeholder="搜尋委員姓名、選區、委員會"
-      />
+      {/* 法案頁有自己的搜尋框，兩個不同目標的搜尋框疊在一起會混淆 */}
+      {route !== 'bills' ? (
+        <SearchField
+          value={query}
+          onChange={onQueryChange}
+          ariaLabel="關鍵字搜尋立法委員"
+          placeholder="搜尋委員姓名、選區、委員會"
+        />
+      ) : null}
 
       <div className="header-status">
         <button

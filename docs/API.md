@@ -146,7 +146,9 @@ Query 參數（全部可選）：
 | `q` | 關鍵字，比對議案名稱或涉及的法律 |
 | `law` | 精確比對涉及的法律名稱 |
 | `status` | 精確比對議案狀態（如 `三讀`） |
+| `from` / `to` | 最新進度日期區間（`YYYY-MM-DD`，含端點）；格式不符視為未指定 |
 | `limit` / `offset` | 分頁，limit 1–200，預設 20 / 0 |
+| `format=csv` | 回傳**全部**符合結果的 CSV（UTF-8 含 BOM，`content-disposition: attachment`），忽略 limit/offset |
 
 ```json
 {
@@ -171,6 +173,7 @@ Query 參數（全部可選）：
 ```
 
 注意：
+- `parties`：符合結果的主提案人黨籍 → 件數（黨團提案記為 `黨團／其他`，加總＝`total`）；`first_date`：符合結果中最早的進度日期。
 - `laws` 是「主題」：**全部符合結果**涉及的法律，依件數排序取前 8；`statuses` 是符合結果的狀態分布。前端不得重算。
 - 每筆 `items[].sponsors`：`[{ id, name, party, is_lead }]`，主提案在前。
 - `is_lead`：提案人陣列第一位＝主提案人。提案人是黨團時不對應到任何委員。
@@ -188,12 +191,37 @@ Query 參數（全部可選）：
 
 ## GET /api/v1/activity
 
-最近有動態的在職委員（首頁用）：各委員最新一則臉書貼文（整理表）、新聞、提案進度，取最新者排序；同日以近 7 天新聞量多者在前。參數 `limit`（1–113，預設 12）。
+最近有動態的在職委員（首頁用）：各委員最新一則臉書貼文（整理表）、新聞、提案進度，取最新者排序；同日以近 7 天新聞量多者在前。參數 `limit`（1–113，預設 12）、`ids`（逗號分隔的委員 id，只列這些人；首頁「追蹤中」用）。
 
 ```json
 { "count": 12, "items": [ { "legislator": { "id": "…", "name": "蘇巧慧", "party": "民主進步黨", "region": "新北市", "is_convener": false, "…": "…" },
   "activity_date": "2026-09-30", "news_7d": 12, "post": { "date": "2026-09-28", "summary": "…", "url": "…" }, "news": { "title": "…", "…": "…" }, "bill": { "name": "…", "status": "排入院會", "…": "…" } } ] }
 ```
+
+## GET /api/v1/cosponsors
+
+共同提案網絡（本屆議案的提案人對應）。
+
+- 帶 `legislator=<id>`（可加 `limit` 1–50，預設 10）：最常一起列名的委員，以及跨黨合作比例。
+  ```json
+  { "legislator": "00084", "total_bills": 229, "cross_party_bills": 1,
+    "items": [ { "id": "00015", "name": "吳春城", "party": "台灣民眾黨", "count": 145 } ] }
+  ```
+  `cross_party_bills`：該委員的議案中，有他黨委員一起列名的件數。
+- 不帶參數：黨籍矩陣，`matrix[主提案人黨籍][連署人黨籍] = 人次`（不含主提案人本人）。
+
+## GET /api/v1/compare?ids=a,b
+
+委員並排比較（最多 4 位，去重、略過不存在的 id；已離職者也可比）。
+
+```json
+{ "count": 2, "items": [ { "legislator": { "id": "…", "name": "…", "former": false, "…": "…" },
+    "bills": 46, "lead_bills": 17, "passed_bills": 8, "news_30d": 5,
+    "committees": [ { "id": "內政委員會", "is_convener": false } ], "top_laws": [ { "name": "…", "count": 3 } ] } ],
+  "shared": { "bills": 3, "committees": [] } }
+```
+
+`passed_bills` 以狀態 `三讀`、`審查完畢(三讀)`、`照案通過` 計；`shared.bills` 是所有人都列名的議案數。
 
 ## GET /api/v1/news
 

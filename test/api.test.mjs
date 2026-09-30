@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 import { openDb, applyDataset, applyBills, applySocial, upsertNews, saveSnapshot, recordSyncRun, getMeta, migrate } from '../server/db.mjs';
 import { buildDataset, normalizeBills, normalizeSocial, newsName } from '../server/normalize.mjs';
-import { getHealth, getMetaPayload, listActivity, listBills, listTopics, listNews, listChanges, listCommittees, listLegislators, listRankings, listSyncRuns } from '../server/queries.mjs';
+import { billsCsv, compareLegislators, csvRow, listCosponsors, getHealth, getMetaPayload, listActivity, listBills, listTopics, listNews, listChanges, listCommittees, listLegislators, listRankings, listSyncRuns } from '../server/queries.mjs';
 
 const fixture = (name) => JSON.parse(readFileSync(fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url)), 'utf8'));
 
@@ -373,4 +373,53 @@ test('health：回報各資料集的最後同步時間與新聞狀態（M4/M5 �
   assert.equal(health.datasets.social.count, health.db.social_accounts);
   assert.equal(health.db.bills > 0, true);
   assert.ok(Array.isArray(health.warnings));
+});
+
+/* ---------------- 日期區間／CSV／共同提案／比較 ---------------- */
+
+test('議案：日期區間、主提案黨籍分布、CSV 匯出', () => {
+  const { db } = withActivity();
+  const all = listBills(db, { limit: 300 });
+  const mid = '2026-08-27'; // fixture：08-26 157 件、08-27 72 件、08-28 71 件
+  const recent = listBills(db, { from: mid, limit: 200 });
+  assert.ok(recent.total > 0 && recent.total < all.total && recent.items.every((b) => b.latest_date >= mid));
+  const older = listBills(db, { to: mid, limit: 200 });
+  assert.ok(older.items.every((b) => b.latest_date <= mid));
+  assert.equal(listBills(db, { from: 'not-a-date' }).total, all.total, '格式不對視為未指定');
+  assert.equal(Object.values(all.parties).reduce((a, b) => a + b, 0), all.total, '黨籍分布加總＝件數');
+  assert.equal(listBills(db, { all: true }).count, 300, 'all 不受 200 上限');
+
+  const csv = billsCsv(listBills(db, { all: true }).items).split('\r\n');
+  assert.equal(csv.length, 301);
+  assert.ok(csv[0].startsWith('議案編號,'));
+  assert.equal(csvRow(['a,b', 'say "hi"', 'x']), '"a,b","say ""hi""",x');
+});
+
+test('最近動態：ids 只列指定委員（追蹤名單）', () => {
+  const { db, idByName } = withActivity();
+  const id = idByName.get('丁學忠');
+  const res = listActivity(db, { limit: 113, ids: id });
+  assert.deepEqual(res.items.map((x) => x.legislator.id), [id]);
+});
+
+test('共同提案：夥伴排序、跨黨比例、黨籍矩陣', () => {
+  const { db } = withActivity();
+  const top = db.prepare('SELECT legislator_id AS id FROM bill_sponsors GROUP BY 1 ORDER BY COUNT(*) DESC LIMIT 1').get().id;
+  const res = listCosponsors(db, { legislator: top, limit: 5 });
+  assert.ok(res.items.length > 0 && res.items.length <= 5);
+  assert.ok(res.items.every((x, i, arr) => i === 0 || arr[i - 1].count >= x.count));
+  assert.ok(!res.items.some((x) => x.id === top), '不含自己');
+  assert.ok(res.cross_party_bills <= res.total_bills);
+  assert.ok(Object.keys(listCosponsors(db, {}).matrix).length > 0);
+  assert.equal(listCosponsors(db, { legislator: 'nobody' }).items.length, 0);
+});
+
+test('比較：兩位委員的統計與共同提案', () => {
+  const { db } = withActivity();
+  const [a, b] = db.prepare('SELECT legislator_id AS id FROM bill_sponsors GROUP BY 1 ORDER BY COUNT(*) DESC LIMIT 2').all().map((r) => r.id);
+  const res = compareLegislators(db, { ids: `${a},${b},${a},missing` });
+  assert.equal(res.count, 2, '去重、略過不存在的 id');
+  assert.ok(res.items[0].bills >= res.items[0].lead_bills && res.items[0].bills >= res.items[0].passed_bills);
+  const both = db.prepare('SELECT COUNT(*) AS n FROM bill_sponsors x JOIN bill_sponsors y ON x.bill_id = y.bill_id WHERE x.legislator_id = ? AND y.legislator_id = ?').get(a, b).n;
+  assert.equal(res.shared.bills, Number(both));
 });

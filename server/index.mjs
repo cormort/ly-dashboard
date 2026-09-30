@@ -5,7 +5,7 @@ import { pathToFileURL } from 'node:url';
 import { CONFIG } from './config.mjs';
 import { openDb, getMeta } from './db.mjs';
 import {
-  getHealth, getMetaPayload, listActivity, listBills, listNews, listTopics, listChanges,
+  billsCsv, compareLegislators, getHealth, getMetaPayload, listActivity, listBills, listCosponsors, listNews, listTopics, listChanges,
   listCommittees, listLegislators, listRankings, listSyncRuns,
 } from './queries.mjs';
 import { runAll, runIngest } from './ingest.mjs';
@@ -57,6 +57,18 @@ const sendJson = (res, status, payload, extraHeaders = {}) => {
   res.end(body);
 };
 
+// Excel 要 BOM 才會把 UTF-8 當中文；不快取，每次都是當下條件的完整結果
+const sendCsv = (res, filename, body) => {
+  const buf = Buffer.from(`\uFEFF${body}`, 'utf8');
+  res.writeHead(200, {
+    'content-type': 'text/csv; charset=utf-8',
+    'content-length': buf.length,
+    'content-disposition': `attachment; filename="${filename}"`,
+    'cache-control': 'no-store',
+  });
+  res.end(buf);
+};
+
 const sendError = (res, status, code, message) => sendJson(res, status, { error: { code, message } }, { 'cache-control': 'no-store' });
 
 async function serveStatic(res, urlPath) {
@@ -103,12 +115,19 @@ export function createServer(db) {
             return sendJson(res, 200, listLegislators(db, q));
           case '/api/v1/committees':
             return sendJson(res, 200, listCommittees(db, q));
-          case '/api/v1/bills':
-            return sendJson(res, 200, listBills(db, { legislator: q.legislator || null, q: q.q, law: q.law, status: q.status, limit: q.limit, offset: q.offset }));
+          case '/api/v1/bills': {
+            const filters = { legislator: q.legislator || null, q: q.q, law: q.law, status: q.status, from: q.from, to: q.to };
+            if (q.format === 'csv') return sendCsv(res, 'bills.csv', billsCsv(listBills(db, { ...filters, all: true }).items));
+            return sendJson(res, 200, listBills(db, { ...filters, limit: q.limit, offset: q.offset }));
+          }
+          case '/api/v1/cosponsors':
+            return sendJson(res, 200, listCosponsors(db, { legislator: q.legislator || null, limit: q.limit }));
+          case '/api/v1/compare':
+            return sendJson(res, 200, compareLegislators(db, { ids: q.ids }));
           case '/api/v1/topics':
             return sendJson(res, 200, listTopics(db, { days: q.days, limit: q.limit }));
           case '/api/v1/activity':
-            return sendJson(res, 200, listActivity(db, { limit: q.limit }));
+            return sendJson(res, 200, listActivity(db, { limit: q.limit, ids: q.ids || null }));
           case '/api/v1/news':
             return sendJson(res, 200, listNews(db, { legislator: q.legislator || null, limit: q.limit }));
           case '/api/v1/rankings':

@@ -30,6 +30,8 @@ import { HomePage } from '../src/pages/HomePage';
 import { BillsPage } from '../src/pages/BillsPage';
 import { SyncStatusBanner } from '../src/components/SyncStatusBanner';
 import { RankingsPage, RankingBoardView } from '../src/pages/RankingsPage';
+import { ComparePage } from '../src/pages/ComparePage';
+import { BillStageBar } from '../src/components/BillStage';
 
 /* ---------------------------- 瀏覽器 API 替身 ---------------------------- */
 const store = new Map<string, string>();
@@ -415,12 +417,13 @@ const gridHtml = render(
     hasFilters: false,
     mode: 'cards',
     onModeChange: () => undefined,
+    onDownload: () => undefined,
   }),
 );
 expectAll('ready 態卡片欄位齊全', gridHtml, [
   '測試委員甲',
   '測試政黨A',
-  '內政・召',
+  '內政<span class="convener-badge">召委</span>',
   '測試市第1選舉區',
   '召委',
   '提案 3',
@@ -439,6 +442,7 @@ check('未追蹤時 aria-label 為加入追蹤', render(
     hasFilters: false,
     mode: 'cards',
     onModeChange: () => undefined,
+    onDownload: () => undefined,
   }),
 ).includes('aria-label="追蹤 測試委員甲"'));
 expectAll(
@@ -453,6 +457,7 @@ expectAll(
       hasFilters: false,
       mode: 'cards',
       onModeChange: () => undefined,
+    onDownload: () => undefined,
     }),
   ),
   ['此會期尚無資料', '第 11 屆第 5 會期'],
@@ -469,6 +474,7 @@ expectAll(
       hasFilters: true,
       mode: 'cards',
       onModeChange: () => undefined,
+    onDownload: () => undefined,
     }),
   ),
   ['沒有符合條件的委員', '清除條件'],
@@ -485,6 +491,7 @@ expectAll(
       hasFilters: false,
       mode: 'cards',
       onModeChange: () => undefined,
+    onDownload: () => undefined,
     }),
   ),
   ['無法取得委員名錄', '重試'],
@@ -501,6 +508,7 @@ expectAll(
       hasFilters: false,
       mode: 'cards',
       onModeChange: () => undefined,
+    onDownload: () => undefined,
     }),
   ),
   ['讀取委員名錄'],
@@ -516,6 +524,7 @@ const listHtml = render(
     hasFilters: false,
     mode: 'list',
     onModeChange: () => undefined,
+    onDownload: () => undefined,
   }),
 );
 expectAll('列表模式：可排序表頭、欄位與召委標記', listHtml, [
@@ -532,7 +541,7 @@ check('列表模式不出現卡片', !listHtml.includes('查看檔案'));
 console.log('\n— 首頁與法案查詢（自行抓資料，僅驗 loading 態）—');
 expectAll(
   '首頁 loading 態',
-  render(createElement(HomePage, { refreshToken: 0, onOpenId: () => undefined, onNavigate: () => undefined })),
+  render(createElement(HomePage, { refreshToken: 0, onOpenId: () => undefined, onNavigate: () => undefined, tracked: { ids: [], set: new Set(), count: 0, isTracked: () => false, toggle: () => undefined } })),
   ['委員動態', '熱門議題', '最新新聞', '讀取委員動態'],
 );
 expectAll(
@@ -651,6 +660,20 @@ expectAll('loading 態', render(createElement(RankingsPage, { refreshToken: 0, o
 expectNone('loading 態不該先畫出任何委員', render(createElement(RankingsPage, { refreshToken: 0, onOpenId: () => undefined, onNavigate: () => undefined })), [
   '測試委員甲',
 ]);
+
+console.log('\n— 委員比較與立法流程 —');
+expectAll('比較頁：未選委員時提示怎麼選，不先畫比較表', render(createElement(ComparePage, { refreshToken: 0, onOpenId: () => undefined })), [
+  '委員比較',
+  '還沒選委員',
+  '選擇委員…',
+]);
+expectAll('流程條：交付審查走到第 2 步', render(createElement(BillStageBar, { status: '交付審查' })), [
+  'aria-label="立法進度：委員會審查（2/5）"',
+  'class="done"',
+  'class="current"',
+]);
+expectAll('流程條：撤案標為中止', render(createElement(BillStageBar, { status: '撤案' })), ['stage-bar stopped', '已中止：撤案']);
+check('流程條：未知狀態不畫', render(createElement(BillStageBar, { status: '交付查照' })) === '');
 
 /* 型別上的靜態斷言：確保測試替身符合 API 契約（不改 runtime 行為） */
 const _typecheck: ChangesResponse | null = null;

@@ -13,6 +13,7 @@ import { pathFor, useRoute } from './hooks/useRoute';
 import { useTracked } from './hooks/useTracked';
 import { sessionLabelIndex } from './lib/sessions';
 import { BillsPage } from './pages/BillsPage';
+import { ComparePage } from './pages/ComparePage';
 import { HomePage } from './pages/HomePage';
 import { LegislatorsPage } from './pages/LegislatorsPage';
 import { RankingsPage } from './pages/RankingsPage';
@@ -89,6 +90,11 @@ export default function App() {
               onToggleTrack={(legislator) => tracked.toggle(legislator.id)}
               source={source}
               sessionLabel={sessionLabel}
+              onOpenId={setPendingId}
+              onCompare={(l) => {
+                setSelected(null);
+                navigate(pathFor('compare', { ids: l.id }));
+              }}
             />
           ) : null
         }
@@ -126,11 +132,12 @@ export default function App() {
           </div>
         ) : null}
 
-        {route === 'home' ? <HomePage refreshToken={refreshToken} onOpenId={setPendingId} onNavigate={navigate} /> : null}
+        {route === 'home' ? <HomePage refreshToken={refreshToken} onOpenId={setPendingId} onNavigate={navigate} tracked={tracked} /> : null}
         {route === 'legislators' ? (
           <LegislatorsPage query={query} meta={meta} tracked={tracked} refreshToken={refreshToken} onOpen={setSelected} />
         ) : null}
         {route === 'bills' ? <BillsPage refreshToken={refreshToken} onOpenId={setPendingId} /> : null}
+        {route === 'compare' ? <ComparePage refreshToken={refreshToken} onOpenId={setPendingId} /> : null}
         {route === 'rankings' ? <RankingsPage refreshToken={refreshToken} onOpenId={setPendingId} onNavigate={navigate} /> : null}
       </AppShell>
     </ErrorBoundary>

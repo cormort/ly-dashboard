@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
-import { ExternalLink, X } from 'lucide-react';
+import { Download, ExternalLink, X } from 'lucide-react';
 import { buildUrl } from '../api/client';
 import type { BillsResponse } from '../api/types';
+import { BillStageBar } from '../components/BillStage';
 import { EmptyState, ErrorState, LoadingState } from '../components/DataStates';
 import { SearchField } from '../components/SearchField';
 import { useApi } from '../hooks/useApi';
 import { billTitle } from '../lib/format';
 import { pathFor } from '../hooks/useRoute';
-import { partyStyle } from '../lib/parties';
+import { partyStyle, sortParties } from '../lib/parties';
 
 export interface BillsPageProps {
   refreshToken: number;
@@ -18,14 +19,18 @@ interface BillFilters {
   q: string;
   law: string;
   status: string;
+  from: string;
+  to: string;
 }
 
 const readFilters = (): BillFilters => {
   const params = new URLSearchParams(window.location.search);
-  return { q: params.get('q') ?? '', law: params.get('law') ?? '', status: params.get('status') ?? '' };
+  const get = (key: string) => params.get(key) ?? '';
+  return { q: get('q'), law: get('law'), status: get('status'), from: get('from'), to: get('to') };
 };
 
 const PAGE = 30;
+const PASSED = new Set(['三讀', '審查完畢(三讀)', '照案通過']);
 
 /**
  * 法案查詢：關鍵字（議案名稱或法律）、法律、狀態。條件寫在網址（可分享、首頁議題可直接連進來）。
@@ -33,7 +38,7 @@ const PAGE = 30;
  */
 export function BillsPage({ refreshToken, onOpenId }: BillsPageProps) {
   const [filters, setFilters] = useState<BillFilters>(readFilters);
-  const [limit, setLimit] = useState(PAGE);
+  const [page, setPage] = useState(0);
 
   // 上一頁／首頁議題連結進來時重新讀網址
   useEffect(() => {
@@ -45,15 +50,18 @@ export function BillsPage({ refreshToken, onOpenId }: BillsPageProps) {
   const change = (patch: Partial<BillFilters>) => {
     const next = { ...filters, ...patch };
     setFilters(next);
-    setLimit(PAGE);
-    window.history.replaceState(null, '', pathFor('bills', { q: next.q.trim(), law: next.law, status: next.status }));
+    setPage(0);
+    window.history.replaceState(null, '', pathFor('bills', { ...next, q: next.q.trim() }));
   };
 
-  const bills = useApi<BillsResponse>(
-    buildUrl('/bills', { q: filters.q.trim(), law: filters.law, status: filters.status, limit }),
-    { refreshToken },
-  );
+  const query = { q: filters.q.trim(), law: filters.law, status: filters.status, from: filters.from, to: filters.to };
+  const bills = useApi<BillsResponse>(buildUrl('/bills', { ...query, limit: PAGE, offset: page * PAGE }), { refreshToken });
   const data = bills.data;
+  const pages = data ? Math.max(1, Math.ceil(data.total / PAGE)) : 1;
+  const goto = (next: number) => {
+    setPage(next);
+    document.getElementById('bill-results')?.scrollIntoView({ block: 'start' });
+  };
 
   return (
     <>
@@ -83,6 +91,12 @@ export function BillsPage({ refreshToken, onOpenId }: BillsPageProps) {
             ) : null}
           </select>
         </label>
+        <label className="date-range">
+          <span>進度日期</span>
+          <input type="date" value={filters.from} max={filters.to || undefined} onChange={(event) => change({ from: event.target.value })} aria-label="起日" />
+          <span aria-hidden="true">–</span>
+          <input type="date" value={filters.to} min={filters.from || undefined} onChange={(event) => change({ to: event.target.value })} aria-label="迄日" />
+        </label>
         {filters.law ? (
           <button type="button" aria-pressed="true" onClick={() => change({ law: '' })} aria-label={`取消法律條件：${filters.law}`}>
             {filters.law}
@@ -90,6 +104,8 @@ export function BillsPage({ refreshToken, onOpenId }: BillsPageProps) {
           </button>
         ) : null}
       </div>
+
+      {filters.law && data ? <LawSummary law={filters.law} data={data} /> : null}
 
       {data && data.laws.length > 0 && !filters.law ? (
         <div className="law-facets" aria-label="符合結果中最常涉及的法律">
@@ -101,10 +117,18 @@ export function BillsPage({ refreshToken, onOpenId }: BillsPageProps) {
         </div>
       ) : null}
 
-      <section className="panel" aria-label="法案列表">
+      <section className="panel" aria-label="法案列表" id="bill-results">
         <div className="sectionhead">
           <h2>符合的提案</h2>
-          {data ? <span className="muted">{data.total} 件</span> : null}
+          <div>
+            {data ? <span className="muted">{data.total} 件</span> : null}
+            {data && data.total > 0 ? (
+              <a className="button" href={buildUrl('/bills', { ...query, format: 'csv' })} download="bills.csv">
+                <Download aria-hidden="true" />
+                下載 CSV
+              </a>
+            ) : null}
+          </div>
         </div>
         {bills.phase === 'loading' && !data ? <LoadingState label="讀取法案…" /> : null}
         {bills.phase === 'error' ? <ErrorState title="無法取得法案（/api/v1/bills）" error={bills.error} onRetry={bills.reload} /> : null}
@@ -116,11 +140,12 @@ export function BillsPage({ refreshToken, onOpenId }: BillsPageProps) {
             <ol className="bill-results">
               {data.items.map((bill) => (
                 <li key={bill.id}>
-                  <a href={bill.url} target="_blank" rel="noreferrer noopener" className="bill-title">
+                  <a href={bill.url} target="_blank" rel="noreferrer noopener" className="bill-title" title={billTitle(bill.name)}>
                     {billTitle(bill.name)}
                     <ExternalLink aria-hidden="true" />
                   </a>
                   <p className="bill-meta">
+                    <BillStageBar status={bill.status} />
                     <span className="status-tag">{bill.status}</span>
                     <span>{bill.latest_date}</span>
                     {bill.laws.map((law) => (
@@ -148,15 +173,62 @@ export function BillsPage({ refreshToken, onOpenId }: BillsPageProps) {
                 </li>
               ))}
             </ol>
-            {data.count < data.total && limit < 200 ? (
-              <button type="button" className="more" onClick={() => setLimit((n) => Math.min(n + PAGE * 2, 200))}>
-                顯示更多（已顯示 {data.count} / {data.total}）
-              </button>
+            {pages > 1 ? (
+              <nav className="pager" aria-label="分頁">
+                <button type="button" disabled={page === 0} onClick={() => goto(page - 1)}>
+                  上一頁
+                </button>
+                <span className="muted">
+                  第 {page + 1} / {pages} 頁
+                </span>
+                <button type="button" disabled={page + 1 >= pages} onClick={() => goto(page + 1)}>
+                  下一頁
+                </button>
+              </nav>
             ) : null}
-            {data.count < data.total && limit >= 200 ? <p className="muted">最多顯示 200 件，請加上條件縮小範圍。</p> : null}
           </>
         ) : null}
       </section>
     </>
+  );
+}
+
+/** 單一法律的總覽：件數、三讀、期間、各黨主提案分布（依篩選後結果）。 */
+function LawSummary({ law, data }: { law: string; data: BillsResponse }) {
+  const passed = data.statuses.filter((s) => PASSED.has(s.name)).reduce((sum, s) => sum + s.count, 0);
+  const parties = sortParties(Object.keys(data.parties));
+  const latest = data.items[0]?.latest_date;
+  return (
+    <section className="panel law-summary" aria-label={`${law} 總覽`}>
+      <h2>{law}</h2>
+      <div className="stat-row">
+        <div className="stat-tile">
+          <b className="stat-value">{data.total}</b>
+          <span className="stat-label">件委員提案</span>
+        </div>
+        <div className="stat-tile">
+          <b className="stat-value">{passed}</b>
+          <span className="stat-label">件已三讀</span>
+        </div>
+        <div className="stat-tile">
+          <b className="stat-value">{data.first_date?.slice(0, 7).replace('-', '/') ?? '—'}</b>
+          <span className="stat-label">最早進度（最新 {latest ?? '—'}）</span>
+        </div>
+      </div>
+      <p className="muted">各黨主提案件數</p>
+      <span className="bar" aria-hidden="true">
+        {parties.map((p) => (
+          <span key={p} style={{ flexGrow: data.parties[p], background: partyStyle(p).color }} />
+        ))}
+      </span>
+      <ul className="party-counts" role="list">
+        {parties.map((p) => (
+          <li key={p}>
+            <span className="swatch" style={{ background: partyStyle(p).color }} aria-hidden="true" />
+            {partyStyle(p).short} {data.parties[p]}
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }

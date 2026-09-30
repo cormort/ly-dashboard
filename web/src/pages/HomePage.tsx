@@ -5,6 +5,8 @@ import type { ActivityItem, ActivityResponse, NewsResponse, TopicsResponse } fro
 import { EmptyState, ErrorState, LoadingState } from '../components/DataStates';
 import { Portrait } from '../components/Portrait';
 import { useApi } from '../hooks/useApi';
+import type { TrackedApi } from '../hooks/useTracked';
+import { readPreference, writePreference } from '../lib/storage';
 import { pathFor } from '../hooks/useRoute';
 import { formatDateTime } from '../lib/format';
 import { partyStyle, sortParties } from '../lib/parties';
@@ -13,11 +15,25 @@ export interface HomePageProps {
   refreshToken: number;
   onOpenId: (legislatorId: string) => void;
   onNavigate: (href: string) => void;
+  tracked: TrackedApi;
+}
+
+/**
+ * 上次造訪的日期（YYYY-MM-DD）：讀出舊值後立刻寫入今天，之後比它新的動態標「新」。
+ * ponytail: 以日為單位（動態日期本來就只有日），同一天內重複造訪不會再標新。
+ */
+function useLastVisit(): string | null {
+  const [previous] = useState(() => {
+    const value = readPreference('last-visit');
+    writePreference('last-visit', new Date().toISOString().slice(0, 10));
+    return value;
+  });
+  return previous;
 }
 
 const shortDate = (value: string | undefined | null) => (value ? value.slice(5, 10).replace('-', '/') : '');
 
-function ActivityCard({ item, onOpenId }: { item: ActivityItem; onOpenId: (id: string) => void }) {
+function ActivityCard({ item, onOpenId, isNew }: { item: ActivityItem; onOpenId: (id: string) => void; isNew: boolean }) {
   const { legislator: l, post, news, bill } = item;
   const style = partyStyle(l.party);
   return (
@@ -33,7 +49,10 @@ function ActivityCard({ item, onOpenId }: { item: ActivityItem; onOpenId: (id: s
             <span style={{ color: style.color }}>{style.short}</span>　{l.region}
           </small>
         </div>
-        <time dateTime={item.activity_date}>{shortDate(item.activity_date)}</time>
+        <time dateTime={item.activity_date}>
+          {isNew ? <span className="new-mark">新</span> : null}
+          {shortDate(item.activity_date)}
+        </time>
       </div>
       <dl className="activity-lines">
         {post ? (
@@ -74,9 +93,19 @@ function ActivityCard({ item, onOpenId }: { item: ActivityItem; onOpenId: (id: s
 }
 
 /** 首頁：最近有動態的委員（貼文／新聞／提案），旁邊是近 30 天熱門議題與最新新聞。 */
-export function HomePage({ refreshToken, onOpenId, onNavigate }: HomePageProps) {
+export function HomePage({ refreshToken, onOpenId, onNavigate, tracked }: HomePageProps) {
   const [limit, setLimit] = useState(12);
-  const activity = useApi<ActivityResponse>(buildUrl('/activity', { limit }), { refreshToken });
+  const [onlyTracked, setOnlyTracked] = useState(() => readPreference('home-tracked') === '1');
+  const lastVisit = useLastVisit();
+  const showTracked = onlyTracked && tracked.count > 0;
+  const activity = useApi<ActivityResponse>(
+    buildUrl('/activity', { limit: showTracked ? 113 : limit, ids: showTracked ? tracked.ids.join(',') : undefined }),
+    { refreshToken },
+  );
+  const toggleTracked = (next: boolean) => {
+    setOnlyTracked(next);
+    writePreference('home-tracked', next ? '1' : '0');
+  };
   const topics = useApi<TopicsResponse>(buildUrl('/topics', { days: 30, limit: 10 }), { refreshToken });
   const news = useApi<NewsResponse>(buildUrl('/news', { limit: 8 }), { refreshToken });
 
@@ -89,7 +118,23 @@ export function HomePage({ refreshToken, onOpenId, onNavigate }: HomePageProps) 
 
       <div className="home">
         <section className="panel" aria-label="委員動態">
-          <h2>委員動態</h2>
+          <div className="sectionhead">
+            <h2>委員動態</h2>
+            <div className="segmented" role="group" aria-label="動態範圍">
+              <button type="button" aria-pressed={!showTracked} onClick={() => toggleTracked(false)}>
+                全部
+              </button>
+              <button
+                type="button"
+                aria-pressed={showTracked}
+                disabled={tracked.count === 0}
+                onClick={() => toggleTracked(true)}
+                title={tracked.count === 0 ? '在委員查詢頁按 ☆ 加入追蹤' : undefined}
+              >
+                追蹤中（{tracked.count}）
+              </button>
+            </div>
+          </div>
           {activity.phase === 'loading' && !activity.data ? <LoadingState label="讀取委員動態…" /> : null}
           {activity.phase === 'error' ? (
             <ErrorState title="無法取得委員動態（/api/v1/activity）" error={activity.error} onRetry={activity.reload} />
@@ -101,10 +146,15 @@ export function HomePage({ refreshToken, onOpenId, onNavigate }: HomePageProps) 
             <>
               <ol className="activity-list">
                 {activity.data.items.map((item) => (
-                  <ActivityCard key={item.legislator.id} item={item} onOpenId={onOpenId} />
+                  <ActivityCard
+                    key={item.legislator.id}
+                    item={item}
+                    onOpenId={onOpenId}
+                    isNew={lastVisit !== null && item.activity_date > lastVisit}
+                  />
                 ))}
               </ol>
-              {activity.data.count >= limit && limit < 113 ? (
+              {!showTracked && activity.data.count >= limit && limit < 113 ? (
                 <button type="button" className="more" onClick={() => setLimit(113)}>
                   顯示全部委員
                 </button>

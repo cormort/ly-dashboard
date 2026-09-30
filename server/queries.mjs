@@ -471,8 +471,8 @@ const toBill = (r) => ({
  * `law`（精確法律名稱）、`status`。回傳分頁結果＋在全部符合結果上算的主題（法律）與狀態統計。
  * ponytail: 撈出全部符合列再在 JS 統計／分頁（本屆約 7,400 件，數毫秒）；資料量大十倍再改 SQL 聚合。
  */
-export function listBills(db, { legislator = null, q = '', law = '', status = '', limit = 20, offset = 0 } = {}) {
-  const resolvedLimit = Math.max(1, Math.min(Number(limit) || 20, 200));
+export function listBills(db, { legislator = null, q = '', law = '', status = '', from = '', to = '', limit = 20, offset = 0, all = false } = {}) {
+  const resolvedLimit = all ? Infinity : Math.max(1, Math.min(Number(limit) || 20, 200));
   const resolvedOffset = Math.max(0, Math.trunc(Number(offset) || 0));
   const clauses = [];
   const params = [];
@@ -480,6 +480,10 @@ export function listBills(db, { legislator = null, q = '', law = '', status = ''
   const needle = String(q ?? '').trim();
   if (needle) clauses.push('(b.name LIKE ? OR b.laws LIKE ?)'), params.push(`%${needle}%`, `%${needle}%`);
   if (law) clauses.push('b.laws LIKE ?'), params.push(`%${JSON.stringify(String(law))}%`);
+  // 日期區間比對最新進度日期；只收 YYYY-MM-DD，其他格式當作未指定
+  const isDate = (v) => /^\d{4}-\d{2}-\d{2}$/.test(String(v ?? ''));
+  if (isDate(from)) clauses.push('b.latest_date >= ?'), params.push(String(from));
+  if (isDate(to)) clauses.push('b.latest_date <= ?'), params.push(String(to));
   const statusFilter = status ? String(status) : '';
   const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
   const rows = db.prepare(`SELECT b.* FROM bills b ${where} ORDER BY b.latest_date DESC, b.id DESC`).all(...params);
@@ -492,6 +496,15 @@ export function listBills(db, { legislator = null, q = '', law = '', status = ''
     statusCounts.set(row.status, (statusCounts.get(row.status) ?? 0) + 1);
   }
   const matching = statusFilter ? rows.filter((row) => row.status === statusFilter) : rows;
+  // 主提案人黨籍分布（法律頁的「各黨提案」長條）；在套用狀態篩選後算，與列表一致
+  const leadParty = new Map(
+    db.prepare('SELECT s.bill_id, l.party FROM bill_sponsors s JOIN legislators l ON l.id = s.legislator_id WHERE s.is_lead = 1').all().map((r) => [r.bill_id, r.party]),
+  );
+  const partyCounts = {};
+  for (const row of matching) {
+    const party = leadParty.get(row.id) ?? '黨團／其他';
+    partyCounts[party] = (partyCounts[party] ?? 0) + 1;
+  }
   const ranked = (map, n) =>
     [...map].sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0]), 'zh-Hant')).slice(0, n).map(([name, count]) => ({ name, count }));
 
@@ -516,6 +529,8 @@ export function listBills(db, { legislator = null, q = '', law = '', status = ''
     total: matching.length,
     count: page.length,
     laws: ranked(lawCounts, 8),
+    parties: partyCounts,
+    first_date: matching.length ? matching.reduce((min, r) => (r.latest_date && r.latest_date < min ? r.latest_date : min), matching[0].latest_date || '9999') : null,
     statuses: ranked(statusCounts, 20),
     items: page.map((r) => {
       const sponsors = sponsorsByBill.get(r.id) ?? [];
@@ -565,7 +580,8 @@ export function listTopics(db, { days = 30, limit = 12 } = {}) {
  * 最近有動態的委員：各委員最新一則臉書貼文（整理表）、新聞、議案進度，取最近者排序；
  * 同一天以近 7 天新聞量多者在前。只列在職委員。
  */
-export function listActivity(db, { limit = 12 } = {}) {
+export function listActivity(db, { limit = 12, ids = null } = {}) {
+  const only = ids ? new Set(String(ids).split(',').map((x) => x.trim()).filter(Boolean)) : null;
   const resolvedLimit = Math.max(1, Math.min(Number(limit) || 12, 113));
   const legislators = db.prepare('SELECT id, name, party, area_name, photo_url FROM legislators WHERE leave_flag = 0').all();
   const latestNews = new Map();
@@ -603,7 +619,7 @@ export function listActivity(db, { limit = 12 } = {}) {
         bill,
       };
     })
-    .filter((x) => x.activity_date)
+    .filter((x) => x.activity_date && (!only || only.has(x.legislator.id)))
     .sort((a, b) => b.activity_date.localeCompare(a.activity_date) || b.news_7d - a.news_7d)
     .slice(0, resolvedLimit);
   return { meta: envelope(db), count: items.length, items };
@@ -625,4 +641,108 @@ export function listNews(db, { legislator = null, limit = 10 } = {}) {
     count: rows.length,
     items: rows.map((r) => ({ legislator_id: r.legislator_id, legislator_name: r.legislator_name, legislator_party: r.legislator_party, title: r.title, source: r.source, url: r.url, published_at: r.published_at })),
   };
+}
+
+/** 三讀（含審查完畢後三讀、照案通過）視為通過 */
+const PASSED = new Set(['三讀', '審查完畢(三讀)', '照案通過']);
+
+/**
+ * 共同提案網絡。
+ * - 指定 `legislator`：最常一起連署的委員（含黨籍），以及跨黨合作比例（該委員的議案中，有他黨委員連署的占比）。
+ * - 未指定：黨籍矩陣，rows＝主提案人黨籍、cols＝連署人黨籍，值＝連署人次（不含主提案人自己）。
+ */
+export function listCosponsors(db, { legislator = null, limit = 10 } = {}) {
+  const resolvedLimit = Math.max(1, Math.min(Number(limit) || 10, 50));
+  if (legislator) {
+    const self = db.prepare('SELECT id, party FROM legislators WHERE id = ?').get(legislator);
+    if (!self) return { meta: envelope(db), legislator, total_bills: 0, cross_party_bills: 0, items: [] };
+    const rows = db
+      .prepare(
+        `SELECT o.bill_id, l.id, l.name, l.party FROM bill_sponsors me
+         JOIN bill_sponsors o ON o.bill_id = me.bill_id AND o.legislator_id <> me.legislator_id
+         JOIN legislators l ON l.id = o.legislator_id
+         WHERE me.legislator_id = ?`,
+      )
+      .all(legislator);
+    const partners = new Map();
+    const crossBills = new Set();
+    for (const r of rows) {
+      const p = partners.get(r.id) ?? { id: r.id, name: r.name, party: r.party, count: 0 };
+      p.count += 1;
+      partners.set(r.id, p);
+      if (r.party !== self.party) crossBills.add(r.bill_id);
+    }
+    const total = db.prepare('SELECT COUNT(*) AS n FROM bill_sponsors WHERE legislator_id = ?').get(legislator).n;
+    const items = [...partners.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'zh-Hant')).slice(0, resolvedLimit);
+    return { meta: envelope(db), legislator, total_bills: Number(total), cross_party_bills: crossBills.size, items };
+  }
+  const rows = db
+    .prepare(
+      `SELECT ll.party AS lead_party, lc.party AS co_party, COUNT(*) AS n
+       FROM bill_sponsors lead
+       JOIN bill_sponsors co ON co.bill_id = lead.bill_id AND co.is_lead = 0
+       JOIN legislators ll ON ll.id = lead.legislator_id
+       JOIN legislators lc ON lc.id = co.legislator_id
+       WHERE lead.is_lead = 1
+       GROUP BY 1, 2`,
+    )
+    .all();
+  const matrix = {};
+  for (const r of rows) (matrix[r.lead_party] ??= {})[r.co_party] = Number(r.n);
+  return { meta: envelope(db), matrix };
+}
+
+/** 兩位（或多位）委員並排比較：提案、三讀、新聞、委員會，以及彼此的共同提案與共同委員會。 */
+export function compareLegislators(db, { ids = '' } = {}) {
+  const list = [...new Set(String(ids).split(',').map((x) => x.trim()).filter(Boolean))].slice(0, 4);
+  const session = currentSession(db);
+  const monthAgo = new Date(Date.now() - 30 * 86_400_000).toISOString();
+  const billSets = new Map();
+  const items = [];
+  for (const id of list) {
+    const l = db.prepare('SELECT id, name, party, area_name, photo_url, leave_flag FROM legislators WHERE id = ?').get(id);
+    if (!l) continue;
+    const bills = db.prepare('SELECT b.id, b.status, b.laws, s.is_lead FROM bill_sponsors s JOIN bills b ON b.id = s.bill_id WHERE s.legislator_id = ?').all(id);
+    billSets.set(id, new Set(bills.map((b) => b.id)));
+    const lawCounts = new Map();
+    for (const b of bills) for (const law of JSON.parse(b.laws || '[]')) lawCounts.set(law, (lawCounts.get(law) ?? 0) + 1);
+    const committees = db.prepare('SELECT committee_id, is_convener FROM committee_seats WHERE session_id = ? AND legislator_id = ?').all(session ?? '', id);
+    items.push({
+      legislator: { id: l.id, name: l.name, party: l.party, area_name: l.area_name, region: regionOf(l.area_name), photo_url: l.photo_url, former: Number(l.leave_flag) === 1 },
+      bills: bills.length,
+      lead_bills: bills.filter((b) => Number(b.is_lead) === 1).length,
+      passed_bills: bills.filter((b) => PASSED.has(b.status)).length,
+      news_30d: Number(db.prepare('SELECT COUNT(*) AS n FROM news WHERE legislator_id = ? AND published_at >= ?').get(id, monthAgo).n),
+      committees: committees.map((c) => ({ id: c.committee_id, is_convener: Number(c.is_convener) === 1 })),
+      top_laws: [...lawCounts].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([name, count]) => ({ name, count })),
+    });
+  }
+  const [first, ...rest] = items;
+  const shared = first
+    ? {
+        bills: [...billSets.get(first.legislator.id)].filter((b) => rest.every((x) => billSets.get(x.legislator.id).has(b))).length,
+        committees: first.committees.map((c) => c.id).filter((c) => rest.every((x) => x.committees.some((y) => y.id === c))),
+      }
+    : { bills: 0, committees: [] };
+  return { meta: envelope(db), count: items.length, items, shared };
+}
+
+/** RFC 4180：含逗號、引號、換行的欄位加引號，引號重複 */
+export const csvRow = (cells) => cells.map((c) => (/[",\n\r]/.test(String(c ?? '')) ? `"${String(c).replace(/"/g, '""')}"` : String(c ?? ''))).join(',');
+
+export function billsCsv(items) {
+  const header = ['議案編號', '議案名稱', '狀態', '最新進度日期', '涉及法律', '主提案人', '連署人', '連結'];
+  const lines = items.map((b) =>
+    csvRow([
+      b.id,
+      b.name,
+      b.status,
+      b.latest_date,
+      b.laws.join('、'),
+      b.sponsors.filter((s) => s.is_lead).map((s) => s.name).join('、'),
+      b.sponsors.filter((s) => !s.is_lead).map((s) => s.name).join('、'),
+      b.url,
+    ]),
+  );
+  return [csvRow(header), ...lines].join('\r\n');
 }

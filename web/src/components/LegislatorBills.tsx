@@ -3,6 +3,7 @@ import { buildUrl } from '../api/client';
 import type { BillsResponse } from '../api/types';
 import { useApi } from '../hooks/useApi';
 import { billTitle } from '../lib/format';
+import { BillStageBar } from './BillStage';
 import { EmptyState, ErrorState, LoadingState } from './DataStates';
 
 /** 委員提案：主題（最常涉及的法律）＋最近 10 筆。資料來自 /api/v1/bills，前端不重算。 */
@@ -42,6 +43,7 @@ export function LegislatorBills({ legislatorId }: { legislatorId: string }) {
               <ExternalLink aria-hidden="true" />
             </a>
             <small>
+              <BillStageBar status={bill.status} />
               {bill.latest_date} · {bill.status}
               {bill.is_lead ? ' · 主提案' : ''}
             </small>

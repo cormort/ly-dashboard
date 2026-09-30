@@ -286,7 +286,55 @@ export interface BillsResponse {
   laws: BillLawCount[];
   /** 符合結果的議案狀態分布 */
   statuses: BillLawCount[];
+  /** 主提案人黨籍 → 件數（黨團提案歸「黨團／其他」） */
+  parties: Record<string, number>;
+  /** 符合結果中最早的進度日期 */
+  first_date: string | null;
   items: BillItem[];
+}
+
+/* ---------- /cosponsors ---------- */
+
+export interface CosponsorPartner {
+  id: string;
+  name: string;
+  party: string;
+  /** 一起列名的議案數 */
+  count: number;
+}
+
+export interface CosponsorsResponse {
+  meta: Meta;
+  legislator: string;
+  total_bills: number;
+  /** 有他黨委員一起列名的議案數 */
+  cross_party_bills: number;
+  items: CosponsorPartner[];
+}
+
+export interface CosponsorMatrixResponse {
+  meta: Meta;
+  /** 主提案人黨籍 → 連署人黨籍 → 人次 */
+  matrix: Record<string, Record<string, number>>;
+}
+
+/* ---------- /compare ---------- */
+
+export interface CompareItem {
+  legislator: { id: string; name: string; party: string; area_name: string | null; region: string | null; photo_url: string | null; former: boolean };
+  bills: number;
+  lead_bills: number;
+  passed_bills: number;
+  news_30d: number;
+  committees: { id: string; is_convener: boolean }[];
+  top_laws: BillLawCount[];
+}
+
+export interface CompareResponse {
+  meta: Meta;
+  count: number;
+  items: CompareItem[];
+  shared: { bills: number; committees: string[] };
 }
 
 /* ---------- /news ---------- */
