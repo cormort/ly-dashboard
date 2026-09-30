@@ -156,6 +156,31 @@ Query 參數（全部可選）：
 - `is_lead`：提案人陣列第一位＝主提案人。提案人是黨團時不對應到任何委員。
 - 議案同步與名錄同步各自 fail closed；名錄同步失敗時不跑議案。
 
+## GET /api/v1/news
+
+委員近期新聞。來源為 Google 新聞 RSS，每位在職委員以「`"漢名" 立委`」搜尋近 30 天，**只收標題含姓名者**；資料累積保存 180 天。
+
+| 參數 | 說明 |
+| --- | --- |
+| `legislator` | 委員 id；不指定時回傳全部委員的最新新聞 |
+| `limit` | 1–100，預設 10 |
+
+```json
+{
+  "meta": { "...": "...", "news_fetched_at": "2026-09-30T03:30:00.000Z", "news_source": { "name": "Google 新聞", "url": "https://news.google.com/" } },
+  "total": 86,
+  "count": 8,
+  "items": [
+    { "legislator_id": "LY-…", "title": "麥寮拱範宮廟口開講爆滿 游顥、丁學忠站台力薦張嘉郡", "source": "匯流新聞網", "url": "https://news.google.com/rss/articles/…", "published_at": "2026-09-20T14:57:35.000Z" }
+  ]
+}
+```
+
+注意：
+- 只存標題、媒體、連結、時間，不轉載內文；`url` 是 Google 新聞的轉址連結。
+- 登記名含族語名時只用漢名搜尋（`伍麗華Saidhai‧Tahovecahe` → `伍麗華`），異體字換成媒體常用字（`寳` → `寶`）。
+- 單一委員抓取失敗不影響其他人；超過半數失敗才把該次同步標為 `failed`，既有新聞保留。
+
 ## GET /api/v1/changes?since=2026-09-01&limit=100
 
 ```json

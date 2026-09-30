@@ -4,8 +4,8 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { openDb, applyDataset, getMeta } from '../server/db.mjs';
 import { buildDataset } from '../server/normalize.mjs';
-import { runIngest, runBillsIngest, runAll } from '../server/ingest.mjs';
-import { getHealth, listBills, listLegislators, listSyncRuns } from '../server/queries.mjs';
+import { runIngest, runBillsIngest, runNewsIngest, runAll } from '../server/ingest.mjs';
+import { getHealth, listBills, listLegislators, listNews, listSyncRuns } from '../server/queries.mjs';
 import { FetchError } from '../server/fetch-ly.mjs';
 import { syncOnce } from '../server/index.mjs';
 
@@ -38,7 +38,7 @@ test('A3: Concurrent syncs are single-flighted via syncOnce', async () => {
   
   // Wait artificially so both promises are created while the first is pending
   const fetchImpl = async (url) => {
-    if (url.includes('govapi')) throw new FetchError('bills 不在本測試範圍', { attempts: 1 });
+    if (!url.includes('data.ly.gov.tw')) throw new FetchError('議案／新聞不在本測試範圍', { attempts: 1 });
     fetchCount++;
     await new Promise(r => setTimeout(r, 50));
     const key = url.includes('ID9') ? 'id9' : 'id14';
@@ -52,8 +52,8 @@ test('A3: Concurrent syncs are single-flighted via syncOnce', async () => {
     };
   };
 
-  const p1 = syncOnce(db, { logger: silent, fetchImpl });
-  const p2 = syncOnce(db, { logger: silent, fetchImpl });
+  const p1 = syncOnce(db, { logger: silent, fetchImpl, delayMs: 0 });
+  const p2 = syncOnce(db, { logger: silent, fetchImpl, delayMs: 0 });
   
   const [res1, res2] = await Promise.all([p1, p2]);
   
@@ -182,4 +182,39 @@ test('runAll：名錄失敗時不跑議案', async () => {
   const result = await runAll(db, { logger: silent, fetchImpl });
   assert.equal(result.status, 'failed');
   assert.equal(billCalls, 0);
+});
+
+const newsXml = readFileSync(fileURLToPath(new URL('./fixtures/news-rss.xml', import.meta.url)), 'utf8');
+const newsOk = async () => ({ text: newsXml, status: 200, headers: {}, bytes: 1, sha256: 'x', attempts: 1 });
+
+test('新聞同步：只存標題含姓名的項目、可累積去重、在職委員才抓', async () => {
+  const db = seeded();
+  const urls = [];
+  const fetchImpl = async (url) => (urls.push(url), newsOk());
+  const now = () => new Date('2026-09-30T00:00:00.000Z');
+  const first = await runNewsIngest(db, { logger: silent, fetchImpl, now, delayMs: 0 });
+  assert.equal(first.status, 'success');
+  assert.equal(urls.length, listLegislators(db, { session: 'all' }).items.filter((x) => !x.former).length, '只抓在職委員');
+  assert.ok(urls.every((u) => u.includes('news.google.com')));
+  const ting = listLegislators(db, { q: '丁學忠' }).items[0].id;
+  const news = listNews(db, { legislator: ting, limit: 100 });
+  assert.ok(news.total > 0 && news.items.every((n) => n.title.includes('丁學忠')));
+  assert.ok(news.items.every((n, i, arr) => i === 0 || arr[i - 1].published_at >= n.published_at), '最新在前');
+  // 同一份 RSS 再抓一次：不重複新增
+  const second = await runNewsIngest(db, { logger: silent, fetchImpl, now, delayMs: 0 });
+  assert.equal(second.added, 0);
+  assert.equal(listNews(db, { legislator: ting }).total, news.total);
+});
+
+test('新聞同步：過半委員失敗才算 failed，且不清掉既有新聞', async () => {
+  const db = seeded();
+  const now = () => new Date('2026-09-30T00:00:00.000Z');
+  await runNewsIngest(db, { logger: silent, fetchImpl: newsOk, now, delayMs: 0 });
+  const before = getHealth(db).db.news;
+  const failing = async () => {
+    throw new FetchError('HTTP 503', { status: 503, attempts: 2 });
+  };
+  const result = await runNewsIngest(db, { logger: silent, fetchImpl: failing, now, delayMs: 0 });
+  assert.equal(result.status, 'failed');
+  assert.equal(getHealth(db).db.news, before);
 });

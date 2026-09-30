@@ -160,3 +160,21 @@ dd code,.log code{background:#020617;border:1px solid #1e293b;border-radius:6px;
   display: block;
   color: #94a3b8;
 }
+
+/* 滑鼠移到委員照片上放大（純 CSS；觸控裝置沒有 hover，不受影響） */
+.membertop img {
+  position: relative;
+  transform-origin: left center;
+  transition: transform 0.15s ease, border-radius 0.15s ease;
+}
+.membertop img:hover {
+  z-index: 5;
+  transform: scale(3.5);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px #000c;
+}
+@media (prefers-reduced-motion: reduce) {
+  .membertop img {
+    transition: none;
+  }
+}

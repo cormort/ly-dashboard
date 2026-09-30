@@ -14,7 +14,7 @@
 | id14 涵蓋第 4–11 屆，只按姓名 join → 122/123 人被污染、召委 84 人 | 只取本屆（term 11），召委綁 `(session, committee, legislator)`，去重後 **68 人／本會期 23 人** |
 | 委員 id 用陣列索引 → 追蹤會錯人 | 用立院 `lgno`（退回 `ename`）當穩定 id |
 | 同步失敗就端出假資料 | **fail closed**：驗證不過就保留舊資料、記錄失敗、標記 stale，前端顯示「資料截至 …」 |
-| 無異動紀錄、無原始快照、無測試 | `change_log` + `raw_snapshots`(gzip) + 22 項測試 |
+| 無異動紀錄、無原始快照、無測試 | `change_log` + `raw_snapshots`(gzip) + 37 項測試 |
 
 ## 快速開始
 
@@ -22,7 +22,7 @@
 # 1) 抓資料進 SQLite（打真實立法院 API，約 7 秒）
 node server/ingest.mjs
 
-# 2) 跑測試（22 項，不需要網路，用 test/fixtures 的真實 API 回應）
+# 2) 跑測試（37 項，不需要網路，用 test/fixtures 的真實 API 回應）
 npm test
 
 # 3) 建置前端

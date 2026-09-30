@@ -59,6 +59,7 @@ export interface HealthDbCounts {
   changes: number;
   snapshots: number;
   bills: number;
+  news: number;
 }
 
 export interface HealthResponse {
@@ -246,4 +247,22 @@ export interface BillsResponse {
   /** 最常涉及的法律（依件數排序，最多 8 項） */
   laws: BillLawCount[];
   items: BillItem[];
+}
+
+/* ---------- /news ---------- */
+
+export interface NewsItem {
+  legislator_id: string;
+  title: string;
+  /** 媒體名稱 */
+  source: string;
+  url: string;
+  published_at: string;
+}
+
+export interface NewsResponse {
+  meta: Meta & { news_fetched_at: string | null; news_source: { name: string; url: string } };
+  total: number;
+  count: number;
+  items: NewsItem[];
 }

@@ -277,6 +277,7 @@ export function getHealth(db) {
     changes: count('change_log'),
     snapshots: count('raw_snapshots'),
     bills: count('bills'),
+    news: count('news'),
   };
   return {
     meta: envelope(db),
@@ -326,5 +327,21 @@ export function listBills(db, { legislator = null, limit = 20 } = {}) {
       is_lead: Number(r.is_lead) === 1,
       url: r.url,
     })),
+  };
+}
+
+export function listNews(db, { legislator = null, limit = 10 } = {}) {
+  const resolvedLimit = Math.max(1, Math.min(Number(limit) || 10, 100));
+  const where = legislator ? 'WHERE legislator_id = ?' : '';
+  const params = legislator ? [legislator] : [];
+  const total = Number(db.prepare(`SELECT COUNT(*) AS n FROM news ${where}`).get(...params).n);
+  const rows = db
+    .prepare(`SELECT * FROM news ${where} ORDER BY published_at DESC, url LIMIT ?`)
+    .all(...params, resolvedLimit);
+  return {
+    meta: { ...envelope(db), news_fetched_at: getMeta(db, 'news_fetched_at'), news_source: { name: CONFIG.news.name, url: 'https://news.google.com/' } },
+    total,
+    count: rows.length,
+    items: rows.map((r) => ({ legislator_id: r.legislator_id, title: r.title, source: r.source, url: r.url, published_at: r.published_at })),
   };
 }

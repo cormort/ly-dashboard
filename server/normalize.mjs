@@ -370,3 +370,46 @@ export function normalizeBills(pages, legislatorIdByName) {
   const warnings = unmatched.size ? [`議案提案人有 ${unmatched.size} 個姓名對不到本屆委員：${[...unmatched].slice(0, 5).join('、')}`] : [];
   return { bills: items, sponsors, warnings, total };
 }
+
+/** 媒體常用字與立院登記字不同的異體字；遇到新案例再補 */
+const NAME_VARIANTS = { 寳: '寶' };
+
+/**
+ * 新聞搜尋用的姓名：只取開頭的漢字（「伍麗華Saidhai‧Tahovecahe」→「伍麗華」），再換成媒體常用字。
+ * 立院登記名含族語名時，新聞標題幾乎只寫漢名。
+ */
+export function newsName(name) {
+  const han = /^[\u3400-\u9fff\uf900-\ufaff]+/.exec(String(name ?? '').trim())?.[0] ?? String(name ?? '').trim();
+  return [...han].map((ch) => NAME_VARIANTS[ch] ?? ch).join('');
+}
+
+const ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
+const decodeXml = (value) =>
+  String(value ?? '')
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
+    .replace(/&(#x?[0-9a-f]+|\w+);/gi, (m, code) => {
+      if (code[0] !== '#') return ENTITIES[code.toLowerCase()] ?? m;
+      return String.fromCodePoint(code[1].toLowerCase() === 'x' ? parseInt(code.slice(2), 16) : Number(code.slice(1)));
+    })
+    .trim();
+const tag = (xml, name) => decodeXml(new RegExp(`<${name}[^>]*>([\\s\\S]*?)</${name}>`).exec(xml)?.[1] ?? '');
+
+/**
+ * Google News RSS → 新聞項目。只保留**標題含委員姓名**的項目：搜尋會命中內文順帶一提的，
+ * 標題有名字才算「關於這位委員」，也順便擋掉大部分同名誤判。
+ * ponytail: 正規表示式解析 RSS（格式固定、零相依）；來源換成任意 XML 時再換解析器。
+ */
+export function parseNewsRss(xml, { name }) {
+  if (!/<rss[\s>]/.test(String(xml))) throw new DataValidationError('新聞回應不是 RSS');
+  const items = [];
+  for (const [, body] of String(xml).matchAll(/<item>([\s\S]*?)<\/item>/g)) {
+    const source = tag(body, 'source');
+    let title = tag(body, 'title');
+    if (source && title.endsWith(` - ${source}`)) title = title.slice(0, -(source.length + 3)).trim();
+    const url = tag(body, 'link');
+    const published = new Date(tag(body, 'pubDate'));
+    if (!title.includes(name) || !url || Number.isNaN(published.getTime())) continue;
+    items.push({ title, source, url, published_at: published.toISOString() });
+  }
+  return items;
+}

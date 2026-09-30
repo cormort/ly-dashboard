@@ -23,6 +23,14 @@ export const CONFIG = {
     name: 'g0v 立法院 API',
     homepage: 'https://ly.govapi.tw/',
   },
+  // 新聞：Google News RSS，以「"姓名" 立委」搜尋近 30 天；逐位委員依序抓，間隔避免被限流。
+  news: {
+    url: 'https://news.google.com/rss/search',
+    name: 'Google 新聞',
+    windowDays: 30,
+    keepDays: 180,
+    delayMs: Number(process.env.LY_NEWS_DELAY_MS ?? 1000),
+  },
   source: {
     name: '立法院開放資料',
     url: 'https://data.ly.gov.tw/',

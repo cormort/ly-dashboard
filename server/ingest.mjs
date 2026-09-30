@@ -1,7 +1,7 @@
 import { pathToFileURL } from 'node:url';
 import { CONFIG } from './config.mjs';
-import { openDb, recordSyncRun, saveSnapshot, applyDataset, applyBills, getMeta, setMeta } from './db.mjs';
-import { buildDataset, normalizeBills, DataValidationError } from './normalize.mjs';
+import { openDb, recordSyncRun, saveSnapshot, applyDataset, applyBills, upsertNews, pruneNews, getMeta, setMeta } from './db.mjs';
+import { buildDataset, normalizeBills, newsName, parseNewsRss, DataValidationError } from './normalize.mjs';
 import { fetchJson, FetchError } from './fetch-ly.mjs';
 
 /**
@@ -171,11 +171,63 @@ export async function runBillsIngest(db, { logger = console, fetchImpl = fetchJs
   }
 }
 
-/** 名錄 → 議案；名錄失敗就不跑議案（沒有名錄就對不到提案人） */
+export function newsFeedUrl(name) {
+  const qs = new URLSearchParams({ q: `"${name}" 立委 when:${CONFIG.news.windowDays}d`, hl: 'zh-TW', gl: 'TW', ceid: 'TW:zh-Hant' });
+  return `${CONFIG.news.url}?${qs}`;
+}
+
+const pause = (ms) => (ms > 0 ? new Promise((r) => setTimeout(r, ms)) : Promise.resolve());
+
+/**
+ * 新聞同步：在職委員逐位抓 Google News RSS（依序＋間隔，避免被限流）。
+ * 單一委員失敗不影響其他人；超過一半失敗才整體標記 failed（多半是被擋或斷網）。
+ */
+export async function runNewsIngest(db, { logger = console, fetchImpl = fetchJson, now = () => new Date(), delayMs = CONFIG.news.delayMs } = {}) {
+  const startedAt = now().toISOString();
+  const startedMs = Date.now();
+  const legislators = db.prepare('SELECT id, name FROM legislators WHERE leave_flag = 0 ORDER BY id').all();
+  const failures = [];
+  const cutoff = new Date(now().getTime() - CONFIG.news.keepDays * 86_400_000).toISOString();
+  let added = 0;
+
+  for (const [index, l] of legislators.entries()) {
+    if (index > 0) await pause(delayMs);
+    try {
+      const name = newsName(l.name);
+      const { text } = await fetchImpl(newsFeedUrl(name), { ua: CONFIG.userAgent, text: true, retries: 2 });
+      // 先濾掉超過保存期限的，否則會「寫入 → 被 prune → 下次又寫入」反覆循環
+      const fresh = parseNewsRss(text, { name }).filter((n) => n.published_at >= cutoff);
+      added += upsertNews(db, l.id, fresh, { fetchedAt: now().toISOString() });
+    } catch (error) {
+      failures.push(`${l.name}：${error?.message || error}`);
+    }
+  }
+  const pruned = pruneNews(db, { keepDays: CONFIG.news.keepDays, now: now() });
+
+  const failed = legislators.length === 0 || failures.length > legislators.length / 2;
+  const status = failed ? 'failed' : 'success';
+  const error = failures.length ? `${failures.length}/${legislators.length} 位失敗，例：${failures.slice(0, 3).join('；')}` : null;
+  if (!failed) setMeta(db, 'news_fetched_at', now().toISOString());
+  recordSyncRun(db, {
+    dataset: 'news',
+    status,
+    started_at: startedAt,
+    finished_at: now().toISOString(),
+    records: added,
+    duration_ms: Date.now() - startedMs,
+    ua: CONFIG.userAgent,
+    error: legislators.length === 0 ? '名錄尚未同步' : error,
+  });
+  (failed ? logger.error : logger.log)(`[news] ${status}：新增 ${added} 則、清除過期 ${pruned} 則${error ? `（${error}）` : ''}`);
+  return { status, added, pruned, failures: failures.length };
+}
+
+/** 名錄 → 議案 → 新聞；名錄失敗就不跑後兩者（沒有名錄就對不到人） */
 export async function runAll(db, options = {}) {
   const roster = await runIngest(db, options);
   if (roster.status === 'failed') return roster;
-  return { ...roster, bills: await runBillsIngest(db, options) };
+  const bills = await runBillsIngest(db, options);
+  return { ...roster, bills, news: await runNewsIngest(db, options) };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

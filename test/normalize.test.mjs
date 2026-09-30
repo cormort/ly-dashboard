@@ -11,6 +11,8 @@ import {
   regionOf,
   parseContacts,
   normalizeBills,
+  parseNewsRss,
+  newsName,
 } from '../server/normalize.mjs';
 
 const fixture = (name) => JSON.parse(readFileSync(fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url)), 'utf8'));
@@ -166,4 +168,23 @@ test('normalizeBills：分頁重複以議案編號去重；筆數遠低於 total
   const short = { ...billsPage, total: 7402 };
   assert.throws(() => normalizeBills([short], idByName()), DataValidationError);
   assert.throws(() => normalizeBills([{ total: 1 }], idByName()), DataValidationError);
+});
+
+test('parseNewsRss：真實 Google News RSS，去掉來源尾綴、只留標題含姓名者', () => {
+  const xml = readFileSync(fileURLToPath(new URL('./fixtures/news-rss.xml', import.meta.url)), 'utf8');
+  const items = parseNewsRss(xml, { name: '丁學忠' });
+  assert.ok(items.length > 0 && items.length <= 30);
+  assert.ok(items.every((n) => n.title.includes('丁學忠') && !n.title.endsWith(` - ${n.source}`)));
+  assert.ok(items.every((n) => n.url.startsWith('https://') && !Number.isNaN(Date.parse(n.published_at))));
+  assert.equal(parseNewsRss(xml, { name: '不存在的人' }).length, 0);
+  assert.throws(() => parseNewsRss('<html>blocked</html>', { name: 'x' }), DataValidationError);
+});
+
+test('newsName：族語名只留漢名、異體字換成媒體常用字', () => {
+  assert.equal(newsName('伍麗華Saidhai‧Tahovecahe'), '伍麗華');
+  assert.equal(newsName('鄭天財Sra Kacaw'), '鄭天財');
+  assert.equal(newsName('陳秀寳'), '陳秀寶');
+  assert.equal(newsName('丁學忠'), '丁學忠');
+  const current = id9.dataList.filter((r) => r.term === '11');
+  assert.ok(current.every((r) => newsName(r.name).length >= 2), '每位委員都要有可搜尋的漢名');
 });

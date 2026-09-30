@@ -4,6 +4,7 @@ import type { Legislator, SourceInfo } from '../api/types';
 import { useEscapeKey } from '../hooks/useEscapeKey';
 import { text } from '../lib/format';
 import { LegislatorBills } from './LegislatorBills';
+import { LegislatorNews } from './LegislatorNews';
 
 export interface LegislatorDetailProps {
   legislator: Legislator;
@@ -130,6 +131,11 @@ export function LegislatorDetail({
           <dt>最近提案</dt>
           <dd>
             <LegislatorBills legislatorId={legislator.id} />
+          </dd>
+
+          <dt>近期新聞</dt>
+          <dd>
+            <LegislatorNews legislatorId={legislator.id} />
           </dd>
 
           <dt>就職日期</dt>

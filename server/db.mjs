@@ -108,6 +108,16 @@ CREATE TABLE IF NOT EXISTS bill_sponsors (
   PRIMARY KEY (bill_id, legislator_id)
 );
 CREATE INDEX IF NOT EXISTS idx_bill_sponsors_legislator ON bill_sponsors(legislator_id);
+CREATE TABLE IF NOT EXISTS news (
+  legislator_id TEXT NOT NULL,
+  url TEXT NOT NULL,
+  title TEXT NOT NULL,
+  source TEXT,
+  published_at TEXT NOT NULL,
+  fetched_at TEXT NOT NULL,
+  PRIMARY KEY (legislator_id, url)
+);
+CREATE INDEX IF NOT EXISTS idx_news_legislator_date ON news(legislator_id, published_at DESC);
 CREATE TABLE IF NOT EXISTS meta (
   key TEXT PRIMARY KEY,
   value TEXT
@@ -352,4 +362,34 @@ export function applyBills(db, { bills, sponsors }, { fetchedAt }) {
     db.exec('ROLLBACK');
     throw error;
   }
+}
+
+/**
+ * 新聞是**累積**的（不像名錄整批覆寫）：RSS 只給近期，覆寫會把歷史洗掉。
+ * 同一連結只存一次；超過 keepDays 的刪除。
+ */
+export function upsertNews(db, legislatorId, items, { fetchedAt }) {
+  const insert = db.prepare(
+    `INSERT INTO news(legislator_id, url, title, source, published_at, fetched_at) VALUES(?, ?, ?, ?, ?, ?)
+     ON CONFLICT(legislator_id, url) DO UPDATE SET title = excluded.title, source = excluded.source`,
+  );
+  let added = 0;
+  db.exec('BEGIN');
+  try {
+    for (const n of items) {
+      const before = db.prepare('SELECT 1 FROM news WHERE legislator_id = ? AND url = ?').get(legislatorId, n.url);
+      insert.run(legislatorId, n.url, n.title, n.source, n.published_at, fetchedAt);
+      if (!before) added += 1;
+    }
+    db.exec('COMMIT');
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
+  return added;
+}
+
+export function pruneNews(db, { keepDays, now = new Date() }) {
+  const cutoff = new Date(now.getTime() - keepDays * 86_400_000).toISOString();
+  return Number(db.prepare('DELETE FROM news WHERE published_at < ?').run(cutoff).changes);
 }

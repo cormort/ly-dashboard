@@ -4,7 +4,7 @@ import { extname, join, normalize } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { CONFIG } from './config.mjs';
 import { openDb, getMeta } from './db.mjs';
-import { getHealth, getMetaPayload, listBills, listChanges, listCommittees, listLegislators, listSyncRuns } from './queries.mjs';
+import { getHealth, getMetaPayload, listBills, listNews, listChanges, listCommittees, listLegislators, listSyncRuns } from './queries.mjs';
 import { runAll } from './ingest.mjs';
 
 let inflight = null;
@@ -84,6 +84,8 @@ export function createServer(db) {
             return sendJson(res, 200, listCommittees(db, q));
           case '/api/v1/bills':
             return sendJson(res, 200, listBills(db, { legislator: q.legislator || null, limit: q.limit }));
+          case '/api/v1/news':
+            return sendJson(res, 200, listNews(db, { legislator: q.legislator || null, limit: q.limit }));
           case '/api/v1/changes':
             return sendJson(res, 200, listChanges(db, { since: q.since ?? null, limit: q.limit ?? 100 }));
           case '/api/v1/sync-runs':
