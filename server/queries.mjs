@@ -636,6 +636,42 @@ export function listActivity(db, { limit = 12, ids = null } = {}) {
   return { meta: envelope(db), count: items.length, items };
 }
 
+/** 縣市由北到南、離島，最後是不分區與原住民；清單外的（未來新選區）排在最後 */
+const REGION_ORDER = [
+  '基隆市', '臺北市', '新北市', '桃園市', '新竹市', '新竹縣', '苗栗縣', '臺中市', '彰化縣', '南投縣', '雲林縣',
+  '嘉義市', '嘉義縣', '臺南市', '高雄市', '屏東縣', '宜蘭縣', '花蓮縣', '臺東縣', '澎湖縣', '金門縣', '連江縣',
+  '全國不分區', '平地原住民', '山地原住民',
+];
+
+/**
+ * 各區域（縣市）最新動態：該區在職委員，以及委員們最近的貼文／新聞／提案（合併取最新 `per` 則）。
+ * 動態來源與 listActivity 相同，只是改依選區分組。
+ */
+export function listRegions(db, { per = 3 } = {}) {
+  const resolvedPer = Math.max(1, Math.min(Number(per) || 3, 10));
+  const activity = new Map(listActivity(db, { limit: 113 }).items.map((a) => [a.legislator.id, a]));
+  const regions = new Map();
+  for (const l of db.prepare('SELECT id, name, party, area_name FROM legislators WHERE leave_flag = 0 ORDER BY name').all()) {
+    const name = regionOf(l.area_name);
+    const region = regions.get(name) ?? { region: name, legislators: [], news_7d: 0, latest: [] };
+    const who = { id: l.id, name: l.name, party: l.party };
+    region.legislators.push(who);
+    const a = activity.get(l.id);
+    if (a) {
+      region.news_7d += a.news_7d;
+      if (a.post) region.latest.push({ kind: 'post', date: a.post.date, text: a.post.summary || '最新貼文', url: a.post.url, legislator: who });
+      if (a.news) region.latest.push({ kind: 'news', date: a.news.published_at.slice(0, 10), text: a.news.title, url: a.news.url, source: a.news.source, legislator: who });
+      if (a.bill) region.latest.push({ kind: 'bill', date: a.bill.latest_date, text: a.bill.laws[0] ?? a.bill.name, url: a.bill.url, status: a.bill.status, legislator: who });
+    }
+    regions.set(name, region);
+  }
+  const rank = (name) => (REGION_ORDER.includes(name) ? REGION_ORDER.indexOf(name) : REGION_ORDER.length);
+  const items = [...regions.values()]
+    .sort((a, b) => rank(a.region) - rank(b.region) || a.region.localeCompare(b.region, 'zh-Hant'))
+    .map((r) => ({ ...r, latest: r.latest.sort((a, b) => String(b.date).localeCompare(String(a.date))).slice(0, resolvedPer) }));
+  return { meta: envelope(db), count: items.length, items };
+}
+
 export function listNews(db, { legislator = null, limit = 10 } = {}) {
   const resolvedLimit = Math.max(1, Math.min(Number(limit) || 10, 100));
   const total = legislator

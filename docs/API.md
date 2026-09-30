@@ -230,6 +230,13 @@ Query 參數（全部可選）：
 回應：`total`（全部預算會議）、`with_speakers`、`committees`、`speakers`（在職委員登記發言場次前 20）、`items`（最近**有發言名單**的會議）。
 發言名單姓名比對時忽略空白與「‧」「·」（族語名分隔符號各系統不一）。
 
+## GET /api/v1/regions?per=3
+
+各區域（縣市，另有全國不分區、平地／山地原住民）最新動態，總覽頁用。依縣市由北到南排序。
+每區：`legislators`（在職委員 `{ id, name, party }`）、`news_7d`（該區委員近 7 天新聞合計）、
+`latest`（委員們最近的貼文／新聞／提案合併後取最新 `per` 則，1–10，預設 3；`{ kind, date, text, url, legislator }`）。
+動態來源與 `/activity` 相同。
+
 ## GET /api/v1/cosponsors
 
 共同提案網絡（本屆議案的提案人對應）。

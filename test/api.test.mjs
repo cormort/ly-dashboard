@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 import { openDb, applyDataset, applyBills, applySocial, upsertNews, saveSnapshot, recordSyncRun, getMeta, migrate } from '../server/db.mjs';
 import { buildDataset, normalizeBills, normalizeSocial, newsName } from '../server/normalize.mjs';
-import { billsCsv, compareLegislators, csvRow, listCosponsors, getHealth, getMetaPayload, listActivity, listBills, listTopics, listNews, listChanges, listCommittees, listLegislators, listRankings, listSyncRuns } from '../server/queries.mjs';
+import { billsCsv, compareLegislators, csvRow, listCosponsors, listRegions, getHealth, getMetaPayload, listActivity, listBills, listTopics, listNews, listChanges, listCommittees, listLegislators, listRankings, listSyncRuns } from '../server/queries.mjs';
 
 const fixture = (name) => JSON.parse(readFileSync(fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url)), 'utf8'));
 
@@ -435,4 +435,19 @@ test('議案：會期篩選，會期分布在會期條件前算，每筆附屆�
   assert.equal(one.total, all.sessions[0].count);
   assert.ok(one.items.every((b) => b.session === seq && b.term === 11));
   assert.deepEqual(one.sessions, all.sessions, '選了會期，會期清單不變');
+});
+
+test('各區域：在職委員依選區分組、縣市由北到南、最新動態依日期新到舊', () => {
+  const { db, idByName } = withActivity();
+  const res = listRegions(db, { per: 3 });
+  assert.equal(res.items.reduce((sum, r) => sum + r.legislators.length, 0), 113, '每位在職委員剛好出現在一個區域');
+  const names = res.items.map((r) => r.region);
+  assert.ok(names.indexOf('臺北市') < names.indexOf('高雄市') && names.indexOf('高雄市') < names.indexOf('全國不分區'));
+  for (const r of res.items) {
+    assert.ok(r.latest.length <= 3);
+    assert.ok(r.latest.every((x, i, a) => i === 0 || a[i - 1].date >= x.date));
+  }
+  const yunlin = res.items.find((r) => r.legislators.some((l) => l.id === idByName.get('丁學忠')));
+  assert.equal(yunlin.region, '雲林縣');
+  assert.ok(yunlin.latest.some((x) => x.kind === 'news' && x.text === '丁學忠質詢'));
 });

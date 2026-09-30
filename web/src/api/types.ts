@@ -76,7 +76,7 @@ export interface HealthResponse {
   ok: boolean;
   db: HealthDbCounts;
   /** 每個資料集的最後同步時間與筆數（後端 /api/v1/health） */
-  datasets: Record<'id9' | 'id14' | 'bills' | 'news' | 'social', DatasetStatus>;
+  datasets: Record<'id9' | 'id14' | 'bills' | 'budget' | 'news' | 'social', DatasetStatus>;
   last_runs: SyncRun[];
   warnings: string[];
 }
@@ -523,4 +523,31 @@ export interface BudgetMeetingsResponse {
   committees: BillLawCount[];
   speakers: { legislator: { id: string; name: string; party: string }; count: number }[];
   items: BudgetMeeting[];
+}
+
+/* ---------- /regions ---------- */
+
+export interface RegionLatest {
+  kind: 'post' | 'news' | 'bill';
+  date: string;
+  text: string;
+  url: string;
+  source?: string;
+  status?: string;
+  legislator: { id: string; name: string; party: string };
+}
+
+export interface RegionItem {
+  /** 縣市，或「全國不分區」「平地原住民」「山地原住民」 */
+  region: string;
+  legislators: { id: string; name: string; party: string }[];
+  /** 該區委員近 7 天新聞則數合計 */
+  news_7d: number;
+  latest: RegionLatest[];
+}
+
+export interface RegionsResponse {
+  meta: Meta;
+  count: number;
+  items: RegionItem[];
 }

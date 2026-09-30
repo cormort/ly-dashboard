@@ -24,6 +24,7 @@ export interface HeaderProps {
 }
 
 const NAV: { route: Route; label: string }[] = [
+  { route: 'dashboard', label: '總覽' },
   { route: 'home', label: '最近動態' },
   { route: 'rankings', label: '排行榜' },
   { route: 'legislators', label: '委員查詢' },

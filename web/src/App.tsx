@@ -14,6 +14,7 @@ import { useTracked } from './hooks/useTracked';
 import { sessionLabelIndex } from './lib/sessions';
 import { BillsPage } from './pages/BillsPage';
 import { BudgetPage } from './pages/BudgetPage';
+import { DashboardPage } from './pages/DashboardPage';
 import { ComparePage } from './pages/ComparePage';
 import { HomePage } from './pages/HomePage';
 import { LegislatorsPage } from './pages/LegislatorsPage';
@@ -138,6 +139,7 @@ export default function App() {
           <LegislatorsPage query={query} meta={meta} tracked={tracked} refreshToken={refreshToken} onOpen={setSelected} />
         ) : null}
         {route === 'bills' ? <BillsPage refreshToken={refreshToken} onOpenId={setPendingId} /> : null}
+        {route === 'dashboard' ? <DashboardPage refreshToken={refreshToken} onOpenId={setPendingId} onNavigate={navigate} /> : null}
         {route === 'budget' ? <BudgetPage refreshToken={refreshToken} onOpenId={setPendingId} /> : null}
         {route === 'compare' ? <ComparePage refreshToken={refreshToken} onOpenId={setPendingId} /> : null}
         {route === 'rankings' ? <RankingsPage refreshToken={refreshToken} onOpenId={setPendingId} onNavigate={navigate} /> : null}

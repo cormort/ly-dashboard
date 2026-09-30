@@ -32,6 +32,7 @@ import { SyncStatusBanner } from '../src/components/SyncStatusBanner';
 import { RankingsPage, RankingBoardView } from '../src/pages/RankingsPage';
 import { ComparePage } from '../src/pages/ComparePage';
 import { BudgetPage } from '../src/pages/BudgetPage';
+import { DashboardPage } from '../src/pages/DashboardPage';
 import { BillStageBar } from '../src/components/BillStage';
 
 /* ---------------------------- 瀏覽器 API 替身 ---------------------------- */
@@ -684,6 +685,17 @@ expectAll('預算頁：loading 態有類別、篩選與三個區塊骨架', rend
   '預算會議發言',
   '預算中心評估報告',
   'aria-label="審議狀態"',
+]);
+
+expectAll('總覽：loading 態有統計列、七張卡與各縣市區塊', render(createElement(DashboardPage, { refreshToken: 0, onOpenId: () => undefined, onNavigate: () => undefined })), [
+  '總覽',
+  '在職委員',
+  '委員動態',
+  '最新三讀',
+  '預算審議最新進度',
+  '預算中心報告',
+  '各縣市最新動態',
+  'href="/bills?status=%E4%B8%89%E8%AE%80"',
 ]);
 
 /* 型別上的靜態斷言：確保測試替身符合 API 契約（不改 runtime 行為） */
