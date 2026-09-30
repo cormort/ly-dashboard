@@ -86,3 +86,14 @@ export function filtersEqual(a: FilterState, b: FilterState): boolean {
 export function resetForTermChange(next: FilterState, term: number, session: string | null): FilterState {
   return { ...EMPTY_FILTERS, term, session, q: next.q, convener: next.convener, tracked: next.tracked };
 }
+
+/**
+ * 切換會期時清掉「可能不存在於新會期」的條件（H2）。
+ *
+ * 委員會會隨會期增減（例：修憲委員會只在第 3、5 會期存在）。若把舊的 committee 帶到新會期：
+ * 篩選列因為沒有對應選項而顯示「全部委員會」，但請求仍帶著該條件 → 使用者看到 0 筆卻不知道為什麼。
+ * 選區（region）由選區歸併而來，各會期都存在，因此保留；黨籍、關鍵字、追蹤也保留。
+ */
+export function resetForSessionChange(next: FilterState, session: string | null): FilterState {
+  return { ...next, session, committee: null };
+}

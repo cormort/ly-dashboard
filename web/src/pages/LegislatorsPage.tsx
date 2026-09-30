@@ -13,7 +13,7 @@ import type { TrackedApi } from '../hooks/useTracked';
 import { deriveRegions } from '../lib/legislators';
 import { latestSessionId, sessionScopeLabel } from '../lib/sessions';
 import { readPreference, writePreference } from '../lib/storage';
-import { ALL_SESSIONS, resetForTermChange, type FilterState } from '../lib/urlState';
+import { ALL_SESSIONS, resetForSessionChange, resetForTermChange, type FilterState } from '../lib/urlState';
 
 /** 名錄單次抓取上限（API 預設即 500） */
 const PAGE_LIMIT = 500;
@@ -49,9 +49,18 @@ export function LegislatorsPage({ query, meta, tracked, refreshToken, onOpen }: 
 
   // 該屆／會期完整名單：席次圖、選區選項、總數
   const roster = useApi<LegislatorsResponse>(buildUrl('/legislators', { ...scope, limit: PAGE_LIMIT }), { refreshToken });
+  const committees = useApi<CommitteesResponse>(buildUrl('/committees', scope), { refreshToken });
+
+  // H2 第二道防線：委員會選項是「該會期實際存在」的清單。若 URL 帶著一個不存在的委員會
+  // （例如手動改網址、或分享到別的會期），不要讓它變成隱形篩選 → 0 筆，而是視為未指定。
+  const committeeOptions = committees.data?.items ?? [];
+  const committeeValid =
+    filters.committee === null || committeeOptions.length === 0 || committeeOptions.some((c) => c.id === filters.committee);
+  const effectiveCommittee = committeeValid ? filters.committee : null;
+  const effectiveFilters: FilterState = committeeValid ? filters : { ...filters, committee: null };
 
   const hasServerFilters =
-    filters.q.trim() !== '' || filters.party !== null || filters.region !== null || filters.committee !== null || filters.convener;
+    filters.q.trim() !== '' || filters.party !== null || filters.region !== null || effectiveCommittee !== null || filters.convener;
   const hasFilters = hasServerFilters || filters.tracked;
 
   // 有後端條件時才另外抓一份；否則沿用 roster，避免重複請求
@@ -62,7 +71,7 @@ export function LegislatorsPage({ query, meta, tracked, refreshToken, onOpen }: 
           q: filters.q,
           party: filters.party ?? undefined,
           region: filters.region ?? undefined,
-          committee: filters.committee ?? undefined,
+          committee: effectiveCommittee ?? undefined,
           convener: filters.convener ? 1 : undefined,
           limit: PAGE_LIMIT,
         })
@@ -70,7 +79,6 @@ export function LegislatorsPage({ query, meta, tracked, refreshToken, onOpen }: 
     { refreshToken },
   );
   const list = hasServerFilters ? filtered : roster;
-  const committees = useApi<CommitteesResponse>(buildUrl('/committees', scope), { refreshToken });
 
   const regions = useMemo(() => deriveRegions(roster.data?.items ?? []), [roster.data]);
   const convenerCount = useMemo(() => (roster.data ? roster.data.items.filter((l) => l.is_convener).length : null), [roster.data]);
@@ -107,12 +115,12 @@ export function LegislatorsPage({ query, meta, tracked, refreshToken, onOpen }: 
           session={effectiveSession}
           sessionUndetermined={metaData !== null && metaData.current.session === null && filters.session === null}
           onTermChange={handleTermChange}
-          onSessionChange={(session) => update({ session }, 'push')}
+          onSessionChange={(session) => query.set(resetForSessionChange(filters, session), 'push')}
         />
       </div>
 
       <FilterBar
-        filters={filters}
+        filters={effectiveFilters}
         regions={regions}
         committees={committees.data?.items ?? []}
         onChange={(patch) => update(patch, 'push')}

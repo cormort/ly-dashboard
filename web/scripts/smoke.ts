@@ -26,17 +26,18 @@ import {
   fetchSyncRuns,
   legislatorParams,
 } from '../src/api/client.ts';
-import { deriveParties } from '../src/lib/legislators.ts';
+import { legislatorDetailUrl } from '../src/lib/legislators.ts';
 import { latestSessionId, sessionLabelIndex, sessionScopeLabel } from '../src/lib/sessions.ts';
 import {
   ALL_SESSIONS,
   parseFilters,
+  resetForSessionChange,
   resetForTermChange,
   serializeFilters,
   filtersEqual,
 } from '../src/lib/urlState.ts';
 import {
-  committeeAxisLabel,
+  shortCommittee,
   datasetLabel,
   formatChangeValue,
   formatDateTime,
@@ -237,6 +238,19 @@ async function main(): Promise<void> {
     assert.equal(after.convener, true);
     assert.equal(filtersEqual(after, before), false);
   });
+  await check('H2：切換會期要清掉可能不存在於新會期的委員會條件', () => {
+    // 修憲委員會只在第 3、5 會期存在；把它帶到第 4 會期會變成「篩選列顯示全部委員會卻 0 筆」
+    const before = parseFilters('?term=11&session=11-5&committee=%E4%BF%AE%E6%86%B2%E5%A7%94%E5%93%A1%E6%9C%83&region=%E9%9B%B2%E6%9E%97%E7%B8%A3&q=%E7%8E%8B&convener=1&tracked=1');
+    const after = resetForSessionChange(before, '11-4');
+    assert.equal(after.session, '11-4');
+    assert.equal(after.committee, null, '委員會條件必須清掉');
+    assert.equal(after.region, '雲林縣', '選區各會期都存在，保留');
+    assert.equal(after.party, before.party);
+    assert.equal(after.q, '王');
+    assert.equal(after.convener, true);
+    assert.equal(after.tracked, true);
+    assert.equal(after.term, 11);
+  });
 
   console.log('— 屆次／會期語意（B4 防線）—');
   await check('latestSessionId 取 seq 最大的會期，且只在自己那一屆裡挑', () => {
@@ -257,15 +271,12 @@ async function main(): Promise<void> {
     assert.equal(index.get('99-9'), undefined);
   });
 
-  console.log('— 名錄列舉 —');
-  await check('deriveParties 去重、忽略空值', () => {
-    const parties = deriveParties([
-      { ...LEGISLATOR, id: 'a', party: '測試政黨B' },
-      { ...LEGISLATOR, id: 'b', party: '測試政黨A' },
-      { ...LEGISLATOR, id: 'c', party: null },
-      { ...LEGISLATOR, id: 'd', party: '   ' },
-    ]);
-    assert.deepEqual(parties, ['測試政黨A', '測試政黨B']);
+  console.log('— 單一委員檔案的查詢網址 —');
+  await check('H1：查單一委員一定要帶 session=all（否則離職委員永遠查不到）', () => {
+    const url = legislatorDetailUrl('00084');
+    assert.ok(url.includes('id=00084'), url);
+    assert.ok(url.includes(`session=${ALL_SESSIONS}`), url);
+    assert.ok(url.startsWith('/api/v1/legislators'), url);
   });
 
   console.log('— api/client —');
@@ -394,9 +405,11 @@ async function main(): Promise<void> {
     assert.equal(text('  '), '未提供');
     assert.equal(text('牛', '未提供'), '牛');
   });
-  await check('委員會名稱只在座標軸縮短，原始 id 不變', () => {
-    assert.equal(committeeAxisLabel('內政委員會'), '內政');
-    assert.equal(committeeAxisLabel('經費稽核委員會'), '經費稽核');
+  await check('委員會短名只影響顯示，原始 id 不變（L9 共用一個 helper）', () => {
+    assert.equal(shortCommittee('內政委員會'), '內政');
+    assert.equal(shortCommittee('經費稽核委員會'), '經費稽核');
+    assert.equal(shortCommittee('委員會'), '委員會', '整串只有「委員會」時不要變成空字串');
+    assert.equal(shortCommittee(''), '');
   });
   await check('布林語意欄位轉中文、null 轉（無）', () => {
     assert.equal(formatChangeValue('is_convener', '1'), '是');

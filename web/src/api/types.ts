@@ -63,10 +63,20 @@ export interface HealthDbCounts {
   social_accounts: number;
 }
 
+export interface DatasetStatus {
+  /** 該資料集最後成功同步時間（ISO 8601），可能為 null */
+  fetched_at: string | null;
+  count: number;
+  /** 僅新聞：complete:113/113 或 partial:40/113 */
+  status?: string | null;
+}
+
 export interface HealthResponse {
   meta: Meta;
   ok: boolean;
   db: HealthDbCounts;
+  /** 每個資料集的最後同步時間與筆數（後端 /api/v1/health） */
+  datasets: Record<'id9' | 'id14' | 'bills' | 'news' | 'social', DatasetStatus>;
   last_runs: SyncRun[];
   warnings: string[];
 }
@@ -345,4 +355,48 @@ export interface ActivityResponse {
   meta: Meta;
   count: number;
   items: ActivityItem[];
+}
+
+/* ---------- /rankings ---------- */
+
+export type RankingType = 'news' | 'facebook' | 'bills';
+
+export interface RankingLegislator {
+  id: string;
+  name: string;
+  party: string;
+  area_name: string;
+  region: string;
+  photo_url: string;
+}
+
+export interface RankingItem {
+  rank: number;
+  /** 0–1，相對第一名的長條長度（後端算好，前端不自行推導） */
+  intensity: number;
+  /** 排序依據的數值：新聞／法案為件數，臉書為「新鮮度」（60 − 天數） */
+  value: number;
+  /** 直接顯示用的字串（例：「87 則」「3 天前」） */
+  value_display: string;
+  legislator: RankingLegislator;
+  /** 僅法案榜：主提案件數 */
+  lead_count?: number;
+  /** 僅臉書榜：距最新貼文的天數 */
+  raw_days?: number;
+  detail: { label: string; text: string; url: string };
+}
+
+export interface RankingBoard {
+  type: RankingType;
+  title: string;
+  note: string;
+  unit: string;
+  items: RankingItem[];
+}
+
+export interface RankingsResponse {
+  meta: Meta & { bills_fetched_at?: string | null; news_fetched_at?: string | null };
+  days: number;
+  limit: number;
+  boards: Partial<Record<RankingType, RankingBoard>>;
 }

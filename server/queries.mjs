@@ -294,12 +294,163 @@ export function getHealth(db) {
     news: count('news'),
     social_accounts: count('social_accounts'),
   };
+  const newsStatus = getMeta(db, 'news_status', '');
+  const notices = [];
+  if (newsStatus.startsWith('partial')) notices.push(`新聞同步未跑完（${newsStatus.split(':')[1]}）`);
+  const socialCount = Number(getMeta(db, 'social_count', '0'));
+  if (stats.social_accounts > 0 && socialCount > 0 && stats.social_accounts < socialCount) {
+    notices.push(`社群帳號數（${stats.social_accounts}）少於上次成功同步（${socialCount}）`);
+  }
   return {
     meta: envelope(db),
     ok: stats.legislators > 0 && !isStale(db),
     db: stats,
+    datasets: {
+      id9: { fetched_at: getMeta(db, 'last_success_at'), count: stats.legislators },
+      id14: { fetched_at: getMeta(db, 'last_success_at'), count: stats.committee_seats },
+      bills: { fetched_at: getMeta(db, 'bills_fetched_at'), count: stats.bills },
+      news: { fetched_at: getMeta(db, 'news_fetched_at'), count: stats.news, status: newsStatus || null },
+      social: { fetched_at: getMeta(db, 'social_fetched_at'), count: stats.social_accounts },
+    },
     last_runs: lastRuns,
-    warnings: JSON.parse(getMeta(db, 'warnings', '[]')),
+    warnings: [...JSON.parse(getMeta(db, 'warnings', '[]')), ...notices],
+  };
+}
+
+/** 排行榜共用的委員基本資料 */
+function legislatorIndex(db) {
+  const map = new Map();
+  for (const l of db.prepare('SELECT id, name, party, area_name, photo_url FROM legislators WHERE leave_flag = 0').all()) {
+    map.set(l.id, { id: l.id, name: l.name, party: l.party, area_name: l.area_name, region: regionOf(l.area_name), photo_url: l.photo_url });
+  }
+  return map;
+}
+
+const withIntensity = (items) => {
+  const top = items.length ? items[0].value : 0;
+  return items.map((item, index) => ({ ...item, rank: index + 1, intensity: top > 0 ? Math.max(0.06, item.value / top) : 0 }));
+};
+
+/**
+ * 排行榜：新聞曝光、臉書發文、法案提案。
+ * 只列入在職委員（離職者仍有歷史提案，放在排行榜會誤導）。
+ * 每項都回 intensity（0–1，相對第一名的長度），前端不必自己算。
+ */
+export function listRankings(db, { type = 'all', days = 30, limit = 10 } = {}) {
+  const resolvedDays = Math.max(1, Math.min(Number(days) || 30, 365));
+  const resolvedLimit = Math.max(1, Math.min(Number(limit) || 10, 50));
+  const wanted = (t) => type === 'all' || type === t;
+  const index = legislatorIndex(db);
+  const since = new Date(Date.now() - resolvedDays * 86_400_000).toISOString();
+  const boards = {};
+
+  if (wanted('news')) {
+    const rows = db
+      .prepare(
+        `SELECT legislator_id, COUNT(*) AS value, MAX(published_at) AS latest FROM news
+         WHERE published_at >= ? GROUP BY legislator_id ORDER BY value DESC, latest DESC LIMIT ?`,
+      )
+      .all(since, resolvedLimit);
+    const latest = new Map();
+    for (const row of rows) {
+      const top = db
+        .prepare('SELECT title, url, source, published_at FROM news WHERE legislator_id = ? ORDER BY published_at DESC LIMIT 1')
+        .get(row.legislator_id);
+      if (top) latest.set(row.legislator_id, top);
+    }
+    const items = rows
+      .filter((row) => index.has(row.legislator_id))
+      .map((row) => {
+        const top = latest.get(row.legislator_id);
+        return {
+          legislator: index.get(row.legislator_id),
+          value: Number(row.value),
+          value_display: `${row.value} 則`,
+          detail: { label: top?.source ?? '', text: top?.title ?? '', url: top?.url ?? '' },
+        };
+      });
+    boards.news = {
+      type: 'news',
+      title: '新聞曝光排行',
+      note: `近 ${resolvedDays} 天標題含委員姓名的報導數（Google 新聞，只計在職委員）`,
+      unit: '則',
+      items: withIntensity(items),
+    };
+  }
+
+  if (wanted('facebook')) {
+    const today = Date.now();
+    const items = db
+      .prepare(
+        `SELECT s.legislator_id, s.page_name, s.url, s.latest_post_date, s.latest_post_summary FROM social_accounts s
+         WHERE s.latest_post_date <> '' ORDER BY s.latest_post_date DESC LIMIT ?`,
+      )
+      .all(resolvedLimit)
+      .filter((row) => index.has(row.legislator_id))
+      .map((row) => {
+        const ageDays = Math.max(0, Math.round((today - Date.parse(`${row.latest_post_date}T00:00:00+08:00`)) / 86_400_000));
+        return {
+          legislator: index.get(row.legislator_id),
+          // 數值越小越新；為了讓長條一致（越長越前面），用「新鮮度」當強度，value 仍是天數
+          value: Math.max(0, 60 - ageDays),
+          value_display: ageDays === 0 ? '今天' : `${ageDays} 天前`,
+          raw_days: ageDays,
+          detail: { label: row.page_name || '臉書專頁', text: row.latest_post_summary || '（無摘要）', url: row.url },
+        };
+      });
+    boards.facebook = {
+      type: 'facebook',
+      title: '臉書發文排行',
+      note: '依整理表記錄的最新貼文日期排序（0 天＝今天），只計在職委員',
+      unit: '天前',
+      items: withIntensity(items),
+    };
+  }
+
+  if (wanted('bills')) {
+    const rows = db
+      .prepare(
+        `SELECT s.legislator_id, COUNT(*) AS value, SUM(s.is_lead) AS leads, MAX(b.latest_date) AS latest
+         FROM bill_sponsors s JOIN bills b ON b.id = s.bill_id
+         GROUP BY s.legislator_id ORDER BY value DESC, leads DESC LIMIT ?`,
+      )
+      .all(resolvedLimit);
+    const latestBill = new Map();
+    for (const row of rows) {
+      const top = db
+        .prepare(
+          `SELECT b.name, b.latest_date, b.url FROM bill_sponsors s JOIN bills b ON b.id = s.bill_id
+           WHERE s.legislator_id = ? ORDER BY b.latest_date DESC LIMIT 1`,
+        )
+        .get(row.legislator_id);
+      if (top) latestBill.set(row.legislator_id, top);
+    }
+    const items = rows
+      .filter((row) => index.has(row.legislator_id))
+      .map((row) => {
+        const top = latestBill.get(row.legislator_id);
+        return {
+          legislator: index.get(row.legislator_id),
+          value: Number(row.value),
+          value_display: `${row.value} 件`,
+          lead_count: Number(row.leads),
+          detail: { label: `主提案 ${row.leads} 件 · 最近 ${row.latest ?? ''}`, text: top?.name ?? '', url: top?.url ?? '' },
+        };
+      });
+    boards.bills = {
+      type: 'bills',
+      title: '法案提案排行',
+      note: '本屆委員提案數（含共同提案，第一位為主提案）',
+      unit: '件',
+      items: withIntensity(items),
+    };
+  }
+
+  return {
+    meta: { ...envelope(db), bills_fetched_at: getMeta(db, 'bills_fetched_at'), news_fetched_at: getMeta(db, 'news_fetched_at') },
+    days: resolvedDays,
+    limit: resolvedLimit,
+    boards,
   };
 }
 
@@ -329,20 +480,22 @@ export function listBills(db, { legislator = null, q = '', law = '', status = ''
   const needle = String(q ?? '').trim();
   if (needle) clauses.push('(b.name LIKE ? OR b.laws LIKE ?)'), params.push(`%${needle}%`, `%${needle}%`);
   if (law) clauses.push('b.laws LIKE ?'), params.push(`%${JSON.stringify(String(law))}%`);
-  if (status) clauses.push('b.status = ?'), params.push(String(status));
+  const statusFilter = status ? String(status) : '';
   const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
   const rows = db.prepare(`SELECT b.* FROM bills b ${where} ORDER BY b.latest_date DESC, b.id DESC`).all(...params);
 
+  // 統計在「套用狀態篩選前」算（L8）：否則選了三讀之後下拉只剩三讀一個選項。
   const lawCounts = new Map();
   const statusCounts = new Map();
   for (const row of rows) {
     for (const name of JSON.parse(row.laws || '[]')) lawCounts.set(name, (lawCounts.get(name) ?? 0) + 1);
     statusCounts.set(row.status, (statusCounts.get(row.status) ?? 0) + 1);
   }
+  const matching = statusFilter ? rows.filter((row) => row.status === statusFilter) : rows;
   const ranked = (map, n) =>
     [...map].sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0]), 'zh-Hant')).slice(0, n).map(([name, count]) => ({ name, count }));
 
-  const page = rows.slice(resolvedOffset, resolvedOffset + resolvedLimit);
+  const page = matching.slice(resolvedOffset, resolvedOffset + resolvedLimit);
   const sponsorsByBill = new Map();
   if (page.length) {
     const sponsorRows = db
@@ -360,7 +513,7 @@ export function listBills(db, { legislator = null, q = '', law = '', status = ''
 
   return {
     meta: { ...envelope(db), bills_fetched_at: getMeta(db, 'bills_fetched_at'), bills_source: { name: CONFIG.bills.name, url: CONFIG.bills.homepage } },
-    total: rows.length,
+    total: matching.length,
     count: page.length,
     laws: ranked(lawCounts, 8),
     statuses: ranked(statusCounts, 20),
@@ -458,15 +611,14 @@ export function listActivity(db, { limit = 12 } = {}) {
 
 export function listNews(db, { legislator = null, limit = 10 } = {}) {
   const resolvedLimit = Math.max(1, Math.min(Number(limit) || 10, 100));
-  const where = legislator ? 'WHERE legislator_id = ?' : '';
-  const params = legislator ? [legislator] : [];
-  const total = Number(db.prepare(`SELECT COUNT(*) AS n FROM news ${where}`).get(...params).n);
-  const rows = db
-    .prepare(
-      `SELECT n.*, l.name AS legislator_name, l.party AS legislator_party FROM news n JOIN legislators l ON l.id = n.legislator_id
-       ${where.replace('legislator_id', 'n.legislator_id')} ORDER BY n.published_at DESC, n.url LIMIT ?`,
-    )
-    .all(...params, resolvedLimit);
+  const total = legislator
+    ? Number(db.prepare('SELECT COUNT(*) AS n FROM news WHERE legislator_id = ?').get(legislator).n)
+    : Number(db.prepare('SELECT COUNT(*) AS n FROM news').get().n);
+  const select = 'SELECT n.*, l.name AS legislator_name, l.party AS legislator_party FROM news n JOIN legislators l ON l.id = n.legislator_id';
+  const order = 'ORDER BY n.published_at DESC, n.url LIMIT ?';
+  const rows = legislator
+    ? db.prepare(`${select} WHERE n.legislator_id = ? ${order}`).all(legislator, resolvedLimit)
+    : db.prepare(`${select} ${order}`).all(resolvedLimit);
   return {
     meta: { ...envelope(db), news_fetched_at: getMeta(db, 'news_fetched_at'), news_source: { name: CONFIG.news.name, url: 'https://news.google.com/' } },
     total,

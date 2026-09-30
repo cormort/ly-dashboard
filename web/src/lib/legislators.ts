@@ -1,3 +1,16 @@
+import { buildUrl } from '../api/client';
+import { ALL_SESSIONS } from './urlState';
+
+/**
+ * 單一委員檔案的查詢網址。
+ *
+ * H1：一定要帶 `session=all`。名錄預設只回「本會期在職」的人，但法案提案人與排行榜
+ * 會出現已離職委員；少了這個參數就會查到空結果，使用者感覺是「點了沒反應」。
+ */
+export function legislatorDetailUrl(id: string): string {
+  return buildUrl('/legislators', { id, session: ALL_SESSIONS });
+}
+
 import type { Legislator } from '../api/types';
 
 /**

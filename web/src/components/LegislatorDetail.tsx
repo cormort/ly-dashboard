@@ -1,3 +1,4 @@
+import { Portrait } from './Portrait';
 import { useEffect, useId, useRef, type CSSProperties, type KeyboardEvent } from 'react';
 import { ExternalLink, MapPin, Star, X } from 'lucide-react';
 import type { Legislator, SourceInfo } from '../api/types';
@@ -75,9 +76,7 @@ export function LegislatorDetail({
         </button>
 
         <div className="detail-head">
-          {legislator.photo_url ? (
-            <img src={legislator.photo_url} alt={`${legislator.name} 委員照片`} referrerPolicy="no-referrer" />
-          ) : null}
+          <Portrait legislator={legislator} />
           <div>
             <h1 id={titleId}>
               {legislator.name}

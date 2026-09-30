@@ -60,8 +60,14 @@ export function formatRelative(value: string | null | undefined, fallback = '尚
  * 圖表 X 軸的短標籤（**只影響顯示，不動資料**）：
  * 「內政委員會」→「內政」。完整名稱仍會在 tooltip 與文字替代中出現。
  */
-export function committeeAxisLabel(id: string): string {
-  return id.replace(/委員會$/, '') || id;
+/**
+ * 委員會顯示用的短名（去掉尾端的「委員會」）。
+ * 只在顯示層使用；送進 API 的永遠是完整 id（乾淨名稱，不含會期前綴）。
+ */
+export function shortCommittee(id: string): string {
+  const trimmed = String(id ?? '').trim();
+  const short = trimmed.replace(/委員會$/, '');
+  return short === '' ? trimmed : short;
 }
 
 /** 異動紀錄的值：null／空字串以「（無）」呈現，布林語意欄位轉中文 */

@@ -29,6 +29,7 @@ import { Hemicycle, seatLayout } from '../src/components/Hemicycle';
 import { HomePage } from '../src/pages/HomePage';
 import { BillsPage } from '../src/pages/BillsPage';
 import { SyncStatusBanner } from '../src/components/SyncStatusBanner';
+import { RankingsPage, RankingBoardView } from '../src/pages/RankingsPage';
 
 /* ---------------------------- 瀏覽器 API 替身 ---------------------------- */
 const store = new Map<string, string>();
@@ -169,6 +170,7 @@ expectAll('首頁：站名、三頁導覽、動態／議題／新聞骨架', hom
   '立委觀測站',
   '關鍵字搜尋立法委員',
   '最近動態',
+  '排行榜',
   '委員查詢',
   '法案查詢',
   'aria-current="page"',
@@ -211,9 +213,15 @@ const headerProps = {
 expectAll('顯示資料來源與資料截至時間', render(createElement(Header, headerProps)), [
   '立法院開放資料',
   '資料截至 2026/09/30',
-  'aria-controls="sync-panel"',
 ]);
+// L6：同步面板是條件式 render，aria-controls 不能指向不存在的元素
+expectNone('面板不存在時，aria-controls 不該指向空號', render(createElement(Header, headerProps)), ['aria-controls="sync-panel"']);
 expectAll('stale 時明示「可能非最新」', render(createElement(Header, { ...headerProps, stale: true })), ['可能非最新', 'sync-pill warning']);
+expectAll(
+  '面板存在時（stale／失敗／展開）才給 aria-controls',
+  render(createElement(Header, { ...headerProps, stale: true })),
+  ['aria-controls="sync-panel"', 'aria-expanded="false"'],
+);
 expectAll('同步失敗時明示', render(createElement(Header, { ...headerProps, failed: true })), ['同步失敗', 'sync-pill error']);
 
 console.log('\n— SyncStatusBanner —');
@@ -579,6 +587,70 @@ expectAll(
   render(createElement(ChangesPanel, { refreshToken: 0 })),
   ['最近異動', '讀取異動紀錄'],
 );
+
+/* ------------------------------ 排行榜（新功能） ------------------------------ */
+
+/** 反向檢查：這些字串**不該**出現（用來確認空狀態不會偷塞假資料） */
+function expectNone(name: string, html: string, needles: string[]): void {
+  const present = needles.filter((needle) => html.includes(needle));
+  check(name, present.length === 0, present.length > 0 ? `不該出現：${present.join(' / ')}` : undefined);
+}
+
+const RANKING_BOARD = {
+  type: 'news' as const,
+  title: '新聞曝光排行',
+  note: '近 30 天標題含委員姓名的報導數（測試）',
+  unit: '則',
+  items: [
+    {
+      rank: 1,
+      intensity: 1,
+      value: 87,
+      value_display: '87 則',
+      legislator: { id: 'LY-00001', name: '測試委員甲', party: '測試政黨A', area_name: '測試選區', region: '測試縣', photo_url: '' },
+      detail: { label: '測試媒體', text: '測試標題一', url: 'https://example.com/1' },
+    },
+    {
+      rank: 2,
+      intensity: 0.5,
+      value: 43,
+      value_display: '43 則',
+      legislator: { id: 'LY-00002', name: '測試委員乙', party: '測試政黨B', area_name: '測試選區二', region: '測試市', photo_url: '' },
+      detail: { label: '測試媒體二', text: '測試標題二', url: 'https://example.com/2' },
+    },
+  ],
+};
+
+console.log('\n— RankingBoardView —');
+expectAll('ready 態畫出名次、姓名、數值與長條', render(createElement(RankingBoardView, { board: RANKING_BOARD, onOpenId: () => undefined })), [
+  '新聞曝光排行',
+  '測試委員甲',
+  '測試委員乙',
+  '87 則',
+  '43 則',
+  '第 1 名',
+  '第 2 名',
+  'width:100%',
+  'width:50%',
+  'https://example.com/1',
+  'rel="noreferrer noopener"',
+]);
+expectNone('empty 態不塞任何委員，只給空狀態', render(createElement(RankingBoardView, { board: { ...RANKING_BOARD, items: [] }, onOpenId: () => undefined })), [
+  '測試委員甲',
+  '測試委員乙',
+]);
+
+console.log('\n— RankingsPage（自行抓資料，僅驗 loading 態）—');
+expectAll('loading 態', render(createElement(RankingsPage, { refreshToken: 0, onOpenId: () => undefined, onNavigate: () => undefined })), [
+  '排行榜',
+  '近 7 天',
+  '近 30 天',
+  '近 90 天',
+  '載入排行榜',
+]);
+expectNone('loading 態不該先畫出任何委員', render(createElement(RankingsPage, { refreshToken: 0, onOpenId: () => undefined, onNavigate: () => undefined })), [
+  '測試委員甲',
+]);
 
 /* 型別上的靜態斷言：確保測試替身符合 API 契約（不改 runtime 行為） */
 const _typecheck: ChangesResponse | null = null;

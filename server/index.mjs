@@ -4,12 +4,33 @@ import { extname, join, normalize } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { CONFIG } from './config.mjs';
 import { openDb, getMeta } from './db.mjs';
-import { getHealth, getMetaPayload, listActivity, listBills, listNews, listTopics, listChanges, listCommittees, listLegislators, listSyncRuns } from './queries.mjs';
-import { runAll } from './ingest.mjs';
+import {
+  getHealth, getMetaPayload, listActivity, listBills, listNews, listTopics, listChanges,
+  listCommittees, listLegislators, listRankings, listSyncRuns,
+} from './queries.mjs';
+import { runAll, runIngest } from './ingest.mjs';
 
 let inflight = null;
-export function syncOnce(db, options) {
-  inflight ??= runAll(db, options).finally(() => { inflight = null; });
+let inflightScope = null;
+
+/** 目前進行中的同步範圍（'all' | 'roster'），沒有同步時為 null */
+export function getInflightScope() {
+  return inflightScope;
+}
+
+/**
+ * Single-flight：同時只允許一個同步在跑（M3）。
+ * `scope === 'roster'` 只同步名錄（約 7 秒，離線可用）；預設 'all' 會跑議案／社群／新聞（約 4 分鐘）。
+ */
+export function syncOnce(db, options = {}) {
+  if (!inflight) {
+    const scope = options.scope === 'roster' ? 'roster' : 'all';
+    inflightScope = scope;
+    inflight = (scope === 'roster' ? runIngest(db, options) : runAll(db, options)).finally(() => {
+      inflight = null;
+      inflightScope = null;
+    });
+  }
   return inflight;
 }
 
@@ -90,13 +111,30 @@ export function createServer(db) {
             return sendJson(res, 200, listActivity(db, { limit: q.limit }));
           case '/api/v1/news':
             return sendJson(res, 200, listNews(db, { legislator: q.legislator || null, limit: q.limit }));
+          case '/api/v1/rankings':
+            return sendJson(res, 200, listRankings(db, { type: q.type || 'all', days: q.days, limit: q.limit }));
           case '/api/v1/changes':
             return sendJson(res, 200, listChanges(db, { since: q.since ?? null, limit: q.limit ?? 100 }));
           case '/api/v1/sync-runs':
             return sendJson(res, 200, listSyncRuns(db, { limit: q.limit ?? 50 }));
           case '/api/v1/sync': {
-            const result = await syncOnce(db);
-            return sendJson(res, result.status === 'failed' ? 502 : 200, result, { 'cache-control': 'no-store' });
+            // M3：同步可能長達數分鐘，不能在請求裡等。改回 202 並讓它跑在背景，進度看 /sync-runs。
+            const scope = q.scope === 'roster' ? 'roster' : 'all';
+            const started = getInflightScope() === null;
+            syncOnce(db, { scope }).catch((error) => console.error('[sync] 背景同步失敗', error));
+            return sendJson(
+              res,
+              202,
+              {
+                accepted: true,
+                started,
+                scope,
+                inflight_scope: getInflightScope(),
+                message: started ? '同步已在背景執行' : '已有同步在進行中，本次請求已合併',
+                poll: '/api/v1/sync-runs',
+              },
+              { 'cache-control': 'no-store' },
+            );
           }
           default:
             return sendError(res, 404, 'not_found', `未知端點 ${path}`);

@@ -14,7 +14,7 @@
 | id14 涵蓋第 4–11 屆，只按姓名 join → 122/123 人被污染、召委 84 人 | 只取本屆（term 11），召委綁 `(session, committee, legislator)`，去重後 **68 人／本會期 23 人** |
 | 委員 id 用陣列索引 → 追蹤會錯人 | 用立院 `lgno`（退回 `ename`）當穩定 id |
 | 同步失敗就端出假資料 | **fail closed**：驗證不過就保留舊資料、記錄失敗、標記 stale，前端顯示「資料截至 …」 |
-| 無異動紀錄、無原始快照、無測試 | `change_log` + `raw_snapshots`(gzip) + 46 項測試 |
+| 無異動紀錄、無原始快照、無測試 | `change_log` + `raw_snapshots`(gzip) + 56 項後端測試＋68 項前端測試 |
 
 ## 快速開始
 
@@ -22,7 +22,7 @@
 # 1) 抓資料進 SQLite（打真實立法院 API，約 7 秒）
 node server/ingest.mjs
 
-# 2) 跑測試（46 項，不需要網路，用 test/fixtures 的真實 API 回應）
+# 2) 跑測試（56 項，不需要網路，用 test/fixtures 的真實 API 回應）
 npm test
 
 # 3) 建置前端
@@ -79,11 +79,13 @@ cron/啟動排程 (24h)                      server/ingest.mjs
 ## 驗證（可重跑）
 
 ```bash
-bash scripts/verify.sh                      # 一鍵：測試 → 真實 ingest → 起 API → 打端點
-npm test                                    # 後端 18 passed（含 fail-closed、交易回滾、change_log）
-npm --prefix web test                       # 前端 tsc -b + 煙霧測試 26 + 渲染測試 35，全過
-node server/ingest.mjs                      # 123 位委員 / 783 席次 / 5 會期 / 113 本會期名錄
-node server/ingest.mjs                      # 第二次：status=skipped（sha256 未變）
+bash scripts/verify.sh                      # 一鍵（快速：跳過外部來源，約 15 秒）
+bash scripts/verify.sh --full               # 一鍵（完整：含 g0v／Google 新聞／試算表，約 4 分鐘）
+npm test                                    # 後端 56 passed（fail-closed、交易回滾、change_log、排行榜、M1–M5 回歸）
+npm --prefix web test                       # 前端 tsc -b + 煙霧 27 + 渲染 41，全過
+node server/ingest.mjs                      # 123 位委員 / 783 席次 / 5 會期 / 113 本會期名錄 + 議案／社群／新聞
+node server/ingest.mjs                      # 第二次：名錄 status=skipped（sha256 + 正規化版本未變）
+LY_SKIP_NEWS=1 LY_SKIP_BILLS=1 node server/ingest.mjs   # 只同步名錄（秒級，不打第三方）
 curl -s localhost:8787/api/v1/health
 curl -s "localhost:8787/api/v1/committees"  # 11 個委員會（含召委名單）
 curl -s "localhost:8787/api/v1/legislators?convener=1" | jq .total   # 23
@@ -110,7 +112,7 @@ warnings: ['游錫堃 在本屆無任何會期委員會紀錄（辭職）', '李
 | 搜尋「雲林」＋只看召委 | 2 位 → 0 位 |
 | 詳情側欄 | 顯示學經歷／會期清單／來源連結，`Esc` 可關閉 |
 
-畫面截圖：`docs/screenshot.png`。
+畫面截圖（2026-09-30 改版後）：`docs/shot-home.png`（最近動態）、`docs/shot-rankings.png`（排行榜）、`docs/shot-legislators.png`（委員查詢）。
 
 ## 部署（尚未執行，待決定）
 
@@ -120,7 +122,7 @@ warnings: ['游錫堃 在本屆無任何會期委員會紀錄（辭職）', '李
 
 ## Code Review（2026-09-30）
 
-後端 22 項、前端 27 項煙霧測試全數通過；`scripts/verify.sh` 對真實 API 端到端通過。
+（第一輪自我 review，保留為歷史紀錄）後端測試全數通過；`scripts/verify.sh` 對真實 API 端到端通過。
 
 ### 🟡 已修正（Medium）
 
@@ -153,6 +155,63 @@ warnings: ['游錫堃 在本屆無任何會期委員會紀錄（辭職）', '李
 | CR-9 | `getHealth` 中 `count(table)` 使用字串插值（非參數化） | 所有呼叫者皆為字串常量，安全但不理想 |
 | CR-10 | `queries.mjs` 動態 `IN` 子句 | 參數化正確但依賴 `resolveScope` 驗證，加了 invariant 註解 |
 | CR-11 | 根目錄無 `package-lock.json` | server 端目前零 npm 依賴，不需要 lockfile |
+
+## 第二輪 Review 修正與新功能（2026-09-30）
+
+獨立複審報告：`docs/review-2026-09-30-round2.md`。以下為已套用的修正，每一項都有測試或瀏覽器實測。
+
+### 🔴 高（使用者可見，已用真實瀏覽器重現後修正）
+
+| # | 問題 | 修正 | 驗證 |
+| --- | --- | --- | --- |
+| H1 | 法案頁點「已離職委員」的提案人完全沒反應（`DetailById` 沒帶 session，查到空結果就靜默關閉） | 新增 `legislatorDetailUrl()`，一律帶 `session=all`；查不到時顯示「找不到這位委員的資料」 | 瀏覽器實測：點吳春城（00015）→ 檔案正常開啟（修正前：無反應）；`smoke.ts` 斷言 URL 必含 `session=all` |
+| H2 | 換會期不清委員會條件 → 篩選列顯示「全部委員會」卻 0 筆 | `resetForSessionChange()` 清掉 committee；再加第二道防線：committee 不在該會期清單時視為未指定 | 瀏覽器實測：11-5＋修憲委員會（39 人）→ 切 11-4 → URL 已無 committee、名錄 113 人（修正前 0 人） |
+
+### 🟡 中
+
+| # | 問題 | 修正 | 驗證 |
+| --- | --- | --- | --- |
+| M1 | `verify.sh` 過期：會對 Google 發 226 次請求、約 8 分鐘，且沒驗新端點 | 改寫成快速（預設，跳過外部來源）／`--full` 兩模式；新增 `LY_SKIP_BILLS`／`LY_SKIP_NEWS`／`LY_SKIP_SOCIAL` 開關；補驗排行榜等新端點 | `docs/verification.txt`、`docs/verification-full.txt` |
+| M2 | 新資料集沒有原始快照與異動紀錄 | 議案與社群都存 gzip 快照；議案狀態變更、社群帳號新增／移除寫入 `change_log` | 測試 `M2: 議案狀態變更會寫入 change_log` |
+| M3 | `POST /api/v1/sync` 要等約 4 分鐘 | 改回 `202` 背景執行、支援 `?scope=roster`（約 7 秒）、single-flight 合併重複請求 | 測試 `M3`；`/api/v1/sync` 實測回 202 |
+| M4 | 社群來源是單一試算表，掉資料只能整批失敗且沒有預警 | 除了絕對門檻，再與上次筆數比較（掉超過 20% → fail closed）；`/health` 回報各資料集狀態與 notices | 測試 `M4: 社群帳號數掉超過 20% 時 fail closed` |
+| M5 | 新聞階段沒有總時間上限（113 位依序抓） | 新增 `LY_NEWS_BUDGET_MS`（預設 5 分鐘），用完停止剩餘委員、標記 `partial` 並在 health 提示 | 測試 `M5: 新聞同步有時間預算…` |
+
+### 🟢 低
+
+| # | 問題 | 修正 |
+| --- | --- | --- |
+| L1 | README 測試數字三個版本並存 | 統一（本檔所述數字由 `npm test`／`npm --prefix web test` 產生） |
+| L2 | `docs/API.md` 缺 `committees.parties`、`legislators.former`、`health.datasets` | 已補齊，並新增 `/api/v1/rankings` 與 `POST /sync` 的 202 語意 |
+| L3 | `listNews` 用 `where.replace(...)` 字串手術 | 改成兩個明確查詢 |
+| L4 | `upsertNews` 每筆先 SELECT | 改 `INSERT OR IGNORE` + 已存在才 UPDATE |
+| L5 | Hemicycle 席次可點但不可鍵盤操作 | 文案改為引導鍵盤使用者到名錄／列表 |
+| L6 | `aria-controls="sync-panel"` 指向條件式 render 的元素 | 只有面板存在時才設定 |
+| L7 | 人像沒有 `onError` 後備，且 `photo_url` 是 `http://` | 新增共用 `Portrait` 元件；後端升級為 https（實測圖床支援，200 image/jpeg） |
+| L8 | 選了議案狀態後，狀態下拉只剩一個選項 | 統計改在「套用 status 篩選前」計算 |
+| L9 | 死碼 `committeeAxisLabel`／`deriveParties`，且委員會短名重寫三次 | 共用 `shortCommittee()`，移除死碼 |
+
+### 實作中新發現
+
+`applied_sha` 原本只看來源內容 → 改了 `normalize.mjs`（把 `photo_url` 升成 https）卻因為「內容未變更」而不重寫資料庫，新規則等於沒生效。
+已改為 `正規化版本:來源 sha`（`NORMALIZER_VERSION`），並新增測試 `正規化版本改變時…`；這是實測踩到才發現的。
+
+### 新功能：排行榜
+
+`GET /api/v1/rankings` + 前端「排行榜」頁（`/rankings`）：
+
+- **新聞曝光排行**：近 7／30／90 天標題含委員姓名的報導數（可切換區間，寫回 URL `?days=`）。
+- **臉書發文排行**：依整理表記錄的最新貼文時間排序（`0 天 = 今天`）。整理表只有最新一則貼文，因此沒有「發文則數」可用。
+- **法案提案排行**：本屆提案總數（含共同提案）與主提案件數。
+
+名次與長條長度（`intensity`）一律由後端算好，前端不做二次統計；只列入在職委員。
+實測（2026-09-30）：新聞第一名 沈伯洋 107 則（近 30 天）、法案第一名 林沛祥 1011 件（主提案 3 件）。
+
+### 視覺改版
+
+淺色 canvas + 白卡、14–16px 圓角、兩層柔和陰影、accent `#2563eb`、標題去襯線、導覽改 pill、表格商務化、`:focus-visible` 為 accent 外框。
+**黨籍顏色的語意沒有改變**：顏色仍只代表黨籍（唯一定義處 `web/src/lib/parties.ts`），召委仍用形狀表示，警示色只用在同步問題。
+對比度全部 ≥ 4.5:1（CSS 註解內有實測值）。
 
 ## 授權與資料來源
 

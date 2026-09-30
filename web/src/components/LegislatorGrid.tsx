@@ -1,11 +1,12 @@
-import { useState, type CSSProperties } from 'react';
+import type { CSSProperties } from 'react';
 import { LayoutGrid, List, MapPin, Star } from 'lucide-react';
 import type { ApiResource } from '../hooks/useApi';
 import type { Legislator, LegislatorsResponse } from '../api/types';
-import { text } from '../lib/format';
+import { shortCommittee, text } from '../lib/format';
 import { partyStyle } from '../lib/parties';
 import { EmptyState, ErrorState, LoadingState } from './DataStates';
 import { LegislatorTable } from './LegislatorTable';
+import { Portrait } from './Portrait';
 
 export type DirectoryMode = 'cards' | 'list';
 
@@ -23,28 +24,6 @@ export interface LegislatorGridProps {
   onModeChange: (mode: DirectoryMode) => void;
 }
 
-function Avatar({ legislator }: { legislator: Legislator }) {
-  const [broken, setBroken] = useState(false);
-  const photo = legislator.photo_url?.trim() ?? '';
-
-  if (photo === '' || broken) {
-    return (
-      <div className="avatar" aria-hidden="true">
-        {legislator.name.slice(0, 1)}
-      </div>
-    );
-  }
-  return (
-    <img
-      src={photo}
-      alt={`${legislator.name} 委員照片`}
-      loading="lazy"
-      referrerPolicy="no-referrer"
-      onError={() => setBroken(true)}
-    />
-  );
-}
-
 function LegislatorCard({
   legislator,
   tracked,
@@ -59,14 +38,14 @@ function LegislatorCard({
   const style = partyStyle(legislator.party);
   const committeeText =
     legislator.committees.length > 0
-      ? legislator.committees.map((item) => item.id.replace('委員會', '') + (item.is_convener ? '・召' : '')).join('、')
+      ? legislator.committees.map((item) => shortCommittee(item.id) + (item.is_convener ? '・召' : '')).join('、')
       : '未提供';
   const latestPost = legislator.social.map((s) => s.latest_post_date).filter(Boolean).sort().at(-1);
 
   return (
     <article className="member-card" style={{ '--party': style.color } as CSSProperties}>
       <div className="membertop">
-        <Avatar legislator={legislator} />
+        <Portrait legislator={legislator} />
         <div>
           <h3>
             {legislator.name}

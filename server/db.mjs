@@ -352,6 +352,7 @@ export function applyDataset(db, dataset, { fetchedAt, sourceUrl }) {
 
 /** 議案整批覆寫（單一交易）；bill_sponsors.legislator_id 不設 FK，名錄重建時不必連動刪議案。 */
 export function applyBills(db, { bills, sponsors }, { fetchedAt }) {
+  const previous = new Map(db.prepare('SELECT id, status FROM bills').all().map((r) => [r.id, r.status]));
   db.exec('BEGIN');
   try {
     db.exec('DELETE FROM bill_sponsors');
@@ -365,8 +366,24 @@ export function applyBills(db, { bills, sponsors }, { fetchedAt }) {
     }
     const insertSponsor = db.prepare('INSERT OR IGNORE INTO bill_sponsors(bill_id, legislator_id, is_lead) VALUES(?, ?, ?)');
     for (const s of sponsors) insertSponsor.run(s.bill_id, s.legislator_id, s.is_lead ? 1 : 0);
+
+    // M2：議案進度異動留痕（哪些案子從什麼狀態變成什麼狀態）
+    const insertChange = db.prepare(
+      'INSERT INTO change_log(at, entity, entity_id, field, old_value, new_value) VALUES(?, ?, ?, ?, ?, ?)',
+    );
+    let changes = 0;
+    for (const b of bills) {
+      const before = previous.get(b.id);
+      if (before !== undefined && before !== (b.status ?? null)) {
+        insertChange.run(fetchedAt, 'bill', b.id, 'status', before, b.status ?? null);
+        changes += 1;
+      }
+    }
+
     setMeta(db, 'bills_fetched_at', fetchedAt);
+    setMeta(db, 'bills_count', String(bills.length));
     db.exec('COMMIT');
+    return { changes };
   } catch (error) {
     db.exec('ROLLBACK');
     throw error;
@@ -379,16 +396,19 @@ export function applyBills(db, { bills, sponsors }, { fetchedAt }) {
  */
 export function upsertNews(db, legislatorId, items, { fetchedAt }) {
   const insert = db.prepare(
-    `INSERT INTO news(legislator_id, url, title, source, published_at, fetched_at) VALUES(?, ?, ?, ?, ?, ?)
-     ON CONFLICT(legislator_id, url) DO UPDATE SET title = excluded.title, source = excluded.source`,
+    'INSERT OR IGNORE INTO news(legislator_id, url, title, source, published_at, fetched_at) VALUES(?, ?, ?, ?, ?, ?)',
   );
+  const refresh = db.prepare('UPDATE news SET title = ?, source = ? WHERE legislator_id = ? AND url = ?');
+  const insertItem = (item) => {
+    const result = insert.run(legislatorId, item.url, item.title, item.source, item.published_at, fetchedAt);
+    if (Number(result.changes) === 0) refresh.run(item.title, item.source, legislatorId, item.url);
+    return Number(result.changes);
+  };
   let added = 0;
   db.exec('BEGIN');
   try {
     for (const n of items) {
-      const before = db.prepare('SELECT 1 FROM news WHERE legislator_id = ? AND url = ?').get(legislatorId, n.url);
-      insert.run(legislatorId, n.url, n.title, n.source, n.published_at, fetchedAt);
-      if (!before) added += 1;
+      added += insertItem(n);
     }
     db.exec('COMMIT');
   } catch (error) {
@@ -405,8 +425,24 @@ export function pruneNews(db, { keepDays, now = new Date() }) {
 
 /** 社群帳號整批覆寫（來源是人工整理表，以最新一版為準）。 */
 export function applySocial(db, accounts, { fetchedAt }) {
+  const previous = new Set(
+    db.prepare('SELECT legislator_id, platform, url FROM social_accounts').all().map((r) => `${r.legislator_id}|${r.platform}|${r.url}`),
+  );
+  const next = new Set(accounts.map((a) => `${a.legislator_id}|${a.platform}|${a.url}`));
+  const added = [...next].filter((k) => !previous.has(k));
+  const removed = [...previous].filter((k) => !next.has(k));
+
   db.exec('BEGIN');
   try {
+    const insertChange = db.prepare(
+      'INSERT INTO change_log(at, entity, entity_id, field, old_value, new_value) VALUES(?, ?, ?, ?, ?, ?)',
+    );
+    // 首次匯入不算「異動」（否則第一次同步會產生 113 筆假的變更紀錄）
+    if (previous.size > 0) {
+      for (const key of added) insertChange.run(fetchedAt, 'social_account', key, 'exists', null, '1');
+      for (const key of removed) insertChange.run(fetchedAt, 'social_account', key, 'exists', '1', null);
+    }
+
     db.exec('DELETE FROM social_accounts');
     const insert = db.prepare(
       `INSERT OR REPLACE INTO social_accounts(legislator_id, platform, page_name, url, latest_post_date, latest_post_summary)
@@ -414,7 +450,9 @@ export function applySocial(db, accounts, { fetchedAt }) {
     );
     for (const a of accounts) insert.run(a.legislator_id, a.platform, a.page_name, a.url, a.latest_post_date, a.latest_post_summary);
     setMeta(db, 'social_fetched_at', fetchedAt);
+    setMeta(db, 'social_count', String(accounts.length));
     db.exec('COMMIT');
+    return { added: added.length, removed: removed.length };
   } catch (error) {
     db.exec('ROLLBACK');
     throw error;

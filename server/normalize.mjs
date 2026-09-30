@@ -3,6 +3,13 @@
  * 這一層的所有行為都由 test/normalize.test.mjs 用真實 API fixture 驗證。
  */
 
+/**
+ * 正規化版本。改變 normalize*.mjs 的行為時**一定要 +1**：
+ * ingest 用 `版本:來源 sha256` 判斷要不要重寫資料庫，否則「原始資料沒變、但解析邏輯變了」
+ * 時新規則不會生效（實測踩過：把 photo_url 升級成 https 後仍顯示 http）。
+ */
+export const NORMALIZER_VERSION = 2;
+
 /** "第11屆第3會期：內政委員會" → 乾淨的委員會名稱；這是舊版壞掉的地方。 */
 const SESSION_PREFIX = /^第(\d+)屆第(\d+)會期[：:]\s*/;
 const SPLIT_RE = /[、,，;；\n]/;
@@ -40,6 +47,15 @@ export function parseSeatLabel(label) {
   const committee = trimmed.slice(match[0].length).trim();
   if (!committee) return null;
   return { term: Number(match[1]), seq: Number(match[2]), committee };
+}
+
+/**
+ * 立院照片是 `http://www.ly.gov.tw//Images/...`（http + 雙斜線）。
+ * https 實測可取得同一張圖（200 image/jpeg），升級避免 HTTPS 部署時被瀏覽器當 mixed content 擋掉。
+ */
+export function normalizePhotoUrl(url) {
+  if (!url) return '';
+  return url.replace(/^http:\/\//, 'https://').replace(/([^:])\/\//g, '$1/');
 }
 
 export function committeeKind(id) {
@@ -124,7 +140,7 @@ export function normalizeId9(payload) {
       party: field(row, 'party', '黨籍') || '未提供',
       caucus: field(row, 'partyGroup') || field(row, 'party', '黨籍') || '未提供',
       area_name: field(row, 'areaName', '選區名稱') || '未提供',
-      photo_url: field(row, 'picUrl', 'picPath'),
+      photo_url: normalizePhotoUrl(field(row, 'picUrl', 'picPath')),
       degree: field(row, 'degree', '學歷'),
       experience: field(row, 'experience', '經歷'),
       onboard_date: field(row, 'onboardDate'),

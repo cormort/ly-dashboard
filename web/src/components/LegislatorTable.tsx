@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Star } from 'lucide-react';
 import type { Legislator } from '../api/types';
 import { partyStyle } from '../lib/parties';
-import { text } from '../lib/format';
+import { shortCommittee, text } from '../lib/format';
 
 type SortKey = 'name' | 'party' | 'area' | 'bills' | 'news' | 'post';
 
@@ -121,7 +121,7 @@ export function LegislatorTable({ items, isTracked, onToggleTrack, onOpen }: Leg
                   {l.committees.length
                     ? l.committees.map((c) => (
                         <span key={c.id} className={c.is_convener ? 'committee is-convener' : 'committee'}>
-                          {c.id.replace('委員會', '')}
+                          {shortCommittee(c.id)}
                           {c.is_convener ? '・召' : ''}
                         </span>
                       ))

@@ -3,6 +3,7 @@ import { ExternalLink } from 'lucide-react';
 import { buildUrl } from '../api/client';
 import type { ActivityItem, ActivityResponse, NewsResponse, TopicsResponse } from '../api/types';
 import { EmptyState, ErrorState, LoadingState } from '../components/DataStates';
+import { Portrait } from '../components/Portrait';
 import { useApi } from '../hooks/useApi';
 import { pathFor } from '../hooks/useRoute';
 import { formatDateTime } from '../lib/format';
@@ -22,7 +23,7 @@ function ActivityCard({ item, onOpenId }: { item: ActivityItem; onOpenId: (id: s
   return (
     <li className="activity" style={{ '--party': style.color } as CSSProperties}>
       <div className="activity-who">
-        {l.photo_url ? <img src={l.photo_url} alt="" loading="lazy" referrerPolicy="no-referrer" /> : null}
+        <Portrait legislator={l} />
         <div>
           <button type="button" className="name-button" onClick={() => onOpenId(l.id)}>
             {l.name}

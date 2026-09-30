@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import type { ApiResource } from '../hooks/useApi';
 import type { CommitteesResponse } from '../api/types';
 import { partyStyle, sortParties } from '../lib/parties';
+import { shortCommittee } from '../lib/format';
 import { EmptyState, ErrorState, LoadingState } from './DataStates';
 
 export interface CommitteeChartProps {
@@ -61,7 +62,7 @@ export function CommitteeChart({ committees, sessionScopeLabel, selected = null,
                 onClick={() => onSelect?.(active ? null : item.id)}
                 aria-label={`${item.id} ${item.count} 席（${breakdown}）${item.conveners.length ? `，召委 ${item.conveners.map((c) => c.name).join('、')}` : ''}`}
               >
-                <span className="committee-name">{item.id.replace('委員會', '')}</span>
+                <span className="committee-name">{shortCommittee(item.id)}</span>
                 <span className="bar" style={{ width: `${(item.count / max) * 100}%` }} aria-hidden="true">
                   {parties.map((p) => (
                     <span key={p} style={{ flexGrow: item.parties[p], background: partyStyle(p).color }} />

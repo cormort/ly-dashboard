@@ -25,6 +25,7 @@ export interface HeaderProps {
 
 const NAV: { route: Route; label: string }[] = [
   { route: 'home', label: '最近動態' },
+  { route: 'rankings', label: '排行榜' },
   { route: 'legislators', label: '委員查詢' },
   { route: 'bills', label: '法案查詢' },
 ];
@@ -46,6 +47,8 @@ export function Header({
 }: HeaderProps) {
   const tone = failed ? 'error' : stale ? 'warning' : 'ok';
   const statusText = failed ? '同步失敗' : stale ? '可能非最新' : '資料截至';
+  // L6：同步面板是條件式 render，只有它存在時 aria-controls 才指得到東西
+  const syncPanelExists = syncOpen || failed || stale;
 
   return (
     <header>
@@ -88,8 +91,8 @@ export function Header({
         <button
           type="button"
           className={`sync-pill ${tone}`}
-          aria-expanded={syncOpen}
-          aria-controls="sync-panel"
+          aria-expanded={syncPanelExists ? syncOpen : undefined}
+          aria-controls={syncPanelExists ? 'sync-panel' : undefined}
           onClick={onSyncToggle}
           title="同步狀態與紀錄"
         >

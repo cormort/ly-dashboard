@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 import { openDb, applyDataset, applyBills, applySocial, upsertNews, saveSnapshot, recordSyncRun, getMeta, migrate } from '../server/db.mjs';
 import { buildDataset, normalizeBills, normalizeSocial, newsName } from '../server/normalize.mjs';
-import { getHealth, getMetaPayload, listActivity, listBills, listTopics, listNews, listChanges, listCommittees, listLegislators, listSyncRuns } from '../server/queries.mjs';
+import { getHealth, getMetaPayload, listActivity, listBills, listTopics, listNews, listChanges, listCommittees, listLegislators, listRankings, listSyncRuns } from '../server/queries.mjs';
 
 const fixture = (name) => JSON.parse(readFileSync(fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url)), 'utf8'));
 
@@ -284,4 +284,93 @@ test('依 id 取單一委員（首頁／法案頁開檔案用）', () => {
   const res = listLegislators(db, { id });
   assert.equal(res.total, 1);
   assert.equal(res.items[0].name, '丁學忠');
+});
+
+/* ---------------- 排行榜與新資料集（H1/H2/M2/M4/M5 之後新增） ---------------- */
+
+const text = (name) => readFileSync(fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url)), 'utf8');
+
+function seededFull() {
+  const { db, dataset } = seeded();
+  const fetchedAt = '2026-09-30T09:00:00.000Z';
+  const idByName = new Map(dataset.legislators.map((l) => [l.name, l.id]));
+  applyBills(db, normalizeBills([fixture('bills-page.json')], idByName), { fetchedAt });
+  applySocial(db, normalizeSocial(text('social.csv'), new Map(dataset.legislators.map((l) => [newsName(l.name), l.id]))).accounts, { fetchedAt });
+
+  const newsIdByLegislator = new Map(dataset.legislators.map((l) => [l.id, l.id]));
+  let serial = 0;
+  for (const [id] of newsIdByLegislator) {
+    const count = id === '00001' ? 5 : id === '00002' ? 3 : 1; // 讓第一名可預期
+    upsertNews(
+      db,
+      id,
+      Array.from({ length: count }, () => ({
+        url: `https://news.example/${id}/${serial++}`,
+        title: `${id} 的新聞`,
+        source: '測試來源',
+        published_at: new Date(Date.now() - serial * 3600_000).toISOString(),
+      })),
+      { fetchedAt },
+    );
+  }
+  return db;
+}
+
+test('排行榜：三種榜都有資料、名次連續、intensity 以第一名為 1', () => {
+  const db = seededFull();
+  const boards = listRankings(db, { type: 'all', limit: 10 });
+
+  assert.deepEqual(Object.keys(boards.boards).sort(), ['bills', 'facebook', 'news']);
+  for (const board of Object.values(boards.boards)) {
+    assert.ok(board.title && board.note, '每個榜都要有標題與說明');
+    assert.ok(board.items.length > 0, `${board.type} 應該有資料`);
+    board.items.forEach((item, i) => {
+      assert.equal(item.rank, i + 1, '名次要連續');
+      assert.ok(item.legislator.id && item.legislator.name, '每列都要有委員');
+      assert.ok(item.intensity > 0 && item.intensity <= 1, 'intensity 必須在 (0,1]');
+    });
+    assert.equal(board.items[0].intensity, 1, '第一名長度為 1');
+  }
+
+  const news = boards.boards.news.items;
+  assert.equal(news[0].legislator.id, '00001', '新聞數最多者應排第一');
+  assert.equal(news[0].value, 5);
+  assert.ok(news[0].value >= news[1].value, '新聞榜需遞減');
+
+  const bills = boards.boards.bills.items;
+  for (let i = 1; i < bills.length; i++) assert.ok(bills[i - 1].value >= bills[i].value, '法案榜需遞減');
+  assert.ok(bills[0].lead_count >= 0 && bills[0].detail.label.includes('主提案'));
+
+  const facebook = boards.boards.facebook.items;
+  for (let i = 1; i < facebook.length; i++) {
+    assert.ok(facebook[i - 1].raw_days <= facebook[i].raw_days, '臉書榜要依「幾天前」由小到大（越新越前面）');
+  }
+});
+
+test('排行榜：只列入在職委員，且可只取單一榜', () => {
+  const db = seededFull();
+  // 讓某位已離職委員擁有大量新聞與提案，確認不會出現在排行榜
+  const former = db.prepare('SELECT id FROM legislators WHERE leave_flag = 1 LIMIT 1').get().id;
+  db.prepare(
+    'INSERT OR IGNORE INTO bill_sponsors(bill_id, legislator_id, is_lead) SELECT id, ?, 1 FROM bills LIMIT 200',
+  ).run(former);
+
+  const boards = listRankings(db, { type: 'bills', limit: 50 });
+  assert.equal(Object.keys(boards.boards).length, 1, 'type=bills 只回一個榜');
+  assert.ok(!boards.boards.bills.items.some((i) => i.legislator.id === former), '離職委員不該進排行榜');
+
+  const newsOnly = listRankings(db, { type: 'news', days: 1, limit: 3 });
+  assert.deepEqual(Object.keys(newsOnly.boards), ['news']);
+  assert.ok(newsOnly.boards.news.items.length <= 3);
+  assert.equal(newsOnly.days, 1);
+});
+
+test('health：回報各資料集的最後同步時間與新聞狀態（M4/M5 可見性）', () => {
+  const db = seededFull();
+  const health = getHealth(db);
+  assert.ok(health.datasets.bills.fetched_at);
+  assert.ok(health.datasets.news.count > 0);
+  assert.equal(health.datasets.social.count, health.db.social_accounts);
+  assert.equal(health.db.bills > 0, true);
+  assert.ok(Array.isArray(health.warnings));
 });

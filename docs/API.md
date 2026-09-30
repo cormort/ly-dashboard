@@ -27,12 +27,24 @@ Base URL（開發）：`http://127.0.0.1:8787`
 {
   "meta": { "generated_at": "...", "fetched_at": "...", "stale": false, "source": { "...": "..." } },
   "ok": true,
-  "db": { "legislators": 113, "memberships": 481, "committee_seats": 402, "changes": 37 },
+  "db": { "legislators": 123, "memberships": 567, "committee_seats": 783, "sessions": 5, "committees": 11,
+          "changes": 37, "snapshots": 6, "bills": 7402, "news": 3261, "social_accounts": 113 },
+  "datasets": {
+    "id9":    { "fetched_at": "2026-09-30T08:59:55.000Z", "count": 123 },
+    "id14":   { "fetched_at": "2026-09-30T08:59:55.000Z", "count": 783 },
+    "bills":  { "fetched_at": "2026-09-30T09:02:10.000Z", "count": 7402 },
+    "news":   { "fetched_at": "2026-09-30T09:06:40.000Z", "count": 3261, "status": "complete:113/113" },
+    "social": { "fetched_at": "2026-09-30T09:02:35.000Z", "count": 113 }
+  },
   "last_runs": [
     { "dataset": "id9", "status": "success", "finished_at": "2026-09-30T08:59:55.000Z", "records": 113, "attempt": 1, "error": null }
-  ]
+  ],
+  "warnings": ["游錫堃 在本屆無任何會期委員會紀錄（辭職），僅出現於全屆次檢視"]
 }
 ```
+
+`datasets[].status` 只有新聞會出現：`complete:113/113` 或 `partial:40/113`（時間預算用盡）。
+`warnings` 除了名錄警告，也會帶入「新聞同步未跑完」這類非致命提醒。
 
 ## GET /api/v1/meta
 
@@ -59,12 +71,13 @@ Base URL（開發）：`http://127.0.0.1:8787`
   "count": 11,
   "items": [
     { "id": "內政委員會", "kind": "standing", "count": 14,
-      "conveners": [ { "id": "LY-00024", "name": "牛煦庭" } ] }
+      "parties": { "中國國民黨": 7, "民主進步黨": 6, "台灣民眾黨": 1 },
+      "conveners": [ { "id": "00024", "name": "牛煦庭" } ] }
   ]
 }
 ```
 
-`kind`: `standing` | `special` | `ad_hoc`。`count` 為該會期該委員會的席次數。
+`kind`: `standing` | `special` | `ad_hoc`。`count` 為該會期該委員會的席次數，`parties` 為該委員會的黨籍組成（給委員會組成圖用）。
 委員會清單**只包含該會期真實存在的委員會**（非全歷史）。
 
 ## GET /api/v1/legislators
@@ -207,6 +220,50 @@ Query 參數（全部可選）：
 - 登記名含族語名時只用漢名搜尋（`伍麗華Saidhai‧Tahovecahe` → `伍麗華`），異體字換成媒體常用字（`寳` → `寶`）。
 - 單一委員抓取失敗不影響其他人；超過半數失敗才把該次同步標為 `failed`，既有新聞保留。
 
+## GET /api/v1/rankings
+
+三種排行榜：新聞曝光、臉書發文、法案提案。**只列入在職委員**（離職者仍有歷史提案，放進排行榜會誤導）。
+後端同時回傳 `intensity`（0–1，相對第一名的長條長度），前端不自行換算。
+
+| 參數 | 說明 |
+| --- | --- |
+| `type` | `news` \| `facebook` \| `bills` \| `all`（預設 `all`） |
+| `days` | 新聞榜的統計區間天數（預設 30，夾在 1–365） |
+| `limit` | 每榜取前 N 名（預設 10，最大 50） |
+
+```json
+{
+  "meta": { "...": "...", "bills_fetched_at": "2026-09-30T09:02:10.000Z", "news_fetched_at": "2026-09-30T09:06:40.000Z" },
+  "days": 30,
+  "limit": 10,
+  "boards": {
+    "news": {
+      "type": "news",
+      "title": "新聞曝光排行",
+      "note": "近 30 天標題含委員姓名的報導數（Google 新聞，只計在職委員）",
+      "unit": "則",
+      "items": [
+        { "rank": 1, "intensity": 1, "value": 87, "value_display": "87 則",
+          "legislator": { "id": "00084", "name": "…", "party": "…", "area_name": "…", "region": "…", "photo_url": "…" },
+          "detail": { "label": "來源媒體", "text": "最新一則標題", "url": "https://…" } }
+      ]
+    },
+    "facebook": { "type": "facebook", "title": "臉書發文排行", "unit": "天前",
+      "items": [ { "rank": 1, "intensity": 1, "value": 60, "value_display": "今天", "raw_days": 0,
+                   "legislator": { "…": "…" },
+                   "detail": { "label": "專頁名稱", "text": "最新貼文摘要", "url": "https://www.facebook.com/…" } } ] },
+    "bills": { "type": "bills", "title": "法案提案排行", "unit": "件",
+      "items": [ { "rank": 1, "intensity": 1, "value": 229, "value_display": "229 件", "lead_count": 61,
+                   "legislator": { "…": "…" },
+                   "detail": { "label": "主提案 61 件 · 最近 2026-08-28", "text": "最新議案名稱", "url": "…" } } ] }
+  }
+}
+```
+
+- 新聞榜的 `value` 是區間內則數；臉書榜的 `value` 是「新鮮度」（`60 − 天數`，越高越新），`raw_days` 才是天數；
+  法案榜的 `value` 是本屆提案總數（含共同提案），`lead_count` 是主提案件數。
+- 某一榜沒有資料時該 key 不會出現（或缺 `items`），前端要顯示空狀態。
+
 ## GET /api/v1/changes?since=2026-09-01&limit=100
 
 ```json
@@ -237,6 +294,22 @@ Query 參數（全部可選）：
 
 ---
 
+## POST /api/v1/sync
+
+手動觸發同步。**不會等同步跑完**（完整同步含議案／新聞約 4 分鐘），立即回 `202`，
+進度請看 `/api/v1/sync-runs` 與 `/api/v1/health` 的 `last_runs`。
+
+| 參數 | 說明 |
+| --- | --- |
+| `scope` | `all`（預設，名錄→議案→社群→新聞）或 `roster`（只同步名錄，約 7 秒） |
+
+```json
+{ "accepted": true, "started": true, "scope": "roster", "inflight_scope": "roster",
+  "message": "同步已在背景執行", "poll": "/api/v1/sync-runs" }
+```
+
+同時只允許一個同步在跑（single-flight）；已有同步進行時 `started` 為 `false`，該請求會被合併。
+
 ## 前端使用規則
 
 1. **不要**直接呼叫 `data.ly.gov.tw`（會被 CORS 擋、也會被 WAF 403）。一律呼叫 `/api/v1/*`。
@@ -244,3 +317,6 @@ Query 參數（全部可選）：
 3. `meta.stale === true` 時，畫面必須顯示「資料截至 …（可能非最新）」的提示。
 4. 篩選狀態放 URL query string：`?term=11&session=11-5&q=&party=&region=&committee=&convener=1`。
 5. 圖表資料由 `/api/v1/committees` 的 `count` 直接算，不要在前端做全量清洗。
+6. 排行榜的排序與 `intensity` 一律用 `/api/v1/rankings` 的回傳值，前端不得自行重算名次。
+7. 查單一委員一律帶 `session=all`（前端封裝為 `legislatorDetailUrl()`）：名錄預設只回本會期在職者，
+   而法案提案人與排行榜會出現已離職委員。

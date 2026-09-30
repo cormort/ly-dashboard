@@ -2,10 +2,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { openDb, applyDataset, getMeta } from '../server/db.mjs';
-import { buildDataset } from '../server/normalize.mjs';
+import { openDb, applyDataset, applyBills, applySocial, upsertNews, getMeta, setMeta } from '../server/db.mjs';
+import { buildDataset, normalizeBills, normalizeSocial, newsName } from '../server/normalize.mjs';
+import { CONFIG } from '../server/config.mjs';
 import { runIngest, runBillsIngest, runNewsIngest, runSocialIngest, runAll } from '../server/ingest.mjs';
-import { getHealth, listBills, listLegislators, listNews, listSyncRuns } from '../server/queries.mjs';
+import { getHealth, listBills, listChanges, listLegislators, listNews, listSyncRuns } from '../server/queries.mjs';
 import { FetchError } from '../server/fetch-ly.mjs';
 import { syncOnce } from '../server/index.mjs';
 
@@ -233,4 +234,179 @@ test('社群同步：成功時寫入並出現在委員資料；失敗時保留�
   const blocked = await runSocialIngest(db, { logger: silent, fetchImpl: async () => ({ text: '<!DOCTYPE html>login', status: 200, attempts: 1 }) });
   assert.equal(blocked.status, 'failed', '試算表被改回私人（回登入頁）要 fail closed');
   assert.equal(getHealth(db).db.social_accounts, 113);
+});
+
+/* ---------------- Review 修正的回歸測試（M1/M2/M3/M4/M5） ---------------- */
+
+const fixtureText = (name) => readFileSync(fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url)), 'utf8');
+
+test('M1: LY_SKIP_* 可跳過外部來源（測試與離線驗證用）', async () => {
+  const db = seeded();
+  const before = { ...CONFIG.skip };
+  CONFIG.skip.bills = true;
+  CONFIG.skip.social = true;
+  CONFIG.skip.news = true;
+  try {
+    const result = await runAll(db, { logger: silent, fetchImpl: respondWith({ id9: fixture('id9.json'), id14: fixture('id14.json') }) });
+    assert.equal(result.status, 'success', '名錄仍然要跑');
+    assert.equal(result.bills.status, 'skipped');
+    assert.equal(result.social.status, 'skipped');
+    assert.equal(result.news.status, 'skipped');
+    assert.equal(listBills(db, { limit: 5 }).total, 0, '跳過就不該有議案');
+  } finally {
+    Object.assign(CONFIG.skip, before);
+  }
+});
+
+test('M2: 議案狀態變更會寫入 change_log', async () => {
+  const db = seeded();
+  const dataset = buildDataset(fixture('id9.json'), fixture('id14.json'));
+  const idByName = new Map(dataset.legislators.map((l) => [l.name, l.id]));
+  const page = fixture('bills-page.json');
+
+  const first = normalizeBills([page], idByName);
+  const applied1 = applyBills(db, first, { fetchedAt: '2026-09-30T09:00:00.000Z' });
+  assert.equal(applied1.changes, 0, '第一次匯入沒有前一版可比對');
+  assert.equal(listChanges(db, { limit: 5 }).count, 0);
+
+  const target = page.bills.find((b) => b['議案狀態'] && b['議案狀態'] !== '三讀');
+  const patched = { ...page, bills: page.bills.map((b) => (b['議案編號'] === target['議案編號'] ? { ...b, 議案狀態: '三讀' } : b)) };
+  const applied2 = applyBills(db, normalizeBills([patched], idByName), { fetchedAt: '2026-09-30T10:00:00.000Z' });
+
+  assert.equal(applied2.changes, 1, '恰好一筆狀態異動');
+  const logged = listChanges(db, { limit: 5 });
+  assert.equal(logged.items[0].entity, 'bill');
+  assert.equal(logged.items[0].field, 'status');
+  assert.equal(logged.items[0].new_value, '三讀');
+  assert.equal(logged.items[0].entity_id, target['議案編號']);
+});
+
+test('M4: 社群帳號數掉超過 20% 時 fail closed，保留舊資料', async () => {
+  const db = seeded();
+  const dataset = buildDataset(fixture('id9.json'), fixture('id14.json'));
+  // 先塞 150 筆（模擬上一次成功的同步）
+  applySocial(
+    db,
+    Array.from({ length: 150 }, (_, i) => ({
+      legislator_id: `X${i}`,
+      platform: 'facebook',
+      page_name: `專頁 ${i}`,
+      url: `https://www.facebook.com/page${i}`,
+      latest_post_date: '2026-09-01',
+      latest_post_summary: '',
+    })),
+    { fetchedAt: '2026-09-30T09:00:00.000Z' },
+  );
+
+  const csv = fixtureText('social.csv'); // 真實整理表，113 筆
+  const result = await runSocialIngest(db, {
+    logger: silent,
+    fetchImpl: async () => ({ text: csv, status: 200, headers: {}, bytes: csv.length, sha256: 'x', attempts: 1 }),
+  });
+
+  assert.equal(result.status, 'failed');
+  assert.match(result.error, /掉到/);
+  assert.equal(Number(getMeta(db, 'social_count')), 150, 'social_count 不該被失敗的同步改寫');
+  assert.equal(Number(db.prepare('SELECT COUNT(*) AS n FROM social_accounts').get().n), 150, '舊資料必須保留');
+
+  // 正常情況（沒有前一版）則成功
+  const fresh = openDb(':memory:');
+  applyDataset(fresh, dataset, { fetchedAt: '2026-09-30T09:00:00.000Z' });
+  const ok = await runSocialIngest(fresh, {
+    logger: silent,
+    fetchImpl: async () => ({ text: csv, status: 200, headers: {}, bytes: csv.length, sha256: 'x', attempts: 1 }),
+  });
+  assert.equal(ok.status, 'success');
+  assert.equal(ok.accounts, 113);
+});
+
+test('M5: 新聞同步有時間預算，用完標記 partial 而不是失敗', async () => {
+  const db = seeded();
+  let calls = 0;
+  const result = await runNewsIngest(db, {
+    logger: silent,
+    delayMs: 0,
+    budgetMs: 30,
+    fetchImpl: async () => {
+      calls += 1;
+      await new Promise((r) => setTimeout(r, 12));
+      return {
+        text: '<rss version="2.0"><channel><item><title>丁學忠 立委 新聞 - 來源</title><link>https://news.example/a</link><pubDate>Wed, 30 Sep 2026 00:00:00 GMT</pubDate><source>來源</source></item></channel></rss>',
+        status: 200,
+        headers: {},
+        bytes: 10,
+        sha256: `s${calls}`,
+        attempts: 1,
+      };
+    },
+  });
+
+  assert.equal(result.status, 'success', '時間用盡不是失敗');
+  assert.equal(result.partial, true);
+  assert.ok(result.processed >= 1 && result.processed < result.total, `只完成一部分（${result.processed}/${result.total}）`);
+  assert.match(String(getMeta(db, 'news_status')), /^partial:/);
+  const health = getHealth(db);
+  assert.ok(health.warnings.some((w) => w.includes('新聞同步未跑完')), 'health 要提示未跑完');
+});
+
+test('M3: syncOnce(scope=roster) 只同步名錄', async () => {
+  const db = seeded();
+  const result = await syncOnce(db, {
+    scope: 'roster',
+    logger: silent,
+    fetchImpl: respondWith({ id9: fixture('id9.json'), id14: fixture('id14.json') }),
+  });
+  assert.ok(result.stats, '回傳名錄統計');
+  assert.equal(result.bills, undefined, '不該跑議案階段');
+  assert.equal(listBills(db, { limit: 5 }).total, 0);
+});
+
+test('L8: 選了議案狀態後，下拉仍拿得到全部狀態選項', () => {
+  const db = seeded();
+  const dataset = buildDataset(fixture('id9.json'), fixture('id14.json'));
+  const idByName = new Map(dataset.legislators.map((l) => [l.name, l.id]));
+  applyBills(db, normalizeBills([fixture('bills-page.json')], idByName), { fetchedAt: '2026-09-30T09:00:00.000Z' });
+
+  const all = listBills(db, { limit: 5 });
+  assert.ok(all.statuses.length > 1, '未篩選時本來就該有多個狀態');
+  const filtered = listBills(db, { status: all.statuses[0].name, limit: 5 });
+  assert.equal(filtered.total, all.statuses[0].count, 'total 要反映狀態篩選');
+  assert.equal(filtered.statuses.length, all.statuses.length, '統計不受 status 篩選影響（L8）');
+});
+
+test('正規化版本改變時，即使來源內容相同也要重寫（避免解析邏輯改了卻不生效）', async () => {
+  const db = seeded();
+  const fetchImpl = respondWith({ id9: fixture('id9.json'), id14: fixture('id14.json') });
+
+  const first = await runIngest(db, { logger: silent, fetchImpl });
+  assert.equal(first.status, 'success');
+
+  const second = await runIngest(db, { logger: silent, fetchImpl });
+  assert.equal(second.status, 'skipped', '同版本、同內容 → 略過');
+
+  // 模擬「改了 normalize.mjs 之後升級版本」
+  const { NORMALIZER_VERSION } = await import('../server/normalize.mjs');
+  setMeta(db, 'applied_sha', `0:${getMeta(db, 'applied_sha').split(':').slice(1).join(':')}`);
+  const third = await runIngest(db, { logger: silent, fetchImpl });
+  assert.equal(third.status, 'success', '版本不同 → 必須重新套用');
+  assert.equal(getMeta(db, 'applied_sha').startsWith(`${NORMALIZER_VERSION}:`), true);
+});
+
+test('M2: 社群帳號首次匯入不產生異動紀錄，之後的增減才記', () => {
+  const db = seeded();
+  const csv = fixtureText('social.csv');
+  const dataset = buildDataset(fixture('id9.json'), fixture('id14.json'));
+  const idByName = new Map(dataset.legislators.map((l) => [newsName(l.name), l.id]));
+  const accounts = normalizeSocial(csv, idByName).accounts;
+
+  applySocial(db, accounts, { fetchedAt: '2026-09-30T09:00:00.000Z' });
+  assert.equal(listChanges(db, { limit: 5 }).count, 0, '第一次匯入不是異動');
+
+  const trimmed = accounts.slice(0, accounts.length - 3);
+  const result = applySocial(db, trimmed, { fetchedAt: '2026-09-30T10:00:00.000Z' });
+  assert.equal(result.removed, 3);
+  assert.equal(result.added, 0);
+  const logged = listChanges(db, { limit: 10 });
+  assert.equal(logged.count, 3);
+  assert.ok(logged.items.every((i) => i.entity === 'social_account' && i.new_value === null));
 });

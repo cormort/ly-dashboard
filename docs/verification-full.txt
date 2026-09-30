@@ -1,7 +1,7 @@
-# 驗證紀錄 2026-09-30 12:14:22 CST
-# 指令：bash scripts/verify.sh（快速模式；完整模式加 --full）
+# 完整驗證紀錄 2026-09-30 12:14:56 CST
+# 指令：bash scripts/verify.sh --full（含 g0v／Google 新聞／試算表）
 
-模式：快速（跳過外部來源；要完整請加 --full）
+模式：完整同步（會呼叫 g0v、Google 新聞 113 次、Google 試算表）
 
 === 1) 後端測試（真實 API fixture，不打網路）
 ℹ tests 56
@@ -22,11 +22,15 @@
 [ingest] 警告：游錫堃 在本屆無任何會期委員會紀錄（辭職），僅出現於全屆次檢視
 [ingest] 警告：李貞秀 在本屆無任何會期委員會紀錄（開除黨籍），僅出現於全屆次檢視
 [ingest] 已套用：123 位委員、783 筆席次、5 個會期、異動 0 筆
-status: success | 耗時: 7.8 秒
+[bills] 已套用：7402 筆議案、18635 筆提案人對應、狀態異動 0 筆（快照已保存）
+[social] 已套用：113 個社群帳號（新增 113、移除 0；快照已保存）
+[news] 時間預算 300 秒用盡，已完成 111/113 位，其餘留待下次同步
+[news] success：新增 3238 則、清除過期 0 則（時間預算用盡，只完成 111/113 位；1/111 位失敗，例：丁學忠：connect ETIMEDOUT 142.250.196.206:443）
+status: success | 耗時: 11.9 秒
 名錄: {"legislators": 123, "memberships": 567, "seats": 783, "committees": 11, "sessions": 5, "current_session": "11-5", "current_roster": 113, "conveners_current_session": 23, "conveners_any_session": 68}
-bills: skipped bills 已由環境變數停用
-social: skipped social 已由環境變數停用
-news: skipped news 已由環境變數停用
+bills: success 7402
+social: success 113
+news: success 3238
 
 === 3) 第二次 ingestion（名錄內容未變應為 skipped）
 [ingest] id9：HTTP 200、151947 bytes、嘗試 1 次、快照已存在
@@ -34,12 +38,15 @@ news: skipped news 已由環境變數停用
 [ingest] 警告：游錫堃 在本屆無任何會期委員會紀錄（辭職），僅出現於全屆次檢視
 [ingest] 警告：李貞秀 在本屆無任何會期委員會紀錄（開除黨籍），僅出現於全屆次檢視
 [ingest] 內容未變更，略過寫入
+[bills] 已套用：7402 筆議案、18635 筆提案人對應、狀態異動 0 筆（快照已存在）
+[social] 已套用：113 個社群帳號（新增 0、移除 0；快照已存在）
+[news] success：新增 87 則、清除過期 0 則
 status: skipped
 
 === 4) API 端點
 [api] 立委觀測站 API 已啟動：http://127.0.0.1:8799（靜態檔：/Users/hermes/ly-dashboard/web/dist）
-health: True | stale: False | db: {"legislators": 123, "memberships": 567, "committee_seats": 783, "sessions": 5, "committees": 11, "changes": 0, "snapshots": 2, "bills": 0, "news": 0, "social_accounts": 0}
-datasets: {"id9": 123, "id14": 783, "bills": 0, "news": 0, "social": 0}
+health: True | stale: False | db: {"legislators": 123, "memberships": 567, "committee_seats": 783, "sessions": 5, "committees": 11, "changes": 113, "snapshots": 4, "bills": 7402, "news": 3325, "social_accounts": 113}
+datasets: {"id9": 123, "id14": 783, "bills": 7402, "news": 3325, "social": 113}
 current: {"term": 11, "session": "11-5"} | sessions: ['11-1', '11-2', '11-3', '11-4', '11-5']
 committees: 11 | 第一個: 修憲委員會 39 席
 legislators?(預設)                    total: 113 session: 11-5
@@ -52,16 +59,16 @@ legislators?id=00015(離職,無 session)  0 筆（預期 0：不帶 session 查�
 legislators?id=00015&session=all     1 筆 ['吳春城']
 
 --- 排行榜（新功能）
-  news: （無資料；快速模式會跳過外部來源，完整資料請用 --full）
-  facebook: （無資料；快速模式會跳過外部來源，完整資料請用 --full）
-  bills: （無資料；快速模式會跳過外部來源，完整資料請用 --full）
+  news: 5 筆｜1.賴瑞隆 102 則、2.沈伯洋 101 則、3.何欣純 100 則
+  facebook: 5 筆｜1.陳素月 1 天前、2.沈伯洋 1 天前、3.蔡春綢 1 天前
+  bills: 5 筆｜1.林沛祥 1011 件、2.廖偉翔 974 件、3.羅廷瑋 872 件
 
 --- 其他端點
-  /api/v1/bills            → 0 筆
-  /api/v1/topics           → 0 筆
-  /api/v1/activity         → 0 筆
-  /api/v1/news             → 0 筆
-  /api/v1/changes          → 0 筆
+  /api/v1/bills            → 7402 筆
+  /api/v1/topics           → 12 筆
+  /api/v1/activity         → 3 筆
+  /api/v1/news             → 3325 筆
+  /api/v1/changes          → 3 筆
   /api/v1/sync-runs        → 3 筆
   POST /api/v1/sync?scope=roster → HTTP 202 同步已在背景執行 | scope: roster
 
@@ -71,4 +78,4 @@ legislators?id=00015&session=all     1 筆 ['吳春城']
   GET /bills         → HTTP 200 text/html; charset=utf-8
   GET /rankings      → HTTP 200 text/html; charset=utf-8
 
-全部驗證完成（模式：fast）。
+全部驗證完成（模式：full）。

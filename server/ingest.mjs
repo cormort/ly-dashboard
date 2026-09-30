@@ -1,8 +1,8 @@
 import { pathToFileURL } from 'node:url';
 import { CONFIG } from './config.mjs';
 import { openDb, recordSyncRun, saveSnapshot, applyDataset, applyBills, applySocial, upsertNews, pruneNews, getMeta, setMeta } from './db.mjs';
-import { buildDataset, normalizeBills, normalizeSocial, newsName, parseNewsRss, DataValidationError } from './normalize.mjs';
-import { fetchJson, FetchError } from './fetch-ly.mjs';
+import { buildDataset, normalizeBills, normalizeSocial, newsName, parseNewsRss, DataValidationError, NORMALIZER_VERSION } from './normalize.mjs';
+import { fetchJson, FetchError, sha256 } from './fetch-ly.mjs';
 
 /**
  * Ingestion 管線：FETCH → VALIDATE → NORMALIZE → PERSIST。
@@ -55,7 +55,8 @@ export async function runIngest(db, { logger = console, fetchImpl = fetchJson, n
   }
 
   const byDataset = Object.fromEntries(fetched.map((f) => [f.dataset, f]));
-  const combinedSha = fetched.map((f) => f.sha256).join(':');
+  // 版本前綴：正規化邏輯改了也要重寫，不能只看來源內容是否相同
+  const combinedSha = `${NORMALIZER_VERSION}:${fetched.map((f) => f.sha256).join(':')}`;
   const alreadyApplied = getMeta(db, 'applied_sha') === combinedSha;
 
   let dataset;
@@ -158,11 +159,20 @@ export async function runBillsIngest(db, { logger = console, fetchImpl = fetchJs
     }
     const idByName = new Map(db.prepare('SELECT name, id FROM legislators').all().map((r) => [r.name, r.id]));
     const normalized = normalizeBills(pages, idByName);
-    applyBills(db, normalized, { fetchedAt: now().toISOString() });
+    const raw = JSON.stringify(pages);
+    const snapshotted = saveSnapshot(db, 'bills', {
+      fetchedAt: now().toISOString(),
+      sha256: sha256(Buffer.from(raw, 'utf8')),
+      bytes: Buffer.byteLength(raw),
+      json: { pages: pages.length, bills: pages.map((page) => page.bills) },
+    });
+    const applied = applyBills(db, normalized, { fetchedAt: now().toISOString() });
     for (const w of normalized.warnings) logger.warn(`[bills] 警告：${w}`);
-    logger.log(`[bills] 已套用：${normalized.bills.length} 筆議案、${normalized.sponsors.length} 筆提案人對應`);
+    logger.log(
+      `[bills] 已套用：${normalized.bills.length} 筆議案、${normalized.sponsors.length} 筆提案人對應、狀態異動 ${applied.changes} 筆（快照${snapshotted ? '已保存' : '已存在'}）`,
+    );
     record({ status: 'success', records: normalized.bills.length, attempt: attempts, http_status: 200 });
-    return { status: 'success', bills: normalized.bills.length, sponsors: normalized.sponsors.length, warnings: normalized.warnings };
+    return { status: 'success', bills: normalized.bills.length, sponsors: normalized.sponsors.length, changes: applied.changes, warnings: normalized.warnings };
   } catch (error) {
     const message = error instanceof FetchError ? `${error.message}（嘗試 ${error.attempts} 次）` : String(error?.message || error);
     logger.error(`[bills] 同步失敗，保留既有議案：${message}`);
@@ -182,16 +192,29 @@ const pause = (ms) => (ms > 0 ? new Promise((r) => setTimeout(r, ms)) : Promise.
  * 新聞同步：在職委員逐位抓 Google News RSS（依序＋間隔，避免被限流）。
  * 單一委員失敗不影響其他人；超過一半失敗才整體標記 failed（多半是被擋或斷網）。
  */
-export async function runNewsIngest(db, { logger = console, fetchImpl = fetchJson, now = () => new Date(), delayMs = CONFIG.news.delayMs } = {}) {
+export async function runNewsIngest(
+  db,
+  { logger = console, fetchImpl = fetchJson, now = () => new Date(), delayMs = CONFIG.news.delayMs, budgetMs = CONFIG.news.budgetMs } = {},
+) {
   const startedAt = now().toISOString();
   const startedMs = Date.now();
+  const deadline = startedMs + budgetMs;
   const legislators = db.prepare('SELECT id, name FROM legislators WHERE leave_flag = 0 ORDER BY id').all();
   const failures = [];
   const cutoff = new Date(now().getTime() - CONFIG.news.keepDays * 86_400_000).toISOString();
   let added = 0;
+  let processed = 0;
+  let partial = false;
 
   for (const [index, l] of legislators.entries()) {
+    // M5：時間預算用完就停，剩下的委員下一輪再抓（新聞是累積寫入，不會遺失）
+    if (Date.now() >= deadline) {
+      partial = true;
+      logger.warn(`[news] 時間預算 ${Math.round(budgetMs / 1000)} 秒用盡，已完成 ${processed}/${legislators.length} 位，其餘留待下次同步`);
+      break;
+    }
     if (index > 0) await pause(delayMs);
+    processed += 1;
     try {
       const name = newsName(l.name);
       const { text } = await fetchImpl(newsFeedUrl(name), { ua: CONFIG.userAgent, text: true, retries: 2 });
@@ -204,9 +227,13 @@ export async function runNewsIngest(db, { logger = console, fetchImpl = fetchJso
   }
   const pruned = pruneNews(db, { keepDays: CONFIG.news.keepDays, now: now() });
 
-  const failed = legislators.length === 0 || failures.length > legislators.length / 2;
+  const failed = legislators.length === 0 || failures.length > processed / 2;
   const status = failed ? 'failed' : 'success';
-  const error = failures.length ? `${failures.length}/${legislators.length} 位失敗，例：${failures.slice(0, 3).join('；')}` : null;
+  const notes = [];
+  if (partial) notes.push(`時間預算用盡，只完成 ${processed}/${legislators.length} 位`);
+  if (failures.length) notes.push(`${failures.length}/${processed} 位失敗，例：${failures.slice(0, 3).join('；')}`);
+  const error = notes.length ? notes.join('；') : null;
+  setMeta(db, 'news_status', partial ? `partial:${processed}/${legislators.length}` : `complete:${processed}/${legislators.length}`);
   if (!failed) setMeta(db, 'news_fetched_at', now().toISOString());
   recordSyncRun(db, {
     dataset: 'news',
@@ -219,7 +246,7 @@ export async function runNewsIngest(db, { logger = console, fetchImpl = fetchJso
     error: legislators.length === 0 ? '名錄尚未同步' : error,
   });
   (failed ? logger.error : logger.log)(`[news] ${status}：新增 ${added} 則、清除過期 ${pruned} 則${error ? `（${error}）` : ''}`);
-  return { status, added, pruned, failures: failures.length };
+  return { status, added, pruned, failures: failures.length, processed, total: legislators.length, partial };
 }
 
 /** 社群帳號整理表：抓 CSV → 驗證 → 整批覆寫；失敗保留舊資料。 */
@@ -232,11 +259,27 @@ export async function runSocialIngest(db, { logger = console, fetchImpl = fetchJ
     const result = await fetchImpl(CONFIG.social.url, { ua: CONFIG.userAgent, text: true });
     const idByName = new Map(db.prepare('SELECT name, id FROM legislators WHERE leave_flag = 0').all().map((r) => [newsName(r.name), r.id]));
     const { accounts, warnings } = normalizeSocial(result.text, idByName);
-    applySocial(db, accounts, { fetchedAt: now().toISOString() });
+
+    // M4：整理表是可被編輯的外部來源。除了絕對門檻（normalizeSocial 內），
+    // 這裡再和「上一次的筆數」比：掉超過 20% 就 fail closed，寧可留舊資料。
+    const existing = Number(db.prepare('SELECT COUNT(*) AS n FROM social_accounts').get().n);
+    if (existing >= 50 && accounts.length < existing * 0.8) {
+      throw new DataValidationError(`社群帳號由 ${existing} 筆掉到 ${accounts.length} 筆（< 80%），疑似整理表被改動`);
+    }
+
+    const snapshotted = saveSnapshot(db, 'social', {
+      fetchedAt: now().toISOString(),
+      sha256: sha256(Buffer.from(result.text, 'utf8')),
+      bytes: Buffer.byteLength(result.text),
+      json: { csv: result.text },
+    });
+    const applied = applySocial(db, accounts, { fetchedAt: now().toISOString() });
     for (const w of warnings) logger.warn(`[social] 警告：${w}`);
-    logger.log(`[social] 已套用：${accounts.length} 個社群帳號`);
+    logger.log(
+      `[social] 已套用：${accounts.length} 個社群帳號（新增 ${applied.added}、移除 ${applied.removed}；快照${snapshotted ? '已保存' : '已存在'}）`,
+    );
     record({ status: 'success', records: accounts.length, attempt: result.attempts ?? 1, http_status: result.status ?? 200 });
-    return { status: 'success', accounts: accounts.length, warnings };
+    return { status: 'success', accounts: accounts.length, changes: applied.added + applied.removed, warnings };
   } catch (error) {
     const message = error instanceof FetchError ? `${error.message}（嘗試 ${error.attempts} 次）` : String(error?.message || error);
     logger.error(`[social] 同步失敗，保留既有資料：${message}`);
@@ -245,13 +288,18 @@ export async function runSocialIngest(db, { logger = console, fetchImpl = fetchJ
   }
 }
 
-/** 名錄 → 議案 → 社群 → 新聞；名錄失敗就不跑其餘（沒有名錄就對不到人） */
+/**
+ * 名錄 → 議案 → 社群 → 新聞；名錄失敗就不跑其餘（沒有名錄就對不到人）。
+ * `LY_SKIP_BILLS` / `LY_SKIP_NEWS` / `LY_SKIP_SOCIAL` 可跳過外部來源（測試與離線驗證用）。
+ */
 export async function runAll(db, options = {}) {
+  const skipped = (stage) => ({ status: 'skipped', reason: `${stage} 已由環境變數停用` });
   const roster = await runIngest(db, options);
   if (roster.status === 'failed') return roster;
-  const bills = await runBillsIngest(db, options);
-  const social = await runSocialIngest(db, options);
-  return { ...roster, bills, social, news: await runNewsIngest(db, options) };
+  const bills = CONFIG.skip.bills ? skipped('bills') : await runBillsIngest(db, options);
+  const social = CONFIG.skip.social ? skipped('social') : await runSocialIngest(db, options);
+  const news = CONFIG.skip.news ? skipped('news') : await runNewsIngest(db, options);
+  return { ...roster, bills, social, news };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

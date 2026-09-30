@@ -125,7 +125,7 @@ export function Hemicycle({ roster, matching, party, onPartyToggle, onOpen }: He
           );
         })}
       </ul>
-      <p className="hemicycle-note muted">外圈加框為本會期召委。點席次可開啟委員檔案。</p>
+      <p className="hemicycle-note muted">外圈加框為本會期召委。滑鼠可直接點席次開啟委員檔案；鍵盤使用者請用下方名錄或列表檢視。</p>
     </section>
   );
 }

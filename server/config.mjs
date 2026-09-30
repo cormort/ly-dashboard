@@ -30,6 +30,8 @@ export const CONFIG = {
     windowDays: 30,
     keepDays: 180,
     delayMs: Number(process.env.LY_NEWS_DELAY_MS ?? 1000),
+    // M5：整體時間預算。用完就停止剩餘委員並標記 partial，不讓單一階段拖垮整個同步。
+    budgetMs: Number(process.env.LY_NEWS_BUDGET_MS ?? 5 * 60 * 1000),
   },
   // 社群帳號：人工整理的 Google 試算表（知道連結者可檢視），以 CSV 匯出網址抓取。
   social: {
@@ -42,6 +44,12 @@ export const CONFIG = {
     name: '立法院開放資料',
     url: 'https://data.ly.gov.tw/',
     license: '政府資料開放授權條款第 1 版',
+  },
+  // M1：測試／驗證用的階段開關（外部來源全部跳過 → 秒級、不打第三方）
+  skip: {
+    bills: process.env.LY_SKIP_BILLS === '1',
+    news: process.env.LY_SKIP_NEWS === '1',
+    social: process.env.LY_SKIP_SOCIAL === '1',
   },
   staleAfterHours: Number(process.env.LY_STALE_HOURS || 36),
   syncIntervalMs: Number(process.env.LY_SYNC_INTERVAL_MS || 24 * 60 * 60 * 1000),
