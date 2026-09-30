@@ -554,7 +554,7 @@ export interface RegionsResponse {
 
 /* ---------- /funds ---------- */
 
-export type FundType = 'fund' | 'agency' | 'foundation' | 'administrative';
+export type FundType = 'fund' | 'agency' | 'foundation' | 'administrative' | 'dgbas';
 
 export type FundKind = 'news' | 'post' | 'bill' | 'budget' | 'report';
 

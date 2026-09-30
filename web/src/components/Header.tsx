@@ -33,7 +33,7 @@ const NAV: { route: Route; label: string; also?: Route[] }[] = [
   { route: 'committees', label: '委員會' },
   { route: 'bills', label: '法案查詢' },
   { route: 'budget', label: '預算審議' },
-  { route: 'funds', label: '機關／基金', also: ['agencies', 'foundations', 'administrative'] },
+  { route: 'funds', label: '機關／基金', also: ['agencies', 'foundations', 'administrative', 'dgbas'] },
 ];
 
 /** 頁首：站名、三頁導覽、委員搜尋、資料狀態（有問題才用警示色）。 */

@@ -33,6 +33,7 @@ const COPY = {
   agency: { title: '機關', route: 'agencies', intro: '提到中央機關（行政院所屬機關代碼表）的項目。' },
   foundation: { title: '財團法人', route: 'foundations', intro: '提到財團法人的項目（名稱取自「財團法人○○」；清單外的基金會歸「其他基金會」）。' },
   administrative: { title: '行政法人', route: 'administrative', intro: '提到行政法人的項目。' },
+  dgbas: { title: '行政院主計總處', route: 'dgbas', intro: '主計總處提送的預算類議案，以及提到主計總處的項目。' },
 } as const;
 
 /** 基金、機關、財團法人、行政法人四頁共用：總覽各來源中提到該類的項目（關鍵字見 server/fund-config.json） */

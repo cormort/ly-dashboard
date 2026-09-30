@@ -18,7 +18,7 @@ import { CommitteesPage } from './pages/CommitteesPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { FundsPage } from './pages/FundsPage';
 
-const FUND_TYPE = { funds: 'fund', agencies: 'agency', foundations: 'foundation', administrative: 'administrative' } as const;
+const FUND_TYPE = { funds: 'fund', agencies: 'agency', foundations: 'foundation', administrative: 'administrative', dgbas: 'dgbas' } as const;
 import { ComparePage } from './pages/ComparePage';
 import { HomePage } from './pages/HomePage';
 import { LegislatorsPage } from './pages/LegislatorsPage';

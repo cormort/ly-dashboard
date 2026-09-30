@@ -478,6 +478,14 @@ test('基金／機關／財團法人／行政法人：名稱與簡稱歸到正�
   assert.ok(jobs.items.every((x) => x.funds.includes('就業安定基金')));
   assert.equal(listFunds(db, { kind: 'report' }).total, 0);
   assert.equal(listFunds(db, { type: 'agency', fund: '就業安定基金' }).total, 0, '基金不出現在機關頁');
+  db.prepare('INSERT INTO budget_bills (id, category, name, status, proposer, latest_date, url) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
+    'b2', '預(決) 算決議案、定期報告', '函送114年度中央政府預算執行情形書面報告', '交付查照', '行政院主計總處', '2026-09-02', 'https://example.com/b2',
+  );
+  db.prepare('INSERT INTO budget_bills (id, category, name, status, proposer, latest_date, url) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
+    'b3', '預(決) 算決議案、定期報告', '函送國防部主計局報告', '交付查照', '國防部', '2026-09-03', 'https://example.com/b3',
+  );
+  const dgbas = listFunds(db, { type: 'dgbas' });
+  assert.deepEqual(dgbas.items.map((x) => x.funds), [['主計總處提送']], '提案機關是主計總處才算，國防部主計局不算');
 });
 
 test('委員會動態：公報只留委員會紀錄、依委員會篩選（聯席會議兩邊都算）', async () => {

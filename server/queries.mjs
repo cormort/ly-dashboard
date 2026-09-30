@@ -843,6 +843,16 @@ export function makeTagger(texts) {
 const FUND_KINDS = ['news', 'post', 'bill', 'budget', 'report'];
 
 /**
+ * 主計總處專頁（`type=dgbas`）：預算類議案的提案機關是主計總處 →「主計總處提送」；標題提到 →「提及主計總處」。
+ * 只認「主計總處」「主計長」，不把國防部主計局、縣市主計處算進來。
+ */
+const DGBAS_RE = /主計總處|主計長/;
+const dgbasOf = (r) => [
+  ...(r.kind === 'budget' && DGBAS_RE.test(r.source ?? '') ? ['主計總處提送'] : []),
+  ...(DGBAS_RE.test(r.title) ? ['提及主計總處'] : []),
+];
+
+/**
  * 總覽各來源（新聞、臉書、委員提案、預算審議、預算中心報告）中與某一類（`type`：fund／agency／foundation／administrative）相關的項目，依日期新→舊。
  * `fund` 精確篩選該類的名稱、`kind` 篩選來源；統計依序在各自條件之前算（同 listBudget）。
  * ponytail: 每次請求全表掃描約 2 萬列＋一個正規式（實測數十毫秒）；變慢再在同步時預先標記。
@@ -852,7 +862,7 @@ export function listFunds(db, { type = 'fund', fund = '', kind = '', limit = 30,
   const resolvedOffset = Math.max(0, Math.trunc(Number(offset) || 0));
   const people = new Map(db.prepare('SELECT id, name, party FROM legislators').all().map((l) => [l.id, { id: l.id, name: l.name, party: l.party }]));
   const lead = new Map(db.prepare('SELECT bill_id, legislator_id FROM bill_sponsors WHERE is_lead = 1').all().map((r) => [r.bill_id, people.get(r.legislator_id)]));
-  const resolvedType = ENTITY_TYPES.includes(type) ? type : 'fund';
+  const resolvedType = ENTITY_TYPES.includes(type) || type === 'dgbas' ? type : 'fund';
   const rows = [
     ...db.prepare('SELECT * FROM news').all().map((r) => ({ kind: 'news', date: r.published_at.slice(0, 10), title: r.title, url: r.url, source: r.source, legislator: people.get(r.legislator_id) })),
     ...db
@@ -863,7 +873,7 @@ export function listFunds(db, { type = 'fund', fund = '', kind = '', limit = 30,
     ...db.prepare('SELECT * FROM budget_bills').all().map((r) => ({ kind: 'budget', date: r.latest_date, title: r.name, url: r.url, status: r.status, source: r.proposer })),
     ...db.prepare('SELECT * FROM budget_reports').all().map((r) => ({ kind: 'report', date: r.completed, title: r.title, url: r.url, source: r.type })),
   ];
-  const tag = makeTagger(rows.map((r) => r.title));
+  const tag = resolvedType === 'dgbas' ? dgbasOf : ((t) => (r) => t(r.title)[resolvedType])(makeTagger(rows.map((r) => r.title)));
   // 各來源的資料期間（全部資料，不只命中的）：新聞只保留近一個月，件數少要看得出原因
   const periods = {};
   for (const r of rows) {
@@ -874,7 +884,7 @@ export function listFunds(db, { type = 'fund', fund = '', kind = '', limit = 30,
     if (d > p.to) p.to = d;
   }
   const tagged = rows
-    .map((r) => ({ ...r, date: r.date ?? '', legislator: r.legislator ?? null, funds: tag(r.title)[resolvedType] }))
+    .map((r) => ({ ...r, date: r.date ?? '', legislator: r.legislator ?? null, funds: tag(r) }))
     // 同一則新聞會掛在每位被提到的委員底下，只留一則
     .filter((r, i, all) => r.funds.length && (r.kind !== 'news' || all.findIndex((x) => x.kind === 'news' && x.url === r.url) === i))
     .sort((a, b) => b.date.localeCompare(a.date) || a.title.localeCompare(b.title));
