@@ -1,20 +1,20 @@
-# 完整驗證紀錄 2026-09-30 12:14:56 CST
-# 指令：bash scripts/verify.sh --full（含 g0v／Google 新聞／試算表）
+# 完整驗證紀錄 2026-09-30 22:23:53 CST
+# 指令：bash scripts/verify.sh --full（含 g0v／Google 新聞／試算表；429 修正後首跑）
 
 模式：完整同步（會呼叫 g0v、Google 新聞 113 次、Google 試算表）
 
 === 1) 後端測試（真實 API fixture，不打網路）
-ℹ tests 56
-ℹ pass 56
+ℹ tests 77
+ℹ pass 77
 ℹ fail 0
 
 === 1b) 前端型別檢查 + 煙霧測試
   ok  連線失敗（fetch 直接 reject）也是 ApiError
-全部通過：27 項
+全部通過：29 項
   ok  面板存在時（stale／失敗／展開）才給 aria-controls
   ok  同步失敗時明示
   ok  最近一次失敗時告警
-通過 41 項，失敗 0 項
+通過 55 項，失敗 0 項
 
 === 2) ingestion（獨立臨時 DB）
 [ingest] id9：HTTP 200、151947 bytes、嘗試 1 次、快照已保存
@@ -23,14 +23,17 @@
 [ingest] 警告：李貞秀 在本屆無任何會期委員會紀錄（開除黨籍），僅出現於全屆次檢視
 [ingest] 已套用：123 位委員、783 筆席次、5 個會期、異動 0 筆
 [bills] 已套用：7402 筆議案、18635 筆提案人對應、狀態異動 0 筆（快照已保存）
+[budget] 已套用：11290 筆預算類議案、狀態異動 0 筆
+[budget_reports] 已套用：660 份預算中心報告
+[meetings] 已套用：1878 場委員會會議
+[records] 已套用：1503 筆委員會會議紀錄、1270 場會議附件
 [social] 已套用：113 個社群帳號（新增 113、移除 0；快照已保存）
-[news] 時間預算 300 秒用盡，已完成 111/113 位，其餘留待下次同步
-[news] success：新增 3238 則、清除過期 0 則（時間預算用盡，只完成 111/113 位；1/111 位失敗，例：丁學忠：connect ETIMEDOUT 142.250.196.206:443）
-status: success | 耗時: 11.9 秒
+[news] success：新增 3225 則、清除過期 0 則
+status: success | 耗時: 15.7 秒
 名錄: {"legislators": 123, "memberships": 567, "seats": 783, "committees": 11, "sessions": 5, "current_session": "11-5", "current_roster": 113, "conveners_current_session": 23, "conveners_any_session": 68}
 bills: success 7402
 social: success 113
-news: success 3238
+news: success 3225
 
 === 3) 第二次 ingestion（名錄內容未變應為 skipped）
 [ingest] id9：HTTP 200、151947 bytes、嘗試 1 次、快照已存在
@@ -39,14 +42,18 @@ news: success 3238
 [ingest] 警告：李貞秀 在本屆無任何會期委員會紀錄（開除黨籍），僅出現於全屆次檢視
 [ingest] 內容未變更，略過寫入
 [bills] 已套用：7402 筆議案、18635 筆提案人對應、狀態異動 0 筆（快照已存在）
+[budget] 已套用：11290 筆預算類議案、狀態異動 0 筆
+[budget_reports] 已套用：660 份預算中心報告
+[meetings] 已套用：1878 場委員會會議
+[records] 已套用：1503 筆委員會會議紀錄、1270 場會議附件
 [social] 已套用：113 個社群帳號（新增 0、移除 0；快照已存在）
-[news] success：新增 87 則、清除過期 0 則
+[news] success：新增 57 則、清除過期 0 則（1/113 位失敗，例：許忠信：HTTP 404）
 status: skipped
 
 === 4) API 端點
 [api] 立委觀測站 API 已啟動：http://127.0.0.1:8799（靜態檔：/Users/hermes/ly-dashboard/web/dist）
-health: True | stale: False | db: {"legislators": 123, "memberships": 567, "committee_seats": 783, "sessions": 5, "committees": 11, "changes": 113, "snapshots": 4, "bills": 7402, "news": 3325, "social_accounts": 113}
-datasets: {"id9": 123, "id14": 783, "bills": 7402, "news": 3325, "social": 113}
+health: True | stale: False | db: {"legislators": 123, "memberships": 567, "committee_seats": 783, "sessions": 5, "committees": 11, "changes": 0, "snapshots": 4, "bills": 7402, "budget_bills": 11290, "budget_reports": 660, "committee_meetings": 1878, "news": 3282, "social_accounts": 113}
+datasets: {"id9": 123, "id14": 783, "bills": 7402, "budget": 11290, "news": 3282, "social": 113}
 current: {"term": 11, "session": "11-5"} | sessions: ['11-1', '11-2', '11-3', '11-4', '11-5']
 committees: 11 | 第一個: 修憲委員會 39 席
 legislators?(預設)                    total: 113 session: 11-5
@@ -59,7 +66,7 @@ legislators?id=00015(離職,無 session)  0 筆（預期 0：不帶 session 查�
 legislators?id=00015&session=all     1 筆 ['吳春城']
 
 --- 排行榜（新功能）
-  news: 5 筆｜1.賴瑞隆 102 則、2.沈伯洋 101 則、3.何欣純 100 則
+  news: 5 筆｜1.沈伯洋 106 則、2.翁曉玲 105 則、3.何欣純 104 則
   facebook: 5 筆｜1.陳素月 1 天前、2.沈伯洋 1 天前、3.蔡春綢 1 天前
   bills: 5 筆｜1.林沛祥 1011 件、2.廖偉翔 974 件、3.羅廷瑋 872 件
 
@@ -67,8 +74,8 @@ legislators?id=00015&session=all     1 筆 ['吳春城']
   /api/v1/bills            → 7402 筆
   /api/v1/topics           → 12 筆
   /api/v1/activity         → 3 筆
-  /api/v1/news             → 3325 筆
-  /api/v1/changes          → 3 筆
+  /api/v1/news             → 3282 筆
+  /api/v1/changes          → 0 筆
   /api/v1/sync-runs        → 3 筆
   POST /api/v1/sync?scope=roster → HTTP 202 同步已在背景執行 | scope: roster
 
