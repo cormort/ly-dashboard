@@ -15,6 +15,7 @@ import {
   newsName,
   parseCsv,
   normalizeSocial,
+  budgetTypes,
 } from '../server/normalize.mjs';
 
 const fixture = (name) => JSON.parse(readFileSync(fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url)), 'utf8'));
@@ -217,4 +218,19 @@ test('normalizeSocial：欄位改名、筆數過少、姓名大量對不到時 f
   const [head, ...lines] = socialCsv.split('\n');
   assert.throws(() => normalizeSocial([head, ...lines.slice(0, 10)].join('\n'), idByNewsName()), DataValidationError);
   assert.throws(() => normalizeSocial(socialCsv, new Map()), DataValidationError);
+});
+
+test('預算類型：只看決議／檢送之前的主旨，附屬單位部分不另算總預算', () => {
+  const cases = [
+    ['函，為114年度中央政府總預算決議，檢送前瞻第4期特別預算「地方創生」之執行情形書面報告，請查照案。', ['general']],
+    ['函，為113年度中央政府總預算附屬單位預算決議，檢送運動發展基金新增決議第6項書面報告，請查照案。', ['subsidiary']],
+    ['函，為中央政府前瞻基礎建設計畫第5期特別預算決議，檢送決議（一）預算凍結十分之一書面報告，請查照案。', ['special']],
+    ['「115年度中央政府總預算案（含附屬單位預算及綜計表－營業及非營業部分）」案。', ['general', 'subsidiary']],
+    ['函送內政委員會115年度附屬單位預算審查報告，請併「中華民國115年度中央政府總預算案附屬單位預算營業及非營業部分審查總報告」討論案。', ['subsidiary']],
+    ['「中華民國113年度中央政府總決算暨附屬單位決算及綜計表審核報告」、「中央政府前瞻基礎建設計畫第4期特別決算審核報告」案。', ['general', 'subsidiary', 'special']],
+    ['「114年度中央政府總預算追加預算案」案。', ['general']],
+    ['函送財團法人海華文教基金會113年度決算書案。', []],
+    ['函送113年第4季辦理各類媒體政策及業務宣導執行情形表，請查照案。', []],
+  ];
+  for (const [name, expected] of cases) assert.deepEqual(budgetTypes(name), expected, name.slice(0, 30));
 });

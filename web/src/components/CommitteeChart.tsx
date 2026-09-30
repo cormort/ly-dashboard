@@ -15,10 +15,20 @@ export interface CommitteeChartProps {
   onSelect?: (committee: string | null) => void;
 }
 
+/** 一席＝一個小人，顏色是黨籍；圖形只定義一次，其餘用 <use> 引用 */
+const PERSON_ID = 'committee-person';
+function Person({ color }: { color: string }) {
+  return (
+    <svg className="person" viewBox="0 0 10 16" style={{ color }} aria-hidden="true">
+      <use href={`#${PERSON_ID}`} />
+    </svg>
+  );
+}
+
 /**
- * 委員會席次與黨籍組成：每列一個委員會，橫條依黨籍分段。
+ * 委員會席次與黨籍組成：每列一個委員會，每席一個依黨籍著色的小人。
  * 數字全部來自 /api/v1/committees（count、parties 由後端算好），前端不重新聚合委員名單。
- * ponytail: 純 CSS 橫條取代圖表函式庫，一種圖不需要 recharts。
+ * ponytail: 內嵌 SVG 小人取代圖表函式庫，一種圖不需要 recharts。
  */
 export function CommitteeChart({ committees, sessionScopeLabel, selected = null, onSelect }: CommitteeChartProps) {
   const shell = (body: ReactNode) => (
@@ -44,11 +54,25 @@ export function CommitteeChart({ committees, sessionScopeLabel, selected = null,
     return shell(<EmptyState message="此會期尚無委員會資料" hint={`範圍：${sessionScopeLabel}。請切換會期或稍後再試。`} />);
   }
 
-  const max = Math.max(...items.map((item) => item.count));
+  const legend = sortParties(new Set(items.flatMap((item) => Object.keys(item.parties ?? {}))));
 
   return shell(
     <>
+      <svg width="0" height="0" style={{ position: 'absolute' }} aria-hidden="true">
+        <symbol id={PERSON_ID} viewBox="0 0 10 16">
+          <circle cx="5" cy="3" r="2.7" fill="currentColor" />
+          <path d="M1 16V10.5a4 4 0 0 1 8 0V16z" fill="currentColor" />
+        </symbol>
+      </svg>
       <p className="muted chart-scope">{sessionScopeLabel}・點委員會可篩選名錄</p>
+      <ul className="people-legend" role="list" aria-label="圖例">
+        {legend.map((p) => (
+          <li key={p}>
+            <Person color={partyStyle(p).color} />
+            {partyStyle(p).short}
+          </li>
+        ))}
+      </ul>
       <ul className="committee-bars" role="list">
         {items.map((item) => {
           const parties = sortParties(Object.keys(item.parties ?? {}));
@@ -63,10 +87,8 @@ export function CommitteeChart({ committees, sessionScopeLabel, selected = null,
                 aria-label={`${item.id} ${item.count} 席（${breakdown}）${item.conveners.length ? `，召委 ${item.conveners.map((c) => c.name).join('、')}` : ''}`}
               >
                 <span className="committee-name">{shortCommittee(item.id)}</span>
-                <span className="bar" style={{ width: `${(item.count / max) * 100}%` }} aria-hidden="true">
-                  {parties.map((p) => (
-                    <span key={p} style={{ flexGrow: item.parties[p], background: partyStyle(p).color }} />
-                  ))}
+                <span className="people" aria-hidden="true">
+                  {parties.flatMap((p) => Array.from({ length: item.parties[p] }, (_, i) => <Person key={`${p}-${i}`} color={partyStyle(p).color} />))}
                 </span>
                 <span className="committee-count">{item.count}</span>
                 <span className="committee-conveners">

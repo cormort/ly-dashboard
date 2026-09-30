@@ -386,6 +386,8 @@ expectAll('ready 態：每個委員會的席次、黨籍組成、召委都有文
   '召委 測試委員甲',
   'aria-pressed="false"',
 ]);
+check('小人數＝席次總和（14＋13）', (chartHtml.match(/class="person"/g) ?? []).length - 2 === 27, '圖例另有 2 個');
+
 expectAll(
   'empty 態顯示「此會期尚無委員會資料」',
   render(

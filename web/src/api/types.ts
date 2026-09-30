@@ -452,10 +452,13 @@ export interface RankingsResponse {
 /* ---------- /budget ---------- */
 
 export type BudgetState = 'pending' | 'done' | 'returned';
+/** 預算類型：總預算／附屬單位預算／特別預算（後端由名稱主旨判斷，可複選） */
+export type BudgetType = 'general' | 'subsidiary' | 'special';
 
 export interface BudgetItem {
   id: string;
   category: string;
+  types: BudgetType[];
   name: string;
   status: string;
   /** 後端分好的審議狀態：審議中／已結案／退回 */
@@ -477,6 +480,7 @@ export interface BudgetResponse {
   years: BillLawCount[];
   proposers: BillLawCount[];
   states: Record<BudgetState, number>;
+  types: Record<BudgetType, number>;
   items: BudgetItem[];
 }
 

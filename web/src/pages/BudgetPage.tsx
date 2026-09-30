@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Download, ExternalLink, FileText, X } from 'lucide-react';
 import { buildUrl } from '../api/client';
-import type { BudgetMeetingsResponse, BudgetReportsResponse, BudgetResponse, BudgetState } from '../api/types';
+import type { BudgetMeetingsResponse, BudgetReportsResponse, BudgetResponse, BudgetState, BudgetType } from '../api/types';
 import { EmptyState, ErrorState, LoadingState } from '../components/DataStates';
 import { SearchField } from '../components/SearchField';
 import { useApi } from '../hooks/useApi';
@@ -21,12 +21,14 @@ const CATEGORY_LABEL: Record<string, string> = {
   '預(決) 算決議案、定期報告': '決議書面報告',
 };
 const STATE_LABEL: Record<BudgetState, string> = { pending: '審議中', done: '已結案', returned: '退回' };
+const TYPE_LABEL: Record<BudgetType, string> = { general: '總預算', subsidiary: '附屬單位預算', special: '特別預算' };
 const DEFAULT_CATEGORY = '中央政府總預算案';
 const ALL = 'all';
 const PAGE = 30;
 
 interface Filters {
   category: string;
+  type: string;
   q: string;
   year: string;
   proposer: string;
@@ -36,7 +38,7 @@ interface Filters {
 const readFilters = (): Filters => {
   const p = new URLSearchParams(window.location.search);
   const get = (k: string) => p.get(k) ?? '';
-  return { category: get('category') || DEFAULT_CATEGORY, q: get('q'), year: get('year'), proposer: get('proposer'), state: get('state') };
+  return { category: get('category') || DEFAULT_CATEGORY, type: get('type'), q: get('q'), year: get('year'), proposer: get('proposer'), state: get('state') };
 };
 
 /**
@@ -63,6 +65,7 @@ export function BudgetPage({ refreshToken, onOpenId }: BudgetPageProps) {
 
   const query = {
     category: filters.category === ALL ? '' : filters.category,
+    type: filters.type,
     q: filters.q.trim(),
     year: filters.year,
     proposer: filters.proposer,
@@ -85,6 +88,17 @@ export function BudgetPage({ refreshToken, onOpenId }: BudgetPageProps) {
           <button key={c.name} type="button" className="stat-tile" aria-pressed={filters.category === c.name} onClick={() => change({ category: c.name })}>
             <b className="stat-value">{c.count.toLocaleString()}</b>
             <span className="stat-label">{c.name === ALL ? '全部' : CATEGORY_LABEL[c.name] ?? c.name}</span>
+          </button>
+        ))}
+      </div>
+
+      <div className="segmented type-switch" role="group" aria-label="預算類型">
+        <button type="button" aria-pressed={!filters.type} onClick={() => change({ type: '' })}>
+          全部類型
+        </button>
+        {(Object.keys(TYPE_LABEL) as BudgetType[]).map((t) => (
+          <button key={t} type="button" aria-pressed={filters.type === t} onClick={() => change({ type: t })}>
+            {TYPE_LABEL[t]} {data ? data.types[t].toLocaleString() : ''}
           </button>
         ))}
       </div>
@@ -148,6 +162,11 @@ export function BudgetPage({ refreshToken, onOpenId }: BudgetPageProps) {
                     </a>
                     <p className="bill-meta">
                       <span className={`state-tag ${item.state}`}>{STATE_LABEL[item.state]}</span>
+                      {item.types.map((t) => (
+                        <span key={t} className={`type-tag ${t}`}>
+                          {TYPE_LABEL[t]}
+                        </span>
+                      ))}
                       <span className="status-tag">{item.status}</span>
                       <span>{item.latest_date}</span>
                       <button type="button" className="link-button" onClick={() => change({ proposer: item.proposer })}>

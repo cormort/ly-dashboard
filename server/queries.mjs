@@ -1,6 +1,6 @@
 import { CONFIG } from './config.mjs';
 import { getMeta } from './db.mjs';
-import { regionOf } from './normalize.mjs';
+import { budgetTypes, regionOf } from './normalize.mjs';
 
 const nowIso = () => new Date().toISOString();
 
@@ -651,6 +651,7 @@ export function listNews(db, { legislator = null, limit = 10 } = {}) {
  * 預算類議案的審議狀態分三類。定期報告多半「交付查照」即結案（不經審查），
  * 所以不套委員提案的五階段流程，只分審議中／已結案／退回。
  */
+const BUDGET_TYPES = ['general', 'subsidiary', 'special'];
 const BUDGET_PENDING = new Set(['交付審查', '交付處理', '排入院會', '排入院會(討論事項)', '交付協商', '復議', '中央政府總預算流程']);
 export const budgetState = (status) =>
   BUDGET_PENDING.has(status) ? 'pending' : status === '退回程序委員會' ? 'returned' : 'done';
@@ -659,10 +660,11 @@ export const budgetState = (status) =>
  * 預算審議：`category`、`q`（名稱或提案單位關鍵字）、`year`（預算年度）、`proposer`、`state`、分頁。
  * 統計依序在套用各自條件「之前」算（同 listBills 的 L8），選了某機關後機關清單不會只剩一個。
  */
-export function listBudget(db, { category = '', q = '', year = '', proposer = '', state = '', limit = 30, offset = 0, all = false } = {}) {
+export function listBudget(db, { category = '', type = '', q = '', year = '', proposer = '', state = '', limit = 30, offset = 0, all = false } = {}) {
   const resolvedLimit = all ? Infinity : Math.max(1, Math.min(Number(limit) || 30, 200));
   const resolvedOffset = Math.max(0, Math.trunc(Number(offset) || 0));
-  const rows = db.prepare('SELECT * FROM budget_bills ORDER BY latest_date DESC, id DESC').all();
+  // 預算類型在讀取時由名稱判斷（規則見 budgetTypes），改規則不必重新同步
+  const rows = db.prepare('SELECT * FROM budget_bills ORDER BY latest_date DESC, id DESC').all().map((r) => ({ ...r, types: budgetTypes(r.name) }));
   const count = (list, key) => {
     const m = new Map();
     for (const r of list) m.set(key(r), (m.get(key(r)) ?? 0) + 1);
@@ -675,8 +677,10 @@ export function listBudget(db, { category = '', q = '', year = '', proposer = ''
   const base = rows.filter(
     (r) => (!category || r.category === category) && (!needle || r.name.includes(needle) || String(r.proposer ?? '').includes(needle)),
   );
-  const years = count(base, (r) => r.fiscal_year);
-  const byYear = year ? base.filter((r) => String(r.fiscal_year) === String(year)) : base;
+  const typeCounts = Object.fromEntries(BUDGET_TYPES.map((t) => [t, base.filter((r) => r.types.includes(t)).length]));
+  const byType = BUDGET_TYPES.includes(type) ? base.filter((r) => r.types.includes(type)) : base;
+  const years = count(byType, (r) => r.fiscal_year);
+  const byYear = year ? byType.filter((r) => String(r.fiscal_year) === String(year)) : byType;
   const proposers = count(byYear, (r) => r.proposer);
   const byProposer = proposer ? byYear.filter((r) => r.proposer === proposer) : byYear;
   const states = count(byProposer, (r) => budgetState(r.status));
@@ -690,9 +694,11 @@ export function listBudget(db, { category = '', q = '', year = '', proposer = ''
     years: [...years].filter(([y]) => y).sort((a, b) => b[0] - a[0]).map(([name, n]) => ({ name: String(name), count: n })),
     proposers: ranked(proposers, 15),
     states: { pending: states.get('pending') ?? 0, done: states.get('done') ?? 0, returned: states.get('returned') ?? 0 },
+    types: typeCounts,
     items: matching.slice(resolvedOffset, resolvedOffset + resolvedLimit).map((r) => ({
       id: r.id,
       category: r.category,
+      types: r.types,
       name: r.name,
       status: r.status,
       state: budgetState(r.status),
@@ -755,8 +761,12 @@ export function listBudgetMeetings(db, { limit = 15 } = {}) {
 }
 
 export function budgetCsv(items) {
-  const header = ['議案編號', '類別', '名稱', '提案單位', '預算年度', '狀態', '最新進度日期', '連結'];
-  return [csvRow(header), ...items.map((b) => csvRow([b.id, b.category, b.name, b.proposer, b.fiscal_year, b.status, b.latest_date, b.url]))].join('\r\n');
+  const TYPE_LABEL = { general: '總預算', subsidiary: '附屬單位預算', special: '特別預算' };
+  const header = ['議案編號', '類別', '預算類型', '名稱', '提案單位', '預算年度', '狀態', '最新進度日期', '連結'];
+  return [
+    csvRow(header),
+    ...items.map((b) => csvRow([b.id, b.category, b.types.map((t) => TYPE_LABEL[t]).join('、'), b.name, b.proposer, b.fiscal_year, b.status, b.latest_date, b.url])),
+  ].join('\r\n');
 }
 
 /** 三讀（含審查完畢後三讀、照案通過）視為通過 */

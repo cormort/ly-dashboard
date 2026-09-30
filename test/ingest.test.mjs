@@ -495,3 +495,15 @@ test('預算中心／發言名單：格式不符 fail closed，保留舊資料',
   const { meetings } = normalizeMeetings({ dataList: [{ smeetingDate: '113/03/07', legislatorNameList: '伍麗華Saidhai Tahovecahe' }] }, new Map([['伍麗華Saidhai‧Tahovecahe', 'X']]));
   assert.equal(meetings[0].speakers[0].id, 'X', '族語名分隔符號不同也要對得到');
 });
+
+test('預算查詢：依預算類型篩選，類型件數在類型條件前算', async () => {
+  const db = seeded();
+  await runBudgetIngest(db, { logger: silent, fetchImpl: budgetOk });
+  const all = listBudget(db, { limit: 200 });
+  assert.ok(all.types.general > 0);
+  const special = listBudget(db, { type: 'special', limit: 200 });
+  assert.equal(special.total, all.types.special);
+  assert.ok(special.items.every((b) => b.types.includes('special')));
+  assert.deepEqual(special.types, all.types, '選了類型，各類型件數不變');
+  assert.equal(listBudget(db, { type: 'bogus' }).total, all.total, '未知類型視為未指定');
+});

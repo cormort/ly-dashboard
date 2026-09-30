@@ -121,7 +121,7 @@ export function createServer(db) {
             return sendJson(res, 200, listBills(db, { ...filters, limit: q.limit, offset: q.offset }));
           }
           case '/api/v1/budget': {
-            const filters = { category: q.category, q: q.q, year: q.year, proposer: q.proposer, state: q.state };
+            const filters = { category: q.category, type: q.type, q: q.q, year: q.year, proposer: q.proposer, state: q.state };
             if (q.format === 'csv') return sendCsv(res, 'budget.csv', budgetCsv(listBudget(db, { ...filters, all: true }).items));
             return sendJson(res, 200, listBudget(db, { ...filters, limit: q.limit, offset: q.offset }));
           }

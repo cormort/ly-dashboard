@@ -466,7 +466,10 @@ h3 .convener-mark, h1 .convener-mark { margin-left: 0; }
 .committee-bars button:hover:not(:disabled) { background: var(--rule-soft); border-color: transparent; }
 .committee-bars button[aria-pressed='true'] { background: var(--accent-soft); border-color: var(--accent-line); color: var(--ink); }
 .committee-name { grid-area: name; }
-.committee-bars .bar { grid-area: bar; align-self: center; }
+.committee-bars .people { grid-area: bar; align-self: center; display: flex; flex-wrap: wrap; gap: 1px; }
+.person { width: 10px; height: 16px; flex: none; }
+.people-legend { display: flex; flex-wrap: wrap; gap: 4px var(--space-4); list-style: none; margin: 0 0 var(--space-2); padding: 0; font-size: 13px; color: var(--ink-2); }
+.people-legend li { display: inline-flex; align-items: center; gap: 4px; }
 .committee-count { grid-area: count; text-align: right; font-weight: 600; }
 .committee-conveners { grid-area: conv; font-size: 12px; color: var(--muted); }
 .bar { display: flex; height: 10px; border-radius: var(--radius-pill); overflow: hidden; background: var(--rule-soft); gap: 1px; }
@@ -786,6 +789,9 @@ select { max-width: 100%; }
 .state-tag.pending { color: var(--warn); background: var(--warn-bg); }
 .state-tag.done { color: var(--accent-ink); background: var(--accent-soft); }
 .state-tag.returned { color: var(--error); background: var(--error-bg); }
+.type-switch { flex-wrap: wrap; }
+.type-tag { border: 1px solid var(--rule); border-radius: var(--radius-pill); padding: 0 8px; font-size: 12px; color: var(--ink-2); }
+.type-tag.special { border-color: var(--accent-line); color: var(--accent-ink); }
 .partner-list .name-button[aria-pressed='true'] { color: var(--accent-ink); text-decoration-color: var(--accent); background: none; border: 0; }
 .subhead { margin: var(--space-6) 0 var(--space-2); font-size: 15px; }
 .meeting-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3); }
