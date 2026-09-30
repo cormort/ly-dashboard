@@ -555,37 +555,174 @@ export function listBills(db, { legislator = null, q = '', law = '', status = ''
  * 熱門議題：最近 `days` 天（以資料中最新的議案日期為基準，資料延遲也不會變空）有進度的議案，依涉及法律分組。
  * 每個議題附件數、三讀件數、最新日期、主提案人黨籍分布。
  */
-export function listTopics(db, { days = 30, limit = 12 } = {}) {
-  const resolvedDays = Math.max(1, Math.min(Number(days) || 30, 365));
+/**
+ * 熱門議題：依「受控詞彙」分組，支援 7／30／90 天區間。
+ *
+ * 每個詞彙都以**自己的**最新資料日為基準（bills 到 2026-10-13、公報紀錄只到 2026-08-26），
+ * 否則用同一個 anchor 會讓委員會詞彙在 7 天區間永遠是空的。
+ *
+ * 回傳每一項：區間內件數、近 7 天件數、前一個等長區間的件數與增減、
+ * 三讀件數、最新一筆的日期／狀態／議案、主提案人黨籍分布。
+ */
+const TOPIC_VOCABULARIES = {
+  law: { label: '法律名稱', unit: '件', note: '議案涉及的法律' },
+  category: { label: '議案類別', unit: '件', note: '議案的類別（含預算案）' },
+  committee: { label: '委員會', unit: '場', note: '委員會會議紀錄場次' },
+};
+
+const shiftDays = (date, delta) => new Date(Date.parse(`${date}T00:00:00Z`) + delta * 86_400_000).toISOString().slice(0, 10);
+
+export function listTopics(db, { days = 30, limit = 12, vocab = 'law' } = {}) {
+  // days: 7／30／90，或 0／all = 本屆全部（近期活動稀疏時才有足夠樣本）
+  const requestedDays = String(days ?? '').toLowerCase();
+  const resolvedDays = requestedDays === 'all' ? 0 : Math.max(1, Math.min(Number(days) || 30, 365));
   const resolvedLimit = Math.max(1, Math.min(Number(limit) || 12, 50));
-  const anchor = db.prepare('SELECT MAX(latest_date) AS d FROM bills').get().d;
-  if (!anchor) return { meta: envelope(db), since: null, count: 0, items: [] };
-  const since = new Date(Date.parse(`${anchor}T00:00:00Z`) - resolvedDays * 86_400_000).toISOString().slice(0, 10);
-  const rows = db
-    .prepare(
-      `SELECT b.id, b.laws, b.status, b.latest_date, l.party AS lead_party
-       FROM bills b
-       LEFT JOIN bill_sponsors s ON s.bill_id = b.id AND s.is_lead = 1
-       LEFT JOIN legislators l ON l.id = s.legislator_id
-       WHERE b.latest_date >= ?`,
-    )
-    .all(since);
-  const topics = new Map();
-  for (const row of rows) {
-    for (const law of JSON.parse(row.laws || '[]')) {
-      const t = topics.get(law) ?? { law, count: 0, passed: 0, latest_date: '', parties: {} };
-      t.count += 1;
-      if (row.status === '三讀') t.passed += 1;
-      if (row.latest_date > t.latest_date) t.latest_date = row.latest_date;
-      const party = row.lead_party ?? '黨團／其他';
-      t.parties[party] = (t.parties[party] ?? 0) + 1;
-      topics.set(law, t);
+  const resolvedVocab = TOPIC_VOCABULARIES[vocab] ? vocab : 'law';
+  const meta = TOPIC_VOCABULARIES[resolvedVocab];
+
+  // 每個詞彙的資料截止日
+  const anchor =
+    resolvedVocab === 'committee'
+      ? db.prepare('SELECT MAX(date) AS d FROM committee_records').get().d
+      : db.prepare('SELECT MAX(latest_date) AS d FROM bills').get().d;
+  // 資料起點：前期區間若早於資料起點，就沒有可比較的基準，寧可說「無前期資料」也不要報錯誤的增減
+  const earliest =
+    resolvedVocab === 'committee'
+      ? db.prepare('SELECT MIN(date) AS d FROM committee_records').get().d
+      : db.prepare("SELECT MIN(latest_date) AS d FROM bills WHERE latest_date != ''").get().d;
+  if (!anchor) {
+    return {
+      meta: envelope(db),
+      vocab: resolvedVocab,
+      vocabularies: Object.entries(TOPIC_VOCABULARIES).map(([id, v]) => ({ id, ...v })),
+      window: { days: resolvedDays, from: null, to: null, recent_from: null },
+      data_to: null,
+      count: 0,
+      items: [],
+    };
+  }
+
+  // days = 0 代表「本屆全部」：沒有下界，也不跟前一期比較
+  const allTime = resolvedDays === 0;
+  const from = allTime ? '' : shiftDays(anchor, -resolvedDays);
+  const previousFrom = allTime ? '' : shiftDays(anchor, -resolvedDays * 2);
+  const recentFrom = shiftDays(anchor, -7);
+  // 本屆累計沒有「前一期」；前期區間早於資料起點時也不可比
+  const comparable = !allTime && (!earliest || previousFrom >= earliest);
+
+  const items = new Map();
+  const bump = (key, row, { dated, party, passed, current, recent, previous, latest }) => {
+    const entry =
+      items.get(key) ??
+      {
+        name: key,
+        count: 0,
+        recent_count: 0,
+        previous_count: 0,
+        passed: 0,
+        latest_date: '',
+        latest_status: '',
+        latest_name: '',
+        latest_url: '',
+        parties: {},
+      };
+    if (current) entry.count += 1;
+    if (recent) entry.recent_count += 1;
+    if (previous) entry.previous_count += 1;
+    if (passed) entry.passed += 1;
+    if (dated && dated > entry.latest_date) {
+      entry.latest_date = dated;
+      entry.latest_status = row.status ?? '';
+      entry.latest_name = row.name ?? '';
+      entry.latest_url = row.url ?? '';
+    }
+    if (party) entry.parties[party] = (entry.parties[party] ?? 0) + 1;
+    items.set(key, entry);
+  };
+
+  if (resolvedVocab === 'committee') {
+    for (const row of db.prepare('SELECT date, committees, title, html_url, gazette_url FROM committee_records WHERE date >= ?').all(previousFrom)) {
+      const dated = row.date ?? '';
+      const current = !from || dated >= from;
+      const recent = dated >= recentFrom;
+      const previous = !allTime && dated >= previousFrom && dated < from;
+      let names = [];
+      try {
+        names = JSON.parse(row.committees || '[]');
+      } catch {
+        names = [];
+      }
+      for (const name of names) {
+        bump(name, { status: '', name: row.title, url: row.html_url ?? row.gazette_url ?? '' }, { dated, current, recent, previous, latest: true });
+      }
+    }
+  } else {
+    const billRows = db
+      .prepare(
+        `SELECT b.id, b.name, b.laws, b.category, b.status, b.latest_date, b.url, l.party AS lead_party
+         FROM bills b
+         LEFT JOIN bill_sponsors s ON s.bill_id = b.id AND s.is_lead = 1
+         LEFT JOIN legislators l ON l.id = s.legislator_id
+         WHERE b.latest_date >= ?`,
+      )
+      .all(previousFrom);
+    // 類別詞彙把預算案一起算進來（議案類別本來就跨一般議案與預算案）
+    const budgetRows =
+      resolvedVocab === 'category'
+        ? db.prepare('SELECT name, category AS laws, status, latest_date, url FROM budget_bills WHERE latest_date >= ?').all(previousFrom)
+        : [];
+
+    for (const row of [...billRows, ...budgetRows]) {
+      const dated = row.latest_date ?? '';
+      const current = !from || dated >= from;
+      const recent = dated >= recentFrom;
+      const previous = !allTime && dated >= previousFrom && dated < from;
+      let keys = [];
+      if (resolvedVocab === 'law') {
+        try {
+          keys = JSON.parse(row.laws || '[]');
+        } catch {
+          keys = [];
+        }
+      } else {
+        keys = row.category ? [row.category] : [];
+      }
+      for (const key of keys) {
+        bump(
+          key,
+          row,
+          {
+            dated,
+            // 沒有對應到委員的主提案（黨團提案、資料缺漏）歸在「黨團／其他」，
+            // 這樣黨籍分布的總和永遠等於件數，前端畫堆疊長條不會少一塊
+            party: row.lead_party ?? '黨團／其他',
+            passed: row.status === '三讀',
+            current,
+            recent,
+            previous,
+            latest: true,
+          },
+        );
+      }
     }
   }
-  const items = [...topics.values()]
-    .sort((a, b) => b.count - a.count || b.latest_date.localeCompare(a.latest_date))
-    .slice(0, resolvedLimit);
-  return { meta: envelope(db), since, count: items.length, items };
+
+  const shaped = [...items.values()]
+    .map((entry) => ({ ...entry, delta: comparable ? entry.count - entry.previous_count : 0 }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'zh-Hant'));
+
+  return {
+    meta: envelope(db),
+    vocab: resolvedVocab,
+    vocabularies: Object.entries(TOPIC_VOCABULARIES).map(([id, v]) => ({ id, ...v })),
+    window: { days: resolvedDays, from: from || null, to: anchor, recent_from: recentFrom, previous_from: comparable ? previousFrom : null },
+    comparable,
+    data_from: earliest || null,
+    data_to: anchor,
+    distinct: shaped.length,
+    count: Math.min(shaped.length, resolvedLimit),
+    items: shaped.slice(0, resolvedLimit),
+  };
 }
 
 /**

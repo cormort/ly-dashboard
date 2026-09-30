@@ -1,15 +1,15 @@
 import { useState, type CSSProperties } from 'react';
 import { ExternalLink } from 'lucide-react';
 import { buildUrl } from '../api/client';
-import type { ActivityItem, ActivityResponse, NewsResponse, TopicsResponse } from '../api/types';
+import { TopicsPanel } from '../components/TopicsPanel';
+import type { ActivityItem, ActivityResponse, NewsResponse } from '../api/types';
 import { EmptyState, ErrorState, LoadingState } from '../components/DataStates';
 import { Portrait } from '../components/Portrait';
 import { useApi } from '../hooks/useApi';
 import type { TrackedApi } from '../hooks/useTracked';
 import { readPreference, writePreference } from '../lib/storage';
-import { pathFor } from '../hooks/useRoute';
 import { formatDateTime } from '../lib/format';
-import { partyStyle, sortParties } from '../lib/parties';
+import { partyStyle } from '../lib/parties';
 
 export interface HomePageProps {
   refreshToken: number;
@@ -106,7 +106,6 @@ export function HomePage({ refreshToken, onOpenId, onNavigate, tracked }: HomePa
     setOnlyTracked(next);
     writePreference('home-tracked', next ? '1' : '0');
   };
-  const topics = useApi<TopicsResponse>(buildUrl('/topics', { days: 30, limit: 10 }), { refreshToken });
   const news = useApi<NewsResponse>(buildUrl('/news', { limit: 8 }), { refreshToken });
 
   return (
@@ -164,47 +163,6 @@ export function HomePage({ refreshToken, onOpenId, onNavigate, tracked }: HomePa
         </section>
 
         <div className="home-side">
-          <section className="panel" aria-label="熱門議題">
-            <h2>熱門議題</h2>
-            {topics.data?.since ? <p className="muted topic-note">{topics.data.since.slice(5).replace('-', '/')} 以來有進度的委員提案，依涉及的法律分組；色條是主提案人黨籍</p> : null}
-            {topics.phase === 'loading' && !topics.data ? <LoadingState label="讀取議題…" /> : null}
-            {topics.phase === 'error' ? (
-              <ErrorState title="無法取得議題（/api/v1/topics）" error={topics.error} onRetry={topics.reload} />
-            ) : null}
-            {topics.phase === 'empty' ? <EmptyState message="近 30 天沒有提案進度" hint="議案資料可能尚未同步。" /> : null}
-            {topics.data && topics.data.items.length > 0 ? (
-              <ol className="topic-list">
-                {topics.data.items.map((topic) => {
-                  const parties = sortParties(Object.keys(topic.parties));
-                  return (
-                    <li key={topic.law}>
-                      <a
-                        href={pathFor('bills', { law: topic.law })}
-                        onClick={(event) => {
-                          event.preventDefault();
-                          onNavigate(pathFor('bills', { law: topic.law }));
-                        }}
-                      >
-                        <span className="topic-name">{topic.law}</span>
-                        <span className="topic-count">
-                          {topic.count} 件{topic.passed ? `・三讀 ${topic.passed}` : ''}
-                        </span>
-                        <span
-                          className="bar"
-                          aria-label={`主提案黨籍：${parties.map((p) => `${partyStyle(p).short} ${topic.parties[p]}`).join('、')}`}
-                        >
-                          {parties.map((p) => (
-                            <span key={p} style={{ flexGrow: topic.parties[p], background: partyStyle(p).color }} />
-                          ))}
-                        </span>
-                      </a>
-                    </li>
-                  );
-                })}
-              </ol>
-            ) : null}
-          </section>
-
           <section className="panel" aria-label="最新新聞">
             <h2>最新新聞</h2>
             {news.phase === 'loading' && !news.data ? <LoadingState label="讀取新聞…" /> : null}
@@ -231,6 +189,9 @@ export function HomePage({ refreshToken, onOpenId, onNavigate, tracked }: HomePa
           </section>
         </div>
       </div>
+
+      {/* 熱門議題：全寬（有區間／詞彙／檢視三組控制，需要橫向空間） */}
+      <TopicsPanel refreshToken={refreshToken} onNavigate={onNavigate} />
     </>
   );
 }

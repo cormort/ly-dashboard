@@ -367,21 +367,47 @@ export interface NewsResponse {
 /* ---------- /topics ---------- */
 
 export interface TopicItem {
-  /** 法律名稱 */
-  law: string;
-  /** 期間內有進度的議案件數 */
+  /** 詞彙（法律名稱／議案類別／委員會名稱） */
+  name: string;
+  /** 期間內件數（委員會詞彙為場次） */
   count: number;
+  /** 近 7 天件數（不論所選區間，固定 7 天） */
+  recent_count: number;
+  /** 前一個等長區間的件數；本屆累計時為 0 */
+  previous_count: number;
+  /** count − previous_count */
+  delta: number;
   /** 其中三讀件數 */
   passed: number;
   latest_date: string;
-  /** 主提案人黨籍 → 件數 */
+  latest_status: string;
+  latest_name: string;
+  latest_url: string;
+  /** 主提案人黨籍 → 件數（委員會詞彙為空物件） */
   parties: Record<string, number>;
+}
+
+export interface TopicVocabulary {
+  id: 'law' | 'category' | 'committee';
+  label: string;
+  unit: string;
+  note: string;
 }
 
 export interface TopicsResponse {
   meta: Meta;
-  /** 統計起始日（YYYY-MM-DD） */
-  since: string | null;
+  /** 目前採用的詞彙 */
+  vocab: TopicVocabulary['id'];
+  /** 可切換的詞彙清單（含單位與說明，前端不硬編） */
+  vocabularies: TopicVocabulary[];
+  window: { days: number; from: string | null; to: string | null; recent_from: string | null; previous_from: string | null };
+  /** 是否能跟前一期比較（本屆累計、或前期早於資料起點時為 false） */
+  comparable: boolean;
+  /** 該詞彙的資料起點與截止日（各詞彙來源不同，例如公報紀錄比議案舊） */
+  data_from: string | null;
+  data_to: string | null;
+  /** 期間內出現過的詞彙總數（用於「只有 N 種」的提示） */
+  distinct: number;
   count: number;
   items: TopicItem[];
 }

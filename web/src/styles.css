@@ -552,10 +552,15 @@ h3 .convener-mark, h1 .convener-mark { margin-left: 0; }
 .activity-lines dd small { color: var(--muted); margin-left: var(--space-2); }
 .activity-lines a { text-decoration: none; }
 .activity-lines a:hover { text-decoration: underline; }
+/* ---------- 熱門議題（長條 + 標籤兩種檢視） ---------- */
+.topics-panel { display: grid; gap: var(--space-3); }
+.topics-head { align-items: flex-start; gap: var(--space-3); flex-wrap: wrap; }
+.topics-controls { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.topics-controls .segmented button { display: inline-flex; align-items: center; gap: 4px; }
 .topic-list { list-style: none; margin: 0; padding: 0; display: grid; }
 .topic-list a {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
   gap: 4px 10px;
   padding: 10px var(--space-2);
   border-top: 1px solid var(--rule-soft);
@@ -566,10 +571,52 @@ h3 .convener-mark, h1 .convener-mark { margin-left: 0; }
 .topic-list li:first-child a { border-top: 0; }
 .topic-list a:hover { background: var(--surface-2); }
 .topic-list a:hover .topic-name { text-decoration: underline; }
+.topic-rank { color: var(--muted); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; padding-top: 2px; }
 .topic-name { font-weight: 600; }
-.topic-count { color: var(--muted); font-size: var(--fs-sm); }
-.topic-list .bar { grid-column: 1 / -1; height: 6px; }
-.topic-note { margin: -6px 0 6px; font-size: var(--fs-sm); }
+.topic-count { display: flex; align-items: center; gap: 8px; color: var(--ink-2); font-size: var(--fs-sm); white-space: nowrap; }
+.topic-recent { color: var(--accent-ink); font-style: normal; font-size: var(--fs-xs); }
+.topic-delta { color: var(--muted); font-style: normal; font-size: var(--fs-xs); }
+.topic-delta.up { color: var(--success-ink, #067647); }
+.topic-list .bar { grid-column: 2 / -1; height: 6px; }
+.topic-note { margin: 2px 0 0; font-size: var(--fs-sm); }
+.topic-skew {
+  margin: 0;
+  padding: 6px 10px;
+  border-radius: var(--radius-md);
+  background: var(--warn-bg);
+  color: var(--warn);
+  font-size: var(--fs-sm);
+}
+.topic-foot { margin: 0; font-size: var(--fs-xs); }
+.topic-updated { margin-left: 6px; }
+
+/* 標籤檢視：排序固定（件數由多到少），三段字級，不做隨機散佈與即時重排 */
+.tag-cloud {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 10px;
+  padding: var(--space-3) 0;
+}
+.tag {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  padding: 3px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--ink);
+  text-decoration: none;
+  line-height: 1.5;
+  transition: border-color var(--t-fast), background var(--t-fast), color var(--t-fast);
+}
+.tag:hover { border-color: var(--accent-line); background: var(--accent-soft); color: var(--accent-ink); }
+.tag-count { color: var(--muted); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
+.tag-lg { font-size: var(--fs-xl); font-weight: 700; }
+.tag-md { font-size: var(--fs-base); font-weight: 600; }
+.tag-sm { font-size: var(--fs-sm); color: var(--ink-2); }
+.tag-lg .tag-count, .tag-md .tag-count { font-size: var(--fs-xs); }
 .news-list { list-style: none; margin: 0; padding: 0; display: grid; }
 .news-list li { padding: 10px 0; border-top: 1px solid var(--rule-soft); }
 .news-list li:first-child { border-top: 0; }

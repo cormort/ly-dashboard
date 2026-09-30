@@ -183,13 +183,57 @@ Query 參數（全部可選）：
 
 ## GET /api/v1/topics
 
-熱門議題：最近 `days` 天（預設 30，以**資料中最新的議案日期**為基準）有進度的委員提案，依涉及的法律分組。
+熱門議題：依**受控詞彙**分組，支援時間區間與兩種檢視所需的資料。
+
+| 參數 | 說明 |
+| --- | --- |
+| `days` | `7`／`30`／`90`，或 `all`（本屆累計）。預設 30 |
+| `vocab` | `law`（法律名稱，預設）／`category`（議案類別，含預算案）／`committee`（委員會會議紀錄） |
+| `limit` | 取前 N 名（預設 12，最大 50） |
 
 ```json
-{ "since": "2026-07-29", "count": 10, "items": [ { "law": "性別平等工作法", "count": 130, "passed": 0, "latest_date": "2026-08-26", "parties": { "民主進步黨": 60, "中國國民黨": 50 } } ] }
+{
+  "meta": { "...": "..." },
+  "vocab": "law",
+  "vocabularies": [
+    { "id": "law", "label": "法律名稱", "unit": "件", "note": "議案涉及的法律" },
+    { "id": "category", "label": "議案類別", "unit": "件", "note": "議案的類別（含預算案）" },
+    { "id": "committee", "label": "委員會", "unit": "場", "note": "委員會會議紀錄場次" }
+  ],
+  "window": { "days": 90, "from": "2026-07-15", "to": "2026-10-13",
+              "recent_from": "2026-10-06", "previous_from": "2026-04-16" },
+  "comparable": true,
+  "data_from": "2024-02-20",
+  "data_to": "2026-10-13",
+  "distinct": 244,
+  "count": 20,
+  "items": [
+    {
+      "name": "性別平等工作法",
+      "count": 130,
+      "recent_count": 0,
+      "previous_count": 0,
+      "delta": 130,
+      "passed": 12,
+      "latest_date": "2026-08-26",
+      "latest_status": "交付審查",
+      "latest_name": "性別平等工作法部分條文修正草案",
+      "latest_url": "https://ppg.ly.gov.tw/…",
+      "parties": { "中國國民黨": 82, "民主進步黨": 46, "台灣民眾黨": 1, "黨團／其他": 5 }
+    }
+  ]
+}
 ```
 
-`parties` 是主提案人黨籍分布（加總等於 `count`；主提案為黨團時記為 `黨團／其他`）。
+- `count` 是期間內件數（`committee` 詞彙為場次）；`recent_count` 固定是**近 7 天**，不受 `days` 影響。
+- `previous_count` 是前一個**等長**區間的件數；`delta = count − previous_count`。
+- **`comparable`**：`days=all`（本屆累計）或前期區間早於資料起點時為 `false`，此時 `delta` 一律為 `0`
+  ——寧可顯示「不顯示增減」，也不要報一個假的成長數字。
+- `parties` 是**主提案人黨籍**分布；對不到委員的提案歸為 `黨團／其他`，所以分布總和恆等於 `count`。
+  `committee` 詞彙沒有提案人，`parties` 為空物件。
+- 每個詞彙 anchored 在**自己的**資料截止日（`data_to`）：議案到 2026-10-13、公報紀錄只到 2026-08-26；
+  用同一個基準會讓委員會詞彙在 7 天區間永遠是空的。
+- `distinct` 是期間內出現過的詞彙總數（前端用來提示「這個詞彙只有 8 種」）。
 
 ## GET /api/v1/activity
 

@@ -261,10 +261,43 @@ test('議案查詢：關鍵字、法律、狀態可組合，並附提案人與�
 
 test('熱門議題：以最新議案日期為基準、依件數排序、黨籍分布加總等於件數', () => {
   const { db } = withActivity();
-  const topics = listTopics(db, { days: 30 });
-  assert.ok(topics.since && topics.items.length > 0);
-  assert.ok(topics.items.every((t, i, arr) => i === 0 || arr[i - 1].count >= t.count));
-  for (const t of topics.items) assert.equal(Object.values(t.parties).reduce((a, b) => a + b, 0), t.count, t.law);
+  const topics = listTopics(db, { days: 30, limit: 10 });
+  assert.ok(topics.window?.to, '要有資料截止日');
+  assert.equal(topics.vocab, 'law');
+  assert.ok(topics.items.length > 0);
+  assert.ok(topics.items.every((t, i, arr) => i === 0 || arr[i - 1].count >= t.count), '件數要遞減');
+  for (const t of topics.items) {
+    assert.ok(t.name, '要有詞彙名稱');
+    assert.equal(Object.values(t.parties).reduce((a, b) => a + b, 0), t.count, `${t.name} 的黨籍分布總和要等於件數`);
+    assert.equal(typeof topics.comparable, 'boolean');
+    if (topics.comparable) assert.equal(t.delta, t.count - t.previous_count, '可比較時 delta 要等於本期減前期');
+    else assert.equal(t.delta, 0, '不可比較（本屆累計／前期早於資料起點）時 delta 必須是 0，不能報錯誤的增減');
+    assert.ok(typeof t.recent_count === 'number');
+  }
+});
+
+test('熱門議題：本屆累計比區間大、詞彙可切換、增減與近 7 天都算得出來', () => {
+  const db = seededFull();
+  const all = listTopics(db, { days: 'all', limit: 20, vocab: 'law' });
+  const recent = listTopics(db, { days: 7, limit: 20, vocab: 'law' });
+  assert.ok(all.distinct >= recent.distinct, '本屆累計的詞彙數不該少於 7 天');
+  assert.ok(all.items[0].count >= (recent.items[0]?.count ?? 0), '本屆累計的件數不該少於 7 天');
+  assert.equal(all.window.days, 0);
+  assert.equal(all.items[0].previous_count, 0, '本屆累計不跟前一期比較');
+
+  for (const vocab of ['law', 'category', 'committee']) {
+    const res = listTopics(db, { days: 'all', limit: 20, vocab });
+    assert.equal(res.vocab, vocab);
+    assert.ok(res.vocabularies.some((v) => v.id === vocab && v.label && v.unit), '要回傳詞彙清單與單位');
+    for (const item of res.items) {
+      assert.ok(item.count > 0);
+      assert.ok(item.latest_date >= (res.window.from ?? ''));
+      assert.ok(item.recent_count <= item.count, '近 7 天不可能多於期間總數（本屆累計時）');
+    }
+  }
+
+  const unknown = listTopics(db, { days: 30, vocab: '不存在的詞彙' });
+  assert.equal(unknown.vocab, 'law', '未知詞彙要退回預設而不是壞掉');
 });
 
 test('最近動態：取貼文／新聞／議案中最新者排序，只列在職委員', () => {

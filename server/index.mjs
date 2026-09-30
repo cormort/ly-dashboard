@@ -140,7 +140,7 @@ export function createServer(db) {
           case '/api/v1/compare':
             return sendJson(res, 200, compareLegislators(db, { ids: q.ids }));
           case '/api/v1/topics':
-            return sendJson(res, 200, listTopics(db, { days: q.days, limit: q.limit }));
+            return sendJson(res, 200, listTopics(db, { days: q.days, limit: q.limit, vocab: q.vocab }));
           case '/api/v1/activity':
             return sendJson(res, 200, listActivity(db, { limit: q.limit, ids: q.ids || null }));
           case '/api/v1/news':

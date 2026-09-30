@@ -30,6 +30,7 @@ import { HomePage } from '../src/pages/HomePage';
 import { BillsPage } from '../src/pages/BillsPage';
 import { SyncStatusBanner } from '../src/components/SyncStatusBanner';
 import { RankingsPage, RankingBoardView } from '../src/pages/RankingsPage';
+import { TopicsPanel, tagTier } from '../src/components/TopicsPanel';
 import { ComparePage } from '../src/pages/ComparePage';
 import { BudgetPage } from '../src/pages/BudgetPage';
 import { DashboardPage } from '../src/pages/DashboardPage';
@@ -717,6 +718,19 @@ check(
   '總覽：各縣市動態是預設收合的 <details>',
   dashboardLoading.includes('regions-details') && !/<details[^>]*regions-details[^>]*\sopen/.test(dashboardLoading),
 );
+
+/* ------------------------------ 熱門議題（本次強化） ------------------------------ */
+
+console.log('\n— 熱門議題 —');
+expectAll(
+  'loading 態有標題與三組控制（區間／詞彙／檢視）',
+  render(createElement(TopicsPanel, { refreshToken: 0, onNavigate: () => undefined })),
+  ['熱門議題', '本屆', '90 天', '30 天', '7 天', '法律名稱', '議案類別', '委員會', '長條', '標籤', '讀取議題'],
+);
+check('三段字級的規則固定（前 1/3 大、中 1/3 中、其餘小）', (() => {
+  const tiers = Array.from({ length: 9 }, (_, i) => tagTier(i, 9));
+  return tiers.join(',') === 'lg,lg,lg,md,md,md,sm,sm,sm';
+})());
 
 /* 型別上的靜態斷言：確保測試替身符合 API 契約（不改 runtime 行為） */
 const _typecheck: ChangesResponse | null = null;
