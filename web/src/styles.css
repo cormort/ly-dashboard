@@ -1,180 +1,405 @@
-/* ===== 以下為舊版 legislator-intelligence-dashboard/src/styles.css 原樣沿用 ===== */
-*{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,"Noto Sans TC",sans-serif;background:#020617;color:#f8fafc}button,input,select{font:inherit}button{cursor:pointer;color:inherit;background:#0f172a;border:1px solid #334155;border-radius:10px;padding:9px 12px;display:inline-flex;align-items:center;gap:7px}button svg{width:17px}.primary{background:#2563eb;border-color:#2563eb}header{position:sticky;top:0;z-index:10;display:flex;gap:16px;align-items:center;padding:13px max(20px,calc((100vw - 1450px)/2));background:#020617e8;border-bottom:1px solid #1e293b;backdrop-filter:blur(15px)}.brand{display:flex;align-items:center;gap:10px;white-space:nowrap}.brand>svg{background:#2563eb;padding:9px;width:40px;height:40px;border-radius:12px}.brand small,.status small,.log small,.card small{display:block;color:#94a3b8}.search{position:relative;flex:1;max-width:650px;margin-left:auto}.search svg{position:absolute;left:12px;top:11px;width:18px;color:#64748b}.search input{width:100%;background:#0f172a;border:1px solid #334155;color:white;border-radius:10px;padding:10px 12px 10px 40px}main{max-width:1450px;margin:auto;padding:25px 20px;display:grid;gap:20px}.status,.logs,.chart,.directory{background:#0f172a;border:1px solid #1e293b;border-radius:18px;padding:18px}.status{display:flex;align-items:flex-start;gap:12px}.status>div:nth-child(2){flex:1}.status.success{border-color:#166534}.status.warning{border-color:#92400e}.status.error{border-color:#9f1239}.spin{animation:spin 1s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:15px}.card{background:#0f172a;border:1px solid #1e293b;border-radius:18px;padding:20px;display:flex;justify-content:space-between}.card b{font-size:28px}.card>svg{color:#60a5fa}.sectionhead{display:flex;justify-content:space-between;align-items:center;gap:12px}.sectionhead>div{display:flex;align-items:center;gap:12px}.sectionhead h2,.chart h2{margin:0 0 14px}.logs .sectionhead h2{margin:0}.log{display:flex;align-items:center;gap:12px;padding:12px;border-top:1px solid #1e293b}.log>div{flex:1}.dot{width:9px;height:9px;border-radius:50%;background:#f59e0b}.dot.success{background:#22c55e}.dot.error{background:#f43f5e}.chartbox{height:270px}.filters{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:15px 0}.filters select{background:#020617;border:1px solid #334155;color:white;border-radius:10px;padding:10px}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.grid article{background:#020617;border:1px solid #1e293b;border-radius:16px;padding:16px}.membertop{display:flex;gap:11px;align-items:center}.membertop>div:nth-child(2){flex:1}.membertop h3{margin:0}.membertop em{font-style:normal;font-size:12px;background:#f59e0b;color:#111827;padding:3px 6px;border-radius:6px;margin-left:7px}.avatar,.membertop img{width:48px;height:48px;border-radius:50%;object-fit:cover}.avatar{display:grid;place-items:center;font-weight:bold;background:linear-gradient(135deg,#2563eb,#7c3aed)}article p{display:flex;gap:7px;color:#cbd5e1}article p svg{width:17px}article footer{display:flex;justify-content:space-between;align-items:center;border-top:1px solid #1e293b;padding-top:10px;color:#94a3b8}.active{fill:#facc15;color:#facc15}.overlay{position:fixed;inset:0;background:#000b;z-index:20}.overlay aside{position:absolute;right:0;width:min(620px,100%);height:100%;background:#020617;border-left:1px solid #334155;padding:30px;overflow:auto}.close{float:right}.muted{color:#94a3b8}dl{display:grid;grid-template-columns:100px 1fr;gap:15px;margin-top:30px}dt{color:#64748b}dd{margin:0}@media(max-width:900px){.stats,.grid{grid-template-columns:repeat(2,1fr)}.filters{grid-template-columns:repeat(2,1fr)}header{flex-wrap:wrap}.search{order:3;max-width:none;width:100%}}@media(max-width:560px){.stats,.grid,.filters{grid-template-columns:1fr}.brand small{display:none}.status{flex-wrap:wrap}.sectionhead{align-items:flex-start;flex-direction:column}}
-/* =====================================================================
-   擴充樣式（立委觀測站 v1）
-   上方為舊版 styles.css 原樣沿用；以下只新增／覆寫這個版本需要的類別。
-   ===================================================================== */
+/*
+ * 立委觀測站：淺色、墨色介面。
+ * 原則：顏色只代表黨籍（見 src/lib/parties.ts）；介面本身只用墨色與灰階，
+ * 警示色只在同步出問題時出現。召委用「形狀」（外框、召委標記）而不是顏色表示。
+ */
+:root {
+  --paper: #f2f3f1;
+  --surface: #ffffff;
+  --ink: #18202a;
+  --ink-2: #3c4652;
+  --muted: #5e6874;
+  --rule: #d8dce0;
+  --rule-soft: #e9ecee;
+  --seat-off: #dce0e4;
+  --warn: #8a5300;
+  --warn-bg: #fff4e0;
+  --error: #a1242c;
+  --error-bg: #fdecec;
+  --serif: 'Noto Serif TC', 'Songti TC', 'Source Han Serif TC', 'PMingLiU', serif;
+  --sans: 'PingFang TC', 'Noto Sans TC', 'Microsoft JhengHei', system-ui, sans-serif;
+  --radius: 6px;
+}
 
-/* --- 共用面板 --- */
-.panel{background:#0f172a;border:1px solid #1e293b;border-radius:18px;padding:18px}
-.panel h2{margin:0 0 14px;display:flex;align-items:center;gap:8px;font-size:20px}
-.panel h2 svg{width:20px;height:20px;color:#60a5fa}
-.sectionhead{align-items:center}
-.sectionhead>span{color:#94a3b8}
-.controls{display:grid;grid-template-columns:minmax(280px,1fr) 2fr;gap:15px;align-items:start}
-.split{display:grid;grid-template-columns:1.35fr 1fr;gap:15px;align-items:start}
-
-/* --- 四態（loading / empty / error）--- */
-.state-block{display:flex;align-items:center;gap:12px;padding:22px 18px;border-radius:14px;background:#020617;border:1px dashed #334155;color:#cbd5e1}
-.state-block>svg{width:20px;height:20px;flex:none;color:#60a5fa}
-.state-block b{display:block}
-.state-block small{display:block;color:#94a3b8;margin-top:3px}
-.state-block button{margin-left:auto;flex:none}
-.state-block.empty{border-style:solid;border-color:#1e293b}
-.state-block.empty>svg{color:#64748b}
-.state-block.error{border-style:solid;border-color:#9f1239;background:#1f0a13}
-.state-block.error>svg{color:#fb7185}
-.status>.state-block{flex:1}
-.status{flex-wrap:wrap}
-.status-icon svg{width:22px;height:22px}
-.status.success .status-icon svg{color:#22c55e}
-.status.warning .status-icon svg{color:#f59e0b}
-.status.error .status-icon svg{color:#f43f5e}
-
-/* --- Header 中繼資訊 --- */
-.header-meta{display:flex;flex-direction:column;gap:2px;font-size:12px;color:#94a3b8;text-align:right;white-space:nowrap}
-.source-line{display:flex;align-items:center;justify-content:flex-end;gap:4px}
-.source-line a{display:inline-flex;align-items:center;gap:4px;color:#93c5fd}
-.source-line svg{width:13px;height:13px}
-.source-line.stale{color:#fbbf24;font-weight:600}
-.search-clear{position:absolute;right:6px;top:6px;padding:5px;background:transparent;border:0;color:#94a3b8}
-.search-clear svg{position:static;width:16px}
-.search input[type='search']::-webkit-search-cancel-button{display:none}
-
-/* --- 屆次／會期選擇 --- */
-.selector-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
-.selector-fields label{display:block}
-.selector-fields label>span{display:flex;align-items:center;gap:6px;color:#94a3b8;font-size:13px;margin-bottom:6px}
-.selector-fields label>span svg{width:15px;height:15px}
-.selector-fields select,.filters select{width:100%;background:#020617;border:1px solid #334155;color:#fff;border-radius:10px;padding:10px}
-.selector select:disabled{opacity:.55}
-.selector p{margin:12px 0 0;font-size:13px}
-
-/* --- 篩選列 --- */
-.filters-panel .filters{grid-template-columns:repeat(auto-fit,minmax(170px,1fr));align-items:center}
-.filters-panel .filters label{display:block}
-.filters-panel .search{max-width:none;margin-left:0}
-.filters-panel button{justify-content:center}
-.filter-summary{display:flex;align-items:center;gap:8px;margin:0;color:#94a3b8;font-size:13px}
-.filter-summary svg{width:16px;height:16px}
-
-/* --- 統計卡片 --- */
-.card b{display:block;line-height:1.15}
-.card-hint{margin-top:4px;font-size:12px}
-.card-icon svg{width:26px;height:26px;color:#60a5fa}
-.card.warning{border-color:#92400e}
-.card.warning .card-icon svg{color:#f59e0b}
-.card.error{border-color:#9f1239}
-.card.error .card-icon svg{color:#f43f5e}
-.card.success{border-color:#166534}
-
-/* --- 圖表 --- */
-.chart-scope{margin:0 0 10px;font-size:13px}
-.chartbox{height:300px}
-.chart svg .recharts-cartesian-axis-tick-value{fill:#94a3b8}
-.data-table{width:100%;border-collapse:collapse;margin-top:14px;font-size:14px}
-.data-table caption{text-align:left;color:#94a3b8;padding-bottom:8px}
-.data-table th,.data-table td{border:1px solid #1e293b;padding:8px 10px;text-align:left}
-.data-table thead th{background:#020617;color:#cbd5e1}
-.data-table tbody th{font-weight:600;color:#f8fafc}
-.muted svg{width:16px;height:16px;vertical-align:-3px}
-
-/* --- 同步紀錄 --- */
-.sync-runs{flex-basis:100%;width:100%;border-top:1px solid #1e293b;margin-top:6px;padding-top:12px}
-.sync-runs h3{display:flex;align-items:center;gap:8px;margin:0 0 8px;font-size:15px;color:#cbd5e1}
-.sync-runs h3 svg{width:16px;height:16px}
-.log-list{list-style:none;margin:0;padding:0}
-.log-list .log{padding:11px 0}
-.log-list .log b{font-size:14px}
-.log-error{color:#fca5a5}
-.dot.warning{background:#f59e0b}
-.stale-warning{display:flex;align-items:center;gap:6px;margin:8px 0 0;color:#fbbf24;font-size:13px}
-.stale-warning svg{width:15px;height:15px}
-
-/* --- 委員名錄 --- */
-.grid{list-style:none;padding:0;margin:0}
-.grid>li{display:flex}
-.grid>li>article{width:100%;display:flex;flex-direction:column;gap:10px}
-.grid>li>article>footer{margin-top:auto}
-.membertop small{display:block;color:#94a3b8}
-.icon-button{padding:7px;background:transparent;border-color:#1e293b}
-article p{margin:0;font-size:14px}
-article footer span{font-size:13px}
-
-/* --- 詳情側欄 --- */
-.overlay aside h1{margin:12px 0 6px;display:flex;align-items:center;gap:10px;font-size:26px}
-.overlay aside h1 em{font-style:normal;font-size:12px;background:#f59e0b;color:#111827;padding:3px 7px;border-radius:6px}
-.overlay aside p{display:flex;align-items:center;gap:6px}
-.overlay aside p svg{width:15px;height:15px}
-.detail-actions{display:flex;gap:10px;margin:18px 0 4px}
-.chip-list{list-style:none;display:flex;flex-wrap:wrap;gap:6px;padding:0;margin:0}
-.chip-list li{display:flex;gap:4px;align-items:center}
-.chip{background:#1e293b;border:1px solid #334155;border-radius:999px;padding:3px 10px;font-size:13px}
-.chip.plain{background:#020617;color:#cbd5e1}
-.chip.convener{background:#f59e0b;border-color:#f59e0b;color:#111827;font-weight:600}
-dl{grid-template-columns:150px 1fr}
-dd small{display:block;color:#94a3b8;margin-top:4px}
-dd code,.log code{background:#020617;border:1px solid #1e293b;border-radius:6px;padding:1px 6px;font-size:12px;color:#cbd5e1}
-.old-value{color:#fda4af;text-decoration:line-through}
-.new-value{color:#86efac}
-
-/* --- 可及性 --- */
-.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
-:focus-visible{outline:2px solid #60a5fa;outline-offset:2px}
-
-/* --- 響應式 --- */
-@media(max-width:1100px){.controls,.split{grid-template-columns:1fr}}
-@media(max-width:900px){.header-meta{text-align:left;white-space:normal}.selector-fields{grid-template-columns:1fr}}
-
-.contact-list {
-  list-style: none;
+* { box-sizing: border-box; }
+body {
   margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font: 15px/1.6 var(--sans);
+  font-variant-numeric: tabular-nums;
+}
+button, input, select { font: inherit; color: inherit; }
+a { color: var(--ink); text-underline-offset: 3px; }
+a:hover { text-decoration-thickness: 2px; }
+:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+h1, h2, h3 { font-family: var(--serif); font-weight: 700; margin: 0; letter-spacing: 0.02em; }
+h1 { font-size: 28px; line-height: 1.25; }
+h2 { font-size: 18px; line-height: 1.35; margin-bottom: 12px; }
+h3 { font-size: 17px; }
+code { font-size: 13px; }
+svg { flex: none; }
+.muted { color: var(--muted); }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.spin { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---------- 按鈕 ---------- */
+button {
+  cursor: pointer;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  padding: 7px 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  line-height: 1.3;
+}
+button svg { width: 16px; height: 16px; }
+button:hover:not(:disabled) { border-color: var(--ink-2); }
+button:disabled { opacity: 0.45; cursor: default; }
+button[aria-pressed='true'], .primary { background: var(--ink); border-color: var(--ink); color: #fff; }
+button.quiet { border-color: transparent; background: transparent; color: var(--muted); }
+.icon-button { padding: 6px; border-color: transparent; background: transparent; }
+.icon-button[aria-pressed='true'] { background: transparent; border-color: transparent; color: var(--ink); }
+.active { fill: #c9a227; color: #9c7a0c; }
+.name-button, .link-button {
   padding: 0;
-  display: grid;
-  gap: 10px;
+  border: 0;
+  background: none;
+  font: inherit;
+  text-align: left;
+  text-decoration: underline;
+  text-decoration-color: var(--rule);
+  text-underline-offset: 3px;
 }
-.contact-list small {
-  display: block;
-  overflow-wrap: anywhere;
-}
-.contact-list a {
-  color: #93c5fd;
-}
-
-.bill-list {
-  margin: 10px 0 0;
-  padding-left: 20px;
-  display: grid;
-  gap: 8px;
-}
-.bill-list a {
-  color: #93c5fd;
-  overflow-wrap: anywhere;
-}
-.bill-list svg {
-  width: 12px;
-  height: 12px;
-  margin-left: 4px;
-}
-.bill-list small {
-  display: block;
-  color: #94a3b8;
+.name-button:hover, .link-button:hover { text-decoration-color: var(--ink); }
+.name-button { font-family: var(--serif); font-weight: 700; }
+.more { margin-top: 12px; }
+select {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  padding: 7px 10px;
+  min-width: 0;
 }
 
-/* 滑鼠移到委員照片上放大（純 CSS；觸控裝置沒有 hover，不受影響） */
-.membertop img {
-  position: relative;
-  transform-origin: left center;
-  transition: transform 0.15s ease, border-radius 0.15s ease;
+/* ---------- 頁首 ---------- */
+header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 10px max(20px, calc((100vw - 1360px) / 2));
+  background: var(--surface);
+  border-bottom: 1px solid var(--rule);
 }
-.membertop img:hover {
-  z-index: 5;
-  transform: scale(3.5);
-  border-radius: 8px;
-  box-shadow: 0 8px 24px #000c;
+.brand { display: grid; text-decoration: none; line-height: 1.2; }
+.brand b { font-family: var(--serif); font-size: 20px; letter-spacing: 0.06em; }
+.brand small { color: var(--muted); font-size: 12px; }
+header nav { display: flex; gap: 4px; }
+header nav a {
+  padding: 8px 12px;
+  text-decoration: none;
+  color: var(--ink-2);
+  border-bottom: 2px solid transparent;
+}
+header nav a[aria-current='page'] { color: var(--ink); border-bottom-color: var(--ink); font-weight: 600; }
+.search { position: relative; flex: 1; max-width: 420px; margin-left: auto; }
+.search > svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); width: 16px; color: var(--muted); }
+.search input {
+  width: 100%;
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  padding: 8px 34px 8px 34px;
+}
+.search input:focus { background: var(--surface); }
+.search-clear { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); padding: 4px; border: 0; background: transparent; color: var(--muted); }
+.header-status { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+.sync-pill { border-color: transparent; background: transparent; color: var(--muted); font-size: 13px; }
+.sync-pill .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+.sync-pill.warning { color: var(--warn); background: var(--warn-bg); }
+.sync-pill.warning .dot { background: var(--warn); }
+.sync-pill.error { color: var(--error); background: var(--error-bg); }
+.sync-pill.error .dot { background: var(--error); }
+.sync-pill[aria-expanded='true'] { border-color: var(--rule); }
+
+/* ---------- 版面 ---------- */
+main { max-width: 1360px; margin: 0 auto; padding: 24px 20px 64px; display: grid; gap: 20px; }
+.page-head { display: flex; align-items: baseline; gap: 20px; flex-wrap: wrap; }
+.page-head p { margin: 0; }
+.panel { background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius); padding: 18px 20px; }
+.sectionhead { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; }
+.sectionhead h2 { margin: 0; }
+.sectionhead > div { display: flex; align-items: center; gap: 12px; }
+.split { display: grid; grid-template-columns: 3fr 2fr; gap: 20px; align-items: start; }
+
+/* 四態 */
+.state-block { display: flex; align-items: flex-start; gap: 10px; padding: 14px; border-radius: var(--radius); background: var(--paper); color: var(--ink-2); }
+.state-block svg { width: 18px; height: 18px; margin-top: 2px; }
+.state-block small { display: block; color: var(--muted); }
+.state-block.error { background: var(--error-bg); color: var(--error); }
+.state-block > div { flex: 1; min-width: 0; }
+.state-block.error button { margin-left: auto; white-space: nowrap; flex: none; }
+
+/* ---------- 同步狀態面板 ---------- */
+.status { display: flex; align-items: flex-start; gap: 12px; flex-wrap: wrap; background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius); padding: 14px 18px; }
+.status.warning { border-color: var(--warn); background: var(--warn-bg); }
+.status.error { border-color: var(--error); background: var(--error-bg); }
+.status-icon svg { width: 20px; height: 20px; }
+.status-main { flex: 1; min-width: 260px; }
+.status-main small { display: block; color: var(--muted); }
+.sync-error, .stale-warning { display: flex; gap: 6px; align-items: center; margin: 6px 0 0; }
+.sync-error svg, .stale-warning svg { width: 16px; }
+.sync-runs { flex-basis: 100%; }
+.sync-runs h3 { display: flex; gap: 6px; align-items: center; font-size: 15px; margin: 8px 0; }
+.sync-runs h3 svg { width: 16px; }
+.log-list { list-style: none; margin: 0; padding: 0; }
+.log { display: flex; align-items: flex-start; gap: 10px; padding: 8px 0; border-top: 1px solid var(--rule-soft); }
+.log small { display: block; color: var(--muted); }
+.log-error { color: var(--error) !important; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); margin-top: 7px; flex: none; }
+.dot.error { background: var(--error); }
+.dot.warning { background: var(--warn); }
+
+/* ---------- 篩選 ---------- */
+.selector { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.selector-fields { display: flex; gap: 8px; }
+.selector-fields label { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 14px; }
+.selector-fields label svg { width: 15px; }
+.selector-fields label > span { display: inline-flex; align-items: center; gap: 4px; }
+.filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.filters label { display: contents; }
+.bill-filters .search { flex: 1 1 360px; max-width: 560px; margin-left: 0; }
+.bill-filters .search input { background: var(--surface); }
+.law-facets { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* ---------- 議場席次圖 ---------- */
+.hemicycle {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  gap: 8px 32px;
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  padding: 20px 28px 16px;
+}
+.hemicycle svg { width: 100%; max-height: 330px; display: block; }
+.seat { cursor: pointer; stroke: var(--surface); stroke-width: 0.006; transition: fill 0.2s ease; }
+.seat:hover { stroke: var(--ink); stroke-width: 0.012; }
+.seat.convener { stroke: var(--ink); stroke-width: 0.014; }
+.hemicycle-count { font: 700 0.2px var(--serif); fill: var(--ink); }
+.hemicycle-caption { font: 0.055px var(--sans); fill: var(--muted); }
+.party-legend { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.party-legend button { width: 100%; justify-content: flex-start; gap: 10px; padding: 8px 10px; }
+.party-legend .swatch { width: 12px; height: 12px; border-radius: 50%; background: var(--party); }
+.party-legend .party-name { flex: 1; text-align: left; }
+.party-legend .party-count { font-weight: 600; }
+.party-legend button[aria-pressed='true'] { background: var(--party); border-color: var(--party); }
+.party-legend button[aria-pressed='true'] .swatch { background: #fff; }
+.hemicycle-note { grid-column: 1 / -1; margin: 0; font-size: 13px; }
+
+/* ---------- 名錄 ---------- */
+.segmented { display: inline-flex; }
+.segmented button { border-radius: 0; }
+.segmented button:first-child { border-radius: var(--radius) 0 0 var(--radius); }
+.segmented button:last-child { border-radius: 0 var(--radius) var(--radius) 0; margin-left: -1px; }
+.grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.member-card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 14px 10px 16px;
+  border: 1px solid var(--rule);
+  border-left: 4px solid var(--party);
+  border-radius: var(--radius);
+}
+.membertop { display: flex; gap: 12px; align-items: center; }
+.membertop > div { flex: 1; min-width: 0; }
+.membertop h3 { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.party-line { color: var(--party); font-weight: 600; }
+.avatar, .membertop img { width: 48px; height: 48px; border-radius: 50%; object-fit: cover; flex: none; }
+.avatar { display: grid; place-items: center; background: var(--paper); color: var(--ink-2); font-family: var(--serif); font-weight: 700; border: 1px solid var(--rule); }
+.member-area, .member-committees { display: flex; gap: 6px; align-items: center; margin: 0; color: var(--ink-2); font-size: 14px; }
+.member-area svg { width: 15px; color: var(--muted); }
+.member-committees { color: var(--muted); }
+.member-card footer { margin-top: auto; padding-top: 8px; border-top: 1px solid var(--rule-soft); display: flex; justify-content: space-between; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
+.member-card footer button { padding: 4px 10px; font-size: 13px; }
+.convener-mark { display: inline-block; font: 600 12px/1 var(--sans); padding: 3px 6px; border: 1px solid var(--ink); border-radius: 3px; margin-left: 6px; vertical-align: 2px; letter-spacing: 0.05em; }
+h3 .convener-mark, h1 .convener-mark { margin-left: 0; }
+
+/* hover 放大照片（觸控裝置沒有 hover，不受影響） */
+.membertop img { position: relative; transform-origin: left center; transition: transform 0.15s ease, border-radius 0.15s ease; }
+.membertop img:hover { z-index: 5; transform: scale(3.5); border-radius: 4px; box-shadow: 0 10px 28px rgb(24 32 42 / 35%); }
+
+/* 列表模式 */
+.table-wrap { overflow-x: auto; }
+.roster { width: 100%; border-collapse: collapse; font-size: 14px; }
+.roster th, .roster td { padding: 8px 10px; border-bottom: 1px solid var(--rule-soft); text-align: left; vertical-align: middle; }
+.roster thead th { position: sticky; top: 0; background: var(--surface); border-bottom: 1px solid var(--rule); font-weight: 600; color: var(--ink-2); white-space: nowrap; }
+.roster thead button { border: 0; background: none; padding: 0; font-weight: 600; gap: 2px; }
+.roster thead th[aria-sort='ascending'] button, .roster thead th[aria-sort='descending'] button { color: var(--ink); }
+.roster .sort-mark { display: inline-block; width: 1em; }
+.roster tbody tr:hover { background: var(--paper); }
+.roster tbody th { font-weight: 400; white-space: nowrap; }
+.roster .num { text-align: right; }
+.roster thead .num button { margin-left: auto; }
+.roster .col-track { width: 36px; padding-right: 0; }
+.party-tag { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; white-space: nowrap; }
+.swatch { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+.committees { color: var(--ink-2); }
+.committee + .committee::before { content: '、'; color: var(--muted); }
+.committee.is-convener { font-weight: 600; }
+
+/* 委員會組成 */
+.chart-scope { margin: -6px 0 10px; font-size: 13px; }
+.committee-bars { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.committee-bars button {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 7em minmax(0, 1fr) 2.5em;
+  grid-template-areas: 'name bar count' '. conv conv';
+  gap: 2px 10px;
+  border-color: transparent;
+  background: transparent;
+  padding: 6px 8px;
+  text-align: left;
+  color: var(--ink);
+}
+.committee-bars button:hover { background: var(--paper); }
+.committee-bars button[aria-pressed='true'] { background: var(--paper); border-color: var(--ink); color: var(--ink); }
+.committee-name { grid-area: name; }
+.committee-bars .bar { grid-area: bar; align-self: center; }
+.committee-count { grid-area: count; text-align: right; font-weight: 600; }
+.committee-conveners { grid-area: conv; font-size: 12px; color: var(--muted); }
+.bar { display: flex; height: 10px; border-radius: 2px; overflow: hidden; background: var(--rule-soft); gap: 1px; }
+.bar > span { min-width: 2px; }
+
+/* 異動 */
+.changes .log-list { max-height: 360px; overflow: auto; }
+.old-value { text-decoration: line-through; color: var(--muted); }
+.new-value { font-weight: 600; }
+
+/* ---------- 首頁 ---------- */
+.home { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 20px; align-items: start; }
+.home-side { display: grid; gap: 20px; }
+.activity-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
+.activity { padding: 14px 0 14px 14px; border-top: 1px solid var(--rule-soft); border-left: 3px solid var(--party); margin-left: -3px; }
+.activity:first-child { border-top: 0; }
+.activity-who { display: flex; gap: 12px; align-items: center; }
+.activity-who img { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; flex: none; }
+.activity-who > div { flex: 1; }
+.activity-who .name-button { font-size: 17px; }
+.activity-who small { display: block; color: var(--muted); }
+.activity-who time { color: var(--muted); font-size: 13px; }
+.activity-lines { display: grid; grid-template-columns: 5.5em minmax(0, 1fr); gap: 4px 12px; margin: 10px 0 0; font-size: 14px; }
+.activity-lines dt { color: var(--muted); white-space: nowrap; }
+.activity-lines dd { margin: 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.activity-lines dd small { color: var(--muted); margin-left: 8px; }
+.activity-lines a { text-decoration: none; }
+.activity-lines a:hover { text-decoration: underline; }
+.topic-list { list-style: none; margin: 0; padding: 0; display: grid; }
+.topic-list a { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; padding: 10px 0; border-top: 1px solid var(--rule-soft); text-decoration: none; }
+.topic-list li:first-child a { border-top: 0; }
+.topic-list a:hover .topic-name { text-decoration: underline; }
+.topic-name { font-weight: 600; }
+.topic-count { color: var(--muted); font-size: 13px; }
+.topic-list .bar { grid-column: 1 / -1; height: 6px; }
+.news-list { list-style: none; margin: 0; padding: 0; display: grid; }
+.news-list li { padding: 10px 0; border-top: 1px solid var(--rule-soft); }
+.news-list li:first-child { border-top: 0; }
+.news-list a { text-decoration: none; }
+.news-list a:hover { text-decoration: underline; }
+.news-list a svg, .bill-title svg, .bill-list a svg, .contact-list a svg, dd a svg { width: 12px; height: 12px; margin-left: 4px; vertical-align: -1px; }
+.news-list small { display: block; color: var(--muted); font-size: 13px; }
+
+/* ---------- 法案查詢 ---------- */
+.chip { background: var(--surface); border: 1px solid var(--rule); border-radius: 999px; padding: 3px 10px; font-size: 13px; }
+button.chip:hover { border-color: var(--ink); }
+.bill-results { list-style: none; margin: 0; padding: 0; }
+.bill-results li { padding: 14px 0; border-top: 1px solid var(--rule-soft); }
+.bill-results li:first-child { border-top: 0; }
+.bill-title { font-weight: 600; text-decoration: none; }
+.bill-title:hover { text-decoration: underline; }
+.bill-meta, .sponsors { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; margin: 6px 0 0; font-size: 13px; color: var(--muted); }
+.status-tag { color: var(--ink); border: 1px solid var(--rule); border-radius: 3px; padding: 1px 6px; }
+.sponsor { border: 0; background: none; padding: 0; font-size: 13px; text-decoration: underline; text-decoration-color: transparent; }
+.sponsor:hover { text-decoration-color: currentColor; }
+.sponsor.lead { font-weight: 700; }
+
+/* ---------- 委員檔案側欄 ---------- */
+.overlay { position: fixed; inset: 0; background: rgb(24 32 42 / 45%); z-index: 20; }
+.overlay aside {
+  position: absolute;
+  right: 0;
+  width: min(640px, 100%);
+  height: 100%;
+  background: var(--surface);
+  border-top: 4px solid var(--party);
+  padding: 24px 28px 48px;
+  overflow: auto;
+}
+.close { float: right; }
+.detail-head { display: flex; gap: 20px; align-items: flex-start; margin-bottom: 8px; }
+.detail-head img { width: 104px; height: 128px; object-fit: cover; object-position: top; border-radius: 4px; border: 1px solid var(--rule); }
+.detail-head h1 { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.detail-head p { margin: 4px 0; display: flex; align-items: center; gap: 4px; }
+.detail-head p svg { width: 15px; }
+.detail-head button { margin-top: 8px; }
+.detail-section { border-top: 1px solid var(--rule); padding-top: 16px; margin-top: 20px; }
+.detail-section h2 { font-size: 16px; }
+.detail-section dl { display: grid; grid-template-columns: 7em minmax(0, 1fr); gap: 10px 14px; margin: 0; }
+.detail-section dt { color: var(--muted); }
+.detail-section dd { margin: 0; }
+.detail-section dd small { display: block; }
+.chip-list { list-style: none; display: flex; flex-wrap: wrap; gap: 6px; padding: 0; margin: 0; }
+.chip-list li { display: flex; gap: 4px; align-items: center; }
+.chip.plain { background: var(--paper); border-color: transparent; }
+.chip.convener { border-color: var(--ink); font-weight: 600; }
+.contact-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.contact-list small { display: block; overflow-wrap: anywhere; color: var(--ink-2); }
+.bills > p { margin: 0 0 8px; font-size: 13px; }
+.bill-list { margin: 10px 0 0; padding-left: 20px; display: grid; gap: 8px; }
+.bill-list a { overflow-wrap: anywhere; }
+.bill-list small { display: block; color: var(--muted); }
+
+/* ---------- 響應式 ---------- */
+@media (max-width: 1100px) {
+  header { flex-wrap: wrap; gap: 8px 20px; }
+  .search { order: 4; flex-basis: 100%; max-width: none; margin-left: 0; }
+  .header-status { margin-left: auto; }
+  .home { grid-template-columns: 1fr; }
+  .split { grid-template-columns: 1fr; }
+}
+@media (max-width: 760px) {
+  header { padding: 8px 16px; }
+  header nav { order: 3; flex-basis: 100%; overflow-x: auto; }
+  .sync-pill { font-size: 12px; }
+  main { padding: 16px 16px 48px; }
+  h1 { font-size: 24px; }
+  .hemicycle { grid-template-columns: 1fr; padding: 16px; }
+  .party-legend { grid-template-columns: 1fr 1fr; }
+  .panel { padding: 14px 16px; }
+  .overlay aside { padding: 20px 16px 40px; }
+  .detail-head img { width: 80px; height: 100px; }
+  .detail-section dl { grid-template-columns: 1fr; gap: 2px; }
+  .detail-section dd { margin-bottom: 8px; }
+  .activity-lines { grid-template-columns: 1fr; gap: 0; }
+  .activity-lines dd { margin-bottom: 6px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .membertop img {
-    transition: none;
-  }
+  .spin { animation: none; }
+  .membertop img, .seat { transition: none; }
 }
+.topic-note { margin: -6px 0 6px; font-size: 13px; }
+.member-card footer button { white-space: nowrap; flex: none; }
+/* 窄螢幕：格線子項目不得被內容撐寬，選單可換行 */
+main > * { min-width: 0; }
+.selector-fields { flex-wrap: wrap; }
+select { max-width: 100%; }

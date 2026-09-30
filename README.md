@@ -14,7 +14,7 @@
 | id14 涵蓋第 4–11 屆，只按姓名 join → 122/123 人被污染、召委 84 人 | 只取本屆（term 11），召委綁 `(session, committee, legislator)`，去重後 **68 人／本會期 23 人** |
 | 委員 id 用陣列索引 → 追蹤會錯人 | 用立院 `lgno`（退回 `ename`）當穩定 id |
 | 同步失敗就端出假資料 | **fail closed**：驗證不過就保留舊資料、記錄失敗、標記 stale，前端顯示「資料截至 …」 |
-| 無異動紀錄、無原始快照、無測試 | `change_log` + `raw_snapshots`(gzip) + 37 項測試 |
+| 無異動紀錄、無原始快照、無測試 | `change_log` + `raw_snapshots`(gzip) + 46 項測試 |
 
 ## 快速開始
 
@@ -22,7 +22,7 @@
 # 1) 抓資料進 SQLite（打真實立法院 API，約 7 秒）
 node server/ingest.mjs
 
-# 2) 跑測試（37 項，不需要網路，用 test/fixtures 的真實 API 回應）
+# 2) 跑測試（46 項，不需要網路，用 test/fixtures 的真實 API 回應）
 npm test
 
 # 3) 建置前端
@@ -62,8 +62,10 @@ cron/啟動排程 (24h)                      server/ingest.mjs
 | `web/src/api/` | 型別化 API client（唯一出口，前端不碰政府端點） |
 | `web/src/lib/urlState.ts` | 篩選條件的 URL 序列化（可分享、可上一頁） |
 | `web/src/hooks/useApi.ts` | `loading / ready / empty / error` 四態資源 hook |
-| `web/src/components/` | Header、SyncStatusBanner、SessionSelector、FilterBar、StatCards、CommitteeChart、LegislatorGrid、LegislatorDetail、ChangesPanel |
-| `web/scripts/smoke.ts`、`render-smoke.ts` | 前端口語煙霧測試（25 + 27 項），**只存在於 dev，不進 bundle** |
+| `web/src/pages/` | 三頁：`HomePage`（最近動態、熱門議題、最新新聞）、`LegislatorsPage`（議場席次圖＋卡片／列表名錄）、`BillsPage`（法案查詢） |
+| `web/src/components/` | Header（導覽＋同步狀態）、Hemicycle（議場席次圖）、LegislatorGrid／LegislatorTable、LegislatorDetail、CommitteeChart（委員會黨籍組成）、SyncStatusBanner、FilterBar、ChangesPanel |
+| `web/src/lib/parties.ts` | 黨籍顏色與順序：介面中「顏色只代表黨籍」的唯一定義處 |
+| `web/scripts/smoke.ts`、`render-smoke.ts` | 前端煙霧測試（26 + 35 項），**只存在於 dev，不進 bundle** |
 
 ## 資料模型重點
 
@@ -79,7 +81,7 @@ cron/啟動排程 (24h)                      server/ingest.mjs
 ```bash
 bash scripts/verify.sh                      # 一鍵：測試 → 真實 ingest → 起 API → 打端點
 npm test                                    # 後端 18 passed（含 fail-closed、交易回滾、change_log）
-npm --prefix web test                       # 前端 tsc -b + 煙霧測試 25 + 渲染測試 27，全過
+npm --prefix web test                       # 前端 tsc -b + 煙霧測試 26 + 渲染測試 35，全過
 node server/ingest.mjs                      # 123 位委員 / 783 席次 / 5 會期 / 113 本會期名錄
 node server/ingest.mjs                      # 第二次：status=skipped（sha256 未變）
 curl -s localhost:8787/api/v1/health

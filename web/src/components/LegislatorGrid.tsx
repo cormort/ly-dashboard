@@ -1,18 +1,26 @@
-import { useState } from 'react';
-import { ChevronRight, MapPin, Star, Users } from 'lucide-react';
+import { useState, type CSSProperties } from 'react';
+import { LayoutGrid, List, MapPin, Star } from 'lucide-react';
 import type { ApiResource } from '../hooks/useApi';
 import type { Legislator, LegislatorsResponse } from '../api/types';
 import { text } from '../lib/format';
+import { partyStyle } from '../lib/parties';
 import { EmptyState, ErrorState, LoadingState } from './DataStates';
+import { LegislatorTable } from './LegislatorTable';
+
+export type DirectoryMode = 'cards' | 'list';
 
 export interface LegislatorGridProps {
   legislators: ApiResource<LegislatorsResponse>;
+  /** 前端再套一層的過濾（例：只看追蹤）；後端結果之上只做子集，不重算 */
+  visible?: (legislator: Legislator) => boolean;
   isTracked: (id: string) => boolean;
   onToggleTrack: (legislator: Legislator) => void;
   onOpen: (legislator: Legislator) => void;
   /** 目前會期顯示名稱，用於空狀態文案 */
   sessionScopeLabel: string;
   hasFilters: boolean;
+  mode: DirectoryMode;
+  onModeChange: (mode: DirectoryMode) => void;
 }
 
 function Avatar({ legislator }: { legislator: Legislator }) {
@@ -22,7 +30,7 @@ function Avatar({ legislator }: { legislator: Legislator }) {
   if (photo === '' || broken) {
     return (
       <div className="avatar" aria-hidden="true">
-        {legislator.name.slice(-2)}
+        {legislator.name.slice(0, 1)}
       </div>
     );
   }
@@ -48,23 +56,23 @@ function LegislatorCard({
   onToggleTrack: (legislator: Legislator) => void;
   onOpen: (legislator: Legislator) => void;
 }) {
+  const style = partyStyle(legislator.party);
   const committeeText =
     legislator.committees.length > 0
-      ? legislator.committees.map((item) => item.id).join('、')
+      ? legislator.committees.map((item) => item.id.replace('委員會', '') + (item.is_convener ? '・召' : '')).join('、')
       : '未提供';
+  const latestPost = legislator.social.map((s) => s.latest_post_date).filter(Boolean).sort().at(-1);
 
   return (
-    <article>
+    <article className="member-card" style={{ '--party': style.color } as CSSProperties}>
       <div className="membertop">
         <Avatar legislator={legislator} />
         <div>
           <h3>
             {legislator.name}
-            {legislator.is_convener ? <em>召委</em> : null}
+            {legislator.is_convener ? <span className="convener-mark">召委</span> : null}
           </h3>
-          <small>
-            {text(legislator.party)} · {committeeText}
-          </small>
+          <small className="party-line">{style.short}</small>
         </div>
         <button
           type="button"
@@ -78,40 +86,60 @@ function LegislatorCard({
         </button>
       </div>
 
-      <p>
+      <p className="member-area">
         <MapPin aria-hidden="true" />
         {text(legislator.area_name)}
       </p>
+      <p className="member-committees">{committeeText}</p>
 
       <footer>
         <span>
-          第 {legislator.term} 屆
-          {legislator.sessions.length > 0 ? ` · ${legislator.sessions.length} 個會期有紀錄` : ''}
+          提案 {legislator.bill_count}　新聞 {legislator.news_count}
+          {latestPost ? `　貼文 ${latestPost.slice(5).replace('-', '/')}` : ''}
         </span>
         <button type="button" onClick={() => onOpen(legislator)}>
           查看檔案
-          <ChevronRight aria-hidden="true" />
         </button>
       </footer>
     </article>
   );
 }
 
-/** 委員卡片格；資料只來自 /api/v1/legislators，空清單一律顯示空狀態（絕不補假資料）。 */
+/** 委員名錄：卡片／列表兩種模式；資料只來自 /api/v1/legislators，空清單一律顯示空狀態（絕不補假資料）。 */
 export function LegislatorGrid({
   legislators,
+  visible,
   isTracked,
   onToggleTrack,
   onOpen,
   sessionScopeLabel,
   hasFilters,
+  mode,
+  onModeChange,
 }: LegislatorGridProps) {
+  const head = (count?: string) => (
+    <div className="sectionhead">
+      <h2>立法委員名錄</h2>
+      <div>
+        {count ? <span className="muted">{count}</span> : null}
+        <div className="segmented" role="group" aria-label="顯示方式">
+          <button type="button" aria-pressed={mode === 'cards'} onClick={() => onModeChange('cards')}>
+            <LayoutGrid aria-hidden="true" />
+            卡片
+          </button>
+          <button type="button" aria-pressed={mode === 'list'} onClick={() => onModeChange('list')}>
+            <List aria-hidden="true" />
+            列表
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
   if (legislators.phase === 'loading' && !legislators.data) {
     return (
       <section className="panel directory" aria-label="立法委員名錄">
-        <div className="sectionhead">
-          <h2>立法委員名錄</h2>
-        </div>
+        {head()}
         <LoadingState label="讀取委員名錄…" />
       </section>
     );
@@ -120,9 +148,7 @@ export function LegislatorGrid({
   if (legislators.phase === 'error') {
     return (
       <section className="panel directory" aria-label="立法委員名錄">
-        <div className="sectionhead">
-          <h2>立法委員名錄</h2>
-        </div>
+        {head()}
         <ErrorState
           title="無法取得委員名錄（/api/v1/legislators）"
           error={legislators.error}
@@ -132,51 +158,43 @@ export function LegislatorGrid({
     );
   }
 
-  const items = legislators.data?.items ?? [];
+  const all = legislators.data?.items ?? [];
+  const items = visible ? all.filter(visible) : all;
   const total = legislators.data?.total ?? 0;
 
   return (
     <section className="panel directory" aria-label="立法委員名錄">
-      <div className="sectionhead">
-        <h2>立法委員名錄</h2>
-        <span>
-          {legislators.data?.meta.source.name ? `${legislators.data.meta.source.name} · ` : ''}
-          {items.length} / {total} 筆
-        </span>
-      </div>
+      {head(`${items.length} / ${total} 位`)}
 
       {items.length === 0 ? (
         <EmptyState
           message={hasFilters ? '沒有符合條件的委員' : '此會期尚無資料'}
           hint={
             hasFilters
-              ? '試著放寬關鍵字或清除篩選條件。'
+              ? '放寬關鍵字或按「清除條件」。'
               : `範圍：${sessionScopeLabel}。若剛完成部署，請等待後端同步完成後重新載入。`
           }
         />
+      ) : mode === 'list' ? (
+        <LegislatorTable items={items} isTracked={isTracked} onToggleTrack={onToggleTrack} onOpen={onOpen} />
       ) : (
-        <>
-          <ul className="grid" role="list">
-            {items.map((legislator) => (
-              <li key={legislator.id}>
-                <LegislatorCard
-                  legislator={legislator}
-                  tracked={isTracked(legislator.id)}
-                  onToggleTrack={onToggleTrack}
-                  onOpen={onOpen}
-                />
-              </li>
-            ))}
-          </ul>
-          {items.length < total ? (
-            <p className="muted">
-              <Users aria-hidden="true" /> 尚有 {total - items.length} 筆未顯示（目前 API
-              回應筆數上限 500 筆），請縮小篩選範圍。
-            </p>
-          ) : null}
-          {legislators.phase === 'loading' ? <p className="muted">更新中…</p> : null}
-        </>
+        <ul className="grid" role="list">
+          {items.map((legislator) => (
+            <li key={legislator.id}>
+              <LegislatorCard
+                legislator={legislator}
+                tracked={isTracked(legislator.id)}
+                onToggleTrack={onToggleTrack}
+                onOpen={onOpen}
+              />
+            </li>
+          ))}
+        </ul>
       )}
+      {all.length < total ? (
+        <p className="muted">尚有 {total - all.length} 筆未顯示（API 回應上限 500 筆），請縮小篩選範圍。</p>
+      ) : null}
+      {legislators.phase === 'loading' ? <p className="muted">更新中…</p> : null}
     </section>
   );
 }

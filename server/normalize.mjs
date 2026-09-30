@@ -413,3 +413,68 @@ export function parseNewsRss(xml, { name }) {
   }
   return items;
 }
+
+/** RFC 4180 CSV（含引號、跳脫引號、欄位內換行）。ponytail: 資料來源只有這一份試算表，不引入 CSV 套件。 */
+export function parseCsv(text) {
+  const rows = [];
+  let row = [];
+  let cell = '';
+  let quoted = false;
+  const src = String(text ?? '').replace(/^\uFEFF/, '');
+  for (let i = 0; i < src.length; i++) {
+    const c = src[i];
+    if (quoted) {
+      if (c === '"' && src[i + 1] === '"') (cell += '"'), i++;
+      else if (c === '"') quoted = false;
+      else cell += c;
+    } else if (c === '"') quoted = true;
+    else if (c === ',') row.push(cell), (cell = '');
+    else if (c === '\n' || c === '\r') {
+      if (c === '\r' && src[i + 1] === '\n') i++;
+      row.push(cell), rows.push(row), (row = []), (cell = '');
+    } else cell += c;
+  }
+  if (cell !== '' || row.length) row.push(cell), rows.push(row);
+  return rows.filter((r) => r.some((x) => x.trim() !== ''));
+}
+
+const SOCIAL_COLUMNS = { name: '姓名', pageName: '臉書專頁名稱', latestDate: '最新貼文日期', summary: '最新貼文主題摘要', url: '貼文或粉專連結' };
+
+/**
+ * 社群帳號整理表 → [{ legislator_id, platform, page_name, url, latest_post_date, latest_post_summary }]。
+ * 以漢名（newsName）對應委員；對不到比例過高或欄位改名時 fail closed。
+ */
+export function normalizeSocial(csvText, legislatorIdByNewsName) {
+  const [header = [], ...rows] = parseCsv(csvText);
+  const col = Object.fromEntries(Object.entries(SOCIAL_COLUMNS).map(([key, label]) => [key, header.findIndex((h) => h.trim() === label)]));
+  const missing = Object.entries(col).filter(([, i]) => i < 0).map(([key]) => SOCIAL_COLUMNS[key]);
+  if (missing.length) throw new DataValidationError(`社群整理表缺少欄位：${missing.join('、')}`);
+  if (rows.length < 100) throw new DataValidationError(`社群整理表筆數異常（${rows.length} < 100）`);
+
+  const accounts = [];
+  const unmatched = [];
+  for (const row of rows) {
+    const name = (row[col.name] ?? '').trim();
+    const url = (row[col.url] ?? '').trim();
+    const legislatorId = legislatorIdByNewsName.get(newsName(name));
+    if (!legislatorId) {
+      unmatched.push(name);
+      continue;
+    }
+    if (!/^https:\/\/(www\.|m\.)?facebook\.com\//.test(url)) continue; // 只收臉書網址，擋掉空白與誤貼
+    const date = (row[col.latestDate] ?? '').trim();
+    accounts.push({
+      legislator_id: legislatorId,
+      platform: 'facebook',
+      page_name: (row[col.pageName] ?? '').trim(),
+      url,
+      latest_post_date: /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : '',
+      latest_post_summary: (row[col.summary] ?? '').trim(),
+    });
+  }
+  if (unmatched.length > rows.length * 0.1) {
+    throw new DataValidationError(`社群整理表有 ${unmatched.length} 個姓名對不到委員：${unmatched.slice(0, 5).join('、')}`);
+  }
+  const warnings = unmatched.length ? [`社群整理表有 ${unmatched.length} 個姓名對不到委員：${unmatched.join('、')}`] : [];
+  return { accounts, warnings };
+}

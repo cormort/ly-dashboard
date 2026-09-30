@@ -1,7 +1,7 @@
 /**
  * 篩選狀態（單一真相來源：URL query string）。
  *
- * `?term=&session=&q=&party=&region=&committee=&convener=1`
+ * `?term=&session=&q=&party=&region=&committee=&convener=1&tracked=1`
  * term / session / q / party / region / committee 為 null 或空字串 = 未指定（沿用 API 預設）。
  * session 允許值：會期 id（如 "11-5"）或 `all`（該屆全部會期）。
  */
@@ -16,6 +16,8 @@ export interface FilterState {
   region: string | null;
   committee: string | null;
   convener: boolean;
+  /** 只看本瀏覽器追蹤中的委員（前端過濾） */
+  tracked: boolean;
 }
 
 export const EMPTY_FILTERS: FilterState = {
@@ -26,6 +28,7 @@ export const EMPTY_FILTERS: FilterState = {
   region: null,
   committee: null,
   convener: false,
+  tracked: false,
 };
 
 function first(params: URLSearchParams, key: string): string | null {
@@ -47,6 +50,7 @@ export function parseFilters(search: string): FilterState {
     region: first(params, 'region'),
     committee: first(params, 'committee'),
     convener: first(params, 'convener') === '1',
+    tracked: first(params, 'tracked') === '1',
   };
 }
 
@@ -60,6 +64,7 @@ export function serializeFilters(state: FilterState): string {
   if (state.region) params.set('region', state.region);
   if (state.committee) params.set('committee', state.committee);
   if (state.convener) params.set('convener', '1');
+  if (state.tracked) params.set('tracked', '1');
   const qs = params.toString();
   return qs ? `?${qs}` : '';
 }
@@ -72,11 +77,12 @@ export function filtersEqual(a: FilterState, b: FilterState): boolean {
     a.party === b.party &&
     a.region === b.region &&
     a.committee === b.committee &&
-    a.convener === b.convener
+    a.convener === b.convener &&
+    a.tracked === b.tracked
   );
 }
 
 /** 切換屆次時清掉只對舊屆有意義的條件 */
 export function resetForTermChange(next: FilterState, term: number, session: string | null): FilterState {
-  return { ...EMPTY_FILTERS, term, session, q: next.q, convener: next.convener };
+  return { ...EMPTY_FILTERS, term, session, q: next.q, convener: next.convener, tracked: next.tracked };
 }

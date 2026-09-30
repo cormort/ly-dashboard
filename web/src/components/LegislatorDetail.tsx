@@ -1,8 +1,9 @@
-import { useEffect, useId, useRef, type KeyboardEvent } from 'react';
+import { useEffect, useId, useRef, type CSSProperties, type KeyboardEvent } from 'react';
 import { ExternalLink, MapPin, Star, X } from 'lucide-react';
 import type { Legislator, SourceInfo } from '../api/types';
 import { useEscapeKey } from '../hooks/useEscapeKey';
 import { text } from '../lib/format';
+import { partyStyle } from '../lib/parties';
 import { LegislatorBills } from './LegislatorBills';
 import { LegislatorNews } from './LegislatorNews';
 
@@ -56,6 +57,8 @@ export function LegislatorDetail({
     }
   };
 
+  const style = partyStyle(legislator.party);
+
   return (
     <div className="overlay" onClick={onClose}>
       <aside
@@ -65,130 +68,168 @@ export function LegislatorDetail({
         aria-labelledby={titleId}
         onKeyDown={onKeyDown}
         onClick={(event) => event.stopPropagation()}
+        style={{ '--party': style.color } as CSSProperties}
       >
-        <button type="button" className="close" onClick={onClose} aria-label="關閉委員檔案" ref={closeRef}>
+        <button type="button" className="icon-button close" onClick={onClose} aria-label="關閉委員檔案" ref={closeRef}>
           <X aria-hidden="true" />
         </button>
 
-        <h1 id={titleId}>
-          {legislator.name}
-          {legislator.is_convener ? <em>本會期召委</em> : null}
-        </h1>
-        <p className="muted">
-          {text(legislator.ename, '')}
-          {legislator.ename ? ' · ' : ''}
-          {text(legislator.party)}（{text(legislator.caucus)}）
-        </p>
-        <p className="muted">
-          <MapPin aria-hidden="true" />
-          {text(legislator.area_name)} · 第 {legislator.term} 屆
-        </p>
-
-        <div className="detail-actions">
-          <button
-            type="button"
-            className={tracked ? 'primary' : undefined}
-            aria-pressed={tracked}
-            onClick={() => onToggleTrack(legislator)}
-          >
-            <Star className={tracked ? 'active' : undefined} aria-hidden="true" />
-            {tracked ? '取消追蹤' : '加入追蹤'}
-          </button>
+        <div className="detail-head">
+          {legislator.photo_url ? (
+            <img src={legislator.photo_url} alt={`${legislator.name} 委員照片`} referrerPolicy="no-referrer" />
+          ) : null}
+          <div>
+            <h1 id={titleId}>
+              {legislator.name}
+              {legislator.is_convener ? <span className="convener-mark">本會期召委</span> : null}
+            </h1>
+            <p className="muted">
+              <span style={{ color: style.color }}>{text(legislator.party)}</span>
+              {legislator.caucus && legislator.caucus !== legislator.party ? `（${legislator.caucus}黨團）` : ''}
+              {legislator.ename ? `　${legislator.ename}` : ''}
+            </p>
+            <p className="muted">
+              <MapPin aria-hidden="true" />
+              {text(legislator.area_name)}・第 {legislator.term} 屆
+            </p>
+            <button
+              type="button"
+              className={tracked ? 'primary' : undefined}
+              aria-pressed={tracked}
+              onClick={() => onToggleTrack(legislator)}
+            >
+              <Star className={tracked ? 'active' : undefined} aria-hidden="true" />
+              {tracked ? '取消追蹤' : '加入追蹤'}
+            </button>
+          </div>
         </div>
 
-        <dl>
-          <dt>本會期委員會</dt>
-          <dd>
-            {legislator.committees.length > 0 ? (
-              <ul className="chip-list" role="list">
-                {legislator.committees.map((committee) => (
-                  <li key={committee.id}>
-                    <span className="chip">{committee.id}</span>
-                    {committee.is_convener ? <span className="chip convener">召委</span> : null}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              '未提供'
-            )}
-          </dd>
+        <section className="detail-section">
+          <h2>社群</h2>
+          {legislator.social.length > 0 ? (
+            <ul className="contact-list" role="list">
+              {legislator.social.map((account) => (
+                <li key={account.url}>
+                  <a href={account.url} target="_blank" rel="noreferrer noopener">
+                    {account.platform === 'facebook' ? '臉書' : 'Threads'}：{account.name || account.url}
+                    <ExternalLink aria-hidden="true" />
+                  </a>
+                  {account.latest_post_date ? (
+                    <small>
+                      最新貼文 {account.latest_post_date}
+                      {account.latest_post_summary ? `：${account.latest_post_summary}` : ''}
+                    </small>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="muted">未提供</p>
+          )}
+        </section>
 
-          <dt>有紀錄的會期</dt>
-          <dd>
-            {legislator.sessions.length > 0 ? (
-              <ul className="chip-list" role="list">
-                {legislator.sessions.map((sessionId) => (
-                  <li key={sessionId}>
-                    <span className="chip plain">{sessionLabel(sessionId)}</span>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              '未提供'
-            )}
-          </dd>
+        <section className="detail-section">
+          <h2>近期新聞</h2>
+          <LegislatorNews legislatorId={legislator.id} />
+        </section>
 
-          <dt>最近提案</dt>
-          <dd>
-            <LegislatorBills legislatorId={legislator.id} />
-          </dd>
+        <section className="detail-section">
+          <h2>最近提案</h2>
+          <LegislatorBills legislatorId={legislator.id} />
+        </section>
 
-          <dt>近期新聞</dt>
-          <dd>
-            <LegislatorNews legislatorId={legislator.id} />
-          </dd>
+        <section className="detail-section">
+          <h2>委員會與會期</h2>
+          <dl>
+            <dt>本會期委員會</dt>
+            <dd>
+              {legislator.committees.length > 0 ? (
+                <ul className="chip-list" role="list">
+                  {legislator.committees.map((committee) => (
+                    <li key={committee.id}>
+                      <span className="chip">{committee.id}</span>
+                      {committee.is_convener ? <span className="chip convener">召委</span> : null}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                '未提供'
+              )}
+            </dd>
+            <dt>有紀錄的會期</dt>
+            <dd>
+              {legislator.sessions.length > 0 ? (
+                <ul className="chip-list" role="list">
+                  {legislator.sessions.map((sessionId) => (
+                    <li key={sessionId}>
+                      <span className="chip plain">{sessionLabel(sessionId)}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                '未提供'
+              )}
+            </dd>
+            <dt>就職日期</dt>
+            <dd>{text(legislator.onboard_date)}</dd>
+          </dl>
+        </section>
 
-          <dt>就職日期</dt>
-          <dd>{text(legislator.onboard_date)}</dd>
+        <section className="detail-section">
+          <h2>聯絡方式</h2>
+          {legislator.contacts.length > 0 ? (
+            <ul className="contact-list" role="list">
+              {legislator.contacts.map((office) => (
+                <li key={office.label}>
+                  <b>{office.label}</b>
+                  {office.tel ? (
+                    <small>
+                      電話：
+                      {office.tel.split('、').map((tel, index) => (
+                        <span key={tel}>
+                          {index > 0 ? '、' : ''}
+                          <a href={`tel:${tel.replace(/[^\d+#]/g, '')}`}>{tel}</a>
+                        </span>
+                      ))}
+                    </small>
+                  ) : null}
+                  {office.fax ? <small>傳真：{office.fax}</small> : null}
+                  {office.addr ? <small>地址：{office.addr}</small> : null}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="muted">未提供</p>
+          )}
+        </section>
 
-          <dt>聯絡方式</dt>
-          <dd>
-            {legislator.contacts.length > 0 ? (
-              <ul className="contact-list" role="list">
-                {legislator.contacts.map((office) => (
-                  <li key={office.label}>
-                    <b>{office.label}</b>
-                    {office.tel ? (
-                      <small>
-                        電話：
-                        {office.tel.split('、').map((tel, index) => (
-                          <span key={tel}>
-                            {index > 0 ? '、' : ''}
-                            <a href={`tel:${tel.replace(/[^\d+#]/g, '')}`}>{tel}</a>
-                          </span>
-                        ))}
-                      </small>
-                    ) : null}
-                    {office.fax ? <small>傳真：{office.fax}</small> : null}
-                    {office.addr ? <small>地址：{office.addr}</small> : null}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              '未提供'
-            )}
-          </dd>
+        <section className="detail-section">
+          <h2>學經歷</h2>
+          <dl>
+            <dt>學歷</dt>
+            <dd>{text(legislator.degree)}</dd>
+            <dt>經歷</dt>
+            <dd>{text(legislator.experience)}</dd>
+          </dl>
+        </section>
 
-          <dt>學歷</dt>
-          <dd>{text(legislator.degree)}</dd>
-
-          <dt>經歷</dt>
-          <dd>{text(legislator.experience)}</dd>
-
-          <dt>委員識別碼</dt>
-          <dd>
-            <code>{legislator.id}</code>
-          </dd>
-
-          <dt>資料來源</dt>
-          <dd>
-            <a href={legislator.source_url} target="_blank" rel="noreferrer noopener">
-              {source?.name ?? '立法院開放資料'}
-              <ExternalLink aria-hidden="true" />
-            </a>
-            {source ? <small className="muted">{source.license}</small> : null}
-          </dd>
-        </dl>
+        <section className="detail-section">
+          <h2>資料</h2>
+          <dl>
+            <dt>委員識別碼</dt>
+            <dd>
+              <code>{legislator.id}</code>
+            </dd>
+            <dt>資料來源</dt>
+            <dd>
+              <a href={legislator.source_url} target="_blank" rel="noreferrer noopener">
+                {source?.name ?? '立法院開放資料'}
+                <ExternalLink aria-hidden="true" />
+              </a>
+              {source ? <small className="muted">{source.license}</small> : null}
+            </dd>
+          </dl>
+        </section>
       </aside>
     </div>
   );

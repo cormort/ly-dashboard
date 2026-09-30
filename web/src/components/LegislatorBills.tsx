@@ -2,6 +2,7 @@ import { ExternalLink } from 'lucide-react';
 import { buildUrl } from '../api/client';
 import type { BillsResponse } from '../api/types';
 import { useApi } from '../hooks/useApi';
+import { billTitle } from '../lib/format';
 import { EmptyState, ErrorState, LoadingState } from './DataStates';
 
 /** 委員提案：主題（最常涉及的法律）＋最近 10 筆。資料來自 /api/v1/bills，前端不重算。 */
@@ -37,7 +38,7 @@ export function LegislatorBills({ legislatorId }: { legislatorId: string }) {
         {items.map((bill) => (
           <li key={bill.id}>
             <a href={bill.url} target="_blank" rel="noreferrer noopener">
-              {bill.name}
+              {billTitle(bill.name)}
               <ExternalLink aria-hidden="true" />
             </a>
             <small>

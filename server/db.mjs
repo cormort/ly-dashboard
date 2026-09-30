@@ -118,6 +118,15 @@ CREATE TABLE IF NOT EXISTS news (
   PRIMARY KEY (legislator_id, url)
 );
 CREATE INDEX IF NOT EXISTS idx_news_legislator_date ON news(legislator_id, published_at DESC);
+CREATE TABLE IF NOT EXISTS social_accounts (
+  legislator_id TEXT NOT NULL,
+  platform TEXT NOT NULL,
+  page_name TEXT,
+  url TEXT NOT NULL,
+  latest_post_date TEXT,
+  latest_post_summary TEXT,
+  PRIMARY KEY (legislator_id, platform, url)
+);
 CREATE TABLE IF NOT EXISTS meta (
   key TEXT PRIMARY KEY,
   value TEXT
@@ -392,4 +401,22 @@ export function upsertNews(db, legislatorId, items, { fetchedAt }) {
 export function pruneNews(db, { keepDays, now = new Date() }) {
   const cutoff = new Date(now.getTime() - keepDays * 86_400_000).toISOString();
   return Number(db.prepare('DELETE FROM news WHERE published_at < ?').run(cutoff).changes);
+}
+
+/** 社群帳號整批覆寫（來源是人工整理表，以最新一版為準）。 */
+export function applySocial(db, accounts, { fetchedAt }) {
+  db.exec('BEGIN');
+  try {
+    db.exec('DELETE FROM social_accounts');
+    const insert = db.prepare(
+      `INSERT OR REPLACE INTO social_accounts(legislator_id, platform, page_name, url, latest_post_date, latest_post_summary)
+       VALUES(?, ?, ?, ?, ?, ?)`,
+    );
+    for (const a of accounts) insert.run(a.legislator_id, a.platform, a.page_name, a.url, a.latest_post_date, a.latest_post_summary);
+    setMeta(db, 'social_fetched_at', fetchedAt);
+    db.exec('COMMIT');
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
 }

@@ -13,6 +13,8 @@ import {
   normalizeBills,
   parseNewsRss,
   newsName,
+  parseCsv,
+  normalizeSocial,
 } from '../server/normalize.mjs';
 
 const fixture = (name) => JSON.parse(readFileSync(fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url)), 'utf8'));
@@ -187,4 +189,32 @@ test('newsName：族語名只留漢名、異體字換成媒體常用字', () => 
   assert.equal(newsName('丁學忠'), '丁學忠');
   const current = id9.dataList.filter((r) => r.term === '11');
   assert.ok(current.every((r) => newsName(r.name).length >= 2), '每位委員都要有可搜尋的漢名');
+});
+
+const socialCsv = readFileSync(fileURLToPath(new URL('./fixtures/social.csv', import.meta.url)), 'utf8');
+const idByNewsName = () => new Map(buildDataset(id9, id14).legislators.filter((l) => !l.leave_flag).map((l) => [newsName(l.name), l.id]));
+
+test('parseCsv：引號、跳脫引號、欄位內逗號與換行、BOM、CRLF', () => {
+  assert.deepEqual(parseCsv('\uFEFFa,b\r\n"x, y","he said ""hi"""\n"multi\nline",2\n'), [
+    ['a', 'b'],
+    ['x, y', 'he said "hi"'],
+    ['multi\nline', '2'],
+  ]);
+  assert.deepEqual(parseCsv(''), []);
+});
+
+test('normalizeSocial：真實整理表 113 位全數對應到在職委員', () => {
+  const { accounts, warnings } = normalizeSocial(socialCsv, idByNewsName());
+  assert.equal(accounts.length, 113);
+  assert.deepEqual(warnings, []);
+  assert.equal(new Set(accounts.map((a) => a.legislator_id)).size, 113);
+  assert.ok(accounts.every((a) => a.platform === 'facebook' && a.url.startsWith('https://www.facebook.com/')));
+  assert.ok(accounts.every((a) => /^\d{4}-\d{2}-\d{2}$/.test(a.latest_post_date) && a.latest_post_summary));
+});
+
+test('normalizeSocial：欄位改名、筆數過少、姓名大量對不到時 fail closed', () => {
+  assert.throws(() => normalizeSocial(socialCsv.replace('貼文或粉專連結', '連結'), idByNewsName()), DataValidationError);
+  const [head, ...lines] = socialCsv.split('\n');
+  assert.throws(() => normalizeSocial([head, ...lines.slice(0, 10)].join('\n'), idByNewsName()), DataValidationError);
+  assert.throws(() => normalizeSocial(socialCsv, new Map()), DataValidationError);
 });

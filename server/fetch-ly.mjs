@@ -57,7 +57,15 @@ export async function fetchJson(url, options = {}) {
 
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
-      const { status, body, headers } = await once(url, { timeoutMs, ua, accept: asText ? '*/*' : 'application/json' });
+      let target = url;
+      let res = await once(target, { timeoutMs, ua, accept: asText ? '*/*' : 'application/json' });
+      // 跟隨轉址（Google 試算表匯出會 307 到 googleusercontent）；上限 5 次防迴圈
+      for (let hops = 0; [301, 302, 303, 307, 308].includes(res.status) && res.headers.location; hops++) {
+        if (hops === 5) throw Object.assign(new FetchError('轉址過多', { status: res.status, attempts: attempt }), { retryable: false });
+        target = new URL(res.headers.location, target).href;
+        res = await once(target, { timeoutMs, ua, accept: asText ? '*/*' : 'application/json' });
+      }
+      const { status, body, headers } = res;
       if (status >= 500) throw new FetchError(`HTTP ${status}`, { status, attempts: attempt });
       if (status !== 200) {
         // 4xx：重試沒有意義（實測 WAF 403 就是這一類），直接失敗

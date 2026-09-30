@@ -1,0 +1,41 @@
+import { useCallback, useEffect, useState } from 'react';
+
+export type Route = 'home' | 'legislators' | 'bills';
+
+const PATHS: Record<Route, string> = { home: '/', legislators: '/legislators', bills: '/bills' };
+
+export function routeOf(pathname: string): Route {
+  if (pathname.startsWith('/legislators')) return 'legislators';
+  if (pathname.startsWith('/bills')) return 'bills';
+  return 'home';
+}
+
+/** 帶 query string 的頁面網址，例如 `pathFor('bills', { law: '國土計畫法' })` */
+export function pathFor(route: Route, params: Record<string, string | undefined> = {}): string {
+  const qs = new URLSearchParams(Object.entries(params).filter((e): e is [string, string] => Boolean(e[1])));
+  const suffix = qs.toString();
+  return `${PATHS[route]}${suffix ? `?${suffix}` : ''}`;
+}
+
+/**
+ * 三頁式路由（首頁動態／委員查詢／法案查詢），用 pathname 表示，伺服器的 SPA fallback 會接住。
+ * 換頁後補發 popstate，讓讀 URL 的 hook（篩選條件）重新解析。
+ */
+export function useRoute(): { route: Route; navigate: (href: string) => void } {
+  const [route, setRoute] = useState<Route>(() => routeOf(window.location.pathname));
+
+  useEffect(() => {
+    const onPop = () => setRoute(routeOf(window.location.pathname));
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
+
+  const navigate = useCallback((href: string) => {
+    if (href === `${window.location.pathname}${window.location.search}`) return;
+    window.history.pushState(null, '', href);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    window.scrollTo({ top: 0 });
+  }, []);
+
+  return { route, navigate };
+}

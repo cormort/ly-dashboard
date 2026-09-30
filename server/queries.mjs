@@ -94,6 +94,15 @@ export function listLegislators(db, query = {}) {
     : [];
 
   const legislatorRows = db.prepare('SELECT * FROM legislators').all();
+  // 名錄表格要用的活動量：提案數、近期新聞數（一次 GROUP BY，不逐人查）
+  const billCount = new Map(db.prepare('SELECT legislator_id, COUNT(*) AS n FROM bill_sponsors GROUP BY legislator_id').all().map((r) => [r.legislator_id, Number(r.n)]));
+  const newsCount = new Map(db.prepare('SELECT legislator_id, COUNT(*) AS n FROM news GROUP BY legislator_id').all().map((r) => [r.legislator_id, Number(r.n)]));
+  const socialByLegislator = new Map();
+  for (const s of db.prepare('SELECT * FROM social_accounts ORDER BY platform, url').all()) {
+    const list = socialByLegislator.get(s.legislator_id) ?? [];
+    list.push({ platform: s.platform, name: s.page_name, url: s.url, latest_post_date: s.latest_post_date, latest_post_summary: s.latest_post_summary });
+    socialByLegislator.set(s.legislator_id, list);
+  }
   const byId = new Map(legislatorRows.map((l) => [l.id, l]));
 
   const inScope = new Set(
@@ -143,6 +152,9 @@ export function listLegislators(db, query = {}) {
       experience: l?.experience ?? '',
       onboard_date: l?.onboard_date ?? '',
       contacts: JSON.parse(l?.contacts || '[]'),
+      social: socialByLegislator.get(id) ?? [],
+      bill_count: billCount.get(id) ?? 0,
+      news_count: newsCount.get(id) ?? 0,
       term: scope.term,
       sessions,
       committees,
@@ -154,6 +166,7 @@ export function listLegislators(db, query = {}) {
     };
   });
 
+  if (query.id) items = items.filter((x) => x.id === query.id);
   if (query.party) items = items.filter((x) => x.party === query.party);
   if (query.region) items = items.filter((x) => x.region === query.region);
   if (query.committee) items = items.filter((x) => x.committees.some((c) => c.id === query.committee));
@@ -188,7 +201,7 @@ export function listCommittees(db, query = {}) {
   }
   const rows = db
     .prepare(
-      `SELECT c.id, c.kind, s.legislator_id, MAX(s.is_convener) AS is_convener, l.name
+      `SELECT c.id, c.kind, s.legislator_id, MAX(s.is_convener) AS is_convener, l.name, l.party
        FROM committee_seats s
        JOIN committees c ON c.id = s.committee_id
        JOIN legislators l ON l.id = s.legislator_id
@@ -199,8 +212,9 @@ export function listCommittees(db, query = {}) {
 
   const map = new Map();
   for (const row of rows) {
-    const entry = map.get(row.id) ?? { id: row.id, kind: row.kind, count: 0, conveners: [] };
+    const entry = map.get(row.id) ?? { id: row.id, kind: row.kind, count: 0, parties: {}, conveners: [] };
     entry.count += 1;
+    entry.parties[row.party ?? '未提供'] = (entry.parties[row.party ?? '未提供'] ?? 0) + 1;
     if (Number(row.is_convener) === 1) entry.conveners.push({ id: row.legislator_id, name: row.name });
     map.set(row.id, entry);
   }
@@ -278,6 +292,7 @@ export function getHealth(db) {
     snapshots: count('raw_snapshots'),
     bills: count('bills'),
     news: count('news'),
+    social_accounts: count('social_accounts'),
   };
   return {
     meta: envelope(db),
@@ -288,46 +303,157 @@ export function getHealth(db) {
   };
 }
 
-/**
- * 議案：`legislator` 指定時回傳該委員提案（主提案或共同提案），並統計最常涉及的法律（＝主題）。
- * 不指定時回傳全部委員提案中最新的幾筆。
- */
-export function listBills(db, { legislator = null, limit = 20 } = {}) {
-  const resolvedLimit = Math.max(1, Math.min(Number(limit) || 20, 200));
-  const where = legislator ? 'WHERE b.id IN (SELECT bill_id FROM bill_sponsors WHERE legislator_id = ?)' : '';
-  const params = legislator ? [legislator] : [];
-  const lead = legislator
-    ? 'EXISTS (SELECT 1 FROM bill_sponsors s WHERE s.bill_id = b.id AND s.legislator_id = ? AND s.is_lead = 1)'
-    : '0';
-  const rows = db
-    .prepare(`SELECT b.*, ${lead} AS is_lead FROM bills b ${where} ORDER BY b.latest_date DESC, b.id DESC`)
-    .all(...(legislator ? [legislator] : []), ...params);
+/** 議案列的共用轉換 */
+const toBill = (r) => ({
+  id: r.id,
+  name: r.name,
+  status: r.status,
+  category: r.category,
+  session: r.session === null ? null : Number(r.session),
+  laws: JSON.parse(r.laws || '[]'),
+  latest_date: r.latest_date,
+  url: r.url,
+});
 
-  // 主題 = 議案涉及的法律名稱；只在該委員的全部提案上計數，前端不重算
+/**
+ * 議案查詢。條件：`legislator`（該委員主提案或共同提案）、`q`（議案名稱或涉及法律的關鍵字）、
+ * `law`（精確法律名稱）、`status`。回傳分頁結果＋在全部符合結果上算的主題（法律）與狀態統計。
+ * ponytail: 撈出全部符合列再在 JS 統計／分頁（本屆約 7,400 件，數毫秒）；資料量大十倍再改 SQL 聚合。
+ */
+export function listBills(db, { legislator = null, q = '', law = '', status = '', limit = 20, offset = 0 } = {}) {
+  const resolvedLimit = Math.max(1, Math.min(Number(limit) || 20, 200));
+  const resolvedOffset = Math.max(0, Math.trunc(Number(offset) || 0));
+  const clauses = [];
+  const params = [];
+  if (legislator) clauses.push('b.id IN (SELECT bill_id FROM bill_sponsors WHERE legislator_id = ?)'), params.push(legislator);
+  const needle = String(q ?? '').trim();
+  if (needle) clauses.push('(b.name LIKE ? OR b.laws LIKE ?)'), params.push(`%${needle}%`, `%${needle}%`);
+  if (law) clauses.push('b.laws LIKE ?'), params.push(`%${JSON.stringify(String(law))}%`);
+  if (status) clauses.push('b.status = ?'), params.push(String(status));
+  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+  const rows = db.prepare(`SELECT b.* FROM bills b ${where} ORDER BY b.latest_date DESC, b.id DESC`).all(...params);
+
   const lawCounts = new Map();
-  for (const row of rows) for (const law of JSON.parse(row.laws || '[]')) lawCounts.set(law, (lawCounts.get(law) ?? 0) + 1);
-  const laws = [...lawCounts]
-    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'zh-Hant'))
-    .slice(0, 8)
-    .map(([name, count]) => ({ name, count }));
+  const statusCounts = new Map();
+  for (const row of rows) {
+    for (const name of JSON.parse(row.laws || '[]')) lawCounts.set(name, (lawCounts.get(name) ?? 0) + 1);
+    statusCounts.set(row.status, (statusCounts.get(row.status) ?? 0) + 1);
+  }
+  const ranked = (map, n) =>
+    [...map].sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0]), 'zh-Hant')).slice(0, n).map(([name, count]) => ({ name, count }));
+
+  const page = rows.slice(resolvedOffset, resolvedOffset + resolvedLimit);
+  const sponsorsByBill = new Map();
+  if (page.length) {
+    const sponsorRows = db
+      .prepare(
+        `SELECT s.bill_id, s.is_lead, l.id, l.name, l.party FROM bill_sponsors s JOIN legislators l ON l.id = s.legislator_id
+         WHERE s.bill_id IN (${page.map(() => '?').join(',')}) ORDER BY s.is_lead DESC, l.name`,
+      )
+      .all(...page.map((r) => r.id));
+    for (const r of sponsorRows) {
+      const list = sponsorsByBill.get(r.bill_id) ?? [];
+      list.push({ id: r.id, name: r.name, party: r.party, is_lead: Number(r.is_lead) === 1 });
+      sponsorsByBill.set(r.bill_id, list);
+    }
+  }
 
   return {
     meta: { ...envelope(db), bills_fetched_at: getMeta(db, 'bills_fetched_at'), bills_source: { name: CONFIG.bills.name, url: CONFIG.bills.homepage } },
     total: rows.length,
-    count: Math.min(rows.length, resolvedLimit),
-    laws,
-    items: rows.slice(0, resolvedLimit).map((r) => ({
-      id: r.id,
-      name: r.name,
-      status: r.status,
-      category: r.category,
-      session: r.session === null ? null : Number(r.session),
-      laws: JSON.parse(r.laws || '[]'),
-      latest_date: r.latest_date,
-      is_lead: Number(r.is_lead) === 1,
-      url: r.url,
-    })),
+    count: page.length,
+    laws: ranked(lawCounts, 8),
+    statuses: ranked(statusCounts, 20),
+    items: page.map((r) => {
+      const sponsors = sponsorsByBill.get(r.id) ?? [];
+      return { ...toBill(r), is_lead: legislator ? sponsors.some((x) => x.id === legislator && x.is_lead) : false, sponsors };
+    }),
   };
+}
+
+/**
+ * 熱門議題：最近 `days` 天（以資料中最新的議案日期為基準，資料延遲也不會變空）有進度的議案，依涉及法律分組。
+ * 每個議題附件數、三讀件數、最新日期、主提案人黨籍分布。
+ */
+export function listTopics(db, { days = 30, limit = 12 } = {}) {
+  const resolvedDays = Math.max(1, Math.min(Number(days) || 30, 365));
+  const resolvedLimit = Math.max(1, Math.min(Number(limit) || 12, 50));
+  const anchor = db.prepare('SELECT MAX(latest_date) AS d FROM bills').get().d;
+  if (!anchor) return { meta: envelope(db), since: null, count: 0, items: [] };
+  const since = new Date(Date.parse(`${anchor}T00:00:00Z`) - resolvedDays * 86_400_000).toISOString().slice(0, 10);
+  const rows = db
+    .prepare(
+      `SELECT b.id, b.laws, b.status, b.latest_date, l.party AS lead_party
+       FROM bills b
+       LEFT JOIN bill_sponsors s ON s.bill_id = b.id AND s.is_lead = 1
+       LEFT JOIN legislators l ON l.id = s.legislator_id
+       WHERE b.latest_date >= ?`,
+    )
+    .all(since);
+  const topics = new Map();
+  for (const row of rows) {
+    for (const law of JSON.parse(row.laws || '[]')) {
+      const t = topics.get(law) ?? { law, count: 0, passed: 0, latest_date: '', parties: {} };
+      t.count += 1;
+      if (row.status === '三讀') t.passed += 1;
+      if (row.latest_date > t.latest_date) t.latest_date = row.latest_date;
+      const party = row.lead_party ?? '黨團／其他';
+      t.parties[party] = (t.parties[party] ?? 0) + 1;
+      topics.set(law, t);
+    }
+  }
+  const items = [...topics.values()]
+    .sort((a, b) => b.count - a.count || b.latest_date.localeCompare(a.latest_date))
+    .slice(0, resolvedLimit);
+  return { meta: envelope(db), since, count: items.length, items };
+}
+
+/**
+ * 最近有動態的委員：各委員最新一則臉書貼文（整理表）、新聞、議案進度，取最近者排序；
+ * 同一天以近 7 天新聞量多者在前。只列在職委員。
+ */
+export function listActivity(db, { limit = 12 } = {}) {
+  const resolvedLimit = Math.max(1, Math.min(Number(limit) || 12, 113));
+  const legislators = db.prepare('SELECT id, name, party, area_name, photo_url FROM legislators WHERE leave_flag = 0').all();
+  const latestNews = new Map();
+  const recentNews = new Map();
+  const newsRows = db.prepare('SELECT legislator_id, title, source, url, published_at FROM news ORDER BY published_at DESC').all();
+  const weekAgo = new Date(Date.now() - 7 * 86_400_000).toISOString();
+  for (const n of newsRows) {
+    if (!latestNews.has(n.legislator_id)) latestNews.set(n.legislator_id, { title: n.title, source: n.source, url: n.url, published_at: n.published_at });
+    if (n.published_at >= weekAgo) recentNews.set(n.legislator_id, (recentNews.get(n.legislator_id) ?? 0) + 1);
+  }
+  const latestBill = new Map();
+  for (const r of db.prepare('SELECT s.legislator_id, b.* FROM bill_sponsors s JOIN bills b ON b.id = s.bill_id ORDER BY b.latest_date DESC, b.id DESC').all()) {
+    if (!latestBill.has(r.legislator_id)) latestBill.set(r.legislator_id, toBill(r));
+  }
+  const latestPost = new Map();
+  for (const r of db.prepare("SELECT * FROM social_accounts WHERE latest_post_date <> '' ORDER BY latest_post_date DESC").all()) {
+    if (!latestPost.has(r.legislator_id)) latestPost.set(r.legislator_id, { platform: r.platform, url: r.url, date: r.latest_post_date, summary: r.latest_post_summary });
+  }
+  const conveners = new Set(
+    db.prepare('SELECT legislator_id FROM committee_seats WHERE session_id = ? AND is_convener = 1').all(getMeta(db, 'current_session', '')).map((r) => r.legislator_id),
+  );
+
+  const items = legislators
+    .map((l) => {
+      const post = latestPost.get(l.id) ?? null;
+      const news = latestNews.get(l.id) ?? null;
+      const bill = latestBill.get(l.id) ?? null;
+      const activity_date = [post?.date, news?.published_at?.slice(0, 10), bill?.latest_date].filter(Boolean).sort().at(-1) ?? '';
+      return {
+        legislator: { id: l.id, name: l.name, party: l.party, area_name: l.area_name, region: regionOf(l.area_name), photo_url: l.photo_url, is_convener: conveners.has(l.id) },
+        activity_date,
+        news_7d: recentNews.get(l.id) ?? 0,
+        post,
+        news,
+        bill,
+      };
+    })
+    .filter((x) => x.activity_date)
+    .sort((a, b) => b.activity_date.localeCompare(a.activity_date) || b.news_7d - a.news_7d)
+    .slice(0, resolvedLimit);
+  return { meta: envelope(db), count: items.length, items };
 }
 
 export function listNews(db, { legislator = null, limit = 10 } = {}) {
@@ -336,12 +462,15 @@ export function listNews(db, { legislator = null, limit = 10 } = {}) {
   const params = legislator ? [legislator] : [];
   const total = Number(db.prepare(`SELECT COUNT(*) AS n FROM news ${where}`).get(...params).n);
   const rows = db
-    .prepare(`SELECT * FROM news ${where} ORDER BY published_at DESC, url LIMIT ?`)
+    .prepare(
+      `SELECT n.*, l.name AS legislator_name, l.party AS legislator_party FROM news n JOIN legislators l ON l.id = n.legislator_id
+       ${where.replace('legislator_id', 'n.legislator_id')} ORDER BY n.published_at DESC, n.url LIMIT ?`,
+    )
     .all(...params, resolvedLimit);
   return {
     meta: { ...envelope(db), news_fetched_at: getMeta(db, 'news_fetched_at'), news_source: { name: CONFIG.news.name, url: 'https://news.google.com/' } },
     total,
     count: rows.length,
-    items: rows.map((r) => ({ legislator_id: r.legislator_id, title: r.title, source: r.source, url: r.url, published_at: r.published_at })),
+    items: rows.map((r) => ({ legislator_id: r.legislator_id, legislator_name: r.legislator_name, legislator_party: r.legislator_party, title: r.title, source: r.source, url: r.url, published_at: r.published_at })),
   };
 }

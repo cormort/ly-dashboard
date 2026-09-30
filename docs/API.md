@@ -76,6 +76,7 @@ Query 參數（全部可選）：
 | `term` | 屆次，預設 `current.term` |
 | `session` | 會期 id（如 `11-5`），預設 `current.session`；`all` 表示該屆全部會期。**無效的會期 id 會回退到該屆最新會期**（回應的 `meta.session` 會是實際使用的會期） |
 | `q` | 關鍵字，比對姓名／選區／委員會／黨籍 |
+| `id` | 精確比對委員 id（開啟單一委員檔案用） |
 | `party` | 精確比對黨籍 |
 | `region` | 精確比對選區的縣市層級（`雲林縣`、`全國不分區`、`山地原住民`…，共 25 種） |
 | `committee` | 精確比對委員會 id |
@@ -99,6 +100,7 @@ Query 參數（全部可選）：
       "sex": "男",
       "onboard_date": "2024/02/01",
       "contacts": [ { "label": "國會研究室", "tel": "02-2358-0000", "fax": "02-2358-0001", "addr": "台北市中正區濟南路1段3之1號" } ],
+      "social": [ { "platform": "facebook", "name": "吳思瑤", "url": "https://www.facebook.com/taipeineedyou", "latest_post_date": "2026-09-27", "latest_post_summary": "…" } ],
       "photo_url": "http://www.ly.gov.tw//Images/Legislators/110001.jpg",
       "degree": "…",
       "experience": "…",
@@ -117,6 +119,7 @@ Query 參數（全部可選）：
 - 委員會 `id` 一律是乾淨名稱（`內政委員會`），**不含**「第11屆第3會期：」前綴。
 - `region` 由後端從 `area_name` 歸併（去掉「第N選舉區」），前端不得自行推算。
 - `contacts` 依處所合併立院 `tel`／`fax`／`addr` 三個字串欄位；沒有資料時為 `[]`。
+- `social` 來自人工整理的 Google 試算表（`LY_SOCIAL_CSV` 可覆寫），每次同步整批覆寫；`latest_post_*` 是整理表記錄的最新貼文，不是即時抓取。
 - `is_convener` 是**該會期**的召委，不是「曾經當過」。
 - 無資料時回 `items: []`、`count: 0`，**不得**回傳任何示範／假資料。
 
@@ -127,7 +130,10 @@ Query 參數（全部可選）：
 | 參數 | 說明 |
 | --- | --- |
 | `legislator` | 委員 id；指定時只回該委員的提案（主提案或共同提案） |
-| `limit` | 回傳筆數，1–200，預設 20 |
+| `q` | 關鍵字，比對議案名稱或涉及的法律 |
+| `law` | 精確比對涉及的法律名稱 |
+| `status` | 精確比對議案狀態（如 `三讀`） |
+| `limit` / `offset` | 分頁，limit 1–200，預設 20 / 0 |
 
 ```json
 {
@@ -152,9 +158,29 @@ Query 參數（全部可選）：
 ```
 
 注意：
-- `laws` 是「主題」：該委員全部提案涉及的法律，依件數排序取前 8。前端不得重算。
+- `laws` 是「主題」：**全部符合結果**涉及的法律，依件數排序取前 8；`statuses` 是符合結果的狀態分布。前端不得重算。
+- 每筆 `items[].sponsors`：`[{ id, name, party, is_lead }]`，主提案在前。
 - `is_lead`：提案人陣列第一位＝主提案人。提案人是黨團時不對應到任何委員。
 - 議案同步與名錄同步各自 fail closed；名錄同步失敗時不跑議案。
+
+## GET /api/v1/topics
+
+熱門議題：最近 `days` 天（預設 30，以**資料中最新的議案日期**為基準）有進度的委員提案，依涉及的法律分組。
+
+```json
+{ "since": "2026-07-29", "count": 10, "items": [ { "law": "性別平等工作法", "count": 130, "passed": 0, "latest_date": "2026-08-26", "parties": { "民主進步黨": 60, "中國國民黨": 50 } } ] }
+```
+
+`parties` 是主提案人黨籍分布（加總等於 `count`；主提案為黨團時記為 `黨團／其他`）。
+
+## GET /api/v1/activity
+
+最近有動態的在職委員（首頁用）：各委員最新一則臉書貼文（整理表）、新聞、提案進度，取最新者排序；同日以近 7 天新聞量多者在前。參數 `limit`（1–113，預設 12）。
+
+```json
+{ "count": 12, "items": [ { "legislator": { "id": "…", "name": "蘇巧慧", "party": "民主進步黨", "region": "新北市", "is_convener": false, "…": "…" },
+  "activity_date": "2026-09-30", "news_7d": 12, "post": { "date": "2026-09-28", "summary": "…", "url": "…" }, "news": { "title": "…", "…": "…" }, "bill": { "name": "…", "status": "排入院會", "…": "…" } } ] }
+```
 
 ## GET /api/v1/news
 

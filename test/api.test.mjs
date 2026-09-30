@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
-import { openDb, applyDataset, applyBills, saveSnapshot, recordSyncRun, getMeta, migrate } from '../server/db.mjs';
-import { buildDataset, normalizeBills } from '../server/normalize.mjs';
-import { getHealth, getMetaPayload, listBills, listChanges, listCommittees, listLegislators, listSyncRuns } from '../server/queries.mjs';
+import { openDb, applyDataset, applyBills, applySocial, upsertNews, saveSnapshot, recordSyncRun, getMeta, migrate } from '../server/db.mjs';
+import { buildDataset, normalizeBills, normalizeSocial, newsName } from '../server/normalize.mjs';
+import { getHealth, getMetaPayload, listActivity, listBills, listTopics, listNews, listChanges, listCommittees, listLegislators, listSyncRuns } from '../server/queries.mjs';
 
 const fixture = (name) => JSON.parse(readFileSync(fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url)), 'utf8'));
 
@@ -221,4 +221,67 @@ test('議案端點：依委員篩選、最新在前、主題（法律）統計',
   assert.equal(res.meta.bills_fetched_at, '2026-09-30T09:00:00.000Z');
   assert.equal(listBills(db, { legislator: 'nobody' }).total, 0);
   assert.equal(listBills(db, {}).total, 300);
+});
+
+test('名錄表格欄位：提案數／新聞數；委員會含黨籍組成且加總等於席次', () => {
+  const { db } = seeded();
+  const items = listLegislators(db, {}).items;
+  assert.ok(items.every((x) => Number.isInteger(x.bill_count) && Number.isInteger(x.news_count)));
+  for (const c of listCommittees(db, {}).items) {
+    assert.equal(Object.values(c.parties).reduce((a, b) => a + b, 0), c.count, c.id);
+  }
+});
+
+function withActivity() {
+  const { db, dataset } = seeded();
+  const idByName = new Map(dataset.legislators.map((l) => [l.name, l.id]));
+  applyBills(db, normalizeBills([fixture('bills-page.json')], idByName), { fetchedAt: '2026-09-30T09:00:00.000Z' });
+  const serving = new Map(dataset.legislators.filter((l) => !l.leave_flag).map((l) => [newsName(l.name), l.id]));
+  const csv = readFileSync(fileURLToPath(new URL('./fixtures/social.csv', import.meta.url)), 'utf8');
+  applySocial(db, normalizeSocial(csv, serving).accounts, { fetchedAt: '2026-09-30T09:00:00.000Z' });
+  upsertNews(db, idByName.get('丁學忠'), [{ title: '丁學忠質詢', source: '測試報', url: 'https://example.com/1', published_at: '2026-09-29T08:00:00.000Z' }], { fetchedAt: '2026-09-30T09:00:00.000Z' });
+  return { db, idByName };
+}
+
+test('議案查詢：關鍵字、法律、狀態可組合，並附提案人與黨籍', () => {
+  const { db } = withActivity();
+  const all = listBills(db, { limit: 5 });
+  assert.equal(all.total, 300);
+  assert.ok(all.statuses.length > 0 && all.laws.length > 0);
+  const food = listBills(db, { q: '食品安全' });
+  assert.ok(food.total > 0 && food.items.every((b) => b.name.includes('食品安全') || b.laws.some((l) => l.includes('食品安全'))));
+  const law = all.laws[0].name;
+  assert.equal(listBills(db, { law }).total, all.laws[0].count, '法律精確篩選件數＝主題統計件數');
+  const passed = listBills(db, { status: '三讀' });
+  assert.ok(passed.items.every((b) => b.status === '三讀'));
+  const withSponsors = listBills(db, { limit: 20 }).items.find((b) => b.sponsors.length);
+  assert.ok(withSponsors.sponsors[0].name && withSponsors.sponsors[0].party);
+  assert.deepEqual(listBills(db, { offset: 295, limit: 10 }).count, 5);
+});
+
+test('熱門議題：以最新議案日期為基準、依件數排序、黨籍分布加總等於件數', () => {
+  const { db } = withActivity();
+  const topics = listTopics(db, { days: 30 });
+  assert.ok(topics.since && topics.items.length > 0);
+  assert.ok(topics.items.every((t, i, arr) => i === 0 || arr[i - 1].count >= t.count));
+  for (const t of topics.items) assert.equal(Object.values(t.parties).reduce((a, b) => a + b, 0), t.count, t.law);
+});
+
+test('最近動態：取貼文／新聞／議案中最新者排序，只列在職委員', () => {
+  const { db, idByName } = withActivity();
+  const res = listActivity(db, { limit: 20 });
+  assert.equal(res.count, 20);
+  assert.ok(res.items.every((x, i, arr) => i === 0 || arr[i - 1].activity_date >= x.activity_date));
+  const ting = listActivity(db, { limit: 113 }).items.find((x) => x.legislator.id === idByName.get('丁學忠'));
+  assert.equal(ting.news.title, '丁學忠質詢');
+  assert.ok(ting.post?.summary);
+  assert.equal(listNews(db, {}).items[0].legislator_name, '丁學忠');
+});
+
+test('依 id 取單一委員（首頁／法案頁開檔案用）', () => {
+  const { db, dataset } = seeded();
+  const id = dataset.legislators.find((l) => l.name === '丁學忠').id;
+  const res = listLegislators(db, { id });
+  assert.equal(res.total, 1);
+  assert.equal(res.items[0].name, '丁學忠');
 });

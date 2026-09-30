@@ -30,3 +30,20 @@ export function saveTrackedIds(ids: readonly string[]): void {
     // 無痕模式或配額不足時靜默失敗：追蹤只是加分功能，不該讓整個頁面壞掉。
   }
 }
+
+/** 個人偏好（例：名錄顯示方式）。讀寫失敗一律退回預設，不影響頁面。 */
+export function readPreference(key: string): string | null {
+  try {
+    return window.localStorage.getItem(`ly-dashboard:pref:${key}`);
+  } catch {
+    return null;
+  }
+}
+
+export function writePreference(key: string, value: string): void {
+  try {
+    window.localStorage.setItem(`ly-dashboard:pref:${key}`, value);
+  } catch {
+    // 無痕模式等情況：偏好只是便利功能
+  }
+}

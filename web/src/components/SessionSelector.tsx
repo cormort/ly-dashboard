@@ -26,7 +26,7 @@ export function SessionSelector({
 }: SessionSelectorProps) {
   if (meta.phase === 'loading' && !meta.data) {
     return (
-      <section className="panel selector" aria-label="屆次與會期">
+      <section className="selector" aria-label="屆次與會期">
         <LoadingState label="讀取屆次／會期清單…" />
       </section>
     );
@@ -34,7 +34,7 @@ export function SessionSelector({
 
   if (meta.phase === 'error') {
     return (
-      <section className="panel selector" aria-label="屆次與會期">
+      <section className="selector" aria-label="屆次與會期">
         <ErrorState title="無法取得屆次清單（/api/v1/meta）" error={meta.error} onRetry={meta.reload} />
       </section>
     );
@@ -43,7 +43,7 @@ export function SessionSelector({
   const terms = meta.data?.terms ?? [];
   if (terms.length === 0) {
     return (
-      <section className="panel selector" aria-label="屆次與會期">
+      <section className="selector" aria-label="屆次與會期">
         <EmptyState message="後端尚無屆次資料" hint="請確認同步作業是否已成功執行。" />
       </section>
     );
@@ -53,7 +53,7 @@ export function SessionSelector({
   const sessions = activeTerm.sessions;
 
   return (
-    <section className="panel selector" aria-label="屆次與會期">
+    <section className="selector" aria-label="屆次與會期">
       <div className="selector-fields">
         <label>
           <span>

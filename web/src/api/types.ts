@@ -60,6 +60,7 @@ export interface HealthDbCounts {
   snapshots: number;
   bills: number;
   news: number;
+  social_accounts: number;
 }
 
 export interface HealthResponse {
@@ -113,6 +114,8 @@ export interface CommitteeItem {
   kind: CommitteeKind;
   /** 該會期該委員會的席次數（後端算好，前端不得重新聚合） */
   count: number;
+  /** 黨籍 → 席次（加總等於 count） */
+  parties: Record<string, number>;
   conveners: CommitteeConvener[];
 }
 
@@ -139,6 +142,16 @@ export interface LegislatorContact {
   addr: string;
 }
 
+export interface LegislatorSocial {
+  platform: 'facebook' | 'threads';
+  /** 專頁名稱 */
+  name: string;
+  url: string;
+  /** 最新貼文日期（YYYY-MM-DD，來自人工整理表） */
+  latest_post_date: string;
+  latest_post_summary: string;
+}
+
 export interface Legislator {
   /** 穩定識別（lgno → ename → name），不是陣列索引 */
   id: string;
@@ -152,6 +165,11 @@ export interface Legislator {
   sex: string;
   onboard_date: string;
   contacts: LegislatorContact[];
+  social: LegislatorSocial[];
+  /** 本屆提案數（含共同提案） */
+  bill_count: number;
+  /** 近 180 天新聞則數 */
+  news_count: number;
   photo_url: string | null;
   degree: string | null;
   experience: string | null;
@@ -177,6 +195,7 @@ export interface LegislatorsResponse {
 }
 
 export interface LegislatorQuery {
+  id?: string;
   term?: number;
   session?: string;
   q?: string;
@@ -232,6 +251,15 @@ export interface BillItem {
   /** 該委員是否為主提案人（未指定委員時一律 false） */
   is_lead: boolean;
   url: string;
+  /** 提案人（主提案在前）；對不到委員的黨團不列 */
+  sponsors: BillSponsor[];
+}
+
+export interface BillSponsor {
+  id: string;
+  name: string;
+  party: string;
+  is_lead: boolean;
 }
 
 export interface BillLawCount {
@@ -246,6 +274,8 @@ export interface BillsResponse {
   count: number;
   /** 最常涉及的法律（依件數排序，最多 8 項） */
   laws: BillLawCount[];
+  /** 符合結果的議案狀態分布 */
+  statuses: BillLawCount[];
   items: BillItem[];
 }
 
@@ -253,6 +283,8 @@ export interface BillsResponse {
 
 export interface NewsItem {
   legislator_id: string;
+  legislator_name: string;
+  legislator_party: string;
   title: string;
   /** 媒體名稱 */
   source: string;
@@ -265,4 +297,52 @@ export interface NewsResponse {
   total: number;
   count: number;
   items: NewsItem[];
+}
+
+/* ---------- /topics ---------- */
+
+export interface TopicItem {
+  /** 法律名稱 */
+  law: string;
+  /** 期間內有進度的議案件數 */
+  count: number;
+  /** 其中三讀件數 */
+  passed: number;
+  latest_date: string;
+  /** 主提案人黨籍 → 件數 */
+  parties: Record<string, number>;
+}
+
+export interface TopicsResponse {
+  meta: Meta;
+  /** 統計起始日（YYYY-MM-DD） */
+  since: string | null;
+  count: number;
+  items: TopicItem[];
+}
+
+/* ---------- /activity ---------- */
+
+export interface ActivityItem {
+  legislator: {
+    id: string;
+    name: string;
+    party: string;
+    area_name: string;
+    region: string;
+    photo_url: string;
+    is_convener: boolean;
+  };
+  /** 最新一筆動態的日期（YYYY-MM-DD） */
+  activity_date: string;
+  news_7d: number;
+  post: { platform: string; url: string; date: string; summary: string } | null;
+  news: { title: string; source: string; url: string; published_at: string } | null;
+  bill: Omit<BillItem, 'is_lead' | 'sponsors'> | null;
+}
+
+export interface ActivityResponse {
+  meta: Meta;
+  count: number;
+  items: ActivityItem[];
 }

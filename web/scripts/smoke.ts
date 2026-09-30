@@ -77,6 +77,7 @@ const LEGISLATOR = {
   sex: '男',
   onboard_date: '2024/02/01',
   contacts: [{ label: '國會研究室', tel: '02-2358-0000', fax: '', addr: '台北市中正區濟南路1段' }],
+  social: [{ platform: 'facebook', name: '測試委員甲', url: 'https://www.facebook.com/test', latest_post_date: '2026-09-27', latest_post_summary: '測試摘要' }],
   photo_url: null,
   degree: null,
   experience: null,

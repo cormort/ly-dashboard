@@ -1,7 +1,7 @@
 import { pathToFileURL } from 'node:url';
 import { CONFIG } from './config.mjs';
-import { openDb, recordSyncRun, saveSnapshot, applyDataset, applyBills, upsertNews, pruneNews, getMeta, setMeta } from './db.mjs';
-import { buildDataset, normalizeBills, newsName, parseNewsRss, DataValidationError } from './normalize.mjs';
+import { openDb, recordSyncRun, saveSnapshot, applyDataset, applyBills, applySocial, upsertNews, pruneNews, getMeta, setMeta } from './db.mjs';
+import { buildDataset, normalizeBills, normalizeSocial, newsName, parseNewsRss, DataValidationError } from './normalize.mjs';
 import { fetchJson, FetchError } from './fetch-ly.mjs';
 
 /**
@@ -222,12 +222,36 @@ export async function runNewsIngest(db, { logger = console, fetchImpl = fetchJso
   return { status, added, pruned, failures: failures.length };
 }
 
-/** 名錄 → 議案 → 新聞；名錄失敗就不跑後兩者（沒有名錄就對不到人） */
+/** 社群帳號整理表：抓 CSV → 驗證 → 整批覆寫；失敗保留舊資料。 */
+export async function runSocialIngest(db, { logger = console, fetchImpl = fetchJson, now = () => new Date() } = {}) {
+  const startedAt = now().toISOString();
+  const startedMs = Date.now();
+  const record = (fields) =>
+    recordSyncRun(db, { dataset: 'social', started_at: startedAt, finished_at: now().toISOString(), duration_ms: Date.now() - startedMs, ua: CONFIG.userAgent, ...fields });
+  try {
+    const result = await fetchImpl(CONFIG.social.url, { ua: CONFIG.userAgent, text: true });
+    const idByName = new Map(db.prepare('SELECT name, id FROM legislators WHERE leave_flag = 0').all().map((r) => [newsName(r.name), r.id]));
+    const { accounts, warnings } = normalizeSocial(result.text, idByName);
+    applySocial(db, accounts, { fetchedAt: now().toISOString() });
+    for (const w of warnings) logger.warn(`[social] 警告：${w}`);
+    logger.log(`[social] 已套用：${accounts.length} 個社群帳號`);
+    record({ status: 'success', records: accounts.length, attempt: result.attempts ?? 1, http_status: result.status ?? 200 });
+    return { status: 'success', accounts: accounts.length, warnings };
+  } catch (error) {
+    const message = error instanceof FetchError ? `${error.message}（嘗試 ${error.attempts} 次）` : String(error?.message || error);
+    logger.error(`[social] 同步失敗，保留既有資料：${message}`);
+    record({ status: 'failed', http_status: error?.status ?? null, error: message });
+    return { status: 'failed', error: message };
+  }
+}
+
+/** 名錄 → 議案 → 社群 → 新聞；名錄失敗就不跑其餘（沒有名錄就對不到人） */
 export async function runAll(db, options = {}) {
   const roster = await runIngest(db, options);
   if (roster.status === 'failed') return roster;
   const bills = await runBillsIngest(db, options);
-  return { ...roster, bills, news: await runNewsIngest(db, options) };
+  const social = await runSocialIngest(db, options);
+  return { ...roster, bills, social, news: await runNewsIngest(db, options) };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

@@ -89,3 +89,8 @@ export const SYNC_STATUS_LABELS: Record<string, string> = {
   failed: '失敗',
   skipped: '內容未變更',
 };
+
+/** 議案名稱去掉固定的「，請審議案。」尾綴，只留案由 */
+export function billTitle(name: string): string {
+  return name.replace(/[，,]?\s*請審議案。?$/, '').trim() || name;
+}

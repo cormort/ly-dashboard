@@ -1,148 +1,74 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { buildUrl } from './api/client';
-import type { HealthResponse, Legislator, LegislatorsResponse, MetaResponse, CommitteesResponse } from './api/types';
+import type { HealthResponse, Legislator, LegislatorsResponse, MetaResponse } from './api/types';
 import { AppShell } from './components/AppShell';
-import { ChangesPanel } from './components/ChangesPanel';
-import { CommitteeChart } from './components/CommitteeChart';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { FilterBar } from './components/FilterBar';
 import { Header } from './components/Header';
 import { LegislatorDetail } from './components/LegislatorDetail';
-import { LegislatorGrid } from './components/LegislatorGrid';
-import { SessionSelector } from './components/SessionSelector';
-import { StatCards } from './components/StatCards';
 import { SyncStatusBanner } from './components/SyncStatusBanner';
 import { useApi } from './hooks/useApi';
 import { useQueryState } from './hooks/useQueryState';
+import { pathFor, useRoute } from './hooks/useRoute';
 import { useTracked } from './hooks/useTracked';
-import { deriveParties, deriveRegions } from './lib/legislators';
-import { latestSessionId, sessionLabelIndex, sessionScopeLabel } from './lib/sessions';
-import { ALL_SESSIONS, resetForTermChange, type FilterState } from './lib/urlState';
+import { sessionLabelIndex } from './lib/sessions';
+import { BillsPage } from './pages/BillsPage';
+import { HomePage } from './pages/HomePage';
+import { LegislatorsPage } from './pages/LegislatorsPage';
 
-/** 名錄單次抓取上限（API 預設即 500） */
-const PAGE_LIMIT = 500;
+/** 只有 id 時（首頁動態、法案提案人）先抓完整資料再開檔案 */
+function DetailById({ id, onLoaded, onClose }: { id: string; onLoaded: (l: Legislator) => void; onClose: () => void }) {
+  const res = useApi<LegislatorsResponse>(buildUrl('/legislators', { id }));
+  useEffect(() => {
+    const found = res.data?.items[0];
+    if (found) onLoaded(found);
+    else if (res.phase === 'empty' || res.phase === 'error') onClose();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 只在請求結果變動時觸發
+  }, [res.phase, res.data]);
+  return null;
+}
 
 export default function App() {
+  const { route, navigate } = useRoute();
   const query = useQueryState();
-  const { filters } = query;
-  const update = query.update;
   const [refreshToken, setRefreshToken] = useState(0);
   const [selected, setSelected] = useState<Legislator | null>(null);
+  const [pendingId, setPendingId] = useState<string | null>(null);
+  const [syncOpen, setSyncOpen] = useState(false);
   const tracked = useTracked();
-
-  /* --------------------------- 來源中繼資料 --------------------------- */
 
   const health = useApi<HealthResponse>(buildUrl('/health'), { refreshToken });
   const meta = useApi<MetaResponse>(buildUrl('/meta'), { refreshToken });
-  const metaData = meta.data;
 
-  // 生效中的屆次／會期：URL 有就用 URL，否則沿用 /api/v1/meta 的 current（等於後端預設）
-  const effectiveTerm = filters.term ?? metaData?.current.term ?? null;
-  const effectiveSession = filters.session ?? metaData?.current.session ?? null;
+  const source = health.data?.meta.source ?? meta.data?.meta.source ?? null;
+  const fetchedAt = health.data?.meta.fetched_at ?? meta.data?.meta.fetched_at ?? null;
+  const stale = health.data?.meta.stale ?? meta.data?.meta.stale ?? false;
+  const failed = health.phase === 'error' || health.data?.last_runs[0]?.status === 'failed' || health.data?.ok === false;
+  const labels = sessionLabelIndex(meta.data?.terms ?? []);
+  const sessionLabel = (sessionId: string) => labels.get(sessionId) ?? sessionId;
 
-  // 把生效值寫回 URL（replace 模式，不污染上一頁），確保網址可分享、重整後一致
-  useEffect(() => {
-    if (!metaData) return;
-    const patch: Partial<FilterState> = {};
-    if (filters.term === null) patch.term = metaData.current.term;
-    if (filters.session === null) patch.session = metaData.current.session ?? ALL_SESSIONS;
-    if (Object.keys(patch).length > 0) update(patch, 'replace');
-  }, [metaData, filters.term, filters.session, update]);
-
-  /* ------------------------------ 資料請求 ------------------------------ */
-
-  const queryParams = { term: effectiveTerm ?? undefined, session: effectiveSession ?? undefined };
-
-  // 該屆／會期完整名單：提供委員總數與黨籍選項（只在後端已算好的結果上做列舉）
-  const roster = useApi<LegislatorsResponse>(
-    buildUrl('/legislators', { ...queryParams, limit: PAGE_LIMIT }),
-    { refreshToken },
-  );
-  // 本會期召委總數（後端已有 convener 篩選，前端不自行統計）
-  const convenerStat = useApi<LegislatorsResponse>(
-    buildUrl('/legislators', { ...queryParams, convener: 1, limit: PAGE_LIMIT }),
-    { refreshToken },
-  );
-
-  const hasFilters =
-    filters.q.trim() !== '' ||
-    filters.party !== null ||
-    filters.region !== null ||
-    filters.committee !== null ||
-    filters.convener;
-
-  // 有篩選條件時才另外抓一份；否則直接沿用 roster，避免重複請求
-  const filtered = useApi<LegislatorsResponse>(
-    hasFilters
-      ? buildUrl('/legislators', {
-          ...queryParams,
-          q: filters.q,
-          party: filters.party ?? undefined,
-          region: filters.region ?? undefined,
-          committee: filters.committee ?? undefined,
-          convener: filters.convener ? 1 : undefined,
-          limit: PAGE_LIMIT,
-        })
-      : null,
-    { refreshToken },
-  );
-  const legislatorList = hasFilters ? filtered : roster;
-
-  const committees = useApi<CommitteesResponse>(
-    buildUrl('/committees', queryParams),
-    { refreshToken },
-  );
-
-  /* ------------------------------ 衍生資料 ------------------------------ */
-
-  const parties = useMemo(() => deriveParties(roster.data?.items ?? []), [roster.data]);
-  const regions = useMemo(() => deriveRegions(roster.data?.items ?? []), [roster.data]);
-
-  const terms = metaData?.terms ?? [];
-
-  const scopeLabel = useMemo(
-    () => sessionScopeLabel(terms, effectiveTerm, effectiveSession),
-    [terms, effectiveTerm, effectiveSession],
-  );
-
-  const sessionLabel = useMemo(() => {
-    const index = sessionLabelIndex(terms);
-    return (sessionId: string) => index.get(sessionId) ?? sessionId;
-  }, [terms]);
-
-  const source = health.data?.meta.source ?? metaData?.meta.source ?? null;
-  const fetchedAt = health.data?.meta.fetched_at ?? metaData?.meta.fetched_at ?? null;
-  const stale = health.data?.meta.stale ?? metaData?.meta.stale ?? false;
-  const generatedAt = health.data?.meta.generated_at ?? metaData?.meta.generated_at ?? null;
-
-  /* ------------------------------- 事件 ------------------------------- */
-
-  const handleTermChange = (nextTerm: number) => {
-    const termInfo = metaData?.terms.find((item) => item.no === nextTerm);
-    const nextSession = latestSessionId(termInfo) ?? ALL_SESSIONS;
-    // 換屆次時清掉只對舊屆有意義的黨籍／委員會條件，避免跨屆條件混用
-    query.set(resetForTermChange(filters, nextTerm, nextSession), 'push');
+  // 頁首搜尋一律查委員：不在委員頁時帶著關鍵字切過去
+  const onQueryChange = (value: string) => {
+    if (route === 'legislators') query.update({ q: value }, 'replace');
+    else navigate(pathFor('legislators', { q: value.trim() }));
   };
-
-  const handleReset = () => {
-    update({ q: '', party: null, region: null, committee: null, convener: false }, 'push');
-  };
-
-  const refreshing = health.phase === 'loading' || meta.phase === 'loading';
 
   return (
     <ErrorBoundary>
       <AppShell
         header={
           <Header
+            route={route}
+            onNavigate={navigate}
             source={source}
             fetchedAt={fetchedAt}
             stale={stale}
-            generatedAt={generatedAt}
-            query={filters.q}
-            onQueryChange={(value) => update({ q: value }, 'replace')}
+            failed={failed}
+            syncOpen={syncOpen}
+            onSyncToggle={() => setSyncOpen((v) => !v)}
+            query={route === 'legislators' ? query.filters.q : ''}
+            onQueryChange={onQueryChange}
             onRefresh={() => setRefreshToken((value) => value + 1)}
-            refreshing={refreshing}
+            refreshing={health.phase === 'loading' || meta.phase === 'loading'}
           />
         }
         sidebar={
@@ -158,50 +84,30 @@ export default function App() {
           ) : null
         }
       >
-        <SyncStatusBanner health={health} refreshToken={refreshToken} />
+        {/* 同步有問題時一定顯示；正常時由頁首狀態鈕展開 */}
+        {syncOpen || failed || stale ? (
+          <div id="sync-panel">
+            <SyncStatusBanner health={health} refreshToken={refreshToken} />
+          </div>
+        ) : null}
 
-        <div className="controls">
-          <SessionSelector
-            meta={meta}
-            term={effectiveTerm}
-            session={effectiveSession}
-            sessionUndetermined={metaData !== null && metaData.current.session === null && filters.session === null}
-            onTermChange={handleTermChange}
-            onSessionChange={(session) => update({ session }, 'push')}
+        {pendingId ? (
+          <DetailById
+            key={pendingId}
+            id={pendingId}
+            onLoaded={(l) => {
+              setPendingId(null);
+              setSelected(l);
+            }}
+            onClose={() => setPendingId(null)}
           />
-          <FilterBar
-            filters={filters}
-            parties={parties}
-            regions={regions}
-            committees={committees.data?.items ?? []}
-            onChange={(patch) => update(patch, 'push')}
-            onReset={handleReset}
-            resultTotal={legislatorList.data ? legislatorList.data.total : null}
-            rosterTotal={roster.data ? roster.data.total : null}
-          />
-        </div>
+        ) : null}
 
-        <StatCards
-          roster={roster}
-          convenerStat={convenerStat}
-          trackedCount={tracked.count}
-          health={health}
-          sessionScopeLabel={scopeLabel}
-        />
-
-        <div className="split">
-          <CommitteeChart committees={committees} sessionScopeLabel={scopeLabel} />
-          <ChangesPanel refreshToken={refreshToken} />
-        </div>
-
-        <LegislatorGrid
-          legislators={legislatorList}
-          isTracked={tracked.isTracked}
-          onToggleTrack={(legislator) => tracked.toggle(legislator.id)}
-          onOpen={setSelected}
-          sessionScopeLabel={scopeLabel}
-          hasFilters={hasFilters}
-        />
+        {route === 'home' ? <HomePage refreshToken={refreshToken} onOpenId={setPendingId} onNavigate={navigate} /> : null}
+        {route === 'legislators' ? (
+          <LegislatorsPage query={query} meta={meta} tracked={tracked} refreshToken={refreshToken} onOpen={setSelected} />
+        ) : null}
+        {route === 'bills' ? <BillsPage refreshToken={refreshToken} onOpenId={setPendingId} /> : null}
       </AppShell>
     </ErrorBoundary>
   );

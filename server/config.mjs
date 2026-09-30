@@ -31,6 +31,13 @@ export const CONFIG = {
     keepDays: 180,
     delayMs: Number(process.env.LY_NEWS_DELAY_MS ?? 1000),
   },
+  // 社群帳號：人工整理的 Google 試算表（知道連結者可檢視），以 CSV 匯出網址抓取。
+  social: {
+    url:
+      process.env.LY_SOCIAL_CSV ||
+      'https://docs.google.com/spreadsheets/d/1hFuV22z3ceSGFC03zGUUX5qEKzetBQLeCA-mHTJcQFw/export?format=csv&gid=1916425311',
+    name: '委員社群帳號整理表',
+  },
   source: {
     name: '立法院開放資料',
     url: 'https://data.ly.gov.tw/',

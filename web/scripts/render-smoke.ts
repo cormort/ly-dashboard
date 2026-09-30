@@ -3,7 +3,7 @@
  *
  * 用 react-dom/server 把元件樹與各資料區塊的**四態**（loading / ready / empty / error）
  * 各渲染一次，驗證：
- *   1. 沒有 import／render 期例外（recharts、lucide、整棵元件樹都載得起來）
+ *   1. 沒有 import／render 期例外（lucide、三個頁面、整棵元件樹都載得起來）
  *   2. 初始載入時不會顯示任何委員資料
  *   3. ready 狀態真的把後端欄位畫出來（含圖表的文字替代）
  *   4. empty／error 狀態有明確文案，且**不會**補上任何示範資料
@@ -25,13 +25,17 @@ import { CommitteeChart } from '../src/components/CommitteeChart';
 import { Header } from '../src/components/Header';
 import { LegislatorGrid } from '../src/components/LegislatorGrid';
 import { SessionSelector } from '../src/components/SessionSelector';
-import { StatCards } from '../src/components/StatCards';
+import { Hemicycle, seatLayout } from '../src/components/Hemicycle';
+import { HomePage } from '../src/pages/HomePage';
+import { BillsPage } from '../src/pages/BillsPage';
 import { SyncStatusBanner } from '../src/components/SyncStatusBanner';
 
 /* ---------------------------- 瀏覽器 API 替身 ---------------------------- */
 const store = new Map<string, string>();
 (globalThis as unknown as { window: unknown }).window = {
   location: { pathname: '/', search: '?term=11&session=11-5' },
+  scrollTo: () => undefined,
+  dispatchEvent: () => true,
   localStorage: {
     getItem: (key: string) => store.get(key) ?? null,
     setItem: (key: string, value: string) => void store.set(key, value),
@@ -77,6 +81,7 @@ const LEGISLATOR = {
   sex: '男',
   onboard_date: '2024/02/01',
   contacts: [{ label: '國會研究室', tel: '02-2358-0000', fax: '', addr: '台北市中正區濟南路1段' }],
+  social: [{ platform: 'facebook', name: '測試委員甲', url: 'https://www.facebook.com/test', latest_post_date: '2026-09-27', latest_post_summary: '測試摘要' }],
   photo_url: null,
   degree: null,
   experience: null,
@@ -84,6 +89,11 @@ const LEGISLATOR = {
   sessions: ['11-1', '11-5'],
   committees: [{ id: '內政委員會', kind: 'standing' as const, is_convener: true }],
   is_convener: true,
+  former: false,
+  leave_date: '',
+  leave_reason: '',
+  bill_count: 3,
+  news_count: 7,
   source_url: 'https://data.ly.gov.tw/odw/ID9Action.action',
 };
 
@@ -91,8 +101,8 @@ const COMMITTEES: CommitteesResponse = {
   meta: { ...META, term: 11, session: '11-5' },
   count: 2,
   items: [
-    { id: '內政委員會', kind: 'standing', count: 14, conveners: [{ id: 'LY-00024', name: '測試委員甲' }] },
-    { id: '財政委員會', kind: 'standing', count: 13, conveners: [] },
+    { id: '內政委員會', kind: 'standing', count: 14, parties: { 測試政黨A: 9, 測試政黨B: 5 }, conveners: [{ id: 'LY-00024', name: '測試委員甲' }] },
+    { id: '財政委員會', kind: 'standing', count: 13, parties: { 測試政黨A: 13 }, conveners: [] },
   ],
 };
 
@@ -154,55 +164,57 @@ function expectAll(name: string, html: string, needles: string[]): void {
 const { default: App } = await import('../src/App');
 
 console.log('— 整頁初始狀態（尚未取得任何 API 資料）—');
-const appHtml = render(createElement(App));
-expectAll('站名、搜尋、各區塊骨架都在', appHtml, [
+const homeHtml = render(createElement(App));
+expectAll('首頁：站名、三頁導覽、動態／議題／新聞骨架', homeHtml, [
   '立委觀測站',
   '關鍵字搜尋立法委員',
-  '讀取同步狀態',
+  '最近動態',
+  '委員查詢',
+  '法案查詢',
+  'aria-current="page"',
+  '讀取委員動態',
+  '讀取議題',
+  '讀取新聞',
+]);
+check('首頁初始不顯示任何委員', !homeHtml.includes('查看檔案'));
+check('不含示範／假資料字串', !/甲黨|示範資料|林怡安|陳宏宇|乙黨/.test(homeHtml));
+
+(window as unknown as { location: { pathname: string } }).location.pathname = '/legislators';
+const legislatorsHtml = render(createElement(App));
+expectAll('委員查詢頁：屆次、篩選、名錄、委員會、異動骨架', legislatorsHtml, [
   '屆次與會期',
   '篩選條件',
-  '目前委員數',
-  '本會期召委數',
-  '委員會席次',
-  '最近異動',
   '立法委員名錄',
+  '讀取委員名錄',
+  '委員會組成',
+  '最近異動',
+  '卡片',
+  '列表',
 ]);
-check('初始不顯示任何委員卡片', !appHtml.includes('查看檔案'));
-check('不含示範／假資料字串', !/甲黨|示範資料|林怡安|陳宏宇|乙黨/.test(appHtml));
+(window as unknown as { location: { pathname: string } }).location.pathname = '/';
 
 console.log('\n— Header —');
-expectAll(
-  '顯示資料來源、授權與資料截至時間',
-  render(
-    createElement(Header, {
-      source: META.source,
-      fetchedAt: META.fetched_at,
-      stale: false,
-      generatedAt: META.generated_at,
-      query: '',
-      onQueryChange: () => undefined,
-      onRefresh: () => undefined,
-      refreshing: false,
-    }),
-  ),
-  ['立法院開放資料', '政府資料開放授權條款第 1 版', '資料截至：2026/09/30', 'data.ly.gov.tw'],
-);
-expectAll(
-  'stale 時明示「可能非最新」',
-  render(
-    createElement(Header, {
-      source: META.source,
-      fetchedAt: META.fetched_at,
-      stale: true,
-      generatedAt: META.generated_at,
-      query: '',
-      onQueryChange: () => undefined,
-      onRefresh: () => undefined,
-      refreshing: false,
-    }),
-  ),
-  ['可能非最新'],
-);
+const headerProps = {
+  route: 'home' as const,
+  onNavigate: () => undefined,
+  source: META.source,
+  fetchedAt: META.fetched_at,
+  stale: false,
+  failed: false,
+  syncOpen: false,
+  onSyncToggle: () => undefined,
+  query: '',
+  onQueryChange: () => undefined,
+  onRefresh: () => undefined,
+  refreshing: false,
+};
+expectAll('顯示資料來源與資料截至時間', render(createElement(Header, headerProps)), [
+  '立法院開放資料',
+  '資料截至 2026/09/30',
+  'aria-controls="sync-panel"',
+]);
+expectAll('stale 時明示「可能非最新」', render(createElement(Header, { ...headerProps, stale: true })), ['可能非最新', 'sync-pill warning']);
+expectAll('同步失敗時明示', render(createElement(Header, { ...headerProps, failed: true })), ['同步失敗', 'sync-pill error']);
 
 console.log('\n— SyncStatusBanner —');
 expectAll(
@@ -327,50 +339,41 @@ expectAll(
   ['後端尚無屆次資料'],
 );
 
-console.log('\n— StatCards —');
-expectAll(
-  'ready 態顯示後端 total 與同步狀態',
-  render(
-    createElement(StatCards, {
-      roster: ready({ ...LEGISLATORS, total: 113 }),
-      convenerStat: ready({ ...LEGISLATORS, total: 64 }),
-      trackedCount: 3,
-      health: ready({
-        meta: META,
-        ok: true,
-        db: { legislators: 113, memberships: 481, committee_seats: 402, changes: 37 },
-        last_runs: [],
-      }),
-      sessionScopeLabel: '第 11 屆第 5 會期',
-    }),
-  ),
-  ['113', '64', '追蹤中', '本會期召委數', '正常', '第 11 屆第 5 會期'],
+console.log('\n— Hemicycle —');
+check('seatLayout 產生精確席次數', [1, 8, 113, 120].every((n) => seatLayout(n).length === n));
+const B = { ...LEGISLATOR, id: 'LY-B', name: '測試委員乙', party: '測試政黨B', is_convener: false };
+const hemiHtml = render(
+  createElement(Hemicycle, {
+    roster: [LEGISLATOR, B],
+    matching: new Set(['LY-B']),
+    party: '測試政黨B',
+    onPartyToggle: () => undefined,
+    onOpen: () => undefined,
+  }),
 );
-expectAll(
-  'error 態不假造數字',
-  render(
-    createElement(StatCards, {
-      roster: errored<LegislatorsResponse>(),
-      convenerStat: errored<LegislatorsResponse>(),
-      trackedCount: 0,
-      health: errored(),
-      sessionScopeLabel: '第 11 屆第 5 會期',
-    }),
-  ),
-  ['—', '無法讀取'],
-);
+expectAll('席次圖：文字替代、亮起數、圖例按鈕狀態、召委外框', hemiHtml, [
+  '議場席次圖：共 2 席，符合條件 1 席',
+  '測試政黨A 0／1 席',
+  '測試政黨B 1／1 席',
+  'aria-label="依黨籍篩選"',
+  'aria-pressed="true"',
+  '<title>測試委員乙',
+]);
+check('不符合的席次變淡', hemiHtml.includes('var(--seat-off)'));
+check('無篩選時全部亮起', !render(
+  createElement(Hemicycle, { roster: [LEGISLATOR, B], matching: null, party: null, onPartyToggle: () => undefined, onOpen: () => undefined }),
+).includes('var(--seat-off)'));
 
 console.log('\n— CommitteeChart —');
 const chartHtml = render(
   createElement(CommitteeChart, { committees: ready(COMMITTEES), sessionScopeLabel: '第 11 屆第 5 會期' }),
 );
-expectAll('ready 態有圖表容器與文字替代', chartHtml, [
-  'committee-chart-desc',
-  'aria-label="委員會席次長條圖"',
+expectAll('ready 態：每個委員會的席次、黨籍組成、召委都有文字', chartHtml, [
+  '委員會組成',
   '內政委員會 14 席',
   '財政委員會 13 席',
-  '共 2 個委員會、27 席',
-  '以表格檢視',
+  '召委 測試委員甲',
+  'aria-pressed="false"',
 ]);
 expectAll(
   'empty 態顯示「此會期尚無委員會資料」',
@@ -402,15 +405,18 @@ const gridHtml = render(
     onOpen: () => undefined,
     sessionScopeLabel: '第 11 屆第 5 會期',
     hasFilters: false,
+    mode: 'cards',
+    onModeChange: () => undefined,
   }),
 );
 expectAll('ready 態卡片欄位齊全', gridHtml, [
   '測試委員甲',
   '測試政黨A',
-  '內政委員會',
+  '內政・召',
   '測試市第1選舉區',
   '召委',
-  '第 11 屆',
+  '提案 3',
+  '新聞 7',
   'aria-label="取消追蹤 測試委員甲"',
   'aria-pressed="true"',
   '查看檔案',
@@ -423,6 +429,8 @@ check('未追蹤時 aria-label 為加入追蹤', render(
     onOpen: () => undefined,
     sessionScopeLabel: 'x',
     hasFilters: false,
+    mode: 'cards',
+    onModeChange: () => undefined,
   }),
 ).includes('aria-label="追蹤 測試委員甲"'));
 expectAll(
@@ -435,6 +443,8 @@ expectAll(
       onOpen: () => undefined,
       sessionScopeLabel: '第 11 屆第 5 會期',
       hasFilters: false,
+      mode: 'cards',
+      onModeChange: () => undefined,
     }),
   ),
   ['此會期尚無資料', '第 11 屆第 5 會期'],
@@ -449,9 +459,11 @@ expectAll(
       onOpen: () => undefined,
       sessionScopeLabel: '第 11 屆第 5 會期',
       hasFilters: true,
+      mode: 'cards',
+      onModeChange: () => undefined,
     }),
   ),
-  ['沒有符合條件的委員', '清除篩選'],
+  ['沒有符合條件的委員', '清除條件'],
 );
 expectAll(
   'error 態有重試',
@@ -463,6 +475,8 @@ expectAll(
       onOpen: () => undefined,
       sessionScopeLabel: 'x',
       hasFilters: false,
+      mode: 'cards',
+      onModeChange: () => undefined,
     }),
   ),
   ['無法取得委員名錄', '重試'],
@@ -477,9 +491,46 @@ expectAll(
       onOpen: () => undefined,
       sessionScopeLabel: 'x',
       hasFilters: false,
+      mode: 'cards',
+      onModeChange: () => undefined,
     }),
   ),
   ['讀取委員名錄'],
+);
+
+const listHtml = render(
+  createElement(LegislatorGrid, {
+    legislators: ready(LEGISLATORS),
+    isTracked: () => false,
+    onToggleTrack: () => undefined,
+    onOpen: () => undefined,
+    sessionScopeLabel: 'x',
+    hasFilters: false,
+    mode: 'list',
+    onModeChange: () => undefined,
+  }),
+);
+expectAll('列表模式：可排序表頭、欄位與召委標記', listHtml, [
+  '<table class="roster">',
+  'aria-sort="ascending"',
+  '提案',
+  '最新貼文',
+  '測試委員甲',
+  '09/27',
+  '內政・召',
+]);
+check('列表模式不出現卡片', !listHtml.includes('查看檔案'));
+
+console.log('\n— 首頁與法案查詢（自行抓資料，僅驗 loading 態）—');
+expectAll(
+  '首頁 loading 態',
+  render(createElement(HomePage, { refreshToken: 0, onOpenId: () => undefined, onNavigate: () => undefined })),
+  ['委員動態', '熱門議題', '最新新聞', '讀取委員動態'],
+);
+expectAll(
+  '法案查詢 loading 態',
+  render(createElement(BillsPage, { refreshToken: 0, onOpenId: () => undefined })),
+  ['法案查詢', '搜尋法案名稱或法律', '全部狀態', '讀取法案'],
 );
 
 console.log('\n— AppShell 側欄（詳情）—');
@@ -506,6 +557,10 @@ expectAll('詳情側欄有 dialog 語意、學經歷、會期與來源連結', d
   'label:11-1',
   'label:11-5',
   'LY-00024',
+  '社群',
+  '臉書：測試委員甲',
+  'https://www.facebook.com/test',
+  '最新貼文 2026-09-27：測試摘要',
   '最近提案',
   '讀取提案',
   '近期新聞',

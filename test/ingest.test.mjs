@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { openDb, applyDataset, getMeta } from '../server/db.mjs';
 import { buildDataset } from '../server/normalize.mjs';
-import { runIngest, runBillsIngest, runNewsIngest, runAll } from '../server/ingest.mjs';
+import { runIngest, runBillsIngest, runNewsIngest, runSocialIngest, runAll } from '../server/ingest.mjs';
 import { getHealth, listBills, listLegislators, listNews, listSyncRuns } from '../server/queries.mjs';
 import { FetchError } from '../server/fetch-ly.mjs';
 import { syncOnce } from '../server/index.mjs';
@@ -217,4 +217,20 @@ test('新聞同步：過半委員失敗才算 failed，且不清掉既有新聞'
   const result = await runNewsIngest(db, { logger: silent, fetchImpl: failing, now, delayMs: 0 });
   assert.equal(result.status, 'failed');
   assert.equal(getHealth(db).db.news, before);
+});
+
+const socialCsv = readFileSync(fileURLToPath(new URL('./fixtures/social.csv', import.meta.url)), 'utf8');
+
+test('社群同步：成功時寫入並出現在委員資料；失敗時保留舊資料', async () => {
+  const db = seeded();
+  const ok = await runSocialIngest(db, { logger: silent, fetchImpl: async () => ({ text: socialCsv, status: 200, attempts: 1 }) });
+  assert.equal(ok.status, 'success');
+  assert.equal(getHealth(db).db.social_accounts, 113);
+  const wu = listLegislators(db, { q: '吳思瑤' }).items[0];
+  assert.equal(wu.social[0].platform, 'facebook');
+  assert.equal(wu.social[0].url, 'https://www.facebook.com/taipeineedyou');
+
+  const blocked = await runSocialIngest(db, { logger: silent, fetchImpl: async () => ({ text: '<!DOCTYPE html>login', status: 200, attempts: 1 }) });
+  assert.equal(blocked.status, 'failed', '試算表被改回私人（回登入頁）要 fail closed');
+  assert.equal(getHealth(db).db.social_accounts, 113);
 });
