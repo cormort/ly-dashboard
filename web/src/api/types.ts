@@ -253,6 +253,9 @@ export interface BillItem {
   /** 議案狀態，如「交付審查」「三讀」 */
   status: string;
   category: string;
+  /** 屆次 */
+  term: number | null;
+  /** 會期（屆內序號） */
   session: number | null;
   /** 涉及的法律名稱（＝主題） */
   laws: string[];
@@ -290,6 +293,10 @@ export interface BillsResponse {
   parties: Record<string, number>;
   /** 符合結果中最早的進度日期 */
   first_date: string | null;
+  /** 資料所屬屆次 */
+  term: number | null;
+  /** 各會期件數（在會期條件前算） */
+  sessions: { seq: number; count: number }[];
   items: BillItem[];
 }
 
@@ -452,8 +459,8 @@ export interface RankingsResponse {
 /* ---------- /budget ---------- */
 
 export type BudgetState = 'pending' | 'done' | 'returned';
-/** 預算類型：總預算／附屬單位預算／特別預算（後端由名稱主旨判斷，可複選） */
-export type BudgetType = 'general' | 'subsidiary' | 'special';
+/** 預算類型：總預算／附屬單位預算／特別預算／追加預算（後端由名稱主旨判斷，可複選） */
+export type BudgetType = 'general' | 'subsidiary' | 'special' | 'supplementary';
 
 export interface BudgetItem {
   id: string;

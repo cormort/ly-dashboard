@@ -423,3 +423,16 @@ test('比較：兩位委員的統計與共同提案', () => {
   const both = db.prepare('SELECT COUNT(*) AS n FROM bill_sponsors x JOIN bill_sponsors y ON x.bill_id = y.bill_id WHERE x.legislator_id = ? AND y.legislator_id = ?').get(a, b).n;
   assert.equal(res.shared.bills, Number(both));
 });
+
+test('議案：會期篩選，會期分布在會期條件前算，每筆附屆次', () => {
+  const { db } = withActivity();
+  const all = listBills(db, { limit: 5 });
+  assert.equal(all.term, 11);
+  assert.ok(all.sessions.length > 0);
+  assert.equal(all.sessions.reduce((sum, s) => sum + s.count, 0), all.total);
+  const seq = all.sessions[0].seq;
+  const one = listBills(db, { session: seq, limit: 200 });
+  assert.equal(one.total, all.sessions[0].count);
+  assert.ok(one.items.every((b) => b.session === seq && b.term === 11));
+  assert.deepEqual(one.sessions, all.sessions, '選了會期，會期清單不變');
+});

@@ -461,6 +461,7 @@ export function listRankings(db, { type = 'all', days = 30, limit = 10 } = {}) {
 /** 議案列的共用轉換 */
 const toBill = (r) => ({
   id: r.id,
+  term: r.term === null ? null : Number(r.term),
   name: r.name,
   status: r.status,
   category: r.category,
@@ -475,7 +476,7 @@ const toBill = (r) => ({
  * `law`（精確法律名稱）、`status`。回傳分頁結果＋在全部符合結果上算的主題（法律）與狀態統計。
  * ponytail: 撈出全部符合列再在 JS 統計／分頁（本屆約 7,400 件，數毫秒）；資料量大十倍再改 SQL 聚合。
  */
-export function listBills(db, { legislator = null, q = '', law = '', status = '', from = '', to = '', limit = 20, offset = 0, all = false } = {}) {
+export function listBills(db, { legislator = null, q = '', law = '', status = '', session = '', from = '', to = '', limit = 20, offset = 0, all = false } = {}) {
   const resolvedLimit = all ? Infinity : Math.max(1, Math.min(Number(limit) || 20, 200));
   const resolvedOffset = Math.max(0, Math.trunc(Number(offset) || 0));
   const clauses = [];
@@ -490,7 +491,11 @@ export function listBills(db, { legislator = null, q = '', law = '', status = ''
   if (isDate(to)) clauses.push('b.latest_date <= ?'), params.push(String(to));
   const statusFilter = status ? String(status) : '';
   const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
-  const rows = db.prepare(`SELECT b.* FROM bills b ${where} ORDER BY b.latest_date DESC, b.id DESC`).all(...params);
+  const allRows = db.prepare(`SELECT b.* FROM bills b ${where} ORDER BY b.latest_date DESC, b.id DESC`).all(...params);
+  // 會期分布在套用會期條件前算（同 L8），選了某會期下拉仍列出其他會期
+  const sessionCounts = new Map();
+  for (const row of allRows) if (row.session !== null) sessionCounts.set(Number(row.session), (sessionCounts.get(Number(row.session)) ?? 0) + 1);
+  const rows = session ? allRows.filter((row) => String(row.session) === String(session)) : allRows;
 
   // 統計在「套用狀態篩選前」算（L8）：否則選了三讀之後下拉只剩三讀一個選項。
   const lawCounts = new Map();
@@ -534,6 +539,8 @@ export function listBills(db, { legislator = null, q = '', law = '', status = ''
     count: page.length,
     laws: ranked(lawCounts, 8),
     parties: partyCounts,
+    term: currentTerm(db),
+    sessions: [...sessionCounts].sort((a, b) => a[0] - b[0]).map(([seq, count]) => ({ seq, count })),
     first_date: matching.length ? matching.reduce((min, r) => (r.latest_date && r.latest_date < min ? r.latest_date : min), matching[0].latest_date || '9999') : null,
     statuses: ranked(statusCounts, 20),
     items: page.map((r) => {
@@ -651,7 +658,7 @@ export function listNews(db, { legislator = null, limit = 10 } = {}) {
  * 預算類議案的審議狀態分三類。定期報告多半「交付查照」即結案（不經審查），
  * 所以不套委員提案的五階段流程，只分審議中／已結案／退回。
  */
-const BUDGET_TYPES = ['general', 'subsidiary', 'special'];
+const BUDGET_TYPES = ['general', 'subsidiary', 'special', 'supplementary'];
 const BUDGET_PENDING = new Set(['交付審查', '交付處理', '排入院會', '排入院會(討論事項)', '交付協商', '復議', '中央政府總預算流程']);
 export const budgetState = (status) =>
   BUDGET_PENDING.has(status) ? 'pending' : status === '退回程序委員會' ? 'returned' : 'done';
@@ -761,7 +768,7 @@ export function listBudgetMeetings(db, { limit = 15 } = {}) {
 }
 
 export function budgetCsv(items) {
-  const TYPE_LABEL = { general: '總預算', subsidiary: '附屬單位預算', special: '特別預算' };
+  const TYPE_LABEL = { general: '總預算', subsidiary: '附屬單位預算', special: '特別預算', supplementary: '追加預算' };
   const header = ['議案編號', '類別', '預算類型', '名稱', '提案單位', '預算年度', '狀態', '最新進度日期', '連結'];
   return [
     csvRow(header),
@@ -857,10 +864,12 @@ export function compareLegislators(db, { ids = '' } = {}) {
 export const csvRow = (cells) => cells.map((c) => (/[",\n\r]/.test(String(c ?? '')) ? `"${String(c).replace(/"/g, '""')}"` : String(c ?? ''))).join(',');
 
 export function billsCsv(items) {
-  const header = ['議案編號', '議案名稱', '狀態', '最新進度日期', '涉及法律', '主提案人', '連署人', '連結'];
+  const header = ['議案編號', '屆', '會期', '議案名稱', '狀態', '最新進度日期', '涉及法律', '主提案人', '連署人', '連結'];
   const lines = items.map((b) =>
     csvRow([
       b.id,
+      b.term,
+      b.session,
       b.name,
       b.status,
       b.latest_date,

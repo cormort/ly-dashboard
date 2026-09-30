@@ -423,19 +423,21 @@ export function normalizeBudget(pages, expectedTotal = pages?.[0]?.total) {
 }
 
 /**
- * 預算類型（可複選）：general 總預算、subsidiary 附屬單位預算、special 特別預算（含對應的決算）。
+ * 預算類型（可複選）：general 總預算、subsidiary 附屬單位預算、special 特別預算（含對應的決算）、
+ * supplementary 追加（減）預算。
  * 只看「決議／檢送」之前的主旨：「為114年度中央政府總預算決議，檢送…特別預算…書面報告」
  * 屬於總預算決議，後面提到的特別預算只是報告內容。
- * 「總預算（案）附屬單位預算」是總預算裡的附屬單位部分，不另算總預算；
+ * 「總預算（案）附屬單位預算」是總預算裡的附屬單位部分、「總預算追加預算」是追加的部分，都不另算總預算；
  * 「總預算案（含附屬單位預算…）」「總決算暨附屬單位決算」則兩者都算。
  * 對不到任何類型（法人預算書、補捐助彙總表、宣導執行表等）回空陣列。
  */
 export function budgetTypes(name) {
   const head = String(name ?? '').split(/決議|檢送/)[0];
   const types = [];
-  if (/總(預|決)算(?!案?附屬單位)/.test(head)) types.push('general');
+  if (/總(預|決)算(?!案?(附屬單位|追加))/.test(head)) types.push('general');
   if (/附屬單位/.test(head)) types.push('subsidiary');
   if (/特別(預|決)算/.test(head)) types.push('special');
+  if (/追加減?(預|決)算/.test(head)) types.push('supplementary');
   return types;
 }
 

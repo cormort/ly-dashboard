@@ -19,6 +19,7 @@ interface BillFilters {
   q: string;
   law: string;
   status: string;
+  session: string;
   from: string;
   to: string;
 }
@@ -26,7 +27,7 @@ interface BillFilters {
 const readFilters = (): BillFilters => {
   const params = new URLSearchParams(window.location.search);
   const get = (key: string) => params.get(key) ?? '';
-  return { q: get('q'), law: get('law'), status: get('status'), from: get('from'), to: get('to') };
+  return { q: get('q'), law: get('law'), status: get('status'), session: get('session'), from: get('from'), to: get('to') };
 };
 
 const PAGE = 30;
@@ -54,7 +55,7 @@ export function BillsPage({ refreshToken, onOpenId }: BillsPageProps) {
     window.history.replaceState(null, '', pathFor('bills', { ...next, q: next.q.trim() }));
   };
 
-  const query = { q: filters.q.trim(), law: filters.law, status: filters.status, from: filters.from, to: filters.to };
+  const query = { q: filters.q.trim(), law: filters.law, status: filters.status, session: filters.session, from: filters.from, to: filters.to };
   const bills = useApi<BillsResponse>(buildUrl('/bills', { ...query, limit: PAGE, offset: page * PAGE }), { refreshToken });
   const data = bills.data;
   const pages = data ? Math.max(1, Math.ceil(data.total / PAGE)) : 1;
@@ -67,7 +68,9 @@ export function BillsPage({ refreshToken, onOpenId }: BillsPageProps) {
     <>
       <div className="page-head">
         <h1>法案查詢</h1>
-        <p className="muted">本屆委員提案{data?.meta.bills_source ? `，資料來源：${data.meta.bills_source.name}` : ''}</p>
+        <p className="muted">
+          {data?.term ? `第 ${data.term} 屆` : '本屆'}委員提案{data?.meta.bills_source ? `，資料來源：${data.meta.bills_source.name}` : ''}
+        </p>
       </div>
 
       <div className="filters bill-filters" role="group" aria-label="法案篩選條件">
@@ -77,6 +80,17 @@ export function BillsPage({ refreshToken, onOpenId }: BillsPageProps) {
           ariaLabel="搜尋法案名稱或法律"
           placeholder="搜尋法案名稱或法律，例如：國土計畫法"
         />
+        <label>
+          <span className="sr-only">會期</span>
+          <select value={filters.session} onChange={(event) => change({ session: event.target.value })}>
+            <option value="">第 {data?.term ?? ''} 屆全部會期</option>
+            {(data?.sessions ?? []).map((s) => (
+              <option key={s.seq} value={String(s.seq)}>
+                第 {data?.term} 屆第 {s.seq} 會期（{s.count}）
+              </option>
+            ))}
+          </select>
+        </label>
         <label>
           <span className="sr-only">議案狀態</span>
           <select value={filters.status} onChange={(event) => change({ status: event.target.value })}>
@@ -148,6 +162,11 @@ export function BillsPage({ refreshToken, onOpenId }: BillsPageProps) {
                     <BillStageBar status={bill.status} />
                     <span className="status-tag">{bill.status}</span>
                     <span>{bill.latest_date}</span>
+                    {bill.session ? (
+                      <span>
+                        第 {bill.term} 屆第 {bill.session} 會期
+                      </span>
+                    ) : null}
                     {bill.laws.map((law) => (
                       <button key={law} type="button" className="link-button" onClick={() => change({ law })}>
                         {law}

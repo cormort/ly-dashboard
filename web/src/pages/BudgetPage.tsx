@@ -21,7 +21,7 @@ const CATEGORY_LABEL: Record<string, string> = {
   '預(決) 算決議案、定期報告': '決議書面報告',
 };
 const STATE_LABEL: Record<BudgetState, string> = { pending: '審議中', done: '已結案', returned: '退回' };
-const TYPE_LABEL: Record<BudgetType, string> = { general: '總預算', subsidiary: '附屬單位預算', special: '特別預算' };
+const TYPE_LABEL: Record<BudgetType, string> = { general: '總預算', subsidiary: '附屬單位預算', special: '特別預算', supplementary: '追加預算' };
 const DEFAULT_CATEGORY = '中央政府總預算案';
 const ALL = 'all';
 const PAGE = 30;

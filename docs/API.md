@@ -146,6 +146,7 @@ Query 參數（全部可選）：
 | `q` | 關鍵字，比對議案名稱或涉及的法律 |
 | `law` | 精確比對涉及的法律名稱 |
 | `status` | 精確比對議案狀態（如 `三讀`） |
+| `session` | 會期序號（屆內，如 `5`） |
 | `from` / `to` | 最新進度日期區間（`YYYY-MM-DD`，含端點）；格式不符視為未指定 |
 | `limit` / `offset` | 分頁，limit 1–200，預設 20 / 0 |
 | `format=csv` | 回傳**全部**符合結果的 CSV（UTF-8 含 BOM，`content-disposition: attachment`），忽略 limit/offset |
@@ -173,6 +174,7 @@ Query 參數（全部可選）：
 ```
 
 注意：
+- `term`：資料所屬屆次；`sessions`：`[{ seq, count }]` 各會期件數（在會期條件**之前**算）；每筆 `items[]` 附 `term`、`session`。
 - `parties`：符合結果的主提案人黨籍 → 件數（黨團提案記為 `黨團／其他`，加總＝`total`）；`first_date`：符合結果中最早的進度日期。
 - `laws` 是「主題」：**全部符合結果**涉及的法律，依件數排序取前 8；`statuses` 是符合結果的狀態分布。前端不得重算。
 - 每筆 `items[].sponsors`：`[{ id, name, party, is_lead }]`，主提案在前。
@@ -205,7 +207,7 @@ Query 參數（全部可選）：
 | 參數 | 說明 |
 | --- | --- |
 | `category` | 精確比對類別；空白＝全部 |
-| `type` | 預算類型 `general`（總預算）／`subsidiary`（附屬單位預算）／`special`（特別預算）；由名稱「決議／檢送」之前的主旨判斷，可複選，對不到任何類型的項目只在未指定時出現 |
+| `type` | 預算類型 `general`（總預算）／`subsidiary`（附屬單位預算）／`special`（特別預算）／`supplementary`（追加預算）；由名稱「決議／檢送」之前的主旨判斷，可複選，對不到任何類型的項目只在未指定時出現 |
 | `q` | 比對名稱或提案單位 |
 | `year` | 預算年度（民國，從名稱「115年度」抽出） |
 | `proposer` | 精確比對提案單位（機關或委員會） |
@@ -213,7 +215,7 @@ Query 參數（全部可選）：
 | `limit` / `offset` | 分頁，limit 1–200，預設 30 |
 | `format=csv` | 全部符合結果的 CSV |
 
-回應：`total`、`categories`（全部資料的類別件數）、`types`（三種預算類型件數，在類型條件前算）、`items[].types`、`years`、`proposers`（前 15）、`states`（三類件數）、`items[]`（含後端分好的 `state`）。
+回應：`total`、`categories`（全部資料的類別件數）、`types`（四種預算類型件數，在類型條件前算）、`items[].types`、`years`、`proposers`（前 15）、`states`（三類件數）、`items[]`（含後端分好的 `state`）。
 統計依序在套用各自條件**之前**計算：選了某機關，機關清單仍列出其他機關。
 定期報告多半「交付查照」即結案、不經審查，所以不套委員提案的五階段流程。
 

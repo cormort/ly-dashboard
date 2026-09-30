@@ -116,7 +116,7 @@ export function createServer(db) {
           case '/api/v1/committees':
             return sendJson(res, 200, listCommittees(db, q));
           case '/api/v1/bills': {
-            const filters = { legislator: q.legislator || null, q: q.q, law: q.law, status: q.status, from: q.from, to: q.to };
+            const filters = { legislator: q.legislator || null, q: q.q, law: q.law, status: q.status, session: q.session, from: q.from, to: q.to };
             if (q.format === 'csv') return sendCsv(res, 'bills.csv', billsCsv(listBills(db, { ...filters, all: true }).items));
             return sendJson(res, 200, listBills(db, { ...filters, limit: q.limit, offset: q.offset }));
           }
