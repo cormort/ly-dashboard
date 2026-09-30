@@ -35,3 +35,14 @@
 - `id9` 是本屆委員基本資料，沒有 `lgno`；委員 id 依賴 `id14` 的姓名對應。若立法院出現同名同屆不同人，會以 `-2` 後綴區分並留下疑義（目前資料無此情況）。
 - `修憲委員會`／`程序委員會` 等特種委員會的 `kind` 是硬編清單，新增委員會種類時需更新 `normalize.mjs`。
 - `change_log` 只在「有前一份資料」時才會產生；首次匯入為 0 筆（測試已驗證第二次匯入才會有異動）。
+
+## 版本控管（2026-09-30）
+
+| # | 岔路 | 選擇 | 理由 |
+| --- | --- | --- | --- |
+| D10 | Repo 平台與可見性 | GitHub `cormort/ly-dashboard`，**Private** | repo 內含評估報告與真實 API fixture；先私有，日後要公開只需改一個設定（使用者選擇「1」＝ private／名稱 ly-dashboard） |
+| D11 | 是否納入評估與規劃文件 | 納入 `docs/history/`（`FEASIBILITY.md`、`PLAN.md`、`poc.patch`） | 保留決策脈絡，讓「為什麼這樣改」可追溯；已確認 repo 為私有 |
+| D12 | commit 身分 | `cormort <cormort@users.noreply.github.com>`（僅此 repo 的 local config） | 機器上沒有全域 git 身分；用 GitHub noreply 位址避免外洩私人 email |
+| D13 | 哪些東西不進版控 | `data/`（SQLite）、`web/dist`、`node_modules/`、`*.tsbuildinfo` | 產物與本機狀態可重建，不該進 repo |
+
+推送結果：`main` → `bce854ca9d286f006ef888bd04d74ed19e8a6b8e`（59 files, +7945）。
