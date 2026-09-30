@@ -5,7 +5,7 @@ import { pathToFileURL } from 'node:url';
 import { CONFIG } from './config.mjs';
 import { openDb, getMeta } from './db.mjs';
 import {
-  billsCsv, compareLegislators, getHealth, getMetaPayload, listActivity, listBills, listCosponsors, listNews, listTopics, listChanges,
+  billsCsv, budgetCsv, compareLegislators, listBudget, listBudgetMeetings, listBudgetReports, getHealth, getMetaPayload, listActivity, listBills, listCosponsors, listNews, listTopics, listChanges,
   listCommittees, listLegislators, listRankings, listSyncRuns,
 } from './queries.mjs';
 import { runAll, runIngest } from './ingest.mjs';
@@ -120,6 +120,15 @@ export function createServer(db) {
             if (q.format === 'csv') return sendCsv(res, 'bills.csv', billsCsv(listBills(db, { ...filters, all: true }).items));
             return sendJson(res, 200, listBills(db, { ...filters, limit: q.limit, offset: q.offset }));
           }
+          case '/api/v1/budget': {
+            const filters = { category: q.category, q: q.q, year: q.year, proposer: q.proposer, state: q.state };
+            if (q.format === 'csv') return sendCsv(res, 'budget.csv', budgetCsv(listBudget(db, { ...filters, all: true }).items));
+            return sendJson(res, 200, listBudget(db, { ...filters, limit: q.limit, offset: q.offset }));
+          }
+          case '/api/v1/budget/reports':
+            return sendJson(res, 200, listBudgetReports(db, { type: q.type, q: q.q, limit: q.limit, offset: q.offset }));
+          case '/api/v1/budget/meetings':
+            return sendJson(res, 200, listBudgetMeetings(db, { limit: q.limit }));
           case '/api/v1/cosponsors':
             return sendJson(res, 200, listCosponsors(db, { legislator: q.legislator || null, limit: q.limit }));
           case '/api/v1/compare':

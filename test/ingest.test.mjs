@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { openDb, applyDataset, applyBills, applySocial, upsertNews, getMeta, setMeta } from '../server/db.mjs';
-import { buildDataset, normalizeBills, normalizeSocial, newsName } from '../server/normalize.mjs';
+import { buildDataset, normalizeBills, normalizeMeetings, normalizeSocial, newsName, rocDate } from '../server/normalize.mjs';
 import { CONFIG } from '../server/config.mjs';
-import { runIngest, runBillsIngest, runNewsIngest, runSocialIngest, runAll } from '../server/ingest.mjs';
-import { getHealth, listBills, listChanges, listLegislators, listNews, listSyncRuns } from '../server/queries.mjs';
+import { runIngest, runBillsIngest, runBudgetIngest, runBudgetReportsIngest, runMeetingsIngest, budgetPageUrl, runNewsIngest, runSocialIngest, runAll } from '../server/ingest.mjs';
+import { getHealth, listBills, listBudget, listBudgetMeetings, listBudgetReports, budgetState, listChanges, listLegislators, listNews, listSyncRuns } from '../server/queries.mjs';
 import { FetchError } from '../server/fetch-ly.mjs';
 import { syncOnce } from '../server/index.mjs';
 
@@ -39,7 +39,8 @@ test('A3: Concurrent syncs are single-flighted via syncOnce', async () => {
   
   // Wait artificially so both promises are created while the first is pending
   const fetchImpl = async (url) => {
-    if (!url.includes('data.ly.gov.tw')) throw new FetchError('議案／新聞不在本測試範圍', { attempts: 1 });
+    // 只計名錄（ID9／ID14）；其他來源（議案、發言名單、新聞…）不在本測試範圍
+    if (!/ID(9|14)Action/.test(url)) throw new FetchError('非名錄來源不在本測試範圍', { attempts: 1 });
     fetchCount++;
     await new Promise(r => setTimeout(r, 50));
     const key = url.includes('ID9') ? 'id9' : 'id14';
@@ -409,4 +410,88 @@ test('M2: 社群帳號首次匯入不產生異動紀錄，之後的增減才記'
   const logged = listChanges(db, { limit: 10 });
   assert.equal(logged.count, 3);
   assert.ok(logged.items.every((i) => i.entity === 'social_account' && i.new_value === null));
+});
+
+/* ---------------- 預算審議 ---------------- */
+
+// 先回會期分布（agg），再回該會期的分頁；替身把 80 筆都放在第 5 會期
+const budgetOk = async (url) =>
+  url.includes('agg=')
+    ? { json: { total: 80, aggs: [{ buckets: [{ 會期: 5, count: 80 }] }] }, attempts: 1 }
+    : { json: fixture('budget-page.json'), status: 200, headers: {}, bytes: 1, sha256: 'x', attempts: 1 };
+
+test('預算同步：三種類別一次抓、寫入、抽出預算年度', async () => {
+  const db = seeded();
+  const url = decodeURIComponent(budgetPageUrl(11, 1));
+  for (const c of CONFIG.budget.categories) assert.ok(url.includes(`議案類別=${c}`.replace(/ /g, '+')) || url.includes(`議案類別=${c}`), c);
+  const result = await runBudgetIngest(db, { logger: silent, fetchImpl: budgetOk });
+  assert.equal(result.status, 'success');
+  assert.equal(result.items, 80);
+  const all = listBudget(db, { limit: 200 });
+  assert.equal(all.total, 80);
+  assert.deepEqual(all.categories.map((c) => c.count), [20, 20, 40]);
+  assert.ok(all.items.some((b) => b.fiscal_year >= 113), '名稱含「115年度」要抽出年度');
+  assert.equal(all.states.pending + all.states.done + all.states.returned, 80);
+});
+
+test('預算查詢：類別、機關、狀態可組合，統計在各自條件前算', async () => {
+  const db = seeded();
+  await runBudgetIngest(db, { logger: silent, fetchImpl: budgetOk });
+  const reports = listBudget(db, { category: '預(決) 算決議案、定期報告' });
+  assert.equal(reports.total, 40);
+  const top = reports.proposers[0].name;
+  const byAgency = listBudget(db, { category: '預(決) 算決議案、定期報告', proposer: top });
+  assert.ok(byAgency.items.every((b) => b.proposer === top));
+  assert.ok(byAgency.proposers.length > 1, '選了機關，機關清單不該只剩一個');
+  const pending = listBudget(db, { state: 'pending', limit: 200 });
+  assert.ok(pending.items.every((b) => b.state === 'pending'));
+  assert.equal(budgetState('交付查照'), 'done');
+  assert.equal(budgetState('交付審查'), 'pending');
+  assert.equal(budgetState('退回程序委員會'), 'returned');
+});
+
+test('預算同步：失敗保留舊資料；筆數不足 fail closed', async () => {
+  const db = seeded();
+  await runBudgetIngest(db, { logger: silent, fetchImpl: budgetOk });
+  // 分布說有 5000 筆，實際只拿到 80 筆 → 驗證不過
+  const short = async (url) =>
+    url.includes('agg=') ? { json: { total: 5000, aggs: [{ buckets: [{ 會期: 5, count: 5000 }] }] }, attempts: 1 } : budgetOk(url);
+  assert.equal((await runBudgetIngest(db, { logger: silent, fetchImpl: short })).status, 'failed');
+  assert.equal(listBudget(db, {}).total, 80, '舊資料必須保留');
+});
+
+test('預算中心報告與委員會發言：寫入、預算會議篩選、發言排行只列在職委員', async () => {
+  const db = seeded();
+  const fetchImpl = async (url) => ({ json: fixture(url.includes('BudgetCenter') ? 'budget-reports.json' : 'id223.json'), attempts: 1 });
+  const reports = await runBudgetReportsIngest(db, { logger: silent, fetchImpl });
+  assert.equal(reports.status, 'success');
+  assert.equal(reports.records, 6, '兩種類型回同一份替身，編號去重後 6 份');
+  const listed = listBudgetReports(db, {});
+  assert.ok(listed.items.every((r, i, a) => i === 0 || a[i - 1].completed >= r.completed), '新到舊');
+
+  const meetings = await runMeetingsIngest(db, { logger: silent, fetchImpl });
+  assert.equal(meetings.status, 'success');
+  assert.equal(meetings.records, 16);
+  const budget = listBudgetMeetings(db, { limit: 100 });
+  assert.equal(budget.total, 8, '只列議程含「預算」的會議');
+  assert.ok(budget.items.every((m) => /^\d{4}-\d{2}-\d{2}$/.test(m.date)), '民國日期轉 ISO');
+  assert.ok(budget.speakers.length > 0 && budget.speakers.every((s, i, a) => i === 0 || a[i - 1].count >= s.count));
+  assert.ok(budget.speakers[0].count <= 8);
+});
+
+test('預算中心／發言名單：格式不符 fail closed，保留舊資料', async () => {
+  const db = seeded();
+  const ok = async (url) => ({ json: fixture(url.includes('BudgetCenter') ? 'budget-reports.json' : 'id223.json'), attempts: 1 });
+  await runBudgetReportsIngest(db, { logger: silent, fetchImpl: ok });
+  await runMeetingsIngest(db, { logger: silent, fetchImpl: ok });
+  const broken = async () => ({ json: { unexpected: true }, attempts: 1 });
+  assert.equal((await runBudgetReportsIngest(db, { logger: silent, fetchImpl: broken })).status, 'failed');
+  assert.equal((await runMeetingsIngest(db, { logger: silent, fetchImpl: broken })).status, 'failed');
+  assert.equal(listBudgetReports(db, {}).total, 6);
+  assert.equal(listBudgetMeetings(db, {}).total, 8);
+  assert.equal(rocDate('113/03/07'), '2024-03-07');
+  assert.equal(rocDate('1150930'), '2026-09-30');
+  assert.equal(rocDate('bad'), null);
+  const { meetings } = normalizeMeetings({ dataList: [{ smeetingDate: '113/03/07', legislatorNameList: '伍麗華Saidhai Tahovecahe' }] }, new Map([['伍麗華Saidhai‧Tahovecahe', 'X']]));
+  assert.equal(meetings[0].speakers[0].id, 'X', '族語名分隔符號不同也要對得到');
 });

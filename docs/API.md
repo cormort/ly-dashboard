@@ -198,6 +198,35 @@ Query 參數（全部可選）：
   "activity_date": "2026-09-30", "news_7d": 12, "post": { "date": "2026-09-28", "summary": "…", "url": "…" }, "news": { "title": "…", "…": "…" }, "bill": { "name": "…", "status": "排入院會", "…": "…" } } ] }
 ```
 
+## GET /api/v1/budget
+
+預算審議（g0v 立法院 API，本屆 `議案類別` ∈ 中央政府總預算案、法人預(決)算案、預(決) 算決議案、定期報告；依會期分批抓，因為翻頁超過約 1 萬筆會 HTTP 413）。
+
+| 參數 | 說明 |
+| --- | --- |
+| `category` | 精確比對類別；空白＝全部 |
+| `q` | 比對名稱或提案單位 |
+| `year` | 預算年度（民國，從名稱「115年度」抽出） |
+| `proposer` | 精確比對提案單位（機關或委員會） |
+| `state` | `pending`（審議中）／`done`（已結案）／`returned`（退回） |
+| `limit` / `offset` | 分頁，limit 1–200，預設 30 |
+| `format=csv` | 全部符合結果的 CSV |
+
+回應：`total`、`categories`（全部資料的類別件數）、`years`、`proposers`（前 15）、`states`（三類件數）、`items[]`（含後端分好的 `state`）。
+統計依序在套用各自條件**之前**計算：選了某機關，機關清單仍列出其他機關。
+定期報告多半「交付查照」即結案、不經審查，所以不套委員提案的五階段流程。
+
+## GET /api/v1/budget/reports
+
+立法院預算中心評估報告（官方 WebAPI `BudgetCenterResearch.aspx`，類型：預算案評估、決算案評估；本屆起迄今）。參數 `type`、`q`、`limit`（1–100）、`offset`。
+`items[]`：`{ no, type, title, author, completed, url }`，`url` 可能為 null（未附檔）。
+
+## GET /api/v1/budget/meetings
+
+議程（會議事由）含「預算」的委員會會議（官方 ID223 委員會登記發言名單，本屆一次抓）。參數 `limit`（1–100，預設 15）。
+回應：`total`（全部預算會議）、`with_speakers`、`committees`、`speakers`（在職委員登記發言場次前 20）、`items`（最近**有發言名單**的會議）。
+發言名單姓名比對時忽略空白與「‧」「·」（族語名分隔符號各系統不一）。
+
 ## GET /api/v1/cosponsors
 
 共同提案網絡（本屆議案的提案人對應）。

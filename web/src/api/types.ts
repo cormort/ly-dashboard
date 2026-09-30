@@ -448,3 +448,68 @@ export interface RankingsResponse {
   limit: number;
   boards: Partial<Record<RankingType, RankingBoard>>;
 }
+
+/* ---------- /budget ---------- */
+
+export type BudgetState = 'pending' | 'done' | 'returned';
+
+export interface BudgetItem {
+  id: string;
+  category: string;
+  name: string;
+  status: string;
+  /** 後端分好的審議狀態：審議中／已結案／退回 */
+  state: BudgetState;
+  /** 提案單位（機關或委員會） */
+  proposer: string;
+  /** 從名稱抽出的預算年度（民國），抽不到為 null */
+  fiscal_year: number | null;
+  session: number | null;
+  latest_date: string;
+  url: string;
+}
+
+export interface BudgetResponse {
+  meta: Meta & { budget_fetched_at: string | null; source: { name: string; url: string } };
+  total: number;
+  count: number;
+  categories: BillLawCount[];
+  years: BillLawCount[];
+  proposers: BillLawCount[];
+  states: Record<BudgetState, number>;
+  items: BudgetItem[];
+}
+
+export interface BudgetReport {
+  no: string;
+  type: string;
+  title: string;
+  author: string;
+  completed: string | null;
+  url: string | null;
+}
+
+export interface BudgetReportsResponse {
+  meta: Meta & { reports_fetched_at: string | null };
+  total: number;
+  types: BillLawCount[];
+  items: BudgetReport[];
+}
+
+export interface BudgetMeeting {
+  date: string | null;
+  committee: string;
+  joint: string | null;
+  name: string;
+  content: string;
+  speakers: { name: string; id: string | null }[];
+}
+
+export interface BudgetMeetingsResponse {
+  meta: Meta & { meetings_fetched_at: string | null };
+  total: number;
+  with_speakers: number;
+  committees: BillLawCount[];
+  speakers: { legislator: { id: string; name: string; party: string }; count: number }[];
+  items: BudgetMeeting[];
+}

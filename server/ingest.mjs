@@ -1,7 +1,7 @@
 import { pathToFileURL } from 'node:url';
 import { CONFIG } from './config.mjs';
-import { openDb, recordSyncRun, saveSnapshot, applyDataset, applyBills, applySocial, upsertNews, pruneNews, getMeta, setMeta } from './db.mjs';
-import { buildDataset, normalizeBills, normalizeSocial, newsName, parseNewsRss, DataValidationError, NORMALIZER_VERSION } from './normalize.mjs';
+import { openDb, recordSyncRun, saveSnapshot, applyDataset, applyBills, applyBudget, applyBudgetReports, applyMeetings, applySocial, upsertNews, pruneNews, getMeta, setMeta } from './db.mjs';
+import { buildDataset, normalizeBills, normalizeBudget, normalizeBudgetReports, normalizeMeetings, normalizeSocial, newsName, parseNewsRss, DataValidationError, NORMALIZER_VERSION } from './normalize.mjs';
 import { fetchJson, FetchError, sha256 } from './fetch-ly.mjs';
 
 /**
@@ -131,6 +131,139 @@ export function billsPageUrl(term, page) {
 }
 
 /**
+ * 預算類議案的網址：多個 議案類別 參數在 g0v API 是 OR。
+ * 實測：翻頁超過約 1 萬筆會回 HTTP 413，所以依會期分開抓（`session`）；`agg` 用來先問出各會期筆數。
+ */
+export function budgetPageUrl(term, page, { session = null, agg = false } = {}) {
+  const qs = new URLSearchParams({ 屆: String(term), limit: agg ? '1' : String(CONFIG.bills.pageSize), page: String(page) });
+  for (const category of CONFIG.budget.categories) qs.append('議案類別', category);
+  if (session !== null) qs.set('會期', String(session));
+  if (agg) qs.set('agg', '會期');
+  return `${CONFIG.bills.url}?${qs}`;
+}
+
+/** 依序抓完所有分頁（不併發）；分頁數異常時 fail closed */
+async function fetchAllPages(urlFor, fetchImpl, dataset) {
+  const pages = [];
+  let attempts = 0;
+  for (let page = 1, totalPages = 1; page <= totalPages; page++) {
+    const result = await fetchImpl(urlFor(page), { ua: CONFIG.userAgent });
+    attempts += result.attempts ?? 1;
+    pages.push(result.json);
+    totalPages = Number(result.json?.total_page) || 1;
+    if (totalPages > 50) throw new DataValidationError(`${dataset} 分頁數異常（${totalPages}）`);
+  }
+  return { pages, attempts };
+}
+
+/** 預算審議同步：與委員提案各自 fail closed；只需要屆次，不需要對應委員。 */
+export async function runBudgetIngest(db, { logger = console, fetchImpl = fetchJson, now = () => new Date() } = {}) {
+  const startedAt = now().toISOString();
+  const startedMs = Date.now();
+  const term = Number(getMeta(db, 'term'));
+  const record = (fields) =>
+    recordSyncRun(db, { dataset: 'budget', started_at: startedAt, finished_at: now().toISOString(), duration_ms: Date.now() - startedMs, ua: CONFIG.userAgent, ...fields });
+  if (!term) {
+    const error = '名錄尚未同步，無法判斷屆次';
+    record({ status: 'failed', error });
+    return { status: 'failed', error };
+  }
+  let attempts = 0;
+  try {
+    const summary = (await fetchImpl(budgetPageUrl(term, 1, { agg: true }), { ua: CONFIG.userAgent })).json;
+    const sessions = (summary?.aggs?.[0]?.buckets ?? []).map((b) => b['會期']).filter((s) => s !== null && s !== undefined);
+    if (sessions.length === 0) throw new DataValidationError('budget 取不到會期分布');
+    const pages = [];
+    for (const session of sessions) {
+      const fetched = await fetchAllPages((page) => budgetPageUrl(term, page, { session }), fetchImpl, 'budget');
+      attempts += fetched.attempts;
+      pages.push(...fetched.pages);
+    }
+    const items = normalizeBudget(pages, summary.total);
+    const applied = applyBudget(db, items, { fetchedAt: now().toISOString() });
+    logger.log(`[budget] 已套用：${items.length} 筆預算類議案、狀態異動 ${applied.changes} 筆`);
+    record({ status: 'success', records: items.length, attempt: attempts, http_status: 200 });
+    return { status: 'success', items: items.length, changes: applied.changes };
+  } catch (error) {
+    const message = error instanceof FetchError ? `${error.message}（嘗試 ${error.attempts} 次）` : String(error?.message || error);
+    logger.error(`[budget] 同步失敗，保留既有資料：${message}`);
+    record({ status: 'failed', attempt: attempts || null, http_status: error?.status ?? null, error: message });
+    return { status: 'failed', error: message };
+  }
+}
+
+/**
+ * 一個獨立 fail closed 的同步階段：計時、寫 sync_runs、失敗時保留舊資料。
+ * `work()` 回傳 `{ records, ...其他摘要 }`。
+ */
+async function runStage(db, dataset, { logger, now }, work) {
+  const startedAt = now().toISOString();
+  const startedMs = Date.now();
+  const record = (fields) =>
+    recordSyncRun(db, { dataset, started_at: startedAt, finished_at: now().toISOString(), duration_ms: Date.now() - startedMs, ua: CONFIG.userAgent, ...fields });
+  try {
+    const result = await work();
+    record({ status: 'success', records: result.records, attempt: 1, http_status: 200 });
+    return { status: 'success', ...result };
+  } catch (error) {
+    const message = error instanceof FetchError ? `${error.message}（嘗試 ${error.attempts} 次）` : String(error?.message || error);
+    logger.error(`[${dataset}] 同步失敗，保留既有資料：${message}`);
+    record({ status: 'failed', http_status: error?.status ?? null, error: message });
+    return { status: 'failed', error: message };
+  }
+}
+
+/** 今天的民國日期，如 `1150930`（官方 WebAPI 的日期參數格式） */
+const rocToday = (now) => {
+  const d = now();
+  return `${d.getFullYear() - 1911}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+};
+
+/** 本屆起始的民國日期：取名錄最早的就職日，沒有就退回 3 年前 */
+const termStartRoc = (db, now) => {
+  const first = db.prepare("SELECT MIN(onboard_date) AS d FROM legislators WHERE onboard_date <> ''").get()?.d;
+  const d = first && !Number.isNaN(Date.parse(first)) ? new Date(first) : new Date(now().getTime() - 3 * 365 * 86_400_000);
+  return `${d.getFullYear() - 1911}${String(d.getMonth() + 1).padStart(2, '0')}01`;
+};
+
+/** 預算中心評估報告：每種類型一個請求，本屆起迄今 */
+export function runBudgetReportsIngest(db, { logger = console, fetchImpl = fetchJson, now = () => new Date() } = {}) {
+  return runStage(db, 'budget_reports', { logger, now }, async () => {
+    const from = termStartRoc(db, now);
+    const responses = {};
+    for (const type of CONFIG.budget.reportTypes) {
+      const qs = new URLSearchParams({ type, from, to: rocToday(now), mode: 'json' });
+      responses[type] = (await fetchImpl(`${CONFIG.budget.reportsUrl}?${qs}`, { ua: CONFIG.userAgent })).json;
+    }
+    const records = applyBudgetReports(db, normalizeBudgetReports(responses), { fetchedAt: now().toISOString() });
+    logger.log(`[budget_reports] 已套用：${records} 份預算中心報告`);
+    return { records };
+  });
+}
+
+/** 委員會登記發言名單：本屆起迄今一次抓 */
+export function runMeetingsIngest(db, { logger = console, fetchImpl = fetchJson, now = () => new Date() } = {}) {
+  return runStage(db, 'meetings', { logger, now }, async () => {
+    const slash = (roc) => `${roc.slice(0, -4)}/${roc.slice(-4, -2)}/${roc.slice(-2)}`;
+    const qs = new URLSearchParams({
+      meetingDateS: slash(termStartRoc(db, now)),
+      meetingDateE: slash(rocToday(now)),
+      meetingRoom: '',
+      meetingTypeName: '',
+      jointCommittee: '',
+      fileType: 'json',
+    });
+    const result = await fetchImpl(`${CONFIG.budget.meetingsUrl}?${qs}`, { ua: CONFIG.userAgent, timeoutMs: CONFIG.budget.meetingsTimeoutMs });
+    const idByName = new Map(db.prepare('SELECT name, id FROM legislators').all().map((r) => [r.name, r.id]));
+    const { meetings, warnings } = normalizeMeetings(result.json, idByName);
+    for (const w of warnings) logger.warn(`[meetings] 警告：${w}`);
+    const records = applyMeetings(db, meetings, { fetchedAt: now().toISOString() });
+    logger.log(`[meetings] 已套用：${records} 場委員會會議`);
+    return { records, warnings };
+  });
+}
+
+/**
  * 議案同步：與名錄分開 fail closed —— 議案抓不到不影響名錄，反之亦然。
  * 依序抓分頁（不併發，對社群維運的 API 客氣一點），驗證後整批覆寫。
  */
@@ -147,16 +280,11 @@ export async function runBillsIngest(db, { logger = console, fetchImpl = fetchJs
     return { status: 'failed', error };
   }
 
-  let pages = [];
   let attempts = 0;
   try {
-    for (let page = 1, totalPages = 1; page <= totalPages; page++) {
-      const result = await fetchImpl(billsPageUrl(term, page), { ua: CONFIG.userAgent });
-      attempts += result.attempts ?? 1;
-      pages.push(result.json);
-      totalPages = Number(result.json?.total_page) || 1;
-      if (totalPages > 50) throw new DataValidationError(`bills 分頁數異常（${totalPages}）`);
-    }
+    const fetched = await fetchAllPages((page) => billsPageUrl(term, page), fetchImpl, 'bills');
+    const pages = fetched.pages;
+    attempts = fetched.attempts;
     const idByName = new Map(db.prepare('SELECT name, id FROM legislators').all().map((r) => [r.name, r.id]));
     const normalized = normalizeBills(pages, idByName);
     const raw = JSON.stringify(pages);
@@ -289,7 +417,7 @@ export async function runSocialIngest(db, { logger = console, fetchImpl = fetchJ
 }
 
 /**
- * 名錄 → 議案 → 社群 → 新聞；名錄失敗就不跑其餘（沒有名錄就對不到人）。
+ * 名錄 → 議案 → 預算 → 社群 → 新聞；名錄失敗就不跑其餘（沒有名錄就對不到人）。
  * `LY_SKIP_BILLS` / `LY_SKIP_NEWS` / `LY_SKIP_SOCIAL` 可跳過外部來源（測試與離線驗證用）。
  */
 export async function runAll(db, options = {}) {
@@ -297,9 +425,12 @@ export async function runAll(db, options = {}) {
   const roster = await runIngest(db, options);
   if (roster.status === 'failed') return roster;
   const bills = CONFIG.skip.bills ? skipped('bills') : await runBillsIngest(db, options);
+  const budget = CONFIG.skip.budget ? skipped('budget') : await runBudgetIngest(db, options);
+  const budgetReports = CONFIG.skip.budget ? skipped('budget_reports') : await runBudgetReportsIngest(db, options);
+  const meetings = CONFIG.skip.budget ? skipped('meetings') : await runMeetingsIngest(db, options);
   const social = CONFIG.skip.social ? skipped('social') : await runSocialIngest(db, options);
   const news = CONFIG.skip.news ? skipped('news') : await runNewsIngest(db, options);
-  return { ...roster, bills, social, news };
+  return { ...roster, bills, budget, budget_reports: budgetReports, meetings, social, news };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

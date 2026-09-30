@@ -127,6 +127,35 @@ CREATE TABLE IF NOT EXISTS social_accounts (
   latest_post_summary TEXT,
   PRIMARY KEY (legislator_id, platform, url)
 );
+CREATE TABLE IF NOT EXISTS budget_bills (
+  id TEXT PRIMARY KEY,
+  term INTEGER,
+  session INTEGER,
+  category TEXT NOT NULL,
+  name TEXT NOT NULL,
+  status TEXT,
+  proposer TEXT,
+  fiscal_year INTEGER,
+  latest_date TEXT,
+  url TEXT
+);
+CREATE TABLE IF NOT EXISTS budget_reports (
+  no TEXT PRIMARY KEY,
+  type TEXT NOT NULL,
+  title TEXT NOT NULL,
+  author TEXT,
+  completed TEXT,
+  url TEXT
+);
+CREATE TABLE IF NOT EXISTS committee_meetings (
+  id INTEGER PRIMARY KEY,
+  date TEXT,
+  committee TEXT,
+  joint TEXT,
+  name TEXT,
+  content TEXT,
+  speakers TEXT NOT NULL DEFAULT '[]'
+);
 CREATE TABLE IF NOT EXISTS meta (
   key TEXT PRIMARY KEY,
   value TEXT
@@ -388,6 +417,63 @@ export function applyBills(db, { bills, sponsors }, { fetchedAt }) {
     db.exec('ROLLBACK');
     throw error;
   }
+}
+
+/** 預算類議案整批覆寫（與委員提案分開 fail closed），狀態變動寫入 change_log。 */
+export function applyBudget(db, items, { fetchedAt }) {
+  const previous = new Map(db.prepare('SELECT id, status FROM budget_bills').all().map((r) => [r.id, r.status]));
+  db.exec('BEGIN');
+  try {
+    db.exec('DELETE FROM budget_bills');
+    const insert = db.prepare(
+      `INSERT INTO budget_bills(id, term, session, category, name, status, proposer, fiscal_year, latest_date, url)
+       VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    );
+    const insertChange = db.prepare('INSERT INTO change_log(at, entity, entity_id, field, old_value, new_value) VALUES(?, ?, ?, ?, ?, ?)');
+    let changes = 0;
+    for (const b of items) {
+      insert.run(b.id, b.term, b.session, b.category, b.name, b.status, b.proposer, b.fiscal_year, b.latest_date, b.url);
+      const before = previous.get(b.id);
+      if (before !== undefined && before !== (b.status ?? null)) {
+        insertChange.run(fetchedAt, 'budget', b.id, 'status', before, b.status ?? null);
+        changes += 1;
+      }
+    }
+    setMeta(db, 'budget_fetched_at', fetchedAt);
+    db.exec('COMMIT');
+    return { changes };
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
+}
+
+/** 整批覆寫一張表（交易內；失敗回滾保留舊資料）並記下抓取時間 */
+function replaceAll(db, table, columns, rows, metaKey, fetchedAt) {
+  db.exec('BEGIN');
+  try {
+    db.exec(`DELETE FROM ${table}`);
+    const insert = db.prepare(`INSERT INTO ${table}(${columns.join(', ')}) VALUES(${columns.map(() => '?').join(', ')})`);
+    for (const row of rows) insert.run(...columns.map((c) => row[c] ?? null));
+    setMeta(db, metaKey, fetchedAt);
+    db.exec('COMMIT');
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
+}
+
+export function applyBudgetReports(db, reports, { fetchedAt }) {
+  // 同一報告編號可能同時出現在兩種類型：以後出現者為準
+  const unique = [...new Map(reports.map((r) => [r.no, r])).values()];
+  replaceAll(db, 'budget_reports', ['no', 'type', 'title', 'author', 'completed', 'url'], unique, 'budget_reports_fetched_at', fetchedAt);
+  return unique.length;
+}
+
+export function applyMeetings(db, meetings, { fetchedAt }) {
+  const rows = meetings.map((m) => ({ ...m, speakers: JSON.stringify(m.speakers) }));
+  replaceAll(db, 'committee_meetings', ['date', 'committee', 'joint', 'name', 'content', 'speakers'], rows, 'meetings_fetched_at', fetchedAt);
+  return rows.length;
 }
 
 /**

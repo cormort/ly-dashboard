@@ -31,6 +31,7 @@ import { BillsPage } from '../src/pages/BillsPage';
 import { SyncStatusBanner } from '../src/components/SyncStatusBanner';
 import { RankingsPage, RankingBoardView } from '../src/pages/RankingsPage';
 import { ComparePage } from '../src/pages/ComparePage';
+import { BudgetPage } from '../src/pages/BudgetPage';
 import { BillStageBar } from '../src/components/BillStage';
 
 /* ---------------------------- 瀏覽器 API 替身 ---------------------------- */
@@ -674,6 +675,14 @@ expectAll('流程條：交付審查走到第 2 步', render(createElement(BillSt
 ]);
 expectAll('流程條：撤案標為中止', render(createElement(BillStageBar, { status: '撤案' })), ['stage-bar stopped', '已中止：撤案']);
 check('流程條：未知狀態不畫', render(createElement(BillStageBar, { status: '交付查照' })) === '');
+
+expectAll('預算頁：loading 態有類別、篩選與三個區塊骨架', render(createElement(BudgetPage, { refreshToken: 0, onOpenId: () => undefined })), [
+  '預算審議',
+  '讀取預算審議',
+  '預算會議發言',
+  '預算中心評估報告',
+  'aria-label="審議狀態"',
+]);
 
 /* 型別上的靜態斷言：確保測試替身符合 API 契約（不改 runtime 行為） */
 const _typecheck: ChangesResponse | null = null;

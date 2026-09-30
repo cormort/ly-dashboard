@@ -697,7 +697,8 @@ button.chip:hover:not(:disabled) { border-color: var(--accent-line); background:
   .brand small { display: none; }
   .filters { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .filters select, .filters > button { width: 100%; justify-content: center; }
-  .filters .search, .filters .date-range { grid-column: 1 / -1; max-width: none; }
+  .filters .search, .filters .date-range, .filters .segmented { grid-column: 1 / -1; max-width: none; }
+  .filters .segmented button { flex: 1; justify-content: center; white-space: nowrap; }
   .date-range input { flex: 1; min-width: 0; }
   header nav { order: 3; flex-basis: 100%; overflow-x: auto; }
   header nav a { white-space: nowrap; padding: 7px 10px; }
@@ -774,3 +775,22 @@ select { max-width: 100%; }
 .table-scroll { overflow-x: auto; }
 .matrix td { text-align: right; font-variant-numeric: tabular-nums; }
 .matrix td.heat { background: color-mix(in srgb, var(--party) calc(var(--share) * 45%), transparent); }
+
+/* ---------- 預算審議 ---------- */
+.category-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--space-3); }
+.category-tiles .stat-tile { display: grid; justify-items: start; gap: 2px; text-align: left; padding: 14px 16px; }
+.category-tiles .stat-tile[aria-pressed='true'] { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent-ink); }
+.category-tiles .stat-tile[aria-pressed='true'] .stat-label { color: var(--accent-ink); }
+.budget-layout { display: grid; grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr); gap: var(--space-6); align-items: start; }
+.state-tag { border-radius: var(--radius-pill); padding: 1px 8px; font-weight: 600; font-size: 12px; }
+.state-tag.pending { color: var(--warn); background: var(--warn-bg); }
+.state-tag.done { color: var(--accent-ink); background: var(--accent-soft); }
+.state-tag.returned { color: var(--error); background: var(--error-bg); }
+.partner-list .name-button[aria-pressed='true'] { color: var(--accent-ink); text-decoration-color: var(--accent); background: none; border: 0; }
+.subhead { margin: var(--space-6) 0 var(--space-2); font-size: 15px; }
+.meeting-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3); }
+.meeting-list p { margin: 2px 0; font-size: 14px; color: var(--ink-2); }
+.clamp-2 { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
+@media (max-width: 900px) {
+  .budget-layout { grid-template-columns: 1fr; }
+}

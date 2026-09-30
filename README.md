@@ -34,7 +34,7 @@ node server/index.mjs
 ```
 
 - `--no-scheduler`：只開 API，不在啟動時自動同步（開發用）。
-- 環境變數：`PORT`、`LY_DB`、`LY_UA`、`LY_STALE_HOURS`、`LY_SYNC_INTERVAL_MS`、`LY_FETCH_TIMEOUT_MS`、`LY_FETCH_RETRIES`。
+- 環境變數：`PORT`、`LY_DB`、`LY_UA`、`LY_STALE_HOURS`、`LY_SYNC_INTERVAL_MS`、`LY_FETCH_TIMEOUT_MS`、`LY_FETCH_RETRIES`、`LY_SKIP_BUDGET`（跳過預算三個來源）。
 
 ## 架構
 

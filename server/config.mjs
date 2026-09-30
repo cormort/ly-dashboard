@@ -23,6 +23,16 @@ export const CONFIG = {
     name: 'g0v 立法院 API',
     homepage: 'https://ly.govapi.tw/',
   },
+  // 預算審議：同一個 g0v API，改抓政府／委員會送來的預算類議案（總預算案、法人預算、預算決議書面報告）
+  budget: {
+    categories: ['中央政府總預算案', '法人預(決)算案', '預(決) 算決議案、定期報告'],
+    // 立法院預算中心的評估報告（官方 WebAPI）；只取與預算審議直接相關的兩類
+    reportsUrl: 'https://www.ly.gov.tw/WebAPI/BudgetCenterResearch.aspx',
+    reportTypes: ['預算案評估', '決算案評估'],
+    // 委員會登記發言名單（官方 ID223）；整屆一次抓約 20 秒，逾時放寬
+    meetingsUrl: 'https://data.ly.gov.tw/odw/ID223Action.action',
+    meetingsTimeoutMs: 120_000,
+  },
   // 新聞：Google News RSS，以「"姓名" 立委」搜尋近 30 天；逐位委員依序抓，間隔避免被限流。
   news: {
     url: 'https://news.google.com/rss/search',
@@ -48,6 +58,7 @@ export const CONFIG = {
   // M1：測試／驗證用的階段開關（外部來源全部跳過 → 秒級、不打第三方）
   skip: {
     bills: process.env.LY_SKIP_BILLS === '1',
+    budget: process.env.LY_SKIP_BUDGET === '1',
     news: process.env.LY_SKIP_NEWS === '1',
     social: process.env.LY_SKIP_SOCIAL === '1',
   },

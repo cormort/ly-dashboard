@@ -387,6 +387,107 @@ export function normalizeBills(pages, legislatorIdByName) {
   return { bills: items, sponsors, warnings, total };
 }
 
+/**
+ * 預算類議案：總預算案、法人預算、預算決議書面報告。沒有提案委員（提案單位是機關或委員會），
+ * 只取顯示需要的欄位，並從名稱抽出預算年度（「115年度」→ 115）。驗證規則與委員提案相同。
+ */
+export function normalizeBudget(pages, expectedTotal = pages?.[0]?.total) {
+  if (!Array.isArray(pages) || pages.length === 0) throw new DataValidationError('budget 沒有任何分頁');
+  const total = Number(expectedTotal);
+  const rows = new Map();
+  for (const page of pages) {
+    if (!page || !Array.isArray(page.bills)) throw new DataValidationError('budget 分頁缺少 bills 陣列');
+    for (const row of page.bills) {
+      const id = field(row, '議案編號');
+      if (id && !rows.has(id)) rows.set(id, row);
+    }
+  }
+  if (!Number.isFinite(total) || total === 0 || rows.size < total * 0.95) {
+    throw new DataValidationError(`budget 筆數異常（取得 ${rows.size}，API total ${total}）`, { got: rows.size, total });
+  }
+  return [...rows.values()].map((row) => {
+    const name = field(row, '議案名稱');
+    return {
+      id: field(row, '議案編號'),
+      term: Number(field(row, '屆')) || null,
+      session: Number(field(row, '會期')) || null,
+      category: field(row, '議案類別'),
+      name,
+      status: field(row, '議案狀態'),
+      proposer: field(row, '提案單位/提案委員'),
+      fiscal_year: Number(/(\d{2,3})\s*年度/.exec(name)?.[1]) || null,
+      latest_date: field(row, '最新進度日期'),
+      url: field(row, 'url'),
+    };
+  });
+}
+
+/** 民國日期「113/03/07」或「1130307」→ ISO「2024-03-07」；格式不符回 null */
+export function rocDate(value) {
+  const m = /^(\d{2,3})\/?(\d{2})\/?(\d{2})$/.exec(String(value ?? '').trim());
+  return m ? `${Number(m[1]) + 1911}-${m[2]}-${m[3]}` : null;
+}
+
+/**
+ * 預算中心研究成果：`{ 類型: API 回應 }` → 報告列表。回應是 XML 轉 JSON 的形狀
+ * （`BudgetCenterResearch.Category.Report`，只有一筆時不是陣列）。
+ */
+export function normalizeBudgetReports(responses) {
+  const reports = [];
+  for (const [type, json] of Object.entries(responses)) {
+    const category = json?.BudgetCenterResearch?.Category;
+    if (!category) throw new DataValidationError(`預算中心「${type}」回應缺少 Category`);
+    const list = category.Report == null ? [] : [].concat(category.Report);
+    if (list.length !== Number(category['@RecordCount'] ?? list.length)) {
+      throw new DataValidationError(`預算中心「${type}」筆數不符（${list.length}／${category['@RecordCount']}）`);
+    }
+    for (const r of list) {
+      reports.push({
+        no: String(r['@ReportNo'] ?? '').trim(),
+        type,
+        title: String(r.Title ?? '').trim(),
+        author: String(r['@Author'] ?? '').trim(),
+        completed: String(r['@CompletionDate'] ?? '').slice(0, 10) || null,
+        url: r.FilePath || null,
+      });
+    }
+  }
+  const items = reports.filter((r) => r.no && r.title);
+  if (items.length === 0) throw new DataValidationError('預算中心沒有任何報告');
+  return items;
+}
+
+/**
+ * 委員會登記發言名單（ID223）：姓名以「;」分隔，對到本屆委員 id；對不到的保留姓名並回報。
+ */
+export function normalizeMeetings(json, legislatorIdByName) {
+  const rows = Array.isArray(json?.dataList) ? json.dataList : null;
+  if (!rows) throw new DataValidationError('ID223 回應缺少 dataList');
+  if (rows.length === 0) throw new DataValidationError('ID223 沒有任何會議');
+  // 族語名的分隔符號各系統不一（「‧」「·」或空白），比對時一律去掉
+  const key = (name) => String(name).replace(/[\s‧·・．.]/g, '');
+  const idByKey = new Map([...legislatorIdByName].map(([name, id]) => [key(name), id]));
+  const unmatched = new Set();
+  const meetings = rows.map((m) => ({
+    date: rocDate(m.smeetingDate),
+    committee: String(m.meetingTypeName ?? '').trim(),
+    joint: m.jointCommittee && m.jointCommittee !== '無' ? String(m.jointCommittee).trim() : null,
+    name: String(m.meetingName ?? '').trim(),
+    content: String(m.meetingContent ?? '').trim(),
+    speakers: String(m.legislatorNameList ?? '')
+      .split(';')
+      .map((n) => n.trim())
+      .filter(Boolean)
+      .map((name) => {
+        const id = idByKey.get(key(name)) ?? null;
+        if (!id) unmatched.add(name);
+        return { name, id };
+      }),
+  }));
+  const warnings = unmatched.size ? [`發言名單有 ${unmatched.size} 個姓名對不到委員：${[...unmatched].slice(0, 5).join('、')}`] : [];
+  return { meetings, warnings };
+}
+
 /** 媒體常用字與立院登記字不同的異體字；遇到新案例再補 */
 const NAME_VARIANTS = { 寳: '寶' };
 

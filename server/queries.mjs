@@ -291,6 +291,9 @@ export function getHealth(db) {
     changes: count('change_log'),
     snapshots: count('raw_snapshots'),
     bills: count('bills'),
+    budget_bills: count('budget_bills'),
+    budget_reports: count('budget_reports'),
+    committee_meetings: count('committee_meetings'),
     news: count('news'),
     social_accounts: count('social_accounts'),
   };
@@ -309,6 +312,7 @@ export function getHealth(db) {
       id9: { fetched_at: getMeta(db, 'last_success_at'), count: stats.legislators },
       id14: { fetched_at: getMeta(db, 'last_success_at'), count: stats.committee_seats },
       bills: { fetched_at: getMeta(db, 'bills_fetched_at'), count: stats.bills },
+      budget: { fetched_at: getMeta(db, 'budget_fetched_at'), count: stats.budget_bills },
       news: { fetched_at: getMeta(db, 'news_fetched_at'), count: stats.news, status: newsStatus || null },
       social: { fetched_at: getMeta(db, 'social_fetched_at'), count: stats.social_accounts },
     },
@@ -641,6 +645,118 @@ export function listNews(db, { legislator = null, limit = 10 } = {}) {
     count: rows.length,
     items: rows.map((r) => ({ legislator_id: r.legislator_id, legislator_name: r.legislator_name, legislator_party: r.legislator_party, title: r.title, source: r.source, url: r.url, published_at: r.published_at })),
   };
+}
+
+/**
+ * 預算類議案的審議狀態分三類。定期報告多半「交付查照」即結案（不經審查），
+ * 所以不套委員提案的五階段流程，只分審議中／已結案／退回。
+ */
+const BUDGET_PENDING = new Set(['交付審查', '交付處理', '排入院會', '排入院會(討論事項)', '交付協商', '復議', '中央政府總預算流程']);
+export const budgetState = (status) =>
+  BUDGET_PENDING.has(status) ? 'pending' : status === '退回程序委員會' ? 'returned' : 'done';
+
+/**
+ * 預算審議：`category`、`q`（名稱或提案單位關鍵字）、`year`（預算年度）、`proposer`、`state`、分頁。
+ * 統計依序在套用各自條件「之前」算（同 listBills 的 L8），選了某機關後機關清單不會只剩一個。
+ */
+export function listBudget(db, { category = '', q = '', year = '', proposer = '', state = '', limit = 30, offset = 0, all = false } = {}) {
+  const resolvedLimit = all ? Infinity : Math.max(1, Math.min(Number(limit) || 30, 200));
+  const resolvedOffset = Math.max(0, Math.trunc(Number(offset) || 0));
+  const rows = db.prepare('SELECT * FROM budget_bills ORDER BY latest_date DESC, id DESC').all();
+  const count = (list, key) => {
+    const m = new Map();
+    for (const r of list) m.set(key(r), (m.get(key(r)) ?? 0) + 1);
+    return m;
+  };
+  const ranked = (map, n) => [...map].filter(([k]) => k).sort((a, b) => b[1] - a[1]).slice(0, n).map(([name, n2]) => ({ name: String(name), count: n2 }));
+
+  const categories = count(rows, (r) => r.category);
+  const needle = String(q ?? '').trim();
+  const base = rows.filter(
+    (r) => (!category || r.category === category) && (!needle || r.name.includes(needle) || String(r.proposer ?? '').includes(needle)),
+  );
+  const years = count(base, (r) => r.fiscal_year);
+  const byYear = year ? base.filter((r) => String(r.fiscal_year) === String(year)) : base;
+  const proposers = count(byYear, (r) => r.proposer);
+  const byProposer = proposer ? byYear.filter((r) => r.proposer === proposer) : byYear;
+  const states = count(byProposer, (r) => budgetState(r.status));
+  const matching = state ? byProposer.filter((r) => budgetState(r.status) === state) : byProposer;
+
+  return {
+    meta: { ...envelope(db), budget_fetched_at: getMeta(db, 'budget_fetched_at'), source: { name: CONFIG.bills.name, url: CONFIG.bills.homepage } },
+    total: matching.length,
+    count: Math.min(resolvedLimit, Math.max(0, matching.length - resolvedOffset)),
+    categories: CONFIG.budget.categories.map((name) => ({ name, count: categories.get(name) ?? 0 })),
+    years: [...years].filter(([y]) => y).sort((a, b) => b[0] - a[0]).map(([name, n]) => ({ name: String(name), count: n })),
+    proposers: ranked(proposers, 15),
+    states: { pending: states.get('pending') ?? 0, done: states.get('done') ?? 0, returned: states.get('returned') ?? 0 },
+    items: matching.slice(resolvedOffset, resolvedOffset + resolvedLimit).map((r) => ({
+      id: r.id,
+      category: r.category,
+      name: r.name,
+      status: r.status,
+      state: budgetState(r.status),
+      proposer: r.proposer,
+      fiscal_year: r.fiscal_year,
+      session: r.session,
+      latest_date: r.latest_date,
+      url: r.url,
+    })),
+  };
+}
+
+/** 預算中心評估報告：依撰成日期新→舊；`type` 精確、`q` 比對標題 */
+export function listBudgetReports(db, { type = '', q = '', limit = 20, offset = 0 } = {}) {
+  const resolvedLimit = Math.max(1, Math.min(Number(limit) || 20, 100));
+  const resolvedOffset = Math.max(0, Math.trunc(Number(offset) || 0));
+  const needle = String(q ?? '').trim();
+  const rows = db.prepare('SELECT * FROM budget_reports ORDER BY completed DESC, no DESC').all();
+  const types = CONFIG.budget.reportTypes.map((name) => ({ name, count: rows.filter((r) => r.type === name).length }));
+  const matching = rows.filter((r) => (!type || r.type === type) && (!needle || r.title.includes(needle)));
+  return {
+    meta: { ...envelope(db), reports_fetched_at: getMeta(db, 'budget_reports_fetched_at') },
+    total: matching.length,
+    types,
+    items: matching.slice(resolvedOffset, resolvedOffset + resolvedLimit),
+  };
+}
+
+/**
+ * 議程涉及預算的委員會會議（會議事由含「預算」），附發言委員排行。
+ * ponytail: 以關鍵字判斷「預算會議」，會把順帶處理預算書面報告的會議也算進去；要更準再改成比對議程類型。
+ */
+export function listBudgetMeetings(db, { limit = 15 } = {}) {
+  const resolvedLimit = Math.max(1, Math.min(Number(limit) || 15, 100));
+  const rows = db.prepare("SELECT * FROM committee_meetings WHERE content LIKE '%預算%' ORDER BY date DESC, id DESC").all();
+  const people = new Map(db.prepare('SELECT id, name, party, leave_flag FROM legislators').all().map((l) => [l.id, l]));
+  const committees = new Map();
+  const speakers = new Map();
+  const items = rows.map((r) => {
+    const list = JSON.parse(r.speakers || '[]');
+    committees.set(r.committee, (committees.get(r.committee) ?? 0) + 1);
+    for (const s of new Set(list.map((x) => x.id).filter(Boolean))) speakers.set(s, (speakers.get(s) ?? 0) + 1);
+    return { date: r.date, committee: r.committee, joint: r.joint, name: r.name, content: r.content, speakers: list };
+  });
+  return {
+    meta: { ...envelope(db), meetings_fetched_at: getMeta(db, 'meetings_fetched_at') },
+    total: items.length,
+    with_speakers: items.filter((m) => m.speakers.length).length,
+    committees: [...committees].sort((a, b) => b[1] - a[1]).map(([name, count]) => ({ name, count })),
+    // 在職委員的發言場次排行（離職者不列入，理由同排行榜）
+    speakers: [...speakers]
+      .map(([id, count]) => ({ legislator: people.get(id), count }))
+      .filter((x) => x.legislator && Number(x.legislator.leave_flag) === 0)
+      .sort((a, b) => b.count - a.count || a.legislator.name.localeCompare(b.legislator.name, 'zh-Hant'))
+      .slice(0, 20)
+      .map(({ legislator: l, count }) => ({ legislator: { id: l.id, name: l.name, party: l.party }, count })),
+    // 最近會議只列有發言名單的（黨團協商等沒有名單的會議只計入 total）
+    items: items.filter((m) => m.speakers.length).slice(0, resolvedLimit),
+  };
+}
+
+export function budgetCsv(items) {
+  const header = ['議案編號', '類別', '名稱', '提案單位', '預算年度', '狀態', '最新進度日期', '連結'];
+  return [csvRow(header), ...items.map((b) => csvRow([b.id, b.category, b.name, b.proposer, b.fiscal_year, b.status, b.latest_date, b.url]))].join('\r\n');
 }
 
 /** 三讀（含審查完畢後三讀、照案通過）視為通過 */
