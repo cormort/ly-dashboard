@@ -176,18 +176,20 @@ expectAll('預設首頁是總覽', dashboardHtml, ['立委觀測站', '總覽', 
 
 (window as unknown as { location: { pathname: string } }).location.pathname = '/activity';
 const homeHtml = render(createElement(App));
+// 導覽改成兩層後：上層只有 5 個主題，子頁面（榜行榜／法案查詢…）改放在對應主題的次級導覽
 expectAll('最近動態（/activity）：站名、導覽、動態／議題／新聞骨架', homeHtml, [
   '立委觀測站',
   '關鍵字搜尋立法委員',
   '最近動態',
-  '排行榜',
-  '委員查詢',
-  '法案查詢',
+  '委員',
+  '議事',
+  '機關／基金',
   'aria-current="page"',
   '讀取委員動態',
   '讀取議題',
   '讀取新聞',
 ]);
+expectNone('最上層導覽不該再把所有子頁面平鋪出來', homeHtml, ['排行榜', '法案查詢', '委員比較']);
 check('首頁初始不顯示任何委員', !homeHtml.includes('查看檔案'));
 check('不含示範／假資料字串', !/甲黨|示範資料|林怡安|陳宏宇|乙黨/.test(homeHtml));
 check('/funds、/agencies、/foundations、/administrative 各對應一頁', routeOf('/funds') === 'funds' && routeOf('/agencies') === 'agencies' && routeOf('/foundations') === 'foundations' && routeOf('/administrative') === 'administrative' && routeOf('/dgbas') === 'dgbas');
@@ -698,10 +700,11 @@ expectAll('預算頁：loading 態有類別、篩選與三個區塊骨架', rend
 expectAll('委員會頁：loading 態有標題與讀取提示', render(createElement(CommitteesPage, { refreshToken: 0, onOpenId: () => undefined })), ['委員會', '讀取委員會動態']);
 check('/committees 對應委員會頁', routeOf('/committees') === 'committees');
 
-expectAll('總覽：loading 態有統計列、八張卡與各縣市區塊', render(createElement(DashboardPage, { refreshToken: 0, onOpenId: () => undefined, onNavigate: () => undefined })), [
+const dashboardLoading = render(createElement(DashboardPage, { refreshToken: 0, onOpenId: () => undefined, onNavigate: () => undefined }));
+expectAll('總覽：loading 態有統計列、焦點卡與各區塊骨架', dashboardLoading, [
   '總覽',
   '在職委員',
-  '委員動態',
+  '最新動態',
   '最新三讀',
   '預算審議最新進度',
   '預算中心報告',
@@ -709,6 +712,11 @@ expectAll('總覽：loading 態有統計列、八張卡與各縣市區塊', rend
   '各縣市最新動態',
   'href="/bills?status=%E4%B8%89%E8%AE%80"',
 ]);
+// 各縣市改成預設收合的 disclosure：25 張卡片不再一次攤開
+check(
+  '總覽：各縣市動態是預設收合的 <details>',
+  dashboardLoading.includes('regions-details') && !/<details[^>]*regions-details[^>]*\sopen/.test(dashboardLoading),
+);
 
 /* 型別上的靜態斷言：確保測試替身符合 API 契約（不改 runtime 行為） */
 const _typecheck: ChangesResponse | null = null;

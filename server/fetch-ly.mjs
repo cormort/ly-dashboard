@@ -23,6 +23,46 @@ export class FetchError extends Error {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * 可重試的 HTTP 狀態。429 是關鍵：g0v API（ly.govapi.tw）在短時間內連續抓多頁時會回
+ * 429 Too Many Requests，這**不是**「重試沒有意義」的 4xx（實測踩到：預算與公報議程整批失敗）。
+ */
+const RETRYABLE_STATUS = new Set([408, 425, 429, 500, 502, 503, 504]);
+
+export function isRetryableStatus(status) {
+  return RETRYABLE_STATUS.has(Number(status));
+}
+
+/** 解析 Retry-After（秒數或 HTTP 日期），回傳毫秒；無法解析時回 null */
+export function parseRetryAfter(value) {
+  const raw = String(value ?? '').trim();
+  if (!raw) return null;
+  if (/^\d+$/.test(raw)) return Number(raw) * 1000;
+  const at = Date.parse(raw);
+  return Number.isNaN(at) ? null : Math.max(0, at - Date.now());
+}
+
+/**
+ * 同一個 host 的最小請求間隔。對社群維運的 g0v API 客氣一點，也避免自己撞到 429。
+ * 可用 LY_MIN_INTERVAL_MS 調整；設 0 可關閉。
+ */
+const hostGate = new Map();
+async function pace(url) {
+  const min = CONFIG.minRequestIntervalMs;
+  if (!min || min <= 0) return;
+  let host;
+  try {
+    host = new URL(url).host;
+  } catch {
+    return;
+  }
+  const now = Date.now();
+  const last = hostGate.get(host) ?? 0;
+  const wait = last + min - now;
+  hostGate.set(host, now + Math.max(0, wait));
+  if (wait > 0) await sleep(wait);
+}
+
 function once(url, { timeoutMs, ua, accept = 'application/json' }) {
   return new Promise((resolve, reject) => {
     const req = https.request(
@@ -49,28 +89,43 @@ function once(url, { timeoutMs, ua, accept = 'application/json' }) {
 }
 
 /**
- * 抓取一次 JSON 端點：具名 UA、逾時、指數退避 + 抖動重試（只重試 5xx / 網路錯誤）。
+ * 抓取一次 JSON 端點：具名 UA、逾時、同 host 節流、指數退避 + 抖動重試。
+ * 可重試：網路錯誤、408/425/429 與 5xx（429 會尊重 Retry-After 並多給幾次機會）。
  */
 export async function fetchJson(url, options = {}) {
-  const { timeoutMs = CONFIG.fetchTimeoutMs, retries = CONFIG.fetchRetries, ua = CONFIG.userAgent, text: asText = false } = options;
+  const {
+    timeoutMs = CONFIG.fetchTimeoutMs,
+    retries = CONFIG.fetchRetries,
+    ua = CONFIG.userAgent,
+    text: asText = false,
+    // 測試注入點：讓單元測試能模擬 429 → 200 的重試序列，不必真的打網路
+    once: request = once,
+  } = options;
   let lastError = null;
 
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
       let target = url;
-      let res = await once(target, { timeoutMs, ua, accept: asText ? '*/*' : 'application/json' });
+      await pace(target);
+      let res = await request(target, { timeoutMs, ua, accept: asText ? '*/*' : 'application/json' });
       // 跟隨轉址（Google 試算表匯出會 307 到 googleusercontent）；上限 5 次防迴圈
       for (let hops = 0; [301, 302, 303, 307, 308].includes(res.status) && res.headers.location; hops++) {
         if (hops === 5) throw Object.assign(new FetchError('轉址過多', { status: res.status, attempts: attempt }), { retryable: false });
         target = new URL(res.headers.location, target).href;
-        res = await once(target, { timeoutMs, ua, accept: asText ? '*/*' : 'application/json' });
+        await pace(target);
+        res = await request(target, { timeoutMs, ua, accept: asText ? '*/*' : 'application/json' });
       }
       const { status, body, headers } = res;
-      if (status >= 500) throw new FetchError(`HTTP ${status}`, { status, attempts: attempt });
       if (status !== 200) {
-        // 4xx：重試沒有意義（實測 WAF 403 就是這一類），直接失敗
         const err = new FetchError(`HTTP ${status}`, { status, attempts: attempt });
-        err.retryable = false;
+        if (isRetryableStatus(status)) {
+          // 429／5xx 等：重試，並尊重 Retry-After
+          err.retryable = true;
+          err.retryAfterMs = parseRetryAfter(headers['retry-after']);
+        } else {
+          // 其餘 4xx：重試沒有意義（實測 WAF 403 就是這一類），直接失敗
+          err.retryable = false;
+        }
         throw err;
       }
       const text = body.toString('utf8');
@@ -89,8 +144,11 @@ export async function fetchJson(url, options = {}) {
     } catch (error) {
       lastError = error;
       const retryable = error.retryable !== false;
-      if (!retryable || attempt === retries) break;
-      const delay = Math.round(500 * 2 ** (attempt - 1) * (0.7 + Math.random() * 0.6));
+      // 429 額外給幾次機會（伺服器要求節奏，不是拒絕服務）
+      const maxAttempts = error.status === 429 ? Math.max(retries, 5) : retries;
+      if (!retryable || attempt >= maxAttempts) break;
+      const backoff = Math.round(500 * 2 ** (attempt - 1) * (0.7 + Math.random() * 0.6));
+      const delay = Math.max(backoff, error.retryAfterMs ?? 0);
       await sleep(delay);
     }
   }

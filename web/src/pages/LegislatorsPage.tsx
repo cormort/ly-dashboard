@@ -130,24 +130,16 @@ export function LegislatorsPage({ query, meta, tracked, refreshToken, onOpen }: 
         trackedCount={tracked.count}
       />
 
-      {/* 席次圖與委員會組成並排：點委員會篩選後，結果就在正下方的名錄 */}
-      <div className="overview">
-        {roster.data && roster.data.items.length > 0 ? (
-          <Hemicycle
-            roster={roster.data.items}
-            matching={matching}
-            party={filters.party}
-            onPartyToggle={(party) => update({ party: filters.party === party ? null : party }, 'push')}
-            onOpen={onOpen}
-          />
-        ) : null}
-        <CommitteeChart
-          committees={committees}
-          sessionScopeLabel={scopeLabel}
-          selected={filters.committee}
-          onSelect={(committee) => update({ committee }, 'push')}
+      {/* 席次圖單獨一區：它是這一頁的視覺主角（原本與委員會組成並排，兩個圖互相搶注意力） */}
+      {roster.data && roster.data.items.length > 0 ? (
+        <Hemicycle
+          roster={roster.data.items}
+          matching={matching}
+          party={filters.party}
+          onPartyToggle={(party) => update({ party: filters.party === party ? null : party }, 'push')}
+          onOpen={onOpen}
         />
-      </div>
+      ) : null}
 
       <LegislatorGrid
         legislators={list}
@@ -177,7 +169,22 @@ export function LegislatorsPage({ query, meta, tracked, refreshToken, onOpen }: 
         }}
       />
 
-      <ChangesPanel refreshToken={refreshToken} />
+      {/* 委員會組成與最近異動是補充資訊，預設收合，名錄才是這一頁的重點 */}
+      <details className="panel secondary-details">
+        <summary>
+          <span className="regions-title">委員會組成與最近異動</span>
+          <span className="muted">展開查看各委員會黨籍組成與資料變更紀錄</span>
+        </summary>
+        <div className="split">
+          <CommitteeChart
+            committees={committees}
+            sessionScopeLabel={scopeLabel}
+            selected={filters.committee}
+            onSelect={(committee) => update({ committee }, 'push')}
+          />
+          <ChangesPanel refreshToken={refreshToken} />
+        </div>
+      </details>
     </>
   );
 }

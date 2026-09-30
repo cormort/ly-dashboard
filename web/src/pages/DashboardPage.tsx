@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from 'react';
+import { useState, type CSSProperties, type ReactNode } from 'react';
 import { ArrowRight, ExternalLink } from 'lucide-react';
 import { buildUrl } from '../api/client';
 import type {
@@ -79,15 +79,18 @@ function Who({ id, name, party, onOpenId }: { id: string; name: string; party: s
  */
 export function DashboardPage({ refreshToken, onOpenId, onNavigate }: DashboardPageProps) {
   const opts = { refreshToken };
-  const activity = useApi<ActivityResponse>(buildUrl('/activity', { limit: 5 }), opts);
-  const news = useApi<NewsResponse>(buildUrl('/news', { limit: 5 }), opts);
-  const bills = useApi<BillsResponse>(buildUrl('/bills', { limit: 5 }), opts);
-  const passed = useApi<BillsResponse>(buildUrl('/bills', { status: '三讀', limit: 5 }), opts);
-  const budget = useApi<BudgetResponse>(buildUrl('/budget', { limit: 5 }), opts);
-  const reports = useApi<BudgetReportsResponse>(buildUrl('/budget/reports', { limit: 4 }), opts);
+  // 各縣市預設不展開，而且展開才渲染（25 張卡片的 DOM 不進首次繪製）
+  const [regionsOpen, setRegionsOpen] = useState(false);
+  // 每張卡只取 3 則：總覽的任務是「指出重點並導向」，不是把所有清單攤開
+  const activity = useApi<ActivityResponse>(buildUrl('/activity', { limit: 4 }), opts);
+  const news = useApi<NewsResponse>(buildUrl('/news', { limit: 3 }), opts);
+  const bills = useApi<BillsResponse>(buildUrl('/bills', { limit: 3 }), opts);
+  const passed = useApi<BillsResponse>(buildUrl('/bills', { status: '三讀', limit: 3 }), opts);
+  const budget = useApi<BudgetResponse>(buildUrl('/budget', { limit: 3 }), opts);
+  const reports = useApi<BudgetReportsResponse>(buildUrl('/budget/reports', { limit: 3 }), opts);
   const rankings = useApi<RankingsResponse>(buildUrl('/rankings', { type: 'all', days: 30, limit: 3 }), opts);
-  const committees = useApi<CommitteeActivityResponse>(buildUrl('/committee-activity', { limit: 5 }), opts);
-  const regions = useApi<RegionsResponse>(buildUrl('/regions', { per: 3 }), opts);
+  const committees = useApi<CommitteeActivityResponse>(buildUrl('/committee-activity', { limit: 3 }), opts);
+  const regions = useApi<RegionsResponse>(buildUrl('/regions', { per: 2 }), opts);
 
   const link = (route: Route, params?: Record<string, string>) => pathFor(route, params);
   const passedCount = bills.data?.statuses.filter((s) => PASSED.has(s.name)).reduce((sum, s) => sum + s.count, 0);
@@ -102,7 +105,10 @@ export function DashboardPage({ refreshToken, onOpenId, onNavigate }: DashboardP
     <>
       <div className="page-head">
         <h1>總覽</h1>
-        <p className="muted">各區塊與各縣市的最新消息，點「看更多」進入對應頁面。</p>
+        <p className="page-lead">
+          本屆立法院的四個關鍵數字，接著是最新動態、法案、預算與委員會的重點摘要。
+          每個區塊右上角都能進入完整頁面；各縣市動態收在頁面最下方（預設收合）。
+        </p>
       </div>
 
       <div className="stat-row">
@@ -123,7 +129,7 @@ export function DashboardPage({ refreshToken, onOpenId, onNavigate }: DashboardP
       </div>
 
       <div className="dash-grid">
-        <Card title="委員動態" href={link('home')} onNavigate={onNavigate} resource={activity}>
+        <Card title="最新動態" href={link('home')} onNavigate={onNavigate} resource={activity} wide>
           {(data) => (
             <ul className="dash-list">
               {data.items.map((a) => {
@@ -274,14 +280,21 @@ export function DashboardPage({ refreshToken, onOpenId, onNavigate }: DashboardP
         </Card>
       </div>
 
-      <section aria-label="各縣市最新動態">
-        <div className="sectionhead">
-          <h2>各縣市最新動態</h2>
-          {regions.data ? <span className="muted">{regions.data.count} 個選區</span> : null}
-        </div>
+      <details
+        className="panel regions-details"
+        open={regionsOpen}
+        onToggle={(event) => setRegionsOpen((event.currentTarget as HTMLDetailsElement).open)}
+      >
+        <summary>
+          <span className="regions-title">各縣市最新動態</span>
+          <span className="muted">
+            {regions.data ? `${regions.data.count} 個選區` : '讀取中…'}・{regionsOpen ? '點此收合' : '點此展開'}
+          </span>
+        </summary>
         {regions.phase === 'loading' && !regions.data ? <LoadingState label="讀取各縣市…" /> : null}
         {regions.phase === 'error' ? <ErrorState title="無法取得各縣市（/api/v1/regions）" error={regions.error} onRetry={regions.reload} /> : null}
-        {regions.data ? (
+        {/* 收合時完全不渲染 25 張卡片：DOM 少 25 個 panel／25 個 h3，首次繪製也更快 */}
+        {regionsOpen && regions.data ? (
           <div className="region-grid">
             {regions.data.items.map((r) => (
               <article key={r.region} className="panel region-card">
@@ -328,7 +341,7 @@ export function DashboardPage({ refreshToken, onOpenId, onNavigate }: DashboardP
             ))}
           </div>
         ) : null}
-      </section>
+      </details>
     </>
   );
 }

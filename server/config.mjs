@@ -75,5 +75,7 @@ export const CONFIG = {
   staleAfterHours: Number(process.env.LY_STALE_HOURS || 36),
   syncIntervalMs: Number(process.env.LY_SYNC_INTERVAL_MS || 24 * 60 * 60 * 1000),
   fetchTimeoutMs: Number(process.env.LY_FETCH_TIMEOUT_MS || 30_000),
+  // 同一個 host 的最小請求間隔：g0v API 連續抓多頁會回 429（實測），溫和一點也保護對方
+  minRequestIntervalMs: Number(process.env.LY_MIN_INTERVAL_MS ?? 400),
   fetchRetries: Number(process.env.LY_FETCH_RETRIES || 3),
 };

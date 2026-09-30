@@ -23,18 +23,55 @@ export interface HeaderProps {
   refreshing: boolean;
 }
 
-/** 依主題排：總覽與動態 → 委員 → 委員會 → 法案、預算 → 機關／基金（四類在頁內再分） */
-const NAV: { route: Route; label: string; also?: Route[] }[] = [
-  { route: 'dashboard', label: '總覽' },
-  { route: 'home', label: '最近動態' },
-  { route: 'rankings', label: '排行榜' },
-  { route: 'legislators', label: '委員查詢' },
-  { route: 'compare', label: '委員比較' },
-  { route: 'committees', label: '委員會' },
-  { route: 'bills', label: '法案查詢' },
-  { route: 'budget', label: '預算審議' },
-  { route: 'funds', label: '機關／基金', also: ['agencies', 'foundations', 'administrative', 'dgbas'] },
+/**
+ * 導覽改成兩層（原本一列 9 個項目，每個等重 → 使用者說「雜亂沒有重點」）：
+ * 上層 5 個主題，進入主題後才顯示該主題的次級頁面。
+ */
+interface NavGroup {
+  id: string;
+  label: string;
+  home: Route;
+  routes: { route: Route; label: string }[];
+}
+
+const NAV: NavGroup[] = [
+  { id: 'overview', label: '總覽', home: 'dashboard', routes: [{ route: 'dashboard', label: '總覽' }] },
+  {
+    id: 'members',
+    label: '委員',
+    home: 'legislators',
+    routes: [
+      { route: 'legislators', label: '委員查詢' },
+      { route: 'compare', label: '委員比較' },
+      { route: 'rankings', label: '排行榜' },
+    ],
+  },
+  {
+    id: 'agenda',
+    label: '議事',
+    home: 'bills',
+    routes: [
+      { route: 'bills', label: '法案查詢' },
+      { route: 'budget', label: '預算審議' },
+      { route: 'committees', label: '委員會' },
+    ],
+  },
+  {
+    id: 'orgs',
+    label: '機關／基金',
+    home: 'funds',
+    routes: [
+      { route: 'funds', label: '基金' },
+      { route: 'agencies', label: '機關' },
+      { route: 'foundations', label: '財團法人' },
+      { route: 'administrative', label: '行政法人' },
+      { route: 'dgbas', label: '主計總處' },
+    ],
+  },
+  { id: 'activity', label: '最近動態', home: 'home', routes: [{ route: 'home', label: '最近動態' }] },
 ];
+
+const groupOf = (route: Route): NavGroup => NAV.find((group) => group.routes.some((item) => item.route === route)) ?? NAV[0];
 
 /** 頁首：站名、三頁導覽、委員搜尋、資料狀態（有問題才用警示色）。 */
 export function Header({
@@ -55,9 +92,11 @@ export function Header({
   const statusText = failed ? '同步失敗' : stale ? '可能非最新' : '資料截至';
   // L6：同步面板是條件式 render，只有它存在時 aria-controls 才指得到東西
   const syncPanelExists = syncOpen || failed || stale;
+  const activeGroup = groupOf(route);
 
   return (
-    <header>
+    <>
+      <header>
       <a
         className="brand"
         href="/"
@@ -71,19 +110,22 @@ export function Header({
       </a>
 
       <nav aria-label="主要頁面">
-        {NAV.map((item) => (
-          <a
-            key={item.route}
-            href={pathFor(item.route)}
-            aria-current={route === item.route || item.also?.includes(route) ? 'page' : undefined}
-            onClick={(event) => {
-              event.preventDefault();
-              onNavigate(pathFor(item.route));
-            }}
-          >
-            {item.label}
-          </a>
-        ))}
+        {NAV.map((group) => {
+          const active = groupOf(route).id === group.id;
+          return (
+            <a
+              key={group.id}
+              href={pathFor(group.home)}
+              aria-current={active ? 'page' : undefined}
+              onClick={(event) => {
+                event.preventDefault();
+                onNavigate(pathFor(group.home));
+              }}
+            >
+              {group.label}
+            </a>
+          );
+        })}
       </nav>
 
       {/* 法案頁有自己的搜尋框，兩個不同目標的搜尋框疊在一起會混淆 */}
@@ -118,7 +160,27 @@ export function Header({
         >
           <RefreshCw className={refreshing ? 'spin' : undefined} aria-hidden="true" />
         </button>
-      </div>
-    </header>
+        </div>
+      </header>
+
+      {/* 次級導覽：只在所屬主題有多個頁面時出現（兩層導覽的第二層） */}
+      {activeGroup.routes.length > 1 ? (
+        <nav className="subnav" aria-label={`${activeGroup.label}的頁面`}>
+          {activeGroup.routes.map((item) => (
+            <a
+              key={item.route}
+              href={pathFor(item.route)}
+              aria-current={route === item.route ? 'page' : undefined}
+              onClick={(event) => {
+                event.preventDefault();
+                onNavigate(pathFor(item.route));
+              }}
+            >
+              {item.label}
+            </a>
+          ))}
+        </nav>
+      ) : null}
+    </>
   );
 }

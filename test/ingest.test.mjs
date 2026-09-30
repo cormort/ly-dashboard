@@ -507,3 +507,46 @@ test('預算查詢：依預算類型篩選，類型件數在類型條件前算',
   assert.deepEqual(special.types, all.types, '選了類型，各類型件數不變');
   assert.equal(listBudget(db, { type: 'bogus' }).total, all.total, '未知類型視為未指定');
 });
+
+/* ---------------- 429：g0v API 的節流（實測 budget／records 整批失敗） ---------------- */
+
+import { isRetryableStatus, parseRetryAfter, fetchJson } from '../server/fetch-ly.mjs';
+
+test('429／5xx 可重試，其他 4xx 不可（403 是 WAF 拒絕，重試沒意義）', () => {
+  for (const status of [408, 425, 429, 500, 502, 503, 504]) assert.equal(isRetryableStatus(status), true, `HTTP ${status} 應可重試`);
+  for (const status of [400, 401, 403, 404, 410, 422]) assert.equal(isRetryableStatus(status), false, `HTTP ${status} 不該重試`);
+});
+
+test('Retry-After 支援秒數與 HTTP 日期', () => {
+  assert.equal(parseRetryAfter('3'), 3000);
+  assert.equal(parseRetryAfter(''), null);
+  assert.equal(parseRetryAfter('not-a-date'), null);
+  const future = new Date(Date.now() + 5000).toUTCString();
+  const parsed = parseRetryAfter(future);
+  assert.ok(parsed > 3000 && parsed <= 5000, `日期格式應換算成毫秒（得到 ${parsed}）`);
+});
+
+test('429 會重試到成功，且不會重試 403', async () => {
+  const calls = [];
+  const fakeOnce = async () => {
+    calls.push(calls.length + 1);
+    if (calls.length < 3) return { status: 429, body: Buffer.from(''), headers: { 'retry-after': '0' } };
+    return { status: 200, body: Buffer.from('{"dataList":[]}'), headers: {} };
+  };
+  const result = await fetchJson('https://ly.govapi.tw/v2/bills?page=1', { once: fakeOnce, retries: 5 });
+  assert.equal(result.status, 200, '第三次應該成功');
+  assert.equal(result.attempts, 3);
+});
+
+test('非 200 且不可重試（403）只打一次就失敗', async () => {
+  let calls = 0;
+  const forbidden = async () => {
+    calls += 1;
+    return { status: 403, body: Buffer.from('forbidden'), headers: {} };
+  };
+  await assert.rejects(
+    () => fetchJson('https://data.ly.gov.tw/odw/ID9Action.action', { once: forbidden, retries: 5 }),
+    (error) => error.status === 403 && error.retryable === false,
+  );
+  assert.equal(calls, 1, 'WAF 403 重試沒有意義，只該打一次');
+});
