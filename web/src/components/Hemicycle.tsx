@@ -1,4 +1,4 @@
-import { useMemo, type CSSProperties } from 'react';
+import { useMemo, useState, type CSSProperties } from 'react';
 import type { Legislator } from '../api/types';
 import { partyStyle, sortParties } from '../lib/parties';
 
@@ -68,6 +68,9 @@ export function Hemicycle({ roster, matching, party, onPartyToggle, onOpen }: He
     return sortParties(map.keys()).map((name) => ({ name, ...map.get(name)! }));
   }, [ordered, matching]);
 
+  // 滑鼠移到席次上立即顯示姓名（原生 <title> 有延遲、各瀏覽器不一定出現）
+  const [hover, setHover] = useState<{ legislator: Legislator; seat: Seat } | null>(null);
+
   const litTotal = matching ? ordered.filter((l) => matching.has(l.id)).length : ordered.length;
   const seatR = 0.034;
   const summary = `議場席次圖：共 ${ordered.length} 席，符合條件 ${litTotal} 席。${tally
@@ -76,7 +79,8 @@ export function Hemicycle({ roster, matching, party, onPartyToggle, onOpen }: He
 
   return (
     <section className="hemicycle" aria-label="議場席次">
-      <svg viewBox="-1.06 -1.06 2.12 1.12" role="img" aria-label={summary}>
+      <div className="hemicycle-plot">
+      <svg viewBox="-1.06 -1.06 2.12 1.12" role="img" aria-label={summary} onMouseLeave={() => setHover(null)}>
         {ordered.map((l, i) => {
           const seat = seats[i];
           if (!seat) return null;
@@ -91,6 +95,7 @@ export function Hemicycle({ roster, matching, party, onPartyToggle, onOpen }: He
               fill={lit ? style.color : 'var(--seat-off)'}
               className={l.is_convener && lit ? 'seat convener' : 'seat'}
               onClick={() => onOpen(l)}
+              onMouseEnter={() => setHover({ legislator: l, seat })}
             >
               <title>{`${l.name}（${style.short}）${l.area_name ?? ''}${l.is_convener ? '・召委' : ''}`}</title>
             </circle>
@@ -103,6 +108,26 @@ export function Hemicycle({ roster, matching, party, onPartyToggle, onOpen }: He
           {matching ? `符合條件／共 ${ordered.length} 席` : `席`}
         </text>
       </svg>
+      {hover ? (
+        <div
+          className="seat-tip"
+          role="tooltip"
+          style={
+            {
+              left: `${((hover.seat.x + 1.06) / 2.12) * 100}%`,
+              top: `${((1.06 - hover.seat.y) / 1.12) * 100}%`,
+              '--party': partyStyle(hover.legislator.party).color,
+            } as CSSProperties
+          }
+        >
+          <b>{hover.legislator.name}</b>
+          <span>
+            {partyStyle(hover.legislator.party).short}・{hover.legislator.area_name ?? ''}
+            {hover.legislator.is_convener ? '・召委' : ''}
+          </span>
+        </div>
+      ) : null}
+      </div>
 
       <ul className="party-legend" aria-label="依黨籍篩選">
         {tally.map((t) => {

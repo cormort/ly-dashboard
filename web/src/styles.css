@@ -326,6 +326,24 @@ main { max-width: 1360px; margin: 0 auto; padding: var(--space-6) 20px 64px; dis
   box-shadow: var(--shadow-sm);
 }
 .hemicycle svg { width: 100%; max-height: 330px; display: block; }
+.hemicycle-plot { position: relative; }
+.seat-tip {
+  position: absolute;
+  transform: translate(-50%, calc(-100% - 10px));
+  pointer-events: none;
+  display: grid;
+  gap: 1px;
+  white-space: nowrap;
+  padding: 6px 10px;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--party);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md, 0 4px 12px rgba(0, 0, 0, 0.12));
+  font-size: 13px;
+  z-index: 2;
+}
+.seat-tip span { color: var(--muted); font-size: 12px; }
 .seat { cursor: pointer; stroke: var(--surface); stroke-width: 0.006; transition: fill var(--t-slow), stroke var(--t-slow); }
 .seat:hover { stroke: var(--ink); stroke-width: 0.012; }
 .seat.convener { stroke: var(--ink); stroke-width: 0.014; }
