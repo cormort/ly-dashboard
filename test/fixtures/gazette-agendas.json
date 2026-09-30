@@ -1,0 +1,452 @@
+{
+ "total": 9,
+ "total_page": 1,
+ "page": 1,
+ "limit": 1000,
+ "filter": {
+  "屆": [
+   "11"
+  ]
+ },
+ "id_fields": [
+  "公報議程編號"
+ ],
+ "sort": [
+  "卷",
+  "期",
+  "冊別"
+ ],
+ "gazetteagendas": [
+  {
+   "公報議程編號": "1157601_00002",
+   "卷": 115,
+   "期": 76,
+   "冊別": 1,
+   "屆": 11,
+   "會期": 5,
+   "會次": 28,
+   "臨時會會次": null,
+   "目錄編號": 2,
+   "類別代碼": 3,
+   "會議日期": [
+    "2026-08-26"
+   ],
+   "案由": "教育及文化委員會第28次會議一、繼續審查(一)委員羅廷瑋等21人擬具「電子競技運動發展基本法草案」案、(二)委員葛如鈞等18人擬具「電子競技運動發展基本法草案」案、(三)委員廖偉翔等20人擬具「電子競技運動發展基本法草案」案、(四)委員徐巧芯等17人擬具「電子競技運動發展基本法草案」案、(五)台灣民眾黨黨團擬具「電子競技運動促進法草案」案；二、審查委員羅智強等17人擬具「電子競技運動發展基本法草案」案（逐條審查）；三、審查(一)委員林月琴等16人擬具「教保服務人員條例第三十三條條文修正草案」案、(二)委員李彥秀等16人擬具「教保服務人員條例第十五條、第十六條及第十七條條文修正草案」案、(三)委員王育敏等21人擬具「教保服務人員條例部分條文修正草案」案、(四)委員林月琴等28人擬具「教保服務人員條例第三十三條條文修正草案」案、(五)委員羅廷瑋等17人擬具「教保服務人員條例部分條文修正草案」案、(六)委員陳冠廷等16人擬具「教保服務人員條例增訂第二十三條之一條文草案」案、(七)委員廖偉翔等19人擬具「教保服務人員條例部分條文修正草案」案",
+   "起始頁碼": 61,
+   "結束頁碼": 172,
+   "doc檔案下載位置": [
+    "https://ppg.ly.gov.tw/ppg/download/communique1/work/115/76/LCIDC01_1157601_00003.doc"
+   ],
+   "屆別期別篩選條件": "1105",
+   "公報編號": "1157601",
+   "公報網網址": "https://ppg.ly.gov.tw/ppg/publications/official-gazettes/115/76/01/details",
+   "公報完整PDF網址": "https://ppg.ly.gov.tw/ppg/PublicationBulletinDetail/download/communique1/final/pdf/115/76/LCIDC01_1157601.pdf",
+   "處理後公報網址": [
+    {
+     "type": "html",
+     "no": 0,
+     "url": "https://v2.ly.govapi.tw/gazette_agenda_doc/1157601_00003/html"
+    },
+    {
+     "type": "tikahtml",
+     "no": 0,
+     "url": "https://v2.ly.govapi.tw/gazette_agenda_doc/1157601_00003/tikahtml"
+    },
+    {
+     "type": "txt",
+     "no": 0,
+     "url": "https://v2.ly.govapi.tw/gazette_agenda_doc/1157601_00003/txt"
+    },
+    {
+     "type": "parsed",
+     "no": 0,
+     "url": "https://v2.ly.govapi.tw/gazette_agenda_doc/1157601_00003/parsed"
+    }
+   ]
+  },
+  {
+   "公報議程編號": "1157601_00003",
+   "卷": 115,
+   "期": 76,
+   "冊別": 1,
+   "屆": 11,
+   "會期": 5,
+   "會次": 2,
+   "臨時會會次": null,
+   "目錄編號": 3,
+   "類別代碼": 3,
+   "會議日期": [
+    "2026-08-26"
+   ],
+   "案由": "社會福利及衛生環境、司法及法制委員會第2次聯席會議一、審查「性侵害犯罪防治法部分條文修正草案」等10案：(一)委員葉元之等19人擬具「性侵害犯罪防治法第五十二條條文修正草案」案、(二)委員黃健豪等23人擬具「性侵害犯罪防治法部分條文修正草案」案、(三)委員徐巧芯等16人擬具「性侵害犯罪防治法增訂第三十二條之一條文草案」案、(四)委員鄭正鈐等22人擬具「性侵害犯罪防治法增訂第二十八條之一條文草案」案、(五)委員吳沛憶等17人擬具「性侵害犯罪防治法增訂第十條之一條文草案」案、(六)委員魯明哲等18人擬具「性侵害犯罪防治法增訂第十一條之一條文草案」案、(七)委員魯明哲等18人擬具「性侵害犯罪防治法第二十九條條文修正草案」案、(八)委員陳培瑜等16人擬具「性侵害犯罪防治法部分條文修正草案」案、(九)委員王育敏等20人擬具「性侵害犯罪防治法第二十九條及第四十三條之一條文修正草案」案、(十)委員張雅琳等16人擬具「性侵害犯罪防治法部分條文修正草案」案；二、審查「兒童及少年性剝削防制條例部分條文修正草案」等17案：(一)委員陳亭妃等17人擬具「兒童及少年性剝削防制條例部分條文修正草案」案、(二)委員徐欣瑩等27人擬具「兒童及少年性剝削防制條例第三十二條及第三十三條條文修正草案」案、(三)委員張智倫等18人擬具「兒童及少年性剝削防制條例部分條文修正草案」案、(四)委員廖先翔等17人擬具「兒童及少年性剝削防制條例第三十九條條文修正草案」案、(五)委員蔡其昌等17人擬具「兒童及少年性剝削防制條例增訂第五十三條之二條文草案」案、(六)委員黃秀芳等18人擬具「兒童及少年性剝削防制條例增訂第五十三條之二條文草案」案、(七)委員羅廷瑋等18人擬具「兒童及少年性剝削防制條例第十二條、第五十三條之二及第五十五條條文修正草案」案、(八)委員林宜瑾等19人擬具「兒童及少年性剝削防制條例增訂第五十三條之二條文草案」案、(九)委員林俊憲等18人擬具「兒童及少年性剝削防制條例增訂第五十三條之二條文草案」案、(十)委員邱議瑩等16人擬具「兒童及少年性剝削防制條例增訂第五十三條之二條文草案」案、(十一)委員林月琴等21人擬具「兒童及少年性剝削防制條例增訂第十三條之一及第五十三條之二條文草案」案、(十二)委員王育敏等19人擬具「兒童及少年性剝削防制條例第十二條、第五十三條之二及第五十五條條文修正草案」案、(十三)委員范雲等16人擬具「兒童及少年性剝削防制條例增訂第五十三條之二及第五十三條之三條文草案」案、(十四)委員陳培瑜等16人擬具「兒童及少年性剝削防制條例部分條文修正草案」案、(十五)委員翁曉玲等18人擬具「兒童及少年性剝削防制條例第十二條及第五十三條之二條文修正草案」案、(十六)委員林月琴等16人擬具「兒童及少年性剝削防制條例部分條文修正草案」案、(十七)委員張雅琳等16人擬具「兒童及少年性剝削防制條例部分條文修正草案」案（詢答）",
+   "起始頁碼": 173,
+   "結束頁碼": 288,
+   "doc檔案下載位置": [
+    "https://ppg.ly.gov.tw/ppg/download/communique1/work/115/76/LCIDC01_1157601_00004.doc"
+   ],
+   "屆別期別篩選條件": "1105",
+   "公報編號": "1157601",
+   "公報網網址": "https://ppg.ly.gov.tw/ppg/publications/official-gazettes/115/76/01/details",
+   "公報完整PDF網址": "https://ppg.ly.gov.tw/ppg/PublicationBulletinDetail/download/communique1/final/pdf/115/76/LCIDC01_1157601.pdf",
+   "處理後公報網址": [
+    {
+     "type": "html",
+     "no": 0,
+     "url": "https://v2.ly.govapi.tw/gazette_agenda_doc/1157601_00004/html"
+    },
+    {
+     "type": "tikahtml",
+     "no": 0,
+     "url": "https://v2.ly.govapi.tw/gazette_agenda_doc/1157601_00004/tikahtml"
+    },
+    {
+     "type": "txt",
+     "no": 0,
+     "url": "https://v2.ly.govapi.tw/gazette_agenda_doc/1157601_00004/txt"
+    },
+    {
+     "type": "parsed",
+     "no": 0,
+     "url": "https://v2.ly.govapi.tw/gazette_agenda_doc/1157601_00004/parsed"
+    }
+   ]
+  },
+  {
+   "公報議程編號": "1157601_00001",
+   "卷": 115,
+   "期": 76,
+   "冊別": 1,
+   "屆": 11,
+   "會期": 5,
+   "會次": 27,
+   "臨時會會次": null,
+   "目錄編號": 1,
+   "類別代碼": 3,
+   "會議日期": [
+    "2026-08-26"
+   ],
+   "案由": "經濟委員會第27次會議邀請經濟部部長、國家發展委員會主任委員、財政部首長、金融監督管理委員會首長、財團法人中小企業信用保證基金首長、國家科學及技術委員會首長就「中小微新企業發展困境、政策需求及政府資源配置與執行成效」進行報告，並備質詢",
+   "起始頁碼": 1,
+   "結束頁碼": 60,
+   "doc檔案下載位置": [
+    "https://ppg.ly.gov.tw/ppg/download/communique1/work/115/76/LCIDC01_1157601_00002.doc"
+   ],
+   "屆別期別篩選條件": "1105",
+   "公報編號": "1157601",
+   "公報網網址": "https://ppg.ly.gov.tw/ppg/publications/official-gazettes/115/76/01/details",
+   "公報完整PDF網址": "https://ppg.ly.gov.tw/ppg/PublicationBulletinDetail/download/communique1/final/pdf/115/76/LCIDC01_1157601.pdf",
+   "處理後公報網址": [
+    {
+     "type": "html",
+     "no": 0,
+     "url": "https://v2.ly.govapi.tw/gazette_agenda_doc/1157601_00002/html"
+    },
+    {
+     "type": "tikahtml",
+     "no": 0,
+     "url": "https://v2.ly.govapi.tw/gazette_agenda_doc/1157601_00002/tikahtml"
+    },
+    {
+     "type": "txt",
+     "no": 0,
+     "url": "https://v2.ly.govapi.tw/gazette_agenda_doc/1157601_00002/txt"
+    },
+    {
+     "type": "parsed",
+     "no": 0,
+     "url": "https://v2.ly.govapi.tw/gazette_agenda_doc/1157601_00002/parsed"
+    }
+   ]
+  },
+  {
+   "公報議程編號": "1157502_00001",
+   "卷": 115,
+   "期": 75,
+   "冊別": 2,
+   "屆": 11,
+   "會期": 5,
+   "會次": 23,
+   "臨時會會次": null,
+   "目錄編號": 1,
+   "類別代碼": 3,
+   "會議日期": [
+    "2026-08-19"
+   ],
+   "案由": "社會福利及衛生環境委員會第23次會議一、繼續審查行政院函請審議「食品安全衛生管理法部分條文修正草案」案；二、繼續審查委員廖偉翔等18人擬具「食品安全衛生管理法第二十四條及第二十五條條文修正草案」案；三、繼續審查委員蘇清泉等23人擬具「食品安全衛生管理法第二十二條條文修正草案」案；四、繼續審查委員蘇清泉等20人擬具「食品安全衛生管理法第四條條文修正草案」案；五、繼續審查委員葛如鈞等22人擬具「食品安全衛生管理法第十五條條文修正草案」案；六、繼續審查委員翁曉玲等17人擬具「食品安全衛生管理法第二十二條條文修正草案」案；七、繼續審查委員黃健豪等19人擬具「食品安全衛生管理法第五十六條之一條文修正草案」案；八、繼續審查委員羅智強等29人擬具「食品安全衛生管理法部分條文修正草案」案；九、繼續審查委員黃健豪等16人擬具「食品安全衛生管理法部分條文修正草案」案；十、繼續審查委員羅廷瑋等17人擬具「食品安全衛生管理法第十五條條文修正草案」案；十一、繼續審查台灣民眾黨黨團擬具「食品安全衛生管理法第四十五條條文修正草案」案；十二、繼續審查委員魯明哲等16人擬具「食品安全衛生管理法第二十二條條文修正草案」案；十三、繼續審查委員王育敏等17人擬具「食品安全衛生管理法部分條文修正草案」案；十四、繼續審查委員林倩綺等19人擬具「食品安全衛生管理法第二十二條條文修正草案」案；十五、繼續審查委員陳超明等16人擬具「食品安全衛生管理法第五十六條之一條文修正草案」案；十六、繼續審查委員黃健豪等23人擬具「食品安全衛生管理法第二十二條、第二十八條及第三十一條之一條文修正草案」案；十七、繼續審查委員張嘉郡等28人擬具「食品安全衛生管理法第二十二條條文修正草案」案；十八、繼續審查委員王育敏等19人擬具「食品安全衛生管理法第二十八條條文修正草案」案；十九、繼續審查委員劉建國等19人擬具「食品安全衛生管理法第二十二條條文修正草案」案；二十、繼續審查委員許宇甄等16人擬具「食品安全衛生管理法第二十二條條文修正草案」案；二十一、繼續審查委員郭國文等18人擬具「食品安全衛生管理法第七條及第四十八條之一條文修正草案」案；二十二、繼續審查國民黨黨團擬具「食品安全衛生管理法部分條文修正草案」案；二十三、繼續審查委員黃健豪等16人擬具「食品安全衛生管理法部分條文修正草案」案；二十四、繼續審查委員廖偉翔等19人擬具「食品安全衛生管理法第七條及第四十七條條文修正草案」案；二十五、繼續審查委員李彥秀等23人擬具「食品安全衛生管理法部分條文修正草案」案；二十六、繼續審查委員羅智強等17人擬具「食品安全衛生管理法部分條文修正草案」案；二十七、繼續審查委員盧縣一等16人擬具「食品安全衛生管理法部分條文修正草案」案；二十八、繼續審查委員伍麗華SaidhaiTahovecahe等16人擬具「食品安全衛生管理法部分條文修正草案」案；二十九、繼續審查委員許宇甄等24人擬具「食品安全衛生管理法部分條文修正草案」案；三十、繼續審查委員王育敏等25人擬具「食品安全衛生管理法部分條文修正草案」案；三十一、繼續審查委員徐巧芯等17人擬具「食品",
+   "起始頁碼": 1,
+   "結束頁碼": 458,
+   "doc檔案下載位置": [
+    "https://ppg.ly.gov.tw/ppg/download/communique1/work/115/75/LCIDC01_1157502_00002.doc"
+   ],
+   "屆別期別篩選條件": "1105",
+   "公報編號": "1157502",
+   "公報網網址": "https://ppg.ly.gov.tw/ppg/publications/official-gazettes/115/75/02/details",
+   "公報完整PDF網址": "https://ppg.ly.gov.tw/ppg/PublicationBulletinDetail/download/communique1/final/pdf/115/75/LCIDC01_1157502.pdf",
+   "處理後公報網址": [
+    {
+     "type": "html",
+     "no": 0,
+     "url": "https://v2.ly.govapi.tw/gazette_agenda_doc/1157502_00002/html"
+    },
+    {
+     "type": "tikahtml",
+     "no": 0,
+     "url": "https://v2.ly.govapi.tw/gazette_agenda_doc/1157502_00002/tikahtml"
+    },
+    {
+     "type": "txt",
+     "no": 0,
+     "url": "https://v2.ly.govapi.tw/gazette_agenda_doc/1157502_00002/txt"
+    },
+    {
+     "type": "parsed",
+     "no": 0,
+     "url": "https://v2.ly.govapi.tw/gazette_agenda_doc/1157502_00002/parsed"
+    }
+   ]
+  },
+  {
+   "公報議程編號": "1157502_00003",
+   "卷": 115,
+   "期": 75,
+   "冊別": 2,
+   "屆": 11,
+   "會期": 5,
+   "會次": null,
+   "臨時會會次": null,
+   "目錄編號": 3,
+   "類別代碼": 3,
+   "會議日期": [
+    "2026-08-24"
+   ],
+   "案由": "經濟委員會會議召開「中小微企業轉型升級與產業創新條例法制之檢討──兼論產業轉型、產業創新投融資及區域創育支持機制」公聽會",
+   "起始頁碼": 467,
+   "結束頁碼": 510,
+   "doc檔案下載位置": [
+    "https://ppg.ly.gov.tw/ppg/download/communique1/work/115/75/LCIDC01_1157502_00004.doc"
+   ],
+   "屆別期別篩選條件": "1105",
+   "公報編號": "1157502",
+   "公報網網址": "https://ppg.ly.gov.tw/ppg/publications/official-gazettes/115/75/02/details",
+   "公報完整PDF網址": "https://ppg.ly.gov.tw/ppg/PublicationBulletinDetail/download/communique1/final/pdf/115/75/LCIDC01_1157502.pdf",
+   "處理後公報網址": [
+    {
+     "type": "html",
+     "no": 0,
+     "url": "https://v2.ly.govapi.tw/gazette_agenda_doc/1157502_00004/html"
+    },
+    {
+     "type": "tikahtml",
+     "no": 0,
+     "url": "https://v2.ly.govapi.tw/gazette_agenda_doc/1157502_00004/tikahtml"
+    },
+    {
+     "type": "txt",
+     "no": 0,
+     "url": "https://v2.ly.govapi.tw/gazette_agenda_doc/1157502_00004/txt"
+    },
+    {
+     "type": "parsed",
+     "no": 0,
+     "url": "https://v2.ly.govapi.tw/gazette_agenda_doc/1157502_00004/parsed"
+    }
+   ]
+  },
+  {
+   "公報議程編號": "1157501_00001",
+   "卷": 115,
+   "期": 75,
+   "冊別": 1,
+   "屆": 11,
+   "會期": 5,
+   "會次": 30,
+   "臨時會會次": null,
+   "目錄編號": 1,
+   "類別代碼": 3,
+   "會議日期": [
+    "2026-08-19"
+   ],
+   "案由": "外交及國防委員會第30次會議邀請外交部部長林佳龍、僑務委員會委員長徐佳青報告「外交與僑務協同培育青年國際視野之執行成效與多語布局」，並備質詢",
+   "起始頁碼": 1,
+   "結束頁碼": 52,
+   "doc檔案下載位置": [
+    "https://ppg.ly.gov.tw/ppg/download/communique1/work/115/75/LCIDC01_1157501_00002.doc"
+   ],
+   "屆別期別篩選條件": "1105",
+   "公報編號": "1157501",
+   "公報網網址": "https://ppg.ly.gov.tw/ppg/publications/official-gazettes/115/75/01/details",
+   "公報完整PDF網址": "https://ppg.ly.gov.tw/ppg/PublicationBulletinDetail/download/communique1/final/pdf/115/75/LCIDC01_1157501.pdf",
+   "處理後公報網址": [
+    {
+     "type": "html",
+     "no": 0,
+     "url": "https://v2.ly.govapi.tw/gazette_agenda_doc/1157501_00002/html"
+    },
+    {
+     "type": "tikahtml",
+     "no": 0,
+     "url": "https://v2.ly.govapi.tw/gazette_agenda_doc/1157501_00002/tikahtml"
+    },
+    {
+     "type": "txt",
+     "no": 0,
+     "url": "https://v2.ly.govapi.tw/gazette_agenda_doc/1157501_00002/txt"
+    },
+    {
+     "type": "parsed",
+     "no": 0,
+     "url": "https://v2.ly.govapi.tw/gazette_agenda_doc/1157501_00002/parsed"
+    }
+   ]
+  },
+  {
+   "公報議程編號": "1157408_00002",
+   "卷": 115,
+   "期": 74,
+   "冊別": 8,
+   "屆": 11,
+   "會期": 5,
+   "會次": 23,
+   "臨時會會次": null,
+   "目錄編號": 2,
+   "類別代碼": 1,
+   "會議日期": [
+    "2026-08-27"
+   ],
+   "案由": "本院民進黨黨團針對立法院第11屆第5會期第23次會議，院會所作台灣民眾黨黨團擬具「產業創新條例第三十條條文修正草案」及「產業創新條例部分條文修正草案」案自經濟、財政兩委員會抽出逕付二讀，並由台灣民眾黨黨團負責召集協商之決定，提出復議─另定期處理─",
+   "起始頁碼": 227,
+   "結束頁碼": 228,
+   "doc檔案下載位置": [
+    "https://ppg.ly.gov.tw/ppg/download/communique1/work/115/74/LCIDC01_1157408_00004.doc"
+   ],
+   "屆別期別篩選條件": "1105",
+   "公報編號": "1157408",
+   "公報網網址": "https://ppg.ly.gov.tw/ppg/publications/official-gazettes/115/74/08/details",
+   "公報完整PDF網址": "https://ppg.ly.gov.tw/ppg/PublicationBulletinDetail/download/communique1/final/pdf/115/74/LCIDC01_1157408.pdf",
+   "處理後公報網址": [
+    {
+     "type": "html",
+     "no": 0,
+     "url": "https://v2.ly.govapi.tw/gazette_agenda_doc/1157408_00004/html"
+    },
+    {
+     "type": "tikahtml",
+     "no": 0,
+     "url": "https://v2.ly.govapi.tw/gazette_agenda_doc/1157408_00004/tikahtml"
+    },
+    {
+     "type": "txt",
+     "no": 0,
+     "url": "https://v2.ly.govapi.tw/gazette_agenda_doc/1157408_00004/txt"
+    },
+    {
+     "type": "parsed",
+     "no": 0,
+     "url": "https://v2.ly.govapi.tw/gazette_agenda_doc/1157408_00004/parsed"
+    }
+   ]
+  },
+  {
+   "公報議程編號": "1157408_00003",
+   "卷": 115,
+   "期": 74,
+   "冊別": 8,
+   "屆": 11,
+   "會期": 5,
+   "會次": 23,
+   "臨時會會次": null,
+   "目錄編號": 3,
+   "類別代碼": 2,
+   "會議日期": [
+    "2026-08-27"
+   ],
+   "案由": "國是論壇",
+   "起始頁碼": 229,
+   "結束頁碼": 232,
+   "doc檔案下載位置": [
+    "https://ppg.ly.gov.tw/ppg/download/communique1/work/115/74/LCIDC01_1157408_00005.doc"
+   ],
+   "屆別期別篩選條件": "1105",
+   "公報編號": "1157408",
+   "公報網網址": "https://ppg.ly.gov.tw/ppg/publications/official-gazettes/115/74/08/details",
+   "公報完整PDF網址": "https://ppg.ly.gov.tw/ppg/PublicationBulletinDetail/download/communique1/final/pdf/115/74/LCIDC01_1157408.pdf",
+   "處理後公報網址": [
+    {
+     "type": "html",
+     "no": 0,
+     "url": "https://v2.ly.govapi.tw/gazette_agenda_doc/1157408_00005/html"
+    },
+    {
+     "type": "tikahtml",
+     "no": 0,
+     "url": "https://v2.ly.govapi.tw/gazette_agenda_doc/1157408_00005/tikahtml"
+    },
+    {
+     "type": "txt",
+     "no": 0,
+     "url": "https://v2.ly.govapi.tw/gazette_agenda_doc/1157408_00005/txt"
+    },
+    {
+     "type": "parsed",
+     "no": 0,
+     "url": "https://v2.ly.govapi.tw/gazette_agenda_doc/1157408_00005/parsed"
+    }
+   ]
+  },
+  {
+   "公報議程編號": "1157408_00004",
+   "卷": 115,
+   "期": 74,
+   "冊別": 8,
+   "屆": 11,
+   "會期": 5,
+   "會次": 23,
+   "臨時會會次": null,
+   "目錄編號": 4,
+   "類別代碼": 4,
+   "會議日期": [
+    "2026-08-21"
+   ],
+   "案由": "質詢事項全文（臨時提出本院委員質詢部分）",
+   "起始頁碼": 233,
+   "結束頁碼": 236,
+   "doc檔案下載位置": [
+    "https://ppg.ly.gov.tw/ppg/download/communique1/work/115/74/LCIDC01_1157408_00006.doc"
+   ],
+   "屆別期別篩選條件": "1105",
+   "公報編號": "1157408",
+   "公報網網址": "https://ppg.ly.gov.tw/ppg/publications/official-gazettes/115/74/08/details",
+   "公報完整PDF網址": "https://ppg.ly.gov.tw/ppg/PublicationBulletinDetail/download/communique1/final/pdf/115/74/LCIDC01_1157408.pdf",
+   "處理後公報網址": [
+    {
+     "type": "html",
+     "no": 0,
+     "url": "https://v2.ly.govapi.tw/gazette_agenda_doc/1157408_00006/html"
+    },
+    {
+     "type": "tikahtml",
+     "no": 0,
+     "url": "https://v2.ly.govapi.tw/gazette_agenda_doc/1157408_00006/tikahtml"
+    },
+    {
+     "type": "txt",
+     "no": 0,
+     "url": "https://v2.ly.govapi.tw/gazette_agenda_doc/1157408_00006/txt"
+    },
+    {
+     "type": "parsed",
+     "no": 0,
+     "url": "https://v2.ly.govapi.tw/gazette_agenda_doc/1157408_00006/parsed"
+    }
+   ]
+  }
+ ],
+ "supported_filter_fields": [
+  "公報編號",
+  "卷",
+  "期",
+  "冊別",
+  "屆",
+  "會議日期"
+ ]
+}

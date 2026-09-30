@@ -23,13 +23,14 @@ export interface HeaderProps {
   refreshing: boolean;
 }
 
-/** 依主題排：總覽與動態 → 委員 → 法案、預算 → 機關／基金（四類在頁內再分） */
+/** 依主題排：總覽與動態 → 委員 → 委員會 → 法案、預算 → 機關／基金（四類在頁內再分） */
 const NAV: { route: Route; label: string; also?: Route[] }[] = [
   { route: 'dashboard', label: '總覽' },
   { route: 'home', label: '最近動態' },
   { route: 'rankings', label: '排行榜' },
   { route: 'legislators', label: '委員查詢' },
   { route: 'compare', label: '委員比較' },
+  { route: 'committees', label: '委員會' },
   { route: 'bills', label: '法案查詢' },
   { route: 'budget', label: '預算審議' },
   { route: 'funds', label: '機關／基金', also: ['agencies', 'foundations', 'administrative'] },

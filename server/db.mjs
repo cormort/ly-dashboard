@@ -156,6 +156,23 @@ CREATE TABLE IF NOT EXISTS committee_meetings (
   content TEXT,
   speakers TEXT NOT NULL DEFAULT '[]'
 );
+CREATE TABLE IF NOT EXISTS committee_records (
+  id TEXT PRIMARY KEY,
+  date TEXT,
+  committees TEXT NOT NULL DEFAULT '[]',
+  title TEXT NOT NULL,
+  gazette_url TEXT,
+  html_url TEXT,
+  pdf_url TEXT
+);
+CREATE TABLE IF NOT EXISTS committee_meets (
+  code TEXT PRIMARY KEY,
+  date TEXT,
+  title TEXT NOT NULL,
+  committees TEXT NOT NULL DEFAULT '[]',
+  video_url TEXT,
+  attachments TEXT NOT NULL DEFAULT '[]'
+);
 CREATE TABLE IF NOT EXISTS meta (
   key TEXT PRIMARY KEY,
   value TEXT
@@ -473,6 +490,18 @@ export function applyBudgetReports(db, reports, { fetchedAt }) {
 export function applyMeetings(db, meetings, { fetchedAt }) {
   const rows = meetings.map((m) => ({ ...m, speakers: JSON.stringify(m.speakers) }));
   replaceAll(db, 'committee_meetings', ['date', 'committee', 'joint', 'name', 'content', 'speakers'], rows, 'meetings_fetched_at', fetchedAt);
+  return rows.length;
+}
+
+export function applyCommitteeRecords(db, records, { fetchedAt }) {
+  const rows = records.map((r) => ({ ...r, committees: JSON.stringify(r.committees) }));
+  replaceAll(db, 'committee_records', ['id', 'date', 'committees', 'title', 'gazette_url', 'html_url', 'pdf_url'], rows, 'records_fetched_at', fetchedAt);
+  return rows.length;
+}
+
+export function applyCommitteeMeets(db, meets, { fetchedAt }) {
+  const rows = meets.map((m) => ({ ...m, committees: JSON.stringify(m.committees), attachments: JSON.stringify(m.attachments) }));
+  replaceAll(db, 'committee_meets', ['code', 'date', 'title', 'committees', 'video_url', 'attachments'], rows, 'meets_fetched_at', fetchedAt);
   return rows.length;
 }
 

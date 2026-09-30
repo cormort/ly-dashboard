@@ -580,3 +580,49 @@ export interface FundsResponse {
   funds: { name: string; count: number }[];
   items: FundItem[];
 }
+
+/* ---------- /committee-activity ---------- */
+
+export interface CommitteeMeetingItem {
+  date: string;
+  name: string;
+  content: string;
+  /** 參與的委員會全名（聯席會議有多個） */
+  committees: string[];
+  /** 登記發言委員；對不到本屆委員者 id 為 null */
+  speakers: { id: string | null; name: string; party: string }[];
+  /** 會議影片（議事網資料，依會議名稱對上；對不到為 null） */
+  video_url: string | null;
+  /** 會議附件：開會通知單、議事日程、書面報告… */
+  attachments: { title: string; url: string }[];
+}
+
+/** 機關回覆：部會對委員質詢的書面答復（議事網的會議附件） */
+export interface CommitteeReplyItem {
+  date: string | null;
+  committees: string[];
+  meeting: string;
+  title: string;
+  url: string;
+  /** 標題提到的委員（對不到則為空陣列） */
+  legislators: { id: string; name: string; party: string }[];
+}
+
+export interface CommitteeRecordItem {
+  id: string;
+  date: string | null;
+  committees: string[];
+  /** 公報議程案由（會議名稱＋議程） */
+  title: string;
+  gazette_url: string | null;
+  html_url: string | null;
+  pdf_url: string | null;
+}
+
+export interface CommitteeActivityResponse {
+  meta: Meta & { meetings_fetched_at: string | null; records_fetched_at: string | null; meets_fetched_at: string | null };
+  committees: { name: string; count: number }[];
+  meetings: { total: number; period: { from: string; to: string } | null; items: CommitteeMeetingItem[] };
+  replies: { total: number; period: { from: string; to: string } | null; items: CommitteeReplyItem[] };
+  records: { total: number; period: { from: string; to: string } | null; items: CommitteeRecordItem[] };
+}

@@ -14,6 +14,7 @@ import { useTracked } from './hooks/useTracked';
 import { sessionLabelIndex } from './lib/sessions';
 import { BillsPage } from './pages/BillsPage';
 import { BudgetPage } from './pages/BudgetPage';
+import { CommitteesPage } from './pages/CommitteesPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { FundsPage } from './pages/FundsPage';
 
@@ -147,6 +148,7 @@ export default function App() {
         {route in FUND_TYPE ? (
           <FundsPage key={route} type={FUND_TYPE[route as keyof typeof FUND_TYPE]} refreshToken={refreshToken} onOpenId={setPendingId} onNavigate={navigate} />
         ) : null}
+        {route === 'committees' ? <CommitteesPage refreshToken={refreshToken} onOpenId={setPendingId} /> : null}
         {route === 'compare' ? <ComparePage refreshToken={refreshToken} onOpenId={setPendingId} /> : null}
         {route === 'rankings' ? <RankingsPage refreshToken={refreshToken} onOpenId={setPendingId} onNavigate={navigate} /> : null}
       </AppShell>

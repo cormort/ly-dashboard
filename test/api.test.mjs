@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 import { openDb, applyDataset, applyBills, applySocial, upsertNews, saveSnapshot, recordSyncRun, getMeta, migrate } from '../server/db.mjs';
 import { buildDataset, normalizeBills, normalizeSocial, newsName } from '../server/normalize.mjs';
-import { billsCsv, compareLegislators, csvRow, makeTagger, listCosponsors, listFunds, listRegions, getHealth, getMetaPayload, listActivity, listBills, listTopics, listNews, listChanges, listCommittees, listLegislators, listRankings, listSyncRuns } from '../server/queries.mjs';
+import { billsCsv, compareLegislators, csvRow, makeTagger, listCommitteeActivity, listCosponsors, listFunds, listRegions, getHealth, getMetaPayload, listActivity, listBills, listTopics, listNews, listChanges, listCommittees, listLegislators, listRankings, listSyncRuns } from '../server/queries.mjs';
 
 const fixture = (name) => JSON.parse(readFileSync(fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url)), 'utf8'));
 
@@ -478,4 +478,57 @@ test('基金／機關／財團法人／行政法人：名稱與簡稱歸到正�
   assert.ok(jobs.items.every((x) => x.funds.includes('就業安定基金')));
   assert.equal(listFunds(db, { kind: 'report' }).total, 0);
   assert.equal(listFunds(db, { type: 'agency', fund: '就業安定基金' }).total, 0, '基金不出現在機關頁');
+});
+
+test('委員會動態：公報只留委員會紀錄、依委員會篩選（聯席會議兩邊都算）', async () => {
+  const { committeesOf, normalizeCommitteeRecords } = await import('../server/normalize.mjs');
+  const { applyCommitteeRecords, applyMeetings } = await import('../server/db.mjs');
+  assert.deepEqual(committeesOf('社會福利及衛生環境、司法及法制委員會第2次聯席會議'), ['社會福利及衛生環境委員會', '司法及法制委員會']);
+  assert.deepEqual(committeesOf('朝野黨團協商(財政委員會)'), ['財政委員會']);
+  assert.deepEqual(committeesOf('全院委員會公聽會'), ['全院委員會']);
+  assert.deepEqual(committeesOf('繼續審查114年度中央政府總預算案關於國軍退除役官兵輔導委員會'), [], '議程文字不當成委員會');
+  assert.throws(() => normalizeCommitteeRecords([{}], 3), /gazetteagendas/);
+
+  const records = normalizeCommitteeRecords([fixture('gazette-agendas.json')], 3);
+  assert.equal(records.length, 6, '只留類別代碼 3');
+  assert.ok(records.every((r) => r.id && r.title && r.html_url?.startsWith('https://') && r.date));
+
+  const { db } = seeded();
+  applyCommitteeRecords(db, records, { fetchedAt: '2026-09-30T09:00:00.000Z' });
+  applyMeetings(db, [{ date: '2026-08-20', committee: '財政委員會', joint: '經濟委員會', name: '財經聯席', content: '審查', speakers: [{ name: '丁學忠', id: null }] }], {
+    fetchedAt: '2026-09-30T09:00:00.000Z',
+  });
+  const all = listCommitteeActivity(db, {});
+  assert.equal(all.records.total, 6);
+  assert.ok(all.records.items.every((x, i, a) => i === 0 || a[i - 1].date >= x.date));
+  const order = ['內政委員會', '外交及國防委員會', '經濟委員會', '財政委員會', '教育及文化委員會', '交通委員會', '司法及法制委員會', '社會福利及衛生環境委員會'];
+  const ranks = all.committees.map((c) => order.indexOf(c.name)).filter((i) => i >= 0);
+  assert.deepEqual(ranks, [...ranks].sort((a, b) => a - b), '常設委員會依官網順序排');
+  const econ = listCommitteeActivity(db, { committee: '經濟委員會' });
+  assert.equal(econ.meetings.total, 1, '聯席會議也算在經濟委員會');
+  assert.ok(econ.records.items.every((r) => r.committees.includes('經濟委員會')));
+});
+
+test('機關回覆與會議附件：依種類分開、標題對出委員、依會議名稱掛到會議上', async () => {
+  const { normalizeCommitteeMeets } = await import('../server/normalize.mjs');
+  const { applyCommitteeMeets, applyMeetings } = await import('../server/db.mjs');
+  assert.throws(() => normalizeCommitteeMeets([{}]), /meets/);
+  const meets = normalizeCommitteeMeets([fixture('meets.json')]);
+  assert.equal(meets.length, 3);
+  const edu = meets.find((m) => m.title.includes('教育及文化'));
+  assert.ok(edu.video_url?.startsWith('https://ivod.ly.gov.tw/'));
+  assert.deepEqual(edu.committees, ['教育及文化委員會']);
+  assert.ok(meets.every((m) => new Set(m.attachments.map((a) => a.url)).size === m.attachments.length), '附件依連結去重');
+
+  const { db } = seeded();
+  applyCommitteeMeets(db, meets, { fetchedAt: '2026-09-30T09:00:00.000Z' });
+  applyMeetings(db, [{ date: edu.date, committee: '教育及文化委員會', joint: null, name: `(會議取消)立法院${edu.title.replace(/^立法院/, '')}`, content: '審查', speakers: [] }], {
+    fetchedAt: '2026-09-30T09:00:00.000Z',
+  });
+  const res = listCommitteeActivity(db, { limit: 200 });
+  assert.equal(res.meetings.items[0].video_url, edu.video_url, '去掉「(會議取消)」前綴後仍對得上');
+  const inner = listCommitteeActivity(db, { committee: '內政委員會', limit: 200 });
+  assert.ok(inner.replies.total > 0 && inner.replies.items.every((r) => r.committees.includes('內政委員會')));
+  const named = inner.replies.items.find((r) => r.title.includes('徐欣瑩'));
+  assert.deepEqual(named?.legislators.map((l) => l.name), ['徐欣瑩']);
 });

@@ -6,6 +6,7 @@ import type {
   BillsResponse,
   BudgetReportsResponse,
   BudgetResponse,
+  CommitteeActivityResponse,
   NewsResponse,
   RankingsResponse,
   RegionsResponse,
@@ -73,7 +74,7 @@ function Who({ id, name, party, onOpenId }: { id: string; name: string; party: s
 }
 
 /**
- * 總覽：各區塊（動態、新聞、法案、三讀、預算、預算中心、排行榜）各取最新幾則，
+ * 總覽：各區塊（動態、新聞、法案、三讀、預算、預算中心、委員會紀錄、排行榜）各取最新幾則，
  * 下方依縣市列出各區委員的最新動態。資料全部沿用各頁的端點，只多一個 /regions。
  */
 export function DashboardPage({ refreshToken, onOpenId, onNavigate }: DashboardPageProps) {
@@ -85,6 +86,7 @@ export function DashboardPage({ refreshToken, onOpenId, onNavigate }: DashboardP
   const budget = useApi<BudgetResponse>(buildUrl('/budget', { limit: 5 }), opts);
   const reports = useApi<BudgetReportsResponse>(buildUrl('/budget/reports', { limit: 4 }), opts);
   const rankings = useApi<RankingsResponse>(buildUrl('/rankings', { type: 'all', days: 30, limit: 3 }), opts);
+  const committees = useApi<CommitteeActivityResponse>(buildUrl('/committee-activity', { limit: 5 }), opts);
   const regions = useApi<RegionsResponse>(buildUrl('/regions', { per: 3 }), opts);
 
   const link = (route: Route, params?: Record<string, string>) => pathFor(route, params);
@@ -227,6 +229,22 @@ export function DashboardPage({ refreshToken, onOpenId, onNavigate }: DashboardP
                     <span className="clamp-2">{r.title}</span>
                   )}
                   <time>{r.completed?.slice(0, 7).replace('-', '/')}</time>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+
+        <Card title="委員會會議紀錄" href={link('committees')} onNavigate={onNavigate} resource={committees}>
+          {(data) => (
+            <ul className="dash-list">
+              {data.records.items.map((r) => (
+                <li key={r.id}>
+                  <span className="kind">{r.committees[0]?.replace(/委員會$/, '') ?? '會議'}</span>
+                  <a href={r.html_url ?? r.gazette_url ?? '#'} target="_blank" rel="noreferrer noopener" className="clamp-2">
+                    {r.title}
+                  </a>
+                  <time>{shortDate(r.date)}</time>
                 </li>
               ))}
             </ul>

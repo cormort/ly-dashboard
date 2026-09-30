@@ -507,6 +507,80 @@ export function normalizeMeetings(json, legislatorIdByName) {
   return { meetings, warnings };
 }
 
+const STANDING = ['社會福利及衛生環境', '外交及國防', '教育及文化', '司法及法制', '內政', '經濟', '財政', '交通'];
+
+/**
+ * 會議名稱開頭（到第一個「委員會」為止）提到的委員會全名；聯席會議會有多個。
+ * 常設委員會以外（程序、全院、紀律、調查委員會…）取開頭整段；沒有委員會開頭（如「一、繼續審查…」）回傳空陣列。
+ */
+export function committeesOf(text) {
+  const head = String(text ?? '').replace(/^委員會紀錄/, '').match(/^(.{0,40}?)委員會/)?.[1] ?? '';
+  const standing = STANDING.filter((n) => head.includes(n)).map((n) => `${n}委員會`);
+  if (standing.length) return standing;
+  // 其餘只收短名稱（程序、全院、調查委員會…），避免把「繼續審查…輔導委員會」這類議程文字當成委員會
+  const other = head.replace(/^朝野黨團協商\(?/, '').replace(/^立法院/, '');
+  return other.length <= 24 && other && !/[，、。()（）\d]|審查/.test(other) ? [`${other}委員會`] : [];
+}
+
+/** g0v 公報議程 → 委員會會議紀錄；只留 `category`（委員會紀錄），連結取公報網、處理後 HTML、完整 PDF */
+export function normalizeCommitteeRecords(pages, category) {
+  const records = [];
+  for (const page of pages) {
+    const list = page?.gazetteagendas;
+    if (!Array.isArray(list)) throw new DataValidationError('公報議程回應缺少 gazetteagendas');
+    for (const a of list) {
+      if (Number(a['類別代碼']) !== category) continue;
+      const title = String(a['案由'] ?? '').trim();
+      const id = String(a['公報議程編號'] ?? '').trim();
+      if (!id || !title) continue;
+      records.push({
+        id,
+        date: [].concat(a['會議日期'] ?? []).filter(Boolean).sort().at(-1) ?? null,
+        committees: committeesOf(title),
+        title,
+        gazette_url: a['公報網網址'] || null,
+        html_url: [].concat(a['處理後公報網址'] ?? []).find((u) => u?.type === 'html')?.url ?? null,
+        pdf_url: a['公報完整PDF網址'] || null,
+      });
+    }
+  }
+  if (records.length === 0) throw new DataValidationError('公報議程沒有任何委員會紀錄');
+  return records;
+}
+
+/**
+ * g0v 會議（meets）→ 委員會會議的附件與影片。議事網資料可能分多天，附件依連結去重；
+ * `kind` 為 `reply`（機關回覆：部會對委員質詢的書面答復）或 `attachment`（通知單、議事日程、書面報告…）。
+ */
+export function normalizeCommitteeMeets(pages) {
+  const meets = [];
+  for (const page of pages) {
+    const list = page?.meets;
+    if (!Array.isArray(list)) throw new DataValidationError('meets 回應缺少 meets');
+    for (const m of list) {
+      const code = String(m['會議代碼'] ?? '').trim();
+      const days = [].concat(m['議事網資料'] ?? []);
+      const title = String(days[0]?.['標題'] ?? m['會議標題'] ?? '').trim();
+      if (!code || !title) continue;
+      const attachments = new Map();
+      for (const d of days)
+        for (const a of [].concat(d?.['附件'] ?? []))
+          if (a?.['連結'] && !attachments.has(a['連結']))
+            attachments.set(a['連結'], { kind: a['種類'] === '機關回覆' ? 'reply' : 'attachment', title: String(a['標題'] ?? '').trim(), url: a['連結'] });
+      meets.push({
+        code,
+        date: [].concat(m['日期'] ?? []).filter(Boolean).sort().at(-1) ?? null,
+        title,
+        committees: [].concat(m['委員會代號:str'] ?? []).filter(Boolean).length ? [].concat(m['委員會代號:str']).filter(Boolean) : committeesOf(title),
+        video_url: days.flatMap((d) => [].concat(d?.['連結'] ?? [])).find((l) => l?.['類型'] === 'video')?.['連結'] ?? null,
+        attachments: [...attachments.values()],
+      });
+    }
+  }
+  if (meets.length === 0) throw new DataValidationError('meets 沒有任何委員會會議');
+  return meets;
+}
+
 /** 媒體常用字與立院登記字不同的異體字；遇到新案例再補 */
 const NAME_VARIANTS = { 寳: '寶' };
 

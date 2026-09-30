@@ -831,6 +831,10 @@ select { max-width: 100%; }
 .meeting-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3); }
 .meeting-list p { margin: 2px 0; font-size: 14px; color: var(--ink-2); }
 .clamp-2 { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
+.clamp-3 { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; margin: 0; }
+/* 委員會頁：會議與紀錄兩欄等寬，窄螢幕疊成一欄 */
+.committee-layout { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: var(--space-6); align-items: start; }
+button.chip[aria-pressed='true'] { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent-ink); font-weight: 600; }
 @media (max-width: 900px) {
   .budget-layout { grid-template-columns: 1fr; }
 }

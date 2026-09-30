@@ -237,6 +237,15 @@ Query 參數（全部可選）：
 `latest`（委員們最近的貼文／新聞／提案合併後取最新 `per` 則，1–10，預設 3；`{ kind, date, text, url, legislator }`）。
 動態來源與 `/activity` 相同。
 
+## GET /api/v1/committee-activity?committee=&limit=20
+
+委員會頁與總覽用。`meetings`：委員會會議（官方 ID223，議程與登記發言委員 `{ id, name, party }`，對不到本屆委員者 `id` 為 null）；
+`records`：公報的委員會紀錄（g0v `gazette_agendas` 類別代碼 3，含部會首長答詢全文），連結 `html_url`（處理後全文）、`pdf_url`、`gazette_url`。
+兩者皆依日期新→舊，各附 `total` 與 `period`（全部資料的起訖日）。委員會由會議名稱開頭解析，聯席會議算在每個參與的委員會；
+`replies`：機關回覆（g0v `meets` 議事網附件中種類為「機關回覆」者：部會對委員質詢的書面答復），`{ date, committees, meeting, title, url, legislators }`，
+`legislators` 由標題中的委員姓名（含「邱委員慧洳」寫法）對出。`meetings` 每場另附 `attachments`（通知單、議事日程、書面報告…）與 `video_url`，依會議名稱對上 g0v 的會議。
+`committee` 為委員會全名。`committees` 為各委員會件數，常設委員會依官網順序在前。
+
 ## GET /api/v1/funds?type=fund&fund=&kind=&limit=30&offset=0
 
 基金（`type=fund`，預設）、機關（`agency`）、財團法人（`foundation`）、行政法人（`administrative`）四頁用；每個名稱只歸一類（行政法人 > 財團法人 > 基金 > 機關）：新聞、臉書最新貼文、委員提案、預算審議、預算中心報告中，標題提到特種基金、國營事業或財團法人的項目，依日期新→舊（新聞同一網址只留一則）。

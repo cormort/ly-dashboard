@@ -1,7 +1,7 @@
 import { CONFIG } from './config.mjs';
 import { getMeta } from './db.mjs';
 import { readFileSync } from 'node:fs';
-import { budgetTypes, regionOf } from './normalize.mjs';
+import { budgetTypes, committeesOf, newsName, regionOf } from './normalize.mjs';
 
 const nowIso = () => new Date().toISOString();
 
@@ -891,6 +891,71 @@ export function listFunds(db, { type = 'fund', fund = '', kind = '', limit = 30,
     periods,
     funds: [...funds].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'zh-Hant')).slice(0, 40).map(([name, count]) => ({ name, count })),
     items: matching.slice(resolvedOffset, resolvedOffset + resolvedLimit),
+  };
+}
+
+/**
+ * 委員會動態：最新會議（官方 ID223：議程、登記發言委員；依名稱對上 g0v 的附件與影片）、
+ * 機關回覆（部會對委員質詢的書面答復，g0v meets 附件）與會議紀錄（公報，含官員答詢全文）。
+ * `committee` 為委員會全名，聯席會議會出現在每個參與的委員會；委員會清單依常設委員會在前、其餘依件數。
+ */
+export function listCommitteeActivity(db, { committee = '', limit = 20 } = {}) {
+  const resolvedLimit = Math.max(1, Math.min(Number(limit) || 20, 200));
+  const people = new Map(db.prepare('SELECT id, name, party FROM legislators').all().map((l) => [l.id, l]));
+  const meets = db.prepare('SELECT * FROM committee_meets ORDER BY date DESC, code DESC').all().map((m) => ({ ...m, committees: JSON.parse(m.committees), attachments: JSON.parse(m.attachments) }));
+  // ID223 的會議名稱可能多了「(會議取消)」之類的前綴，比對前去掉
+  const meetKey = (name) => String(name ?? '').replace(/^\s*[（(][^）)]*[）)]\s*/, '').replace(/\s/g, '');
+  const meetByName = new Map(meets.map((m) => [meetKey(m.title), m]));
+  const byHan = new Map([...people.values()].map((l) => [newsName(l.name), l]));
+  const nameRe = new RegExp([...byHan.keys()].filter((n) => n.length >= 2).sort((a, b) => b.length - a.length).join('|'), 'g');
+  /** 回覆標題提到的委員：全名，或「邱委員慧洳」這種姓＋委員＋名 */
+  const repliedTo = (title) => {
+    const t = String(title).replace(/(.)委員(.{1,3}?)(?=[口書質答函_\-、，(（]|$)/g, '$1$2委員');
+    return [...new Set(t.match(nameRe) ?? [])].map((n) => byHan.get(n)).map((l) => ({ id: l.id, name: l.name, party: l.party }));
+  };
+  const meetings = db
+    .prepare('SELECT * FROM committee_meetings ORDER BY date DESC, id DESC')
+    .all()
+    .map((m) => ({
+      date: m.date,
+      name: m.name,
+      content: m.content,
+      committees: [...new Set([...committeesOf(m.committee), ...committeesOf(m.joint)])],
+      video_url: meetByName.get(meetKey(m.name))?.video_url ?? null,
+      attachments: (meetByName.get(meetKey(m.name))?.attachments ?? []).filter((a) => a.kind === 'attachment').map(({ title, url }) => ({ title, url })),
+      speakers: JSON.parse(m.speakers || '[]').map((s) => {
+        const l = s.id && people.get(s.id);
+        return l ? { id: l.id, name: l.name, party: l.party } : { id: null, name: s.name, party: '' };
+      }),
+    }));
+  const records = db
+    .prepare('SELECT * FROM committee_records ORDER BY date DESC, id DESC')
+    .all()
+    .map((r) => ({ ...r, committees: JSON.parse(r.committees || '[]') }));
+
+  const replies = meets.flatMap((m) =>
+    m.attachments
+      .filter((a) => a.kind === 'reply')
+      .map((a) => ({ date: m.date, committees: m.committees, meeting: m.title, title: a.title, url: a.url, legislators: repliedTo(a.title) })),
+  );
+
+  const counts = new Map();
+  for (const x of [...meetings, ...records]) for (const c of x.committees) counts.set(c, (counts.get(c) ?? 0) + 1);
+  const standing = CONFIG.committeeOrder;
+  const rank = (name) => (standing.includes(name) ? standing.indexOf(name) : standing.length);
+  const pick = (list) => (committee ? list.filter((x) => x.committees.includes(committee)) : list);
+  const period = (list) => (list.length ? { from: list.at(-1).date, to: list[0].date } : null);
+  const m = pick(meetings);
+  const r = pick(records);
+  const rp = pick(replies);
+  return {
+    meta: { ...envelope(db), meetings_fetched_at: getMeta(db, 'meetings_fetched_at'), records_fetched_at: getMeta(db, 'records_fetched_at'), meets_fetched_at: getMeta(db, 'meets_fetched_at') },
+    committees: [...counts]
+      .sort((a, b) => rank(a[0]) - rank(b[0]) || b[1] - a[1])
+      .map(([name, count]) => ({ name, count })),
+    meetings: { total: m.length, period: period(meetings.filter((x) => x.date)), items: m.slice(0, resolvedLimit) },
+    replies: { total: rp.length, period: period(replies.filter((x) => x.date)), items: rp.slice(0, resolvedLimit) },
+    records: { total: r.length, period: period(records.filter((x) => x.date)), items: r.slice(0, resolvedLimit) },
   };
 }
 

@@ -62,7 +62,7 @@ cron/啟動排程 (24h)                      server/ingest.mjs
 | `web/src/api/` | 型別化 API client（唯一出口，前端不碰政府端點） |
 | `web/src/lib/urlState.ts` | 篩選條件的 URL 序列化（可分享、可上一頁） |
 | `web/src/hooks/useApi.ts` | `loading / ready / empty / error` 四態資源 hook |
-| `web/src/pages/` | `DashboardPage`（總覽，預設首頁 `/`）、`HomePage`（最近動態 `/activity`）、`RankingsPage`、`LegislatorsPage`（議場席次圖＋名錄）、`BillsPage`（法案查詢）、`BudgetPage`（預算審議）、`FundsPage`（基金 `/funds`、機關 `/agencies`、財團法人 `/foundations`、行政法人 `/administrative`）、`ComparePage`（委員比較） |
+| `web/src/pages/` | `DashboardPage`（總覽，預設首頁 `/`）、`HomePage`（最近動態 `/activity`）、`RankingsPage`、`LegislatorsPage`（議場席次圖＋名錄）、`BillsPage`（法案查詢）、`BudgetPage`（預算審議）、`FundsPage`（基金 `/funds`、機關 `/agencies`、財團法人 `/foundations`、行政法人 `/administrative`）、`ComparePage`（委員比較）、`CommitteesPage`（委員會 `/committees`：最新會議附件與影片、機關回覆、公報會議紀錄） |
 | `web/src/components/` | Header（導覽＋同步狀態）、Hemicycle（議場席次圖）、LegislatorGrid／LegislatorTable、LegislatorDetail、CommitteeChart（委員會黨籍組成）、SyncStatusBanner、FilterBar、ChangesPanel |
 | `web/src/lib/parties.ts` | 黨籍顏色與順序：介面中「顏色只代表黨籍」的唯一定義處 |
 | `web/scripts/smoke.ts`、`render-smoke.ts` | 前端煙霧測試（26 + 35 項），**只存在於 dev，不進 bundle** |
@@ -136,10 +136,11 @@ warnings: ['游錫堃 在本屆無任何會期委員會紀錄（辭職）', '李
 | **分類規則遇到新寫法** | 新的議案狀態或名稱寫法對不到規則：落到「其他」、不顯示流程條或預算類型，不會壞掉 | 偶爾檢查，補 `web/src/lib/billStage.ts`、`server/normalize.mjs` 的 `budgetTypes()`、`server/queries.mjs` 的 `BUDGET_PENDING` |
 | **換屆（第 12 屆）** | 程式會依名錄切換屆次，但沒有實際測過換屆當下 | 換屆後手動同步一次並檢查各頁 |
 
-另外兩個已知的資料性質（不是故障）：
+另外幾個已知的資料性質（不是故障）：
 
 - **「預算會議」以關鍵字判斷**（會議事由含「預算」），順帶處理預算書面報告的會議也會算入，發言場次是上限值。
 - **沒有預算金額**：目前來源只有預算案的審議狀態與報告，不含各機關歲出金額；要金額需另接主計總處資料。
+- **委員會頁尚未涵蓋的區塊**：立法院全球資訊網各委員會「業務成果」頁（例：[財政委員會](https://www.ly.gov.tw/Pages/List.aspx?nodeid=378)）的**會議概況、考察活動、審竣議案、會務報告、待審議案**只以網頁文章形式存在於 ly.gov.tw，沒有開放資料或 g0v API，要納入需逐委員會爬網頁。其餘區塊已涵蓋：會議情形的附件（含書面報告、機關回覆）與影片、議事錄（公報委員會紀錄）。
 
 ## Code Review（2026-09-30）
 
@@ -237,12 +238,12 @@ warnings: ['游錫堃 在本屆無任何會期委員會紀錄（辭職）', '李
 
 ### 導覽：維持上方 tab，不改左側可收合工具欄（2026-09-30 評估）
 
-頁首依主題排 8 個入口：總覽｜最近動態｜排行榜｜委員查詢｜委員比較｜法案查詢｜預算審議｜機關／基金。
+頁首依主題排 9 個入口：總覽｜最近動態｜排行榜｜委員查詢｜委員比較｜委員會｜法案查詢｜預算審議｜機關／基金。
 基金、機關、財團法人、行政法人四類收在「機關／基金」頁內的子分頁（網址仍各自獨立：`/funds`、`/agencies`、`/foundations`、`/administrative`）。
 
 不改左側欄的理由：
 
-- **項目少**：8 個入口在 800px 寬就放得下；只有兩層，用不到側邊欄的層級能力。
+- **項目少**：9 個入口，約 720px 以上寬度放得下（更窄時橫向捲動）；只有兩層，用不到側邊欄的層級能力。
 - **右側已有委員檔案面板**：再加左欄會變成「左欄＋內容＋右欄」三欄，擠壓法案列表、席次圖、縣市卡片等寬內容。
 - **手機沒差**：左欄在手機仍得收成漢堡選單，多一次點擊；上方 tab 在窄螢幕只是橫向捲動，選項一眼可見。
 - **使用情境**：公開資料閱覽網站，使用者多半「看一看就走」；可收合側欄較適合項目多、需頻繁切換的後台工具。

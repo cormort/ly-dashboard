@@ -1,7 +1,7 @@
 import { pathToFileURL } from 'node:url';
 import { CONFIG } from './config.mjs';
-import { openDb, recordSyncRun, saveSnapshot, applyDataset, applyBills, applyBudget, applyBudgetReports, applyMeetings, applySocial, upsertNews, pruneNews, getMeta, setMeta } from './db.mjs';
-import { buildDataset, normalizeBills, normalizeBudget, normalizeBudgetReports, normalizeMeetings, normalizeSocial, newsName, parseNewsRss, DataValidationError, NORMALIZER_VERSION } from './normalize.mjs';
+import { openDb, recordSyncRun, saveSnapshot, applyDataset, applyBills, applyBudget, applyBudgetReports, applyCommitteeMeets, applyCommitteeRecords, applyMeetings, applySocial, upsertNews, pruneNews, getMeta, setMeta } from './db.mjs';
+import { buildDataset, normalizeBills, normalizeBudget, normalizeBudgetReports, normalizeCommitteeMeets, normalizeCommitteeRecords, normalizeMeetings, normalizeSocial, newsName, parseNewsRss, DataValidationError, NORMALIZER_VERSION } from './normalize.mjs';
 import { fetchJson, FetchError, sha256 } from './fetch-ly.mjs';
 
 /**
@@ -263,6 +263,26 @@ export function runMeetingsIngest(db, { logger = console, fetchImpl = fetchJson,
   });
 }
 
+/** 委員會會議紀錄（公報議程）與會議附件／機關回覆（meets）：本屆全部分頁依序抓 */
+export function runRecordsIngest(db, { logger = console, fetchImpl = fetchJson, now = () => new Date() } = {}) {
+  return runStage(db, 'records', { logger, now }, async () => {
+    const term = Number(getMeta(db, 'term'));
+    if (!term) throw new DataValidationError('名錄尚未同步，無法判斷屆次');
+    const urlFor = (page) => `${CONFIG.records.url}?${new URLSearchParams({ 屆: String(term), limit: '1000', page: String(page) })}`;
+    const { pages } = await fetchAllPages(urlFor, fetchImpl, 'records');
+    const records = applyCommitteeRecords(db, normalizeCommitteeRecords(pages, CONFIG.records.category), { fetchedAt: now().toISOString() });
+    // 會議附件與機關回覆：同一來源的另一個端點，一起抓；多個「會議種類」參數是 OR
+    const meetsUrl = (page) => {
+      const qs = new URLSearchParams({ 屆: String(term), limit: '1000', page: String(page) });
+      for (const t of CONFIG.records.meetTypes) qs.append('會議種類', t);
+      return `${CONFIG.records.meetsUrl}?${qs}`;
+    };
+    const meets = applyCommitteeMeets(db, normalizeCommitteeMeets((await fetchAllPages(meetsUrl, fetchImpl, 'meets')).pages), { fetchedAt: now().toISOString() });
+    logger.log(`[records] 已套用：${records} 筆委員會會議紀錄、${meets} 場會議附件`);
+    return { records, meets };
+  });
+}
+
 /**
  * 議案同步：與名錄分開 fail closed —— 議案抓不到不影響名錄，反之亦然。
  * 依序抓分頁（不併發，對社群維運的 API 客氣一點），驗證後整批覆寫。
@@ -428,9 +448,10 @@ export async function runAll(db, options = {}) {
   const budget = CONFIG.skip.budget ? skipped('budget') : await runBudgetIngest(db, options);
   const budgetReports = CONFIG.skip.budget ? skipped('budget_reports') : await runBudgetReportsIngest(db, options);
   const meetings = CONFIG.skip.budget ? skipped('meetings') : await runMeetingsIngest(db, options);
+  const records = CONFIG.skip.bills ? skipped('records') : await runRecordsIngest(db, options);
   const social = CONFIG.skip.social ? skipped('social') : await runSocialIngest(db, options);
   const news = CONFIG.skip.news ? skipped('news') : await runNewsIngest(db, options);
-  return { ...roster, bills, budget, budget_reports: budgetReports, meetings, social, news };
+  return { ...roster, bills, budget, budget_reports: budgetReports, meetings, records, social, news };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

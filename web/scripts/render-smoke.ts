@@ -33,6 +33,7 @@ import { RankingsPage, RankingBoardView } from '../src/pages/RankingsPage';
 import { ComparePage } from '../src/pages/ComparePage';
 import { BudgetPage } from '../src/pages/BudgetPage';
 import { DashboardPage } from '../src/pages/DashboardPage';
+import { CommitteesPage } from '../src/pages/CommitteesPage';
 import { routeOf } from '../src/hooks/useRoute';
 import { BillStageBar } from '../src/components/BillStage';
 
@@ -694,13 +695,17 @@ expectAll('預算頁：loading 態有類別、篩選與三個區塊骨架', rend
   'aria-label="審議狀態"',
 ]);
 
-expectAll('總覽：loading 態有統計列、七張卡與各縣市區塊', render(createElement(DashboardPage, { refreshToken: 0, onOpenId: () => undefined, onNavigate: () => undefined })), [
+expectAll('委員會頁：loading 態有標題與讀取提示', render(createElement(CommitteesPage, { refreshToken: 0, onOpenId: () => undefined })), ['委員會', '讀取委員會動態']);
+check('/committees 對應委員會頁', routeOf('/committees') === 'committees');
+
+expectAll('總覽：loading 態有統計列、八張卡與各縣市區塊', render(createElement(DashboardPage, { refreshToken: 0, onOpenId: () => undefined, onNavigate: () => undefined })), [
   '總覽',
   '在職委員',
   '委員動態',
   '最新三讀',
   '預算審議最新進度',
   '預算中心報告',
+  '委員會會議紀錄',
   '各縣市最新動態',
   'href="/bills?status=%E4%B8%89%E8%AE%80"',
 ]);

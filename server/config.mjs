@@ -33,6 +33,16 @@ export const CONFIG = {
     meetingsUrl: 'https://data.ly.gov.tw/odw/ID223Action.action',
     meetingsTimeoutMs: 120_000,
   },
+  // 常設委員會（依立法院官網順序）＋程序委員會；委員會頁的選單依此排序，其餘依件數排在後面
+  committeeOrder: ['內政委員會', '外交及國防委員會', '經濟委員會', '財政委員會', '教育及文化委員會', '交通委員會', '司法及法制委員會', '社會福利及衛生環境委員會', '程序委員會'],
+  // 委員會會議紀錄：g0v API 的公報議程，只留「委員會紀錄」（類別代碼 3）；本屆約 3,300 筆議程、4 頁
+  records: {
+    url: 'https://ly.govapi.tw/v2/gazette_agendas',
+    category: 3,
+    // 委員會會議的議事網資料：附件（書面報告、機關回覆＝部會對委員質詢的書面答復）與會議影片；本屆約 1,300 場、13MB／千筆
+    meetsUrl: 'https://ly.govapi.tw/v2/meets',
+    meetTypes: ['委員會', '聯席會議', '公聽會'],
+  },
   // 新聞：Google News RSS，以「"姓名" 立委」搜尋近 30 天；逐位委員依序抓，間隔避免被限流。
   news: {
     url: 'https://news.google.com/rss/search',
