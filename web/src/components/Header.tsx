@@ -30,6 +30,7 @@ const NAV: { route: Route; label: string }[] = [
   { route: 'legislators', label: '委員查詢' },
   { route: 'bills', label: '法案查詢' },
   { route: 'budget', label: '預算審議' },
+  { route: 'funds', label: '基金／機關' },
   { route: 'compare', label: '委員比較' },
 ];
 

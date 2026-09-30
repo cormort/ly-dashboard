@@ -62,7 +62,7 @@ cron/啟動排程 (24h)                      server/ingest.mjs
 | `web/src/api/` | 型別化 API client（唯一出口，前端不碰政府端點） |
 | `web/src/lib/urlState.ts` | 篩選條件的 URL 序列化（可分享、可上一頁） |
 | `web/src/hooks/useApi.ts` | `loading / ready / empty / error` 四態資源 hook |
-| `web/src/pages/` | 三頁：`HomePage`（最近動態、熱門議題、最新新聞）、`LegislatorsPage`（議場席次圖＋卡片／列表名錄）、`BillsPage`（法案查詢） |
+| `web/src/pages/` | `DashboardPage`（總覽，預設首頁 `/`）、`HomePage`（最近動態 `/activity`）、`RankingsPage`、`LegislatorsPage`（議場席次圖＋名錄）、`BillsPage`（法案查詢）、`BudgetPage`（預算審議）、`FundsPage`（基金／機關 `/funds`）、`ComparePage`（委員比較） |
 | `web/src/components/` | Header（導覽＋同步狀態）、Hemicycle（議場席次圖）、LegislatorGrid／LegislatorTable、LegislatorDetail、CommitteeChart（委員會黨籍組成）、SyncStatusBanner、FilterBar、ChangesPanel |
 | `web/src/lib/parties.ts` | 黨籍顏色與順序：介面中「顏色只代表黨籍」的唯一定義處 |
 | `web/scripts/smoke.ts`、`render-smoke.ts` | 前端煙霧測試（26 + 35 項），**只存在於 dev，不進 bundle** |

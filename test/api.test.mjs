@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 import { openDb, applyDataset, applyBills, applySocial, upsertNews, saveSnapshot, recordSyncRun, getMeta, migrate } from '../server/db.mjs';
 import { buildDataset, normalizeBills, normalizeSocial, newsName } from '../server/normalize.mjs';
-import { billsCsv, compareLegislators, csvRow, listCosponsors, listRegions, getHealth, getMetaPayload, listActivity, listBills, listTopics, listNews, listChanges, listCommittees, listLegislators, listRankings, listSyncRuns } from '../server/queries.mjs';
+import { billsCsv, compareLegislators, csvRow, fundsOf, listCosponsors, listFunds, listRegions, getHealth, getMetaPayload, listActivity, listBills, listTopics, listNews, listChanges, listCommittees, listLegislators, listRankings, listSyncRuns } from '../server/queries.mjs';
 
 const fixture = (name) => JSON.parse(readFileSync(fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url)), 'utf8'));
 
@@ -450,4 +450,25 @@ test('各區域：在職委員依選區分組、縣市由北到南、最新動�
   const yunlin = res.items.find((r) => r.legislators.some((l) => l.id === idByName.get('丁學忠')));
   assert.equal(yunlin.region, '雲林縣');
   assert.ok(yunlin.latest.some((x) => x.kind === 'news' && x.text === '丁學忠質詢'));
+});
+
+test('基金／機關：清單名稱與簡稱歸到正式名稱、清單外的基金與基金會各自歸類', () => {
+  assert.deepEqual(fundsOf('檢送交通作業基金（國道公路建設管理基金）決議'), ['交通作業基金', '國道公路建設管理基金']);
+  assert.deepEqual(fundsOf('撥補台電711億'), ['台灣電力股份有限公司']);
+  assert.deepEqual(fundsOf('國家通訊傳播委員會預算凍結'), ['國家通訊傳播委員會'], '機關代碼表的中央機關');
+  assert.deepEqual(fundsOf('擬設立韌性特別基金'), ['其他基金']);
+  assert.deepEqual(fundsOf('財團法人國防工業發展基金會決算'), ['財團法人基金會']);
+  assert.deepEqual(fundsOf('大學生參訪文化觀光'), [], '泛用簡稱不算');
+
+  const { db } = withActivity();
+  db.prepare('INSERT INTO budget_bills (id, category, name, status, proposer, latest_date, url) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
+    'b1', '法人預(決)算案', '函送就業安定基金115年度預算', '交付審查', '勞動部', '2026-09-01', 'https://example.com/b1',
+  );
+  const all = listFunds(db, {});
+  assert.ok(all.items.every((x, i, a) => x.funds.length && (i === 0 || a[i - 1].date >= x.date)));
+  assert.equal(Object.values(all.kinds).reduce((a, b) => a + b, 0), all.total);
+  const jobs = listFunds(db, { fund: '就業安定基金' });
+  assert.equal(jobs.kinds.budget, 1);
+  assert.ok(jobs.items.every((x) => x.funds.includes('就業安定基金')));
+  assert.equal(listFunds(db, { kind: 'report' }).total, 0);
 });

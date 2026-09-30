@@ -1,5 +1,6 @@
 import { CONFIG } from './config.mjs';
 import { getMeta } from './db.mjs';
+import { readFileSync } from 'node:fs';
 import { budgetTypes, regionOf } from './normalize.mjs';
 
 const nowIso = () => new Date().toISOString();
@@ -800,6 +801,65 @@ export function listBudgetMeetings(db, { limit = 15 } = {}) {
       .map(({ legislator: l, count }) => ({ legislator: { id: l.id, name: l.name, party: l.party }, count })),
     // 最近會議只列有發言名單的（黨團協商等沒有名單的會議只計入 total）
     items: items.filter((m) => m.speakers.length).slice(0, resolvedLimit),
+  };
+}
+
+/**
+ * 基金／機關：關鍵字取自 excel_merge 的 fund-config（全名＋不會誤判的簡稱）與政府機關代碼表的中央機關，另外凡含「基金」二字也算
+ * （新提設立的基金不會在清單裡），歸到「其他基金」；「基金會」是財團法人，另外歸一類。
+ */
+const FUND_CONFIG = JSON.parse(readFileSync(new URL('./fund-config.json', import.meta.url), 'utf8'));
+const FUND_CANON = new Map([...[...FUND_CONFIG.agencies, ...FUND_CONFIG.names].map((n) => [n, n]), ...Object.entries(FUND_CONFIG.aliases)]);
+// 長的排前面：正規式在同一位置會先吃「國立臺灣大學附設醫院作業基金」而非「國立臺灣大學校務基金」的前綴
+const FUND_RE = new RegExp([...FUND_CANON.keys()].sort((a, b) => b.length - a.length).map((k) => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), 'g');
+export const OTHER_FUND = '其他基金';
+export const FOUNDATION = '財團法人基金會';
+export function fundsOf(text) {
+  const t = String(text ?? '');
+  const found = new Set((t.match(FUND_RE) ?? []).map((k) => FUND_CANON.get(k)));
+  if (!found.size && /基金(?!會)/.test(t)) found.add(OTHER_FUND);
+  if (t.includes('基金會')) found.add(FOUNDATION);
+  return [...found];
+}
+
+const FUND_KINDS = ['news', 'post', 'bill', 'budget', 'report'];
+
+/**
+ * 總覽各來源（新聞、臉書、委員提案、預算審議、預算中心報告）中與基金或機關相關的項目，依日期新→舊。
+ * `fund` 精確篩選（正式名稱或「其他基金」）、`kind` 篩選來源；統計依序在各自條件之前算（同 listBudget）。
+ * ponytail: 每次請求全表掃描約 2 萬列＋一個正規式（實測數十毫秒）；變慢再在同步時預先標記。
+ */
+export function listFunds(db, { fund = '', kind = '', limit = 30, offset = 0 } = {}) {
+  const resolvedLimit = Math.max(1, Math.min(Number(limit) || 30, 200));
+  const resolvedOffset = Math.max(0, Math.trunc(Number(offset) || 0));
+  const people = new Map(db.prepare('SELECT id, name, party FROM legislators').all().map((l) => [l.id, { id: l.id, name: l.name, party: l.party }]));
+  const lead = new Map(db.prepare('SELECT bill_id, legislator_id FROM bill_sponsors WHERE is_lead = 1').all().map((r) => [r.bill_id, people.get(r.legislator_id)]));
+  const rows = [
+    ...db.prepare('SELECT * FROM news').all().map((r) => ({ kind: 'news', date: r.published_at.slice(0, 10), title: r.title, url: r.url, source: r.source, legislator: people.get(r.legislator_id) })),
+    ...db
+      .prepare("SELECT * FROM social_accounts WHERE latest_post_summary <> ''")
+      .all()
+      .map((r) => ({ kind: 'post', date: r.latest_post_date, title: r.latest_post_summary, url: r.url, legislator: people.get(r.legislator_id) })),
+    ...db.prepare('SELECT * FROM bills').all().map((r) => ({ kind: 'bill', date: r.latest_date, title: r.name, url: r.url, status: r.status, legislator: lead.get(r.id) })),
+    ...db.prepare('SELECT * FROM budget_bills').all().map((r) => ({ kind: 'budget', date: r.latest_date, title: r.name, url: r.url, status: r.status, source: r.proposer })),
+    ...db.prepare('SELECT * FROM budget_reports').all().map((r) => ({ kind: 'report', date: r.completed, title: r.title, url: r.url, source: r.type })),
+  ]
+    .map((r) => ({ ...r, date: r.date ?? '', legislator: r.legislator ?? null, funds: fundsOf(r.title) }))
+    // 同一則新聞會掛在每位被提到的委員底下，只留一則
+    .filter((r, i, all) => r.funds.length && (r.kind !== 'news' || all.findIndex((x) => x.kind === 'news' && x.url === r.url) === i))
+    .sort((a, b) => b.date.localeCompare(a.date) || a.title.localeCompare(b.title));
+
+  const byKind = FUND_KINDS.includes(kind) ? rows.filter((r) => r.kind === kind) : rows;
+  const funds = new Map();
+  for (const r of byKind) for (const f of r.funds) funds.set(f, (funds.get(f) ?? 0) + 1);
+  const byFund = fund ? rows.filter((r) => r.funds.includes(fund)) : rows;
+  const matching = fund ? byKind.filter((r) => r.funds.includes(fund)) : byKind;
+  return {
+    meta: envelope(db),
+    total: matching.length,
+    kinds: Object.fromEntries(FUND_KINDS.map((k) => [k, byFund.filter((r) => r.kind === k).length])),
+    funds: [...funds].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'zh-Hant')).slice(0, 40).map(([name, count]) => ({ name, count })),
+    items: matching.slice(resolvedOffset, resolvedOffset + resolvedLimit),
   };
 }
 

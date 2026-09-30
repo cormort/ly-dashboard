@@ -33,6 +33,7 @@ import { RankingsPage, RankingBoardView } from '../src/pages/RankingsPage';
 import { ComparePage } from '../src/pages/ComparePage';
 import { BudgetPage } from '../src/pages/BudgetPage';
 import { DashboardPage } from '../src/pages/DashboardPage';
+import { routeOf } from '../src/hooks/useRoute';
 import { BillStageBar } from '../src/components/BillStage';
 
 /* ---------------------------- 瀏覽器 API 替身 ---------------------------- */
@@ -169,8 +170,12 @@ function expectAll(name: string, html: string, needles: string[]): void {
 const { default: App } = await import('../src/App');
 
 console.log('— 整頁初始狀態（尚未取得任何 API 資料）—');
+const dashboardHtml = render(createElement(App));
+expectAll('預設首頁是總覽', dashboardHtml, ['立委觀測站', '總覽', '各縣市最新動態', 'aria-current="page"']);
+
+(window as unknown as { location: { pathname: string } }).location.pathname = '/activity';
 const homeHtml = render(createElement(App));
-expectAll('首頁：站名、三頁導覽、動態／議題／新聞骨架', homeHtml, [
+expectAll('最近動態（/activity）：站名、導覽、動態／議題／新聞骨架', homeHtml, [
   '立委觀測站',
   '關鍵字搜尋立法委員',
   '最近動態',
@@ -184,6 +189,8 @@ expectAll('首頁：站名、三頁導覽、動態／議題／新聞骨架', hom
 ]);
 check('首頁初始不顯示任何委員', !homeHtml.includes('查看檔案'));
 check('不含示範／假資料字串', !/甲黨|示範資料|林怡安|陳宏宇|乙黨/.test(homeHtml));
+check('/funds 對應基金／機關頁', routeOf('/funds') === 'funds');
+check('/activity 對應最近動態、舊網址 /dashboard 仍是總覽', routeOf('/activity') === 'home' && routeOf('/dashboard') === 'dashboard' && routeOf('/') === 'dashboard');
 
 (window as unknown as { location: { pathname: string } }).location.pathname = '/legislators';
 const legislatorsHtml = render(createElement(App));

@@ -1,25 +1,29 @@
 import { useCallback, useEffect, useState } from 'react';
 
-export type Route = 'home' | 'dashboard' | 'legislators' | 'bills' | 'budget' | 'rankings' | 'compare';
+export type Route = 'home' | 'dashboard' | 'legislators' | 'bills' | 'budget' | 'rankings' | 'compare' | 'funds';
 
 const PATHS: Record<Route, string> = {
-  home: '/',
-  dashboard: '/dashboard',
+  // 預設首頁是總覽；最近動態移到 /activity
+  home: '/activity',
+  dashboard: '/',
   legislators: '/legislators',
   bills: '/bills',
   budget: '/budget',
   rankings: '/rankings',
   compare: '/compare',
+  funds: '/funds',
 };
 
 export function routeOf(pathname: string): Route {
   if (pathname.startsWith('/legislators')) return 'legislators';
-  if (pathname.startsWith('/dashboard')) return 'dashboard';
+  if (pathname.startsWith('/activity')) return 'home';
   if (pathname.startsWith('/bills')) return 'bills';
   if (pathname.startsWith('/budget')) return 'budget';
   if (pathname.startsWith('/rankings')) return 'rankings';
   if (pathname.startsWith('/compare')) return 'compare';
-  return 'home';
+  if (pathname.startsWith('/funds')) return 'funds';
+  // `/dashboard` 是舊網址，一併導到總覽
+  return 'dashboard';
 }
 
 /** 帶 query string 的頁面網址，例如 `pathFor('bills', { law: '國土計畫法' })` */

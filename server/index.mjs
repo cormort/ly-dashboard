@@ -5,7 +5,7 @@ import { pathToFileURL } from 'node:url';
 import { CONFIG } from './config.mjs';
 import { openDb, getMeta } from './db.mjs';
 import {
-  billsCsv, budgetCsv, compareLegislators, listBudget, listRegions, listBudgetMeetings, listBudgetReports, getHealth, getMetaPayload, listActivity, listBills, listCosponsors, listNews, listTopics, listChanges,
+  billsCsv, budgetCsv, compareLegislators, listBudget, listRegions, listFunds, listBudgetMeetings, listBudgetReports, getHealth, getMetaPayload, listActivity, listBills, listCosponsors, listNews, listTopics, listChanges,
   listCommittees, listLegislators, listRankings, listSyncRuns,
 } from './queries.mjs';
 import { runAll, runIngest } from './ingest.mjs';
@@ -131,6 +131,8 @@ export function createServer(db) {
             return sendJson(res, 200, listBudgetMeetings(db, { limit: q.limit }));
           case '/api/v1/regions':
             return sendJson(res, 200, listRegions(db, { per: q.per }));
+          case '/api/v1/funds':
+            return sendJson(res, 200, listFunds(db, { fund: q.fund, kind: q.kind, limit: q.limit, offset: q.offset }));
           case '/api/v1/cosponsors':
             return sendJson(res, 200, listCosponsors(db, { legislator: q.legislator || null, limit: q.limit }));
           case '/api/v1/compare':

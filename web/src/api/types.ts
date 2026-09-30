@@ -551,3 +551,28 @@ export interface RegionsResponse {
   count: number;
   items: RegionItem[];
 }
+
+/* ---------- /funds ---------- */
+
+export type FundKind = 'news' | 'post' | 'bill' | 'budget' | 'report';
+
+export interface FundItem {
+  kind: FundKind;
+  date: string;
+  title: string;
+  url: string;
+  /** 預算：提案機關；報告：報告類型；新聞：媒體 */
+  source?: string;
+  status?: string;
+  legislator: { id: string; name: string; party: string } | null;
+  /** 命中的基金／機關正式名稱；清單外含「基金」為「其他基金」，基金會為「財團法人基金會」 */
+  funds: string[];
+}
+
+export interface FundsResponse {
+  meta: Meta;
+  total: number;
+  kinds: Record<FundKind, number>;
+  funds: { name: string; count: number }[];
+  items: FundItem[];
+}
