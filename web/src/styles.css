@@ -140,3 +140,23 @@ dd code,.log code{background:#020617;border:1px solid #1e293b;border-radius:6px;
 .contact-list a {
   color: #93c5fd;
 }
+
+.bill-list {
+  margin: 10px 0 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 8px;
+}
+.bill-list a {
+  color: #93c5fd;
+  overflow-wrap: anywhere;
+}
+.bill-list svg {
+  width: 12px;
+  height: 12px;
+  margin-left: 4px;
+}
+.bill-list small {
+  display: block;
+  color: #94a3b8;
+}

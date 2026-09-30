@@ -4,12 +4,12 @@ import { extname, join, normalize } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { CONFIG } from './config.mjs';
 import { openDb, getMeta } from './db.mjs';
-import { getHealth, getMetaPayload, listChanges, listCommittees, listLegislators, listSyncRuns } from './queries.mjs';
-import { runIngest } from './ingest.mjs';
+import { getHealth, getMetaPayload, listBills, listChanges, listCommittees, listLegislators, listSyncRuns } from './queries.mjs';
+import { runAll } from './ingest.mjs';
 
 let inflight = null;
 export function syncOnce(db, options) {
-  inflight ??= runIngest(db, options).finally(() => { inflight = null; });
+  inflight ??= runAll(db, options).finally(() => { inflight = null; });
   return inflight;
 }
 
@@ -82,6 +82,8 @@ export function createServer(db) {
             return sendJson(res, 200, listLegislators(db, q));
           case '/api/v1/committees':
             return sendJson(res, 200, listCommittees(db, q));
+          case '/api/v1/bills':
+            return sendJson(res, 200, listBills(db, { legislator: q.legislator || null, limit: q.limit }));
           case '/api/v1/changes':
             return sendJson(res, 200, listChanges(db, { since: q.since ?? null, limit: q.limit ?? 100 }));
           case '/api/v1/sync-runs':

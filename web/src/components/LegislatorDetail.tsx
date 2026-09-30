@@ -3,6 +3,7 @@ import { ExternalLink, MapPin, Star, X } from 'lucide-react';
 import type { Legislator, SourceInfo } from '../api/types';
 import { useEscapeKey } from '../hooks/useEscapeKey';
 import { text } from '../lib/format';
+import { LegislatorBills } from './LegislatorBills';
 
 export interface LegislatorDetailProps {
   legislator: Legislator;
@@ -124,6 +125,11 @@ export function LegislatorDetail({
             ) : (
               '未提供'
             )}
+          </dd>
+
+          <dt>最近提案</dt>
+          <dd>
+            <LegislatorBills legislatorId={legislator.id} />
           </dd>
 
           <dt>就職日期</dt>

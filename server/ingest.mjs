@@ -1,7 +1,7 @@
 import { pathToFileURL } from 'node:url';
 import { CONFIG } from './config.mjs';
-import { openDb, recordSyncRun, saveSnapshot, applyDataset, getMeta, setMeta } from './db.mjs';
-import { buildDataset, DataValidationError } from './normalize.mjs';
+import { openDb, recordSyncRun, saveSnapshot, applyDataset, applyBills, getMeta, setMeta } from './db.mjs';
+import { buildDataset, normalizeBills, DataValidationError } from './normalize.mjs';
 import { fetchJson, FetchError } from './fetch-ly.mjs';
 
 /**
@@ -123,11 +123,66 @@ export async function runIngest(db, { logger = console, fetchImpl = fetchJson, n
   };
 }
 
+/** 某屆委員提案的分頁網址（g0v API 以中文欄位名當 query key） */
+export function billsPageUrl(term, page) {
+  const qs = new URLSearchParams({ 屆: String(term), 提案來源: '委員提案', limit: String(CONFIG.bills.pageSize), page: String(page) });
+  return `${CONFIG.bills.url}?${qs}`;
+}
+
+/**
+ * 議案同步：與名錄分開 fail closed —— 議案抓不到不影響名錄，反之亦然。
+ * 依序抓分頁（不併發，對社群維運的 API 客氣一點），驗證後整批覆寫。
+ */
+export async function runBillsIngest(db, { logger = console, fetchImpl = fetchJson, now = () => new Date() } = {}) {
+  const startedAt = now().toISOString();
+  const startedMs = Date.now();
+  const term = Number(getMeta(db, 'term'));
+  const record = (fields) =>
+    recordSyncRun(db, { dataset: 'bills', started_at: startedAt, finished_at: now().toISOString(), duration_ms: Date.now() - startedMs, ua: CONFIG.userAgent, ...fields });
+
+  if (!term) {
+    const error = '名錄尚未同步，無法對應提案委員';
+    record({ status: 'failed', error });
+    return { status: 'failed', error };
+  }
+
+  let pages = [];
+  let attempts = 0;
+  try {
+    for (let page = 1, totalPages = 1; page <= totalPages; page++) {
+      const result = await fetchImpl(billsPageUrl(term, page), { ua: CONFIG.userAgent });
+      attempts += result.attempts ?? 1;
+      pages.push(result.json);
+      totalPages = Number(result.json?.total_page) || 1;
+      if (totalPages > 50) throw new DataValidationError(`bills 分頁數異常（${totalPages}）`);
+    }
+    const idByName = new Map(db.prepare('SELECT name, id FROM legislators').all().map((r) => [r.name, r.id]));
+    const normalized = normalizeBills(pages, idByName);
+    applyBills(db, normalized, { fetchedAt: now().toISOString() });
+    for (const w of normalized.warnings) logger.warn(`[bills] 警告：${w}`);
+    logger.log(`[bills] 已套用：${normalized.bills.length} 筆議案、${normalized.sponsors.length} 筆提案人對應`);
+    record({ status: 'success', records: normalized.bills.length, attempt: attempts, http_status: 200 });
+    return { status: 'success', bills: normalized.bills.length, sponsors: normalized.sponsors.length, warnings: normalized.warnings };
+  } catch (error) {
+    const message = error instanceof FetchError ? `${error.message}（嘗試 ${error.attempts} 次）` : String(error?.message || error);
+    logger.error(`[bills] 同步失敗，保留既有議案：${message}`);
+    record({ status: 'failed', attempt: attempts || null, http_status: error?.status ?? null, error: message });
+    return { status: 'failed', error: message };
+  }
+}
+
+/** 名錄 → 議案；名錄失敗就不跑議案（沒有名錄就對不到提案人） */
+export async function runAll(db, options = {}) {
+  const roster = await runIngest(db, options);
+  if (roster.status === 'failed') return roster;
+  return { ...roster, bills: await runBillsIngest(db, options) };
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const db = openDb(CONFIG.dbPath);
   // CLI 模式：日誌走 stderr，stdout 只留 JSON，方便 `| jq` 或腳本解析。
   const toStderr = (...args) => console.error(...args);
-  const result = await runIngest(db, { logger: { log: toStderr, warn: toStderr, error: toStderr } });
+  const result = await runAll(db, { logger: { log: toStderr, warn: toStderr, error: toStderr } });
   console.log(JSON.stringify(result, null, 2));
   process.exit(result.status === 'failed' ? 1 : 0);
 }

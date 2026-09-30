@@ -321,3 +321,52 @@ export function buildDataset(id9Payload, id14Payload, { sourceUrl = '' } = {}) {
     },
   };
 }
+
+/**
+ * g0v ly.govapi.tw 的議案分頁 → bills + bill_sponsors。
+ * 提案人陣列第一位視為主提案人；姓名對不到本屆委員的只計數警告，不編造委員。
+ * 分頁依「最新進度日期」排序，抓取期間資料可能移動 → 以議案編號去重，並要求筆數接近 total。
+ */
+export function normalizeBills(pages, legislatorIdByName) {
+  if (!Array.isArray(pages) || pages.length === 0) throw new DataValidationError('bills 沒有任何分頁');
+  const total = Number(pages[0]?.total);
+  const bills = new Map();
+  for (const page of pages) {
+    if (!page || !Array.isArray(page.bills)) throw new DataValidationError('bills 分頁缺少 bills 陣列');
+    for (const row of page.bills) {
+      const id = field(row, '議案編號');
+      if (!id || bills.has(id)) continue;
+      bills.set(id, row);
+    }
+  }
+  if (!Number.isFinite(total) || bills.size < total * 0.95) {
+    throw new DataValidationError(`bills 筆數異常（取得 ${bills.size}，API total ${total}）`, { got: bills.size, total });
+  }
+
+  const unmatched = new Set();
+  const sponsors = [];
+  const items = [...bills.values()].map((row) => {
+    const id = field(row, '議案編號');
+    const names = Array.isArray(row['提案人']) ? row['提案人'].map((n) => String(n).trim()).filter(Boolean) : [];
+    names.forEach((name, index) => {
+      const legislatorId = legislatorIdByName.get(name);
+      // 黨團提案是正常情況（提案人是黨團而非個人），不算對不到
+      if (!legislatorId) return void (name.endsWith('黨團') || unmatched.add(name));
+      sponsors.push({ bill_id: id, legislator_id: legislatorId, is_lead: index === 0 });
+    });
+    return {
+      id,
+      term: Number(field(row, '屆')) || null,
+      session: Number(field(row, '會期')) || null,
+      name: field(row, '議案名稱'),
+      status: field(row, '議案狀態'),
+      category: field(row, '議案類別'),
+      proposer_text: field(row, '提案單位/提案委員'),
+      laws: Array.isArray(row['法律編號:str']) ? row['法律編號:str'].map(String) : [],
+      latest_date: field(row, '最新進度日期'),
+      url: field(row, 'url'),
+    };
+  });
+  const warnings = unmatched.size ? [`議案提案人有 ${unmatched.size} 個姓名對不到本屆委員：${[...unmatched].slice(0, 5).join('、')}`] : [];
+  return { bills: items, sponsors, warnings, total };
+}

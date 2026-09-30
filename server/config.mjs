@@ -16,6 +16,13 @@ export const CONFIG = {
     id9: 'https://data.ly.gov.tw/odw/ID9Action.action?fileType=json',
     id14: 'https://data.ly.gov.tw/odw/ID14Action.action?fileType=json',
   },
+  // 議案：g0v 社群維護的立法院 API（非官方），已把議案與提案委員對好，官方 data.ly.gov.tw 沒有這層關聯。
+  bills: {
+    url: 'https://ly.govapi.tw/v2/bills',
+    pageSize: 1000,
+    name: 'g0v 立法院 API',
+    homepage: 'https://ly.govapi.tw/',
+  },
   source: {
     name: '立法院開放資料',
     url: 'https://data.ly.gov.tw/',

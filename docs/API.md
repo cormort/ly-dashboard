@@ -120,6 +120,42 @@ Query 參數（全部可選）：
 - `is_convener` 是**該會期**的召委，不是「曾經當過」。
 - 無資料時回 `items: []`、`count: 0`，**不得**回傳任何示範／假資料。
 
+## GET /api/v1/bills
+
+委員提案（本屆、提案來源＝委員提案）。資料來自 g0v 立法院 API（`ly.govapi.tw`，非官方），每次同步整批覆寫。
+
+| 參數 | 說明 |
+| --- | --- |
+| `legislator` | 委員 id；指定時只回該委員的提案（主提案或共同提案） |
+| `limit` | 回傳筆數，1–200，預設 20 |
+
+```json
+{
+  "meta": { "...": "...", "bills_fetched_at": "2026-09-30T03:10:00.000Z", "bills_source": { "name": "g0v 立法院 API", "url": "https://ly.govapi.tw/" } },
+  "total": 46,
+  "count": 10,
+  "laws": [ { "name": "老年農民福利津貼暫行條例", "count": 8 } ],
+  "items": [
+    {
+      "id": "202110204560000",
+      "name": "「衛生福利部中央健康保險署組織法第二條條文修正草案」，請審議案。",
+      "status": "三讀",
+      "category": "法律案",
+      "session": 5,
+      "laws": ["衛生福利部中央健康保險署組織法"],
+      "latest_date": "2026-08-27",
+      "is_lead": true,
+      "url": "https://ppg.ly.gov.tw/ppg/bills/202110204560000/details"
+    }
+  ]
+}
+```
+
+注意：
+- `laws` 是「主題」：該委員全部提案涉及的法律，依件數排序取前 8。前端不得重算。
+- `is_lead`：提案人陣列第一位＝主提案人。提案人是黨團時不對應到任何委員。
+- 議案同步與名錄同步各自 fail closed；名錄同步失敗時不跑議案。
+
 ## GET /api/v1/changes?since=2026-09-01&limit=100
 
 ```json

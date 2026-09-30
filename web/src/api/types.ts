@@ -58,6 +58,7 @@ export interface HealthDbCounts {
   committees: number;
   changes: number;
   snapshots: number;
+  bills: number;
 }
 
 export interface HealthResponse {
@@ -211,4 +212,38 @@ export interface SyncRunsResponse {
   meta: Meta;
   count: number;
   items: SyncRun[];
+}
+
+/* ---------- /bills ---------- */
+
+export interface BillItem {
+  /** 議案編號 */
+  id: string;
+  name: string;
+  /** 議案狀態，如「交付審查」「三讀」 */
+  status: string;
+  category: string;
+  session: number | null;
+  /** 涉及的法律名稱（＝主題） */
+  laws: string[];
+  /** 最新進度日期（YYYY-MM-DD） */
+  latest_date: string;
+  /** 該委員是否為主提案人（未指定委員時一律 false） */
+  is_lead: boolean;
+  url: string;
+}
+
+export interface BillLawCount {
+  name: string;
+  count: number;
+}
+
+export interface BillsResponse {
+  meta: Meta & { bills_fetched_at: string | null; bills_source: { name: string; url: string } };
+  /** 符合條件的議案總數 */
+  total: number;
+  count: number;
+  /** 最常涉及的法律（依件數排序，最多 8 項） */
+  laws: BillLawCount[];
+  items: BillItem[];
 }

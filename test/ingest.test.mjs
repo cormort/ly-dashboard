@@ -4,8 +4,8 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { openDb, applyDataset, getMeta } from '../server/db.mjs';
 import { buildDataset } from '../server/normalize.mjs';
-import { runIngest } from '../server/ingest.mjs';
-import { getHealth, listLegislators, listSyncRuns } from '../server/queries.mjs';
+import { runIngest, runBillsIngest, runAll } from '../server/ingest.mjs';
+import { getHealth, listBills, listLegislators, listSyncRuns } from '../server/queries.mjs';
 import { FetchError } from '../server/fetch-ly.mjs';
 import { syncOnce } from '../server/index.mjs';
 
@@ -38,6 +38,7 @@ test('A3: Concurrent syncs are single-flighted via syncOnce', async () => {
   
   // Wait artificially so both promises are created while the first is pending
   const fetchImpl = async (url) => {
+    if (url.includes('govapi')) throw new FetchError('bills 不在本測試範圍', { attempts: 1 });
     fetchCount++;
     await new Promise(r => setTimeout(r, 50));
     const key = url.includes('ID9') ? 'id9' : 'id14';
@@ -146,4 +147,39 @@ test('A1: Unchanged data updates last_success_at to prevent stale dashboard', as
   
   assert.equal(result.status, 'skipped');
   assert.equal(getMeta(db, 'last_success_at'), '2026-10-05T00:00:00.000Z');
+});
+
+const billsOk = async () => ({ json: fixture('bills-page.json'), status: 200, headers: {}, bytes: 1, sha256: 'x', attempts: 1 });
+
+test('議案同步：成功時寫入議案並記錄 sync_runs', async () => {
+  const db = seeded();
+  const result = await runBillsIngest(db, { logger: silent, fetchImpl: billsOk });
+  assert.equal(result.status, 'success');
+  assert.equal(result.bills, 300);
+  assert.equal(getHealth(db).db.bills, 300);
+  assert.equal(listSyncRuns(db, { limit: 1 }).items[0].dataset, 'bills');
+});
+
+test('議案同步：抓取失敗時保留既有議案（與名錄各自 fail closed）', async () => {
+  const db = seeded();
+  await runBillsIngest(db, { logger: silent, fetchImpl: billsOk });
+  const failing = async () => {
+    throw new FetchError('read ECONNRESET', { attempts: 3 });
+  };
+  const result = await runBillsIngest(db, { logger: silent, fetchImpl: failing });
+  assert.equal(result.status, 'failed');
+  assert.equal(getHealth(db).db.bills, 300, '舊議案必須保留');
+  assert.equal(listLegislators(db, {}).total, 113, '名錄不受議案失敗影響');
+});
+
+test('runAll：名錄失敗時不跑議案', async () => {
+  const db = seeded();
+  let billCalls = 0;
+  const fetchImpl = async (url) => {
+    if (url.includes('govapi')) billCalls++;
+    throw new FetchError('HTTP 403', { status: 403, attempts: 1 });
+  };
+  const result = await runAll(db, { logger: silent, fetchImpl });
+  assert.equal(result.status, 'failed');
+  assert.equal(billCalls, 0);
 });

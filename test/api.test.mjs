@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
-import { openDb, applyDataset, saveSnapshot, recordSyncRun, getMeta, migrate } from '../server/db.mjs';
-import { buildDataset } from '../server/normalize.mjs';
-import { getHealth, getMetaPayload, listChanges, listCommittees, listLegislators, listSyncRuns } from '../server/queries.mjs';
+import { openDb, applyDataset, applyBills, saveSnapshot, recordSyncRun, getMeta, migrate } from '../server/db.mjs';
+import { buildDataset, normalizeBills } from '../server/normalize.mjs';
+import { getHealth, getMetaPayload, listBills, listChanges, listCommittees, listLegislators, listSyncRuns } from '../server/queries.mjs';
 
 const fixture = (name) => JSON.parse(readFileSync(fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url)), 'utf8'));
 
@@ -206,4 +206,19 @@ test('遷移：舊資料庫補上 contacts 欄位並清掉 applied_sha 以便重
   assert.ok(cols.includes('contacts'));
   assert.equal(getMeta(db, 'applied_sha'), null);
   migrate(db); // 第二次不該出錯
+});
+
+test('議案端點：依委員篩選、最新在前、主題（法律）統計', () => {
+  const { db, dataset } = seeded();
+  applyBills(db, normalizeBills([fixture('bills-page.json')], new Map(dataset.legislators.map((l) => [l.name, l.id]))), { fetchedAt: '2026-09-30T09:00:00.000Z' });
+  const liao = dataset.legislators.find((l) => l.name === '廖偉翔').id;
+  const res = listBills(db, { legislator: liao, limit: 10 });
+  assert.equal(res.total, 51);
+  assert.equal(res.count, 10);
+  assert.equal(res.items.filter((b) => b.is_lead).length <= 10, true);
+  assert.ok(res.items.every((b, i, arr) => i === 0 || arr[i - 1].latest_date >= b.latest_date), '最新在前');
+  assert.ok(res.laws.length > 0 && res.laws.every((l, i, arr) => i === 0 || arr[i - 1].count >= l.count));
+  assert.equal(res.meta.bills_fetched_at, '2026-09-30T09:00:00.000Z');
+  assert.equal(listBills(db, { legislator: 'nobody' }).total, 0);
+  assert.equal(listBills(db, {}).total, 300);
 });

@@ -276,6 +276,7 @@ export function getHealth(db) {
     committees: count('committees'),
     changes: count('change_log'),
     snapshots: count('raw_snapshots'),
+    bills: count('bills'),
   };
   return {
     meta: envelope(db),
@@ -283,5 +284,47 @@ export function getHealth(db) {
     db: stats,
     last_runs: lastRuns,
     warnings: JSON.parse(getMeta(db, 'warnings', '[]')),
+  };
+}
+
+/**
+ * 議案：`legislator` 指定時回傳該委員提案（主提案或共同提案），並統計最常涉及的法律（＝主題）。
+ * 不指定時回傳全部委員提案中最新的幾筆。
+ */
+export function listBills(db, { legislator = null, limit = 20 } = {}) {
+  const resolvedLimit = Math.max(1, Math.min(Number(limit) || 20, 200));
+  const where = legislator ? 'WHERE b.id IN (SELECT bill_id FROM bill_sponsors WHERE legislator_id = ?)' : '';
+  const params = legislator ? [legislator] : [];
+  const lead = legislator
+    ? 'EXISTS (SELECT 1 FROM bill_sponsors s WHERE s.bill_id = b.id AND s.legislator_id = ? AND s.is_lead = 1)'
+    : '0';
+  const rows = db
+    .prepare(`SELECT b.*, ${lead} AS is_lead FROM bills b ${where} ORDER BY b.latest_date DESC, b.id DESC`)
+    .all(...(legislator ? [legislator] : []), ...params);
+
+  // 主題 = 議案涉及的法律名稱；只在該委員的全部提案上計數，前端不重算
+  const lawCounts = new Map();
+  for (const row of rows) for (const law of JSON.parse(row.laws || '[]')) lawCounts.set(law, (lawCounts.get(law) ?? 0) + 1);
+  const laws = [...lawCounts]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'zh-Hant'))
+    .slice(0, 8)
+    .map(([name, count]) => ({ name, count }));
+
+  return {
+    meta: { ...envelope(db), bills_fetched_at: getMeta(db, 'bills_fetched_at'), bills_source: { name: CONFIG.bills.name, url: CONFIG.bills.homepage } },
+    total: rows.length,
+    count: Math.min(rows.length, resolvedLimit),
+    laws,
+    items: rows.slice(0, resolvedLimit).map((r) => ({
+      id: r.id,
+      name: r.name,
+      status: r.status,
+      category: r.category,
+      session: r.session === null ? null : Number(r.session),
+      laws: JSON.parse(r.laws || '[]'),
+      latest_date: r.latest_date,
+      is_lead: Number(r.is_lead) === 1,
+      url: r.url,
+    })),
   };
 }

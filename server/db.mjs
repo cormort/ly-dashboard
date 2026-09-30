@@ -89,6 +89,25 @@ CREATE TABLE IF NOT EXISTS sync_runs (
   ua TEXT,
   error TEXT
 );
+CREATE TABLE IF NOT EXISTS bills (
+  id TEXT PRIMARY KEY,
+  term INTEGER,
+  session INTEGER,
+  name TEXT NOT NULL,
+  status TEXT,
+  category TEXT,
+  proposer_text TEXT,
+  laws TEXT,
+  latest_date TEXT,
+  url TEXT
+);
+CREATE TABLE IF NOT EXISTS bill_sponsors (
+  bill_id TEXT NOT NULL REFERENCES bills(id),
+  legislator_id TEXT NOT NULL,
+  is_lead INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (bill_id, legislator_id)
+);
+CREATE INDEX IF NOT EXISTS idx_bill_sponsors_legislator ON bill_sponsors(legislator_id);
 CREATE TABLE IF NOT EXISTS meta (
   key TEXT PRIMARY KEY,
   value TEXT
@@ -310,4 +329,27 @@ export function applyDataset(db, dataset, { fetchedAt, sourceUrl }) {
   }
 
   return { changes, stats: dataset.stats, seatLabel };
+}
+
+/** 議案整批覆寫（單一交易）；bill_sponsors.legislator_id 不設 FK，名錄重建時不必連動刪議案。 */
+export function applyBills(db, { bills, sponsors }, { fetchedAt }) {
+  db.exec('BEGIN');
+  try {
+    db.exec('DELETE FROM bill_sponsors');
+    db.exec('DELETE FROM bills');
+    const insertBill = db.prepare(
+      `INSERT INTO bills(id, term, session, name, status, category, proposer_text, laws, latest_date, url)
+       VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    );
+    for (const b of bills) {
+      insertBill.run(b.id, b.term, b.session, b.name, b.status, b.category, b.proposer_text, JSON.stringify(b.laws), b.latest_date, b.url);
+    }
+    const insertSponsor = db.prepare('INSERT OR IGNORE INTO bill_sponsors(bill_id, legislator_id, is_lead) VALUES(?, ?, ?)');
+    for (const s of sponsors) insertSponsor.run(s.bill_id, s.legislator_id, s.is_lead ? 1 : 0);
+    setMeta(db, 'bills_fetched_at', fetchedAt);
+    db.exec('COMMIT');
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
 }

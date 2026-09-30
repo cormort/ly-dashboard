@@ -10,6 +10,7 @@ import {
   committeeKind,
   regionOf,
   parseContacts,
+  normalizeBills,
 } from '../server/normalize.mjs';
 
 const fixture = (name) => JSON.parse(readFileSync(fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url)), 'utf8'));
@@ -144,4 +145,25 @@ test('parseContacts：tel／fax／addr 依處所合併', () => {
   assert.match(contacts[0].addr, /濟南路/);
   assert.deepEqual(parseContacts({ tel: '', fax: null, addr: undefined }), []);
   assert.deepEqual(parseContacts({ tel: '02-1234-5678' }), [{ label: '聯絡處', tel: '02-1234-5678', fax: '', addr: '' }]);
+});
+
+const billsPage = fixture('bills-page.json');
+const idByName = () => new Map(buildDataset(id9, id14).legislators.map((l) => [l.name, l.id]));
+
+test('normalizeBills：真實分頁 → 議案與提案人對應，第一位是主提案人', () => {
+  const { bills, sponsors, warnings } = normalizeBills([billsPage], idByName());
+  assert.equal(bills.length, 300);
+  const liao = idByName().get('廖偉翔');
+  assert.equal(sponsors.filter((s) => s.legislator_id === liao).length, 51);
+  assert.equal(sponsors.filter((s) => s.legislator_id === liao && s.is_lead).length, 16);
+  assert.ok(bills.every((b) => b.id && b.name && Array.isArray(b.laws)));
+  assert.ok(warnings.every((w) => !w.includes('黨團')), '黨團提案不算對不到');
+});
+
+test('normalizeBills：分頁重複以議案編號去重；筆數遠低於 total 時 fail closed', () => {
+  const dup = normalizeBills([billsPage, billsPage], idByName());
+  assert.equal(dup.bills.length, 300);
+  const short = { ...billsPage, total: 7402 };
+  assert.throws(() => normalizeBills([short], idByName()), DataValidationError);
+  assert.throws(() => normalizeBills([{ total: 1 }], idByName()), DataValidationError);
 });
