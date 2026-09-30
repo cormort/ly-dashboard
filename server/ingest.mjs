@@ -87,6 +87,8 @@ export async function runIngest(db, { logger = console, fetchImpl = fetchJson, n
   if (!alreadyApplied) {
     applied = applyDataset(db, dataset, { fetchedAt, sourceUrl: CONFIG.source.url });
     setMeta(db, 'applied_sha', combinedSha);
+  } else {
+    setMeta(db, 'last_success_at', fetchedAt);
   }
 
   const finishedAt = now().toISOString();

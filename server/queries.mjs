@@ -163,8 +163,8 @@ export function listLegislators(db, query = {}) {
 
   items.sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'));
   const total = items.length;
-  const limit = Math.min(Number(query.limit) || 500, 1000);
-  const offset = Number(query.offset) || 0;
+  const limit = Math.max(1, Math.min(Number(query.limit) || 500, 1000));
+  const offset = Math.max(0, Math.trunc(Number(query.offset) || 0));
 
   return {
     meta: envelope(db, { term: scope.term, session: scope.session }),
@@ -206,9 +206,10 @@ export function listCommittees(db, query = {}) {
 }
 
 export function listChanges(db, { since = null, limit = 100 } = {}) {
+  const resolvedLimit = Math.max(1, Math.min(Number(limit) || 100, 1000));
   const rows = since
-    ? db.prepare('SELECT * FROM change_log WHERE at >= ? ORDER BY at DESC, id DESC LIMIT ?').all(since, Number(limit) || 100)
-    : db.prepare('SELECT * FROM change_log ORDER BY at DESC, id DESC LIMIT ?').all(Number(limit) || 100);
+    ? db.prepare('SELECT * FROM change_log WHERE at >= ? ORDER BY at DESC, id DESC LIMIT ?').all(since, resolvedLimit)
+    : db.prepare('SELECT * FROM change_log ORDER BY at DESC, id DESC LIMIT ?').all(resolvedLimit);
   return {
     meta: envelope(db),
     count: rows.length,
@@ -224,24 +225,29 @@ export function listChanges(db, { since = null, limit = 100 } = {}) {
   };
 }
 
+function toSyncRun(r) {
+  return {
+    id: Number(r.id),
+    dataset: r.dataset,
+    status: r.status,
+    started_at: r.started_at,
+    finished_at: r.finished_at,
+    records: r.records === null ? null : Number(r.records),
+    attempt: r.attempt === null ? null : Number(r.attempt),
+    http_status: r.http_status === null ? null : Number(r.http_status),
+    duration_ms: r.duration_ms === null ? null : Number(r.duration_ms),
+    ua: r.ua,
+    error: r.error,
+  };
+}
+
 export function listSyncRuns(db, { limit = 50 } = {}) {
-  const rows = db.prepare('SELECT * FROM sync_runs ORDER BY id DESC LIMIT ?').all(Number(limit) || 50);
+  const resolvedLimit = Math.max(1, Math.min(Number(limit) || 50, 1000));
+  const rows = db.prepare('SELECT * FROM sync_runs ORDER BY id DESC LIMIT ?').all(resolvedLimit);
   return {
     meta: envelope(db),
     count: rows.length,
-    items: rows.map((r) => ({
-      id: Number(r.id),
-      dataset: r.dataset,
-      status: r.status,
-      started_at: r.started_at,
-      finished_at: r.finished_at,
-      records: r.records === null ? null : Number(r.records),
-      attempt: r.attempt === null ? null : Number(r.attempt),
-      http_status: r.http_status === null ? null : Number(r.http_status),
-      duration_ms: r.duration_ms === null ? null : Number(r.duration_ms),
-      ua: r.ua,
-      error: r.error,
-    })),
+    items: rows.map(toSyncRun),
   };
 }
 
@@ -249,19 +255,12 @@ export function getHealth(db) {
   const count = (table) => Number(db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get().n);
   const lastRuns = db
     .prepare(
-      `SELECT dataset, status, finished_at, records, attempt, error FROM sync_runs
+      `SELECT * FROM sync_runs
        WHERE id IN (SELECT MAX(id) FROM sync_runs GROUP BY dataset)
        ORDER BY finished_at DESC, id DESC`,
     )
     .all()
-    .map((r) => ({
-      dataset: r.dataset,
-      status: r.status,
-      finished_at: r.finished_at,
-      records: r.records === null ? null : Number(r.records),
-      attempt: r.attempt === null ? null : Number(r.attempt),
-      error: r.error,
-    }));
+    .map(toSyncRun);
   const stats = {
     legislators: count('legislators'),
     memberships: count('memberships'),

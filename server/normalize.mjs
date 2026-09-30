@@ -244,8 +244,10 @@ export function buildDataset(id9Payload, id14Payload, { sourceUrl = '' } = {}) {
 
   // 交叉檢查：id9 與 id14 對「本屆席次」的數量應該一致，不一致要留下警告（不中止）。
   const id14Seats = new Set(id14.map((r) => `${r.seq}|${r.committee}|${r.name}`));
+  // CR-5: O(1) name lookup（取代舊版 .find() 的 O(n²) 掃描）
+  const nameById = new Map(legislators.map((l) => [l.id, l.name]));
   const id9Seats = new Set(seats.map((s) => {
-    const name = legislators.find((l) => l.id === s.legislator_id)?.name;
+    const name = nameById.get(s.legislator_id);
     return `${s.session_id.split('-')[1]}|${s.committee_id}|${name}`;
   }));
   const onlyId9 = [...id9Seats].filter((k) => !id14Seats.has(k));

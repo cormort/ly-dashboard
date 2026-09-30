@@ -43,7 +43,7 @@ export interface SyncRun {
   started_at: string | null;
   finished_at: string | null;
   records: number | null;
-  attempt: number;
+  attempt: number | null;
   http_status: number | null;
   error: string | null;
   duration_ms: number | null;
@@ -54,7 +54,10 @@ export interface HealthDbCounts {
   legislators: number;
   memberships: number;
   committee_seats: number;
+  sessions: number;
+  committees: number;
   changes: number;
+  snapshots: number;
 }
 
 export interface HealthResponse {
@@ -62,6 +65,7 @@ export interface HealthResponse {
   ok: boolean;
   db: HealthDbCounts;
   last_runs: SyncRun[];
+  warnings: string[];
 }
 
 /* ---------- /meta ---------- */
@@ -141,6 +145,10 @@ export interface Legislator {
   sessions: string[];
   committees: LegislatorCommittee[];
   is_convener: boolean;
+  /** 已離職或被罷免 */
+  former: boolean;
+  leave_date: string;
+  leave_reason: string;
   source_url: string;
 }
 
@@ -152,9 +160,6 @@ export interface LegislatorsResponse {
   total: number;
   items: Legislator[];
 }
-
-/** `session=all` 代表該屆全部會期 */
-export const ALL_SESSIONS = 'all';
 
 export interface LegislatorQuery {
   term?: number;

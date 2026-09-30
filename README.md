@@ -14,7 +14,7 @@
 | id14 涵蓋第 4–11 屆，只按姓名 join → 122/123 人被污染、召委 84 人 | 只取本屆（term 11），召委綁 `(session, committee, legislator)`，去重後 **68 人／本會期 23 人** |
 | 委員 id 用陣列索引 → 追蹤會錯人 | 用立院 `lgno`（退回 `ename`）當穩定 id |
 | 同步失敗就端出假資料 | **fail closed**：驗證不過就保留舊資料、記錄失敗、標記 stale，前端顯示「資料截至 …」 |
-| 無異動紀錄、無原始快照、無測試 | `change_log` + `raw_snapshots`(gzip) + 14 項測試 |
+| 無異動紀錄、無原始快照、無測試 | `change_log` + `raw_snapshots`(gzip) + 22 項測試 |
 
 ## 快速開始
 
@@ -22,7 +22,7 @@
 # 1) 抓資料進 SQLite（打真實立法院 API，約 7 秒）
 node server/ingest.mjs
 
-# 2) 跑測試（14 項，不需要網路，用 test/fixtures 的真實 API 回應）
+# 2) 跑測試（22 項，不需要網路，用 test/fixtures 的真實 API 回應）
 npm test
 
 # 3) 建置前端
@@ -115,6 +115,42 @@ warnings: ['游錫堃 在本屆無任何會期委員會紀錄（辭職）', '李
 1. **排程宿主**：Cloudflare Worker + D1 + Cron，或小 VPS + SQLite + cron。兩者都必須先做 30 分鐘 spike：從目標 runtime 打一次 `data.ly.gov.tw`（帶具名 UA），確認 TLS 與 WAF 都過。
 2. **前端**：`web/dist` 是純靜態檔，放 Pages/Vercel/任何空間。
 3. 破壞性／需帳號的動作（例如建立 Worker、push、對外發布）尚未執行，記錄於 `DECISIONS.md`。
+
+## Code Review（2026-09-30）
+
+後端 22 項、前端 27 項煙霧測試全數通過；`scripts/verify.sh` 對真實 API 端到端通過。
+
+### 🟡 已修正（Medium）
+
+| # | 問題 | 修正 |
+|---|---|---|
+| CR-1 | `applyDataset` 的 `setMeta` 呼叫在 `COMMIT` 之後，metadata 可能與資料不一致 | 移入交易內 |
+| CR-2 | `Legislator` 型別缺 `former` / `leave_date` / `leave_reason` | 補齊 |
+| CR-3 | `HealthDbCounts` 缺 `sessions` / `committees` / `snapshots` | 補齊 |
+| CR-4 | `HealthResponse` 缺 `warnings` | 補齊 |
+| CR-5 | `applyDataset` 與 `buildDataset` 中 O(n²) 線性掃描 | 改用 `Map` |
+| CR-6 | `ALL_SESSIONS` 在 `types.ts` 與 `urlState.ts` 重複定義 | `types.ts` 匯出，`urlState.ts` 改為 re-export |
+
+### 🔴 第二輪已修正（Bug）
+
+| # | 問題 | 修正 | 測試 |
+|---|---|---|---|
+| A1 | 內容未變更（`skipped`）時不更新 `last_success_at` → 36 小時後 `/health` 誤報 stale、每次重啟都重抓 | skipped 分支也寫入 `last_success_at` | `A1: Unchanged data updates last_success_at…` |
+| A2 | `fetch-ly` 的 response stream 無 `error` listener，下載中斷線會讓 process 崩潰 | `res.on('error', reject)` | — |
+| A3 | `POST /api/v1/sync` 與排程可同時打政府 API | `syncOnce()` single-flight | `A3: Concurrent syncs are single-flighted…` |
+| A4 | `/health` 的 `last_runs` 欄位少於 `SyncRun` 型別，前端顯示「undefined ms」 | 與 `/sync-runs` 共用 `toSyncRun()` | `A4: getHealth().last_runs items…` |
+| A5 | `limit`／`offset` 未夾限（SQLite 負 LIMIT = 無上限） | 夾到 1..1000、offset ≥ 0 | `A5: Paging parameters…` |
+| B1 | `SyncRun.attempt` 實際可能為 `null` | 型別改 `number \| null`，`RunRow` 做 null 防護 | `tsc -b` |
+
+### 🟠 已知但保留（需帳號或部署後才有意義）
+
+| # | 問題 | 現況 |
+|---|---|---|
+| CR-7 | `POST /api/v1/sync` 無驗證 | 綁 `127.0.0.1`，部署前需加保護（見 `DECISIONS.md` D8） |
+| CR-8 | `timer.unref()` | 無實際影響：HTTP server 本身會維持 process 存活；若日後排程與 server 拆開執行才需移除 |
+| CR-9 | `getHealth` 中 `count(table)` 使用字串插值（非參數化） | 所有呼叫者皆為字串常量，安全但不理想 |
+| CR-10 | `queries.mjs` 動態 `IN` 子句 | 參數化正確但依賴 `resolveScope` 驗證，加了 invariant 註解 |
+| CR-11 | 根目錄無 `package-lock.json` | server 端目前零 npm 依賴，不需要 lockfile |
 
 ## 授權與資料來源
 

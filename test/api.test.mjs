@@ -143,6 +143,27 @@ test('change_log：召委異動會被記錄（模擬真實改版）', () => {
   assert.equal(target.name, '丁學忠');
 });
 
+test('A4: getHealth().last_runs items have the same fields as listSyncRuns', () => {
+  const { db } = seeded();
+  const health = getHealth(db);
+  assert.ok(health.last_runs.length > 0);
+  const expectedKeys = ['id', 'dataset', 'status', 'started_at', 'finished_at', 'records', 'attempt', 'http_status', 'duration_ms', 'ua', 'error'].sort();
+  for (const run of health.last_runs) {
+    assert.deepEqual(Object.keys(run).sort(), expectedKeys);
+  }
+});
+
+test('A5: Paging parameters are correctly clamped at trust boundary', () => {
+  const { db } = seeded();
+  const leg = listLegislators(db, { offset: -5 });
+  const leg0 = listLegislators(db, { offset: 0 });
+  assert.deepEqual(leg.items[0], leg0.items[0]);
+  assert.ok(leg.count <= leg.total);
+  
+  const ch = listChanges(db, { limit: -1 });
+  assert.ok(ch.count <= 1000);
+});
+
 test('寫入是交易：中途失敗不會留下半套資料', () => {
   const db = openDb(':memory:');
   const dataset = buildDataset(fixture('id9.json'), fixture('id14.json'));

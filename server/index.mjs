@@ -7,6 +7,12 @@ import { openDb, getMeta } from './db.mjs';
 import { getHealth, getMetaPayload, listChanges, listCommittees, listLegislators, listSyncRuns } from './queries.mjs';
 import { runIngest } from './ingest.mjs';
 
+let inflight = null;
+export function syncOnce(db, options) {
+  inflight ??= runIngest(db, options).finally(() => { inflight = null; });
+  return inflight;
+}
+
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -81,7 +87,7 @@ export function createServer(db) {
           case '/api/v1/sync-runs':
             return sendJson(res, 200, listSyncRuns(db, { limit: q.limit ?? 50 }));
           case '/api/v1/sync': {
-            const result = await runIngest(db);
+            const result = await syncOnce(db);
             return sendJson(res, result.status === 'failed' ? 502 : 200, result, { 'cache-control': 'no-store' });
           }
           default:
@@ -104,10 +110,10 @@ export function startScheduler(db, { logger = console } = {}) {
   const fresh = last && Date.now() - new Date(last).getTime() < CONFIG.syncIntervalMs;
   if (!fresh) {
     logger.log('[scheduler] 資料不存在或已過期，啟動時先同步一次');
-    runIngest(db, { logger }).catch((error) => logger.error('[scheduler] 同步失敗', error));
+    syncOnce(db, { logger }).catch((error) => logger.error('[scheduler] 同步失敗', error));
   }
   const timer = setInterval(() => {
-    runIngest(db, { logger }).catch((error) => logger.error('[scheduler] 排程同步失敗', error));
+    syncOnce(db, { logger }).catch((error) => logger.error('[scheduler] 排程同步失敗', error));
   }, CONFIG.syncIntervalMs);
   timer.unref();
   return timer;

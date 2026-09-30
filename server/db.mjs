@@ -177,8 +177,10 @@ export function applyDataset(db, dataset, { fetchedAt, sourceUrl }) {
   const previousLegislators = readLegislatorMap(db);
   const changes = [];
 
+  // CR-5: O(1) name lookup（取代舊版 .find() 的 O(n²) 掃描）
+  const legislatorNameById = new Map(dataset.legislators.map((l) => [l.id, l.name]));
   const seatLabel = (sessionId, committeeId, legislatorId) => {
-    const name = dataset.legislators.find((l) => l.id === legislatorId)?.name ?? previousLegislators.get(legislatorId)?.name ?? legislatorId;
+    const name = legislatorNameById.get(legislatorId) ?? previousLegislators.get(legislatorId)?.name ?? legislatorId;
     return `${sessionId} ${committeeId} ${name}`;
   };
 
@@ -285,17 +287,18 @@ export function applyDataset(db, dataset, { fetchedAt, sourceUrl }) {
     );
     for (const c of changes) insertChange.run(at, c.entity, c.entity_id, c.field, c.old_value ?? null, c.new_value ?? null);
 
+    // CR-1: metadata 寫入移入交易內，確保資料與 metadata 的原子一致性
+    setMeta(db, 'last_success_at', at);
+    setMeta(db, 'term', dataset.term);
+    setMeta(db, 'current_session', dataset.currentSession ?? '');
+    setMeta(db, 'source_url', sourceUrl ?? '');
+    setMeta(db, 'warnings', JSON.stringify(dataset.warnings ?? []));
+
     db.exec('COMMIT');
   } catch (error) {
     db.exec('ROLLBACK');
     throw error;
   }
-
-  setMeta(db, 'last_success_at', at);
-  setMeta(db, 'term', dataset.term);
-  setMeta(db, 'current_session', dataset.currentSession ?? '');
-  setMeta(db, 'source_url', sourceUrl ?? '');
-  setMeta(db, 'warnings', JSON.stringify(dataset.warnings ?? []));
 
   return { changes, stats: dataset.stats, seatLabel };
 }

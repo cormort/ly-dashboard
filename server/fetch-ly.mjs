@@ -35,6 +35,7 @@ function once(url, { timeoutMs, ua }) {
       (res) => {
         const chunks = [];
         res.on('data', (c) => chunks.push(c));
+        res.on('error', reject);
         res.on('end', () => {
           const body = Buffer.concat(chunks);
           resolve({ status: res.statusCode ?? 0, body, headers: res.headers });

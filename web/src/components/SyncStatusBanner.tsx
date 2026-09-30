@@ -36,7 +36,7 @@ function RunRow({ run }: { run: SyncRun }) {
         <small>
           {run.finished_at ? formatDateTime(run.finished_at) : '尚未結束'}
           {run.records !== null ? ` · ${run.records} 筆` : ''}
-          {run.attempt > 1 ? ` · 第 ${run.attempt} 次嘗試` : ''}
+          {(run.attempt ?? 0) > 1 ? ` · 第 ${run.attempt} 次嘗試` : ''}
           {run.duration_ms !== null ? ` · ${run.duration_ms} ms` : ''}
           {run.http_status !== null ? ` · HTTP ${run.http_status}` : ''}
         </small>

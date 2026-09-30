@@ -7,6 +7,7 @@ import { buildDataset } from '../server/normalize.mjs';
 import { runIngest } from '../server/ingest.mjs';
 import { getHealth, listLegislators, listSyncRuns } from '../server/queries.mjs';
 import { FetchError } from '../server/fetch-ly.mjs';
+import { syncOnce } from '../server/index.mjs';
 
 const fixture = (name) => JSON.parse(readFileSync(fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url)), 'utf8'));
 const silent = { log() {}, warn() {}, error() {} };
@@ -29,6 +30,35 @@ const respondWith = (payloadByDataset) => async (url) => {
     attempts: 1,
   };
 };
+
+test('A3: Concurrent syncs are single-flighted via syncOnce', async () => {
+  const db = seeded();
+  const unchanged = { id9: fixture('id9.json'), id14: fixture('id14.json') };
+  let fetchCount = 0;
+  
+  // Wait artificially so both promises are created while the first is pending
+  const fetchImpl = async (url) => {
+    fetchCount++;
+    await new Promise(r => setTimeout(r, 50));
+    const key = url.includes('ID9') ? 'id9' : 'id14';
+    return {
+      json: unchanged[key],
+      status: 200,
+      headers: {},
+      bytes: 100,
+      sha256: `${key}-sha`,
+      attempts: 1,
+    };
+  };
+
+  const p1 = syncOnce(db, { logger: silent, fetchImpl });
+  const p2 = syncOnce(db, { logger: silent, fetchImpl });
+  
+  const [res1, res2] = await Promise.all([p1, p2]);
+  
+  assert.equal(fetchCount, 2, 'Should only fetch 2 datasets total, not 4');
+  assert.equal(res1, res2, 'Both promises should resolve to the identical result object');
+});
 
 test('抓取失敗（WAF 403 / 逾時）時：保留舊資料、記錄失敗、不得清空', async () => {
   const db = seeded();
@@ -101,4 +131,19 @@ test('內容變更時：同步會產生異動紀錄並更新 last_success_at', a
   assert.notEqual(getMeta(db, 'last_success_at'), '2026-09-30T09:00:00.000Z');
   const roster = listLegislators(db, { convener: '1' });
   assert.equal(roster.total, 24, '新任召委應反映在名錄（23 + 1）');
+});
+
+test('A1: Unchanged data updates last_success_at to prevent stale dashboard', async () => {
+  const db = seeded();
+  const unchanged = { id9: fixture('id9.json'), id14: fixture('id14.json') };
+  const fetchImpl = respondWith(unchanged);
+  
+  // First run sets the applied_sha
+  await runIngest(db, { logger: silent, fetchImpl });
+  
+  const secondFetchedAt = new Date('2026-10-05T00:00:00.000Z');
+  const result = await runIngest(db, { logger: silent, fetchImpl, now: () => secondFetchedAt });
+  
+  assert.equal(result.status, 'skipped');
+  assert.equal(getMeta(db, 'last_success_at'), '2026-10-05T00:00:00.000Z');
 });
