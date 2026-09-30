@@ -1,8 +1,8 @@
 /**
  * 篩選狀態（單一真相來源：URL query string）。
  *
- * `?term=&session=&q=&party=&committee=&convener=1`
- * term / session / q / party / committee 為 null 或空字串 = 未指定（沿用 API 預設）。
+ * `?term=&session=&q=&party=&region=&committee=&convener=1`
+ * term / session / q / party / region / committee 為 null 或空字串 = 未指定（沿用 API 預設）。
  * session 允許值：會期 id（如 "11-5"）或 `all`（該屆全部會期）。
  */
 
@@ -13,6 +13,7 @@ export interface FilterState {
   session: string | null;
   q: string;
   party: string | null;
+  region: string | null;
   committee: string | null;
   convener: boolean;
 }
@@ -22,6 +23,7 @@ export const EMPTY_FILTERS: FilterState = {
   session: null,
   q: '',
   party: null,
+  region: null,
   committee: null,
   convener: false,
 };
@@ -42,6 +44,7 @@ export function parseFilters(search: string): FilterState {
     session: first(params, 'session'),
     q: first(params, 'q') ?? '',
     party: first(params, 'party'),
+    region: first(params, 'region'),
     committee: first(params, 'committee'),
     convener: first(params, 'convener') === '1',
   };
@@ -54,6 +57,7 @@ export function serializeFilters(state: FilterState): string {
   if (state.session) params.set('session', state.session);
   if (state.q.trim()) params.set('q', state.q.trim());
   if (state.party) params.set('party', state.party);
+  if (state.region) params.set('region', state.region);
   if (state.committee) params.set('committee', state.committee);
   if (state.convener) params.set('convener', '1');
   const qs = params.toString();
@@ -66,6 +70,7 @@ export function filtersEqual(a: FilterState, b: FilterState): boolean {
     a.session === b.session &&
     a.q === b.q &&
     a.party === b.party &&
+    a.region === b.region &&
     a.committee === b.committee &&
     a.convener === b.convener
   );

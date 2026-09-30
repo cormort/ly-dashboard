@@ -1,5 +1,6 @@
 import { CONFIG } from './config.mjs';
 import { getMeta } from './db.mjs';
+import { regionOf } from './normalize.mjs';
 
 const nowIso = () => new Date().toISOString();
 
@@ -127,16 +128,21 @@ export function listLegislators(db, query = {}) {
     }
     committees.sort((a, b) => a.id.localeCompare(b.id, 'zh-Hant'));
     const sessions = [...new Set(membershipRows.filter((x) => x.legislator_id === id).map((x) => x.session_id).filter(Boolean))].sort();
+    const areaName = m.area_name ?? l?.area_name ?? '未提供';
     return {
       id,
       name: l?.name ?? id,
       ename: l?.ename ?? '',
+      sex: l?.sex ?? '',
       party: m.party ?? l?.party ?? '未提供',
       caucus: m.caucus ?? l?.caucus ?? '未提供',
-      area_name: m.area_name ?? l?.area_name ?? '未提供',
+      area_name: areaName,
+      region: regionOf(areaName),
       photo_url: l?.photo_url ?? '',
       degree: l?.degree ?? '',
       experience: l?.experience ?? '',
+      onboard_date: l?.onboard_date ?? '',
+      contacts: JSON.parse(l?.contacts || '[]'),
       term: scope.term,
       sessions,
       committees,
@@ -149,6 +155,7 @@ export function listLegislators(db, query = {}) {
   });
 
   if (query.party) items = items.filter((x) => x.party === query.party);
+  if (query.region) items = items.filter((x) => x.region === query.region);
   if (query.committee) items = items.filter((x) => x.committees.some((c) => c.id === query.committee));
   if (String(query.convener) === '1' || query.convener === true) items = items.filter((x) => x.is_convener);
   if (query.q) {

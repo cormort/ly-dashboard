@@ -126,6 +126,37 @@ export function LegislatorDetail({
             )}
           </dd>
 
+          <dt>就職日期</dt>
+          <dd>{text(legislator.onboard_date)}</dd>
+
+          <dt>聯絡方式</dt>
+          <dd>
+            {legislator.contacts.length > 0 ? (
+              <ul className="contact-list" role="list">
+                {legislator.contacts.map((office) => (
+                  <li key={office.label}>
+                    <b>{office.label}</b>
+                    {office.tel ? (
+                      <small>
+                        電話：
+                        {office.tel.split('、').map((tel, index) => (
+                          <span key={tel}>
+                            {index > 0 ? '、' : ''}
+                            <a href={`tel:${tel.replace(/[^\d+#]/g, '')}`}>{tel}</a>
+                          </span>
+                        ))}
+                      </small>
+                    ) : null}
+                    {office.fax ? <small>傳真：{office.fax}</small> : null}
+                    {office.addr ? <small>地址：{office.addr}</small> : null}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              '未提供'
+            )}
+          </dd>
+
           <dt>學歷</dt>
           <dd>{text(legislator.degree)}</dd>
 

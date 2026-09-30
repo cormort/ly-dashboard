@@ -152,6 +152,7 @@ export function legislatorParams(query: LegislatorQuery): Record<string, ApiQuer
     session: blankToUndefined(query.session),
     q: blankToUndefined(query.q),
     party: blankToUndefined(query.party),
+    region: blankToUndefined(query.region),
     committee: blankToUndefined(query.committee),
     convener: query.convener ? 1 : undefined,
     limit: query.limit,

@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS legislators (
   leave_flag INTEGER NOT NULL DEFAULT 0,
   leave_date TEXT,
   leave_reason TEXT,
+  contacts TEXT,
   source_url TEXT
 );
 CREATE TABLE IF NOT EXISTS memberships (
@@ -105,6 +106,13 @@ export function openDb(path) {
 
 export function migrate(db) {
   db.exec(SCHEMA);
+  // ponytail: 手寫 ADD COLUMN，欄位變多時再引入遷移框架
+  const cols = new Set(db.prepare('PRAGMA table_info(legislators)').all().map((c) => c.name));
+  if (!cols.has('contacts')) {
+    db.exec('ALTER TABLE legislators ADD COLUMN contacts TEXT');
+    // 舊資料沒有這個欄位：清掉 applied_sha，下次同步即使內容未變也會重新套用
+    db.prepare("DELETE FROM meta WHERE key = 'applied_sha'").run();
+  }
 }
 
 export function getMeta(db, key, fallback = null) {
@@ -218,8 +226,8 @@ export function applyDataset(db, dataset, { fetchedAt, sourceUrl }) {
 
     const insertLegislator = db.prepare(
       `INSERT INTO legislators(id, name, ename, sex, party, caucus, area_name, photo_url, degree, experience,
-                               onboard_date, leave_flag, leave_date, leave_reason, source_url)
-       VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                               onboard_date, leave_flag, leave_date, leave_reason, contacts, source_url)
+       VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     for (const l of dataset.legislators) {
       insertLegislator.run(
@@ -237,6 +245,7 @@ export function applyDataset(db, dataset, { fetchedAt, sourceUrl }) {
         l.leave_flag ? 1 : 0,
         l.leave_date,
         l.leave_reason,
+        JSON.stringify(l.contacts ?? []),
         l.source_url,
       );
       const before = previousLegislators.get(l.id);

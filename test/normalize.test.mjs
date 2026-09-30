@@ -8,6 +8,8 @@ import {
   normalizeId14,
   parseSeatLabel,
   committeeKind,
+  regionOf,
+  parseContacts,
 } from '../server/normalize.mjs';
 
 const fixture = (name) => JSON.parse(readFileSync(fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url)), 'utf8'));
@@ -121,4 +123,25 @@ test('fail closed：資料形狀不對時丟 DataValidationError', () => {
   assert.throws(() => buildDataset({ dataList: id9.dataList.slice(0, 5) }, id14), DataValidationError);
   assert.throws(() => buildDataset(id9, { dataList: id14.dataList.slice(0, 10) }), DataValidationError);
   assert.throws(() => buildDataset({ dataList: id9.dataList.map((r) => ({ ...r, name: '' })) }, id14), DataValidationError);
+});
+
+test('regionOf：76 個選區收斂成縣市／不分區／原住民', () => {
+  assert.equal(regionOf('雲林縣第1選舉區'), '雲林縣');
+  assert.equal(regionOf('嘉義市選舉區'), '嘉義市');
+  assert.equal(regionOf('全國不分區及僑居國外國民'), '全國不分區');
+  assert.equal(regionOf('山地原住民選舉區'), '山地原住民');
+  assert.equal(regionOf(''), '未提供');
+  const current = id9.dataList.filter((r) => r.term === '11');
+  assert.equal(new Set(current.map((r) => regionOf(r.areaName))).size, 25);
+});
+
+test('parseContacts：tel／fax／addr 依處所合併', () => {
+  const row = id9.dataList.find((r) => r.name === '丁學忠');
+  const contacts = parseContacts(row);
+  assert.deepEqual(contacts.map((c) => c.label), ['國會研究室', '虎尾聯合服務處', '北港聯合服務處']);
+  assert.equal(contacts[0].tel, '02-2358-8156');
+  assert.equal(contacts[0].fax, '02-2358-8165');
+  assert.match(contacts[0].addr, /濟南路/);
+  assert.deepEqual(parseContacts({ tel: '', fax: null, addr: undefined }), []);
+  assert.deepEqual(parseContacts({ tel: '02-1234-5678' }), [{ label: '聯絡處', tel: '02-1234-5678', fax: '', addr: '' }]);
 });

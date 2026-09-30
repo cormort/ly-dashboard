@@ -2,7 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { openDb, applyDataset, saveSnapshot, recordSyncRun, getMeta } from '../server/db.mjs';
+import { DatabaseSync } from 'node:sqlite';
+import { openDb, applyDataset, saveSnapshot, recordSyncRun, getMeta, migrate } from '../server/db.mjs';
 import { buildDataset } from '../server/normalize.mjs';
 import { getHealth, getMetaPayload, listChanges, listCommittees, listLegislators, listSyncRuns } from '../server/queries.mjs';
 
@@ -175,4 +176,34 @@ test('寫入是交易：中途失敗不會留下半套資料', () => {
   assert.throws(() => applyDataset(db, broken, { fetchedAt: '2026-09-30T11:00:00.000Z' }));
   assert.equal(listLegislators(db, {}).total, before, '失敗後仍應是舊資料');
   assert.equal(getMeta(db, 'last_success_at'), '2026-09-30T09:00:00.000Z');
+});
+
+test('選區篩選：region 為縣市層級，且可精確篩選', () => {
+  const { db } = seeded();
+  const all = listLegislators(db, {});
+  assert.ok(all.items.every((x) => x.region && !x.region.includes('選舉區')));
+  const yunlin = listLegislators(db, { region: '雲林縣' });
+  assert.equal(yunlin.total, 2);
+  assert.ok(yunlin.items.every((x) => x.area_name.startsWith('雲林縣')));
+  assert.equal(listLegislators(db, { region: '不存在的縣' }).total, 0);
+});
+
+test('個人資料：聯絡方式與就職日期', () => {
+  const { db } = seeded();
+  const ting = listLegislators(db, { q: '丁學忠' }).items[0];
+  assert.equal(ting.onboard_date, '2024/02/01');
+  assert.equal(ting.contacts[0].label, '國會研究室');
+  assert.equal(ting.contacts[0].tel, '02-2358-8156');
+});
+
+test('遷移：舊資料庫補上 contacts 欄位並清掉 applied_sha 以便重新套用', () => {
+  const db = new DatabaseSync(':memory:');
+  db.exec(`CREATE TABLE legislators (id TEXT PRIMARY KEY, name TEXT NOT NULL);
+           CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT);
+           INSERT INTO meta VALUES ('applied_sha', 'old');`);
+  migrate(db);
+  const cols = db.prepare('PRAGMA table_info(legislators)').all().map((c) => c.name);
+  assert.ok(cols.includes('contacts'));
+  assert.equal(getMeta(db, 'applied_sha'), null);
+  migrate(db); // 第二次不該出錯
 });

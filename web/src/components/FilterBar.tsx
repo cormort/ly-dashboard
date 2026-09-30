@@ -6,6 +6,8 @@ export interface FilterBarProps {
   filters: FilterState;
   /** 黨籍選項：由該屆／會期名單列舉（後端回傳值直接使用，不在前端加工） */
   parties: string[];
+  /** 選區（縣市層級）選項：由名單的 region 列舉 */
+  regions: string[];
   /** 委員會選項：直接來自 /api/v1/committees（乾淨名稱） */
   committees: CommitteeItem[];
   /** 單選條件（屆次以外的離散切換，會寫入上一頁歷史） */
@@ -20,6 +22,7 @@ export interface FilterBarProps {
 export function FilterBar({
   filters,
   parties,
+  regions,
   committees,
   onChange,
   onReset,
@@ -29,6 +32,7 @@ export function FilterBar({
   const hasFilters =
     filters.q.trim() !== '' ||
     filters.party !== null ||
+    filters.region !== null ||
     filters.committee !== null ||
     filters.convener;
 
@@ -45,6 +49,21 @@ export function FilterBar({
             {parties.map((party) => (
               <option key={party} value={party}>
                 {party}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label>
+          <span className="sr-only">選區</span>
+          <select
+            value={filters.region ?? ''}
+            onChange={(event) => onChange({ region: event.target.value === '' ? null : event.target.value })}
+          >
+            <option value="">全部選區</option>
+            {regions.map((region) => (
+              <option key={region} value={region}>
+                {region}
               </option>
             ))}
           </select>

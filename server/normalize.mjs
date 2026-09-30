@@ -54,6 +54,35 @@ export function sessionLabel(term, seq) {
   return `第 ${term} 屆第 ${seq} 會期`;
 }
 
+/** "雲林縣第1選舉區" → "雲林縣"；"嘉義市選舉區" → "嘉義市"；不分區／原住民各成一區。76 個選區 → 25 個篩選選項。 */
+export function regionOf(areaName) {
+  const area = String(areaName ?? '').trim();
+  if (area.startsWith('全國不分區')) return '全國不分區';
+  return area.replace(/第\d+選舉區$/, '').replace(/選舉區$/, '') || '未提供';
+}
+
+/**
+ * id9 的 tel／fax／addr 是「處所：值;處所：值」字串，三欄各自列舉同一組處所。
+ * 依處所名稱合併成 [{ label, tel, fax, addr }]，保留出現順序。
+ */
+export function parseContacts({ tel, fax, addr }) {
+  const offices = new Map();
+  for (const [key, raw] of [['tel', tel], ['fax', fax], ['addr', addr]]) {
+    for (const part of String(raw ?? '').split(/[;；]/)) {
+      const text = part.trim();
+      if (!text) continue;
+      const cut = text.search(/[：:]/);
+      const label = cut > 0 ? text.slice(0, cut).trim() : '聯絡處';
+      const value = (cut > 0 ? text.slice(cut + 1) : text).trim();
+      if (!value) continue;
+      const office = offices.get(label) ?? { label, tel: '', fax: '', addr: '' };
+      office[key] = office[key] ? `${office[key]}、${value}` : value;
+      offices.set(label, office);
+    }
+  }
+  return [...offices.values()];
+}
+
 const field = (row, ...keys) => {
   for (const key of keys) {
     const value = row?.[key];
@@ -102,6 +131,7 @@ export function normalizeId9(payload) {
       leave_flag: asBool(field(row, 'leaveFlag')),
       leave_date: field(row, 'leaveDate'),
       leave_reason: field(row, 'leaveReason'),
+      contacts: parseContacts({ tel: field(row, 'tel'), fax: field(row, 'fax'), addr: field(row, 'addr') }),
       seats,
     };
   });
@@ -183,6 +213,7 @@ export function buildDataset(id9Payload, id14Payload, { sourceUrl = '' } = {}) {
       leave_flag: row.leave_flag,
       leave_date: row.leave_date,
       leave_reason: row.leave_reason,
+      contacts: row.contacts,
       source_url: sourceUrl,
     });
 

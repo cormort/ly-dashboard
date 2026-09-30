@@ -73,6 +73,10 @@ const LEGISLATOR = {
   party: '測試政黨A',
   caucus: '測試政黨A',
   area_name: '測試市第1選舉區',
+  region: '測試市',
+  sex: '男',
+  onboard_date: '2024/02/01',
+  contacts: [{ label: '國會研究室', tel: '02-2358-0000', fax: '', addr: '台北市中正區濟南路1段' }],
   photo_url: null,
   degree: null,
   experience: null,
@@ -200,6 +204,14 @@ async function main(): Promise<void> {
     assert.equal(parsed.q, '牛');
     assert.equal(parsed.convener, true);
     assert.equal(serializeFilters(parsed), search);
+  });
+  await check('region（選區）可寫入並還原 URL', () => {
+    const search = '?term=11&session=11-5&region=%E9%9B%B2%E6%9E%97%E7%B8%A3';
+    const parsed = parseFilters(search);
+    assert.equal(parsed.region, '雲林縣');
+    assert.equal(serializeFilters(parsed), search);
+    assert.equal(legislatorParams({ region: '  ' }).region, undefined);
+    assert.equal(legislatorParams({ region: '雲林縣' }).region, '雲林縣');
   });
   await check('未指定的條件不會出現在 query string', () => {
     assert.equal(serializeFilters(parseFilters('')), '');

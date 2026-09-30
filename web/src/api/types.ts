@@ -129,6 +129,14 @@ export interface LegislatorCommittee {
   is_convener: boolean;
 }
 
+export interface LegislatorContact {
+  /** 處所名稱，如「國會研究室」「虎尾聯合服務處」 */
+  label: string;
+  tel: string;
+  fax: string;
+  addr: string;
+}
+
 export interface Legislator {
   /** 穩定識別（lgno → ename → name），不是陣列索引 */
   id: string;
@@ -137,6 +145,11 @@ export interface Legislator {
   party: string | null;
   caucus: string | null;
   area_name: string | null;
+  /** 選區歸併後的縣市層級（「雲林縣」「全國不分區」「山地原住民」），供篩選用 */
+  region: string;
+  sex: string;
+  onboard_date: string;
+  contacts: LegislatorContact[];
   photo_url: string | null;
   degree: string | null;
   experience: string | null;
@@ -166,6 +179,7 @@ export interface LegislatorQuery {
   session?: string;
   q?: string;
   party?: string;
+  region?: string;
   committee?: string;
   /** 只回傳本會期召委 */
   convener?: boolean;

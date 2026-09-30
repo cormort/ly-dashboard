@@ -15,7 +15,7 @@ import { SyncStatusBanner } from './components/SyncStatusBanner';
 import { useApi } from './hooks/useApi';
 import { useQueryState } from './hooks/useQueryState';
 import { useTracked } from './hooks/useTracked';
-import { deriveParties } from './lib/legislators';
+import { deriveParties, deriveRegions } from './lib/legislators';
 import { latestSessionId, sessionLabelIndex, sessionScopeLabel } from './lib/sessions';
 import { ALL_SESSIONS, resetForTermChange, type FilterState } from './lib/urlState';
 
@@ -65,7 +65,11 @@ export default function App() {
   );
 
   const hasFilters =
-    filters.q.trim() !== '' || filters.party !== null || filters.committee !== null || filters.convener;
+    filters.q.trim() !== '' ||
+    filters.party !== null ||
+    filters.region !== null ||
+    filters.committee !== null ||
+    filters.convener;
 
   // 有篩選條件時才另外抓一份；否則直接沿用 roster，避免重複請求
   const filtered = useApi<LegislatorsResponse>(
@@ -74,6 +78,7 @@ export default function App() {
           ...queryParams,
           q: filters.q,
           party: filters.party ?? undefined,
+          region: filters.region ?? undefined,
           committee: filters.committee ?? undefined,
           convener: filters.convener ? 1 : undefined,
           limit: PAGE_LIMIT,
@@ -91,6 +96,7 @@ export default function App() {
   /* ------------------------------ 衍生資料 ------------------------------ */
 
   const parties = useMemo(() => deriveParties(roster.data?.items ?? []), [roster.data]);
+  const regions = useMemo(() => deriveRegions(roster.data?.items ?? []), [roster.data]);
 
   const terms = metaData?.terms ?? [];
 
@@ -119,7 +125,7 @@ export default function App() {
   };
 
   const handleReset = () => {
-    update({ q: '', party: null, committee: null, convener: false }, 'push');
+    update({ q: '', party: null, region: null, committee: null, convener: false }, 'push');
   };
 
   const refreshing = health.phase === 'loading' || meta.phase === 'loading';
@@ -166,6 +172,7 @@ export default function App() {
           <FilterBar
             filters={filters}
             parties={parties}
+            regions={regions}
             committees={committees.data?.items ?? []}
             onChange={(patch) => update(patch, 'push')}
             onReset={handleReset}
