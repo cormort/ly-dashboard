@@ -1,0 +1,29 @@
+# PoC patch: legislator-intelligence-dashboard
+# 1) vite.config.js -> same-origin proxy with SSL legacy-renegotiation workaround
+@@ -1,3 +1,8 @@
+ import {defineConfig} from 'vite';
+ import react from '@vitejs/plugin-react';
+-export default defineConfig({plugins:[react()]});
++import https from 'node:https';
++import crypto from 'node:crypto';
++// data.ly.gov.tw needs unsafe legacy renegotiation; Node/OpenSSL refuses it by default
++const agent = new https.Agent({ secureOptions: crypto.constants.SSL_OP_LEGACY_SERVER_CONNECT, keepAlive: true });
++const proxy = {'/ly': {target: 'https://data.ly.gov.tw', changeOrigin: true, agent, rewrite: p => p.replace(/^\/ly/, '/odw')}};
++export default defineConfig({plugins:[react()], server:{proxy}, preview:{proxy}});
+
+# 2) src/App.jsx -> proxy paths + committee prefix strip + term-11 filter + stable id + leaveFlag
+@@ -1,12 +1,12 @@
+ import React,{useEffect,useMemo,useState}from'react';
+ import{Search,Users,Scale,Star,Building2,MapPin,RefreshCw,CheckCircle2,Clock3,Wifi,WifiOff,Database,ChevronRight,X,FileClock,Trash2,RotateCcw}from'lucide-react';
+ import{BarChart,Bar,XAxis,YAxis,Tooltip,ResponsiveContainer}from'recharts';
+-const API={members:'https://data.ly.gov.tw/odw/ID9Action.action?name=&sex=&party=&partyGroup=&areaName=&committee=&fileType=json',committees:'https://data.ly.gov.tw/odw/ID14Action.action?committee=&name=&fileType=json'};
++const API={members:'/ly/ID9Action.action?fileType=json',committees:'/ly/ID14Action.action?fileType=json'};
+ const demo=[{id:'D1',name:'林怡安',party:'甲黨',district:'臺北市第 3 選區',committee:'內政委員會',committees:['內政委員會'],convener:true,education:'公共行政碩士',experience:'地方議員、政策研究員',source:'示範資料'},{id:'D2',name:'陳宏宇',party:'乙黨',district:'新北市第 2 選區',committee:'財政委員會',committees:['財政委員會'],convener:false,education:'經濟學博士',experience:'大學教授、財經顧問',source:'示範資料'}];
+ const rows=p=>{if(Array.isArray(p))return p;let f=[];const w=v=>{if(Array.isArray(v)){if(v.some(x=>x&&typeof x==='object'&&(x.name||x.委員姓名)))f.push(...v);else v.forEach(w)}else if(v&&typeof v==='object')Object.values(v).forEach(w)};w(p);return f};
+ const fld=(o,...k)=>{for(const x of k)if(o?.[x]!=null&&String(o[x]).trim())return String(o[x]).trim();return''};
+ const list=v=>String(v||'').split(/[、,，;；\n]/).map(x=>x.trim()).filter(Boolean);
+-function normalize(raw,cr){const map=new Map;rows(cr).forEach(r=>{let n=fld(r,'name','委員名稱','委員姓名'),c=fld(r,'committee','委員會名稱'),old=map.get(n)||{committees:[],convener:false,term:'',session:''};if(c&&!old.committees.includes(c))old.committees.push(c);old.convener||=/^(是|Y|YES|1|true)$/i.test(fld(r,'isCoChairman','是否為召集委員'));old.term=fld(r,'term','屆別')||old.term;old.session=fld(r,'sessionPeriod','會期')||old.session;if(n)map.set(n,old)});let seen=new Set;return rows(raw).map((r,i)=>{let name=fld(r,'name','委員姓名');if(!name||seen.has(name))return null;seen.add(name);let cm=map.get(name)||{},cs=[...new Set([...list(fld(r,'committee','委員會')),...(cm.committees||[])])];return{id:fld(r,'lgno')||`LY-${i}`,name,party:fld(r,'party','黨籍')||'未提供',district:fld(r,'areaName','選區名稱')||'未提供',committee:cs.join('、')||'未提供',committees:cs,convener:!!cm.convener,term:fld(r,'term')||cm.term||'',session:cm.session||'',education:fld(r,'degree','學歷')||'未提供',experience:fld(r,'experience','經歷')||'未提供',photo:fld(r,'picUrl','picPath'),source:'立法院開放資料'}}).filter(Boolean)}
++function normalize(raw,cr){const map=new Map,T=(rows(raw)[0]&&fld(rows(raw)[0],'term'))||'11';rows(cr).filter(r=>fld(r,'term','屆別')===T).forEach(r=>{let n=fld(r,'name','委員名稱','委員姓名'),c=fld(r,'committee','委員會名稱'),old=map.get(n)||{committees:[],convener:false,term:'',session:''};if(c&&!old.committees.includes(c))old.committees.push(c);old.convener||=/^(是|Y|YES|1|true)$/i.test(fld(r,'isCoChairman','是否為召集委員'));old.term=fld(r,'term','屆別')||old.term;old.session=fld(r,'sessionPeriod','會期')||old.session;if(n)map.set(n,old)});let seen=new Set;return rows(raw).map((r,i)=>{let name=fld(r,'name','委員姓名');if(!name||seen.has(name))return null;seen.add(name);let cm=map.get(name)||{},cs=[...new Set([...list(fld(r,'committee','委員會')).map(x=>x.replace(/^第\d+屆第\d+會期[：:]/,'')),...(cm.committees||[])])];return{id:`LY-${name}`,name,party:fld(r,'party','黨籍')||'未提供',district:fld(r,'areaName','選區名稱')||'未提供',committee:cs.join('、')||'未提供',committees:cs,convener:!!cm.convener,term:fld(r,'term')||cm.term||'',session:cm.session||'',education:fld(r,'degree','學歷')||'未提供',experience:fld(r,'experience','經歷')||'未提供',photo:fld(r,'picUrl','picPath'),source:'立法院開放資料',left:/^是$/i.test(fld(r,'leaveFlag','離職與否'))}}).filter(Boolean).filter(m=>m&&!m.left)}
+ const fmt=d=>d?new Date(d).toLocaleString('zh-TW'):'尚無';
+ export default function App(){const[members,setMembers]=useState(demo),[q,setQ]=useState(''),[party,setParty]=useState('全部黨籍'),[committee,setCommittee]=useState('全部委員會'),[district,setDistrict]=useState('全部選區'),[conv,setConv]=useState(false),[selected,setSelected]=useState(null),[tracked,setTracked]=useState(new Set),[sync,setSync]=useState({state:'idle',message:'尚未同步',last:null,attempt:0}),[logs,setLogs]=useState(()=>{try{return JSON.parse(localStorage.getItem('ly:logs')||'[]')}catch{return[]}}),[showLogs,setShowLogs]=useState(false),[autoRetry,setAutoRetry]=useState(true);
+ const log=(status,message,meta={})=>setLogs(p=>{let n=[{id:crypto.randomUUID?.()||Date.now(),time:new Date().toISOString(),status,message,...meta},...p].slice(0,50);localStorage.setItem('ly:logs',JSON.stringify(n));return n});

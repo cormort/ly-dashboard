@@ -1,0 +1,18 @@
+{
+  "name": "ly-dashboard",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "立委觀測站（重寫版）：伺服器端 ingestion + SQLite + 自有 API + TypeScript 前端",
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "scripts": {
+    "test": "node --test test/",
+    "ingest": "node server/ingest.mjs",
+    "serve": "node server/index.mjs",
+    "start": "node server/index.mjs",
+    "dev:api": "node --watch server/index.mjs --no-scheduler",
+    "build:web": "npm --prefix web run build"
+  }
+}

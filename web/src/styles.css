@@ -1,0 +1,127 @@
+/* ===== 以下為舊版 legislator-intelligence-dashboard/src/styles.css 原樣沿用 ===== */
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,"Noto Sans TC",sans-serif;background:#020617;color:#f8fafc}button,input,select{font:inherit}button{cursor:pointer;color:inherit;background:#0f172a;border:1px solid #334155;border-radius:10px;padding:9px 12px;display:inline-flex;align-items:center;gap:7px}button svg{width:17px}.primary{background:#2563eb;border-color:#2563eb}header{position:sticky;top:0;z-index:10;display:flex;gap:16px;align-items:center;padding:13px max(20px,calc((100vw - 1450px)/2));background:#020617e8;border-bottom:1px solid #1e293b;backdrop-filter:blur(15px)}.brand{display:flex;align-items:center;gap:10px;white-space:nowrap}.brand>svg{background:#2563eb;padding:9px;width:40px;height:40px;border-radius:12px}.brand small,.status small,.log small,.card small{display:block;color:#94a3b8}.search{position:relative;flex:1;max-width:650px;margin-left:auto}.search svg{position:absolute;left:12px;top:11px;width:18px;color:#64748b}.search input{width:100%;background:#0f172a;border:1px solid #334155;color:white;border-radius:10px;padding:10px 12px 10px 40px}main{max-width:1450px;margin:auto;padding:25px 20px;display:grid;gap:20px}.status,.logs,.chart,.directory{background:#0f172a;border:1px solid #1e293b;border-radius:18px;padding:18px}.status{display:flex;align-items:flex-start;gap:12px}.status>div:nth-child(2){flex:1}.status.success{border-color:#166534}.status.warning{border-color:#92400e}.status.error{border-color:#9f1239}.spin{animation:spin 1s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:15px}.card{background:#0f172a;border:1px solid #1e293b;border-radius:18px;padding:20px;display:flex;justify-content:space-between}.card b{font-size:28px}.card>svg{color:#60a5fa}.sectionhead{display:flex;justify-content:space-between;align-items:center;gap:12px}.sectionhead>div{display:flex;align-items:center;gap:12px}.sectionhead h2,.chart h2{margin:0 0 14px}.logs .sectionhead h2{margin:0}.log{display:flex;align-items:center;gap:12px;padding:12px;border-top:1px solid #1e293b}.log>div{flex:1}.dot{width:9px;height:9px;border-radius:50%;background:#f59e0b}.dot.success{background:#22c55e}.dot.error{background:#f43f5e}.chartbox{height:270px}.filters{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:15px 0}.filters select{background:#020617;border:1px solid #334155;color:white;border-radius:10px;padding:10px}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.grid article{background:#020617;border:1px solid #1e293b;border-radius:16px;padding:16px}.membertop{display:flex;gap:11px;align-items:center}.membertop>div:nth-child(2){flex:1}.membertop h3{margin:0}.membertop em{font-style:normal;font-size:12px;background:#f59e0b;color:#111827;padding:3px 6px;border-radius:6px;margin-left:7px}.avatar,.membertop img{width:48px;height:48px;border-radius:50%;object-fit:cover}.avatar{display:grid;place-items:center;font-weight:bold;background:linear-gradient(135deg,#2563eb,#7c3aed)}article p{display:flex;gap:7px;color:#cbd5e1}article p svg{width:17px}article footer{display:flex;justify-content:space-between;align-items:center;border-top:1px solid #1e293b;padding-top:10px;color:#94a3b8}.active{fill:#facc15;color:#facc15}.overlay{position:fixed;inset:0;background:#000b;z-index:20}.overlay aside{position:absolute;right:0;width:min(620px,100%);height:100%;background:#020617;border-left:1px solid #334155;padding:30px;overflow:auto}.close{float:right}.muted{color:#94a3b8}dl{display:grid;grid-template-columns:100px 1fr;gap:15px;margin-top:30px}dt{color:#64748b}dd{margin:0}@media(max-width:900px){.stats,.grid{grid-template-columns:repeat(2,1fr)}.filters{grid-template-columns:repeat(2,1fr)}header{flex-wrap:wrap}.search{order:3;max-width:none;width:100%}}@media(max-width:560px){.stats,.grid,.filters{grid-template-columns:1fr}.brand small{display:none}.status{flex-wrap:wrap}.sectionhead{align-items:flex-start;flex-direction:column}}
+/* =====================================================================
+   擴充樣式（立委觀測站 v1）
+   上方為舊版 styles.css 原樣沿用；以下只新增／覆寫這個版本需要的類別。
+   ===================================================================== */
+
+/* --- 共用面板 --- */
+.panel{background:#0f172a;border:1px solid #1e293b;border-radius:18px;padding:18px}
+.panel h2{margin:0 0 14px;display:flex;align-items:center;gap:8px;font-size:20px}
+.panel h2 svg{width:20px;height:20px;color:#60a5fa}
+.sectionhead{align-items:center}
+.sectionhead>span{color:#94a3b8}
+.controls{display:grid;grid-template-columns:minmax(280px,1fr) 2fr;gap:15px;align-items:start}
+.split{display:grid;grid-template-columns:1.35fr 1fr;gap:15px;align-items:start}
+
+/* --- 四態（loading / empty / error）--- */
+.state-block{display:flex;align-items:center;gap:12px;padding:22px 18px;border-radius:14px;background:#020617;border:1px dashed #334155;color:#cbd5e1}
+.state-block>svg{width:20px;height:20px;flex:none;color:#60a5fa}
+.state-block b{display:block}
+.state-block small{display:block;color:#94a3b8;margin-top:3px}
+.state-block button{margin-left:auto;flex:none}
+.state-block.empty{border-style:solid;border-color:#1e293b}
+.state-block.empty>svg{color:#64748b}
+.state-block.error{border-style:solid;border-color:#9f1239;background:#1f0a13}
+.state-block.error>svg{color:#fb7185}
+.status>.state-block{flex:1}
+.status{flex-wrap:wrap}
+.status-icon svg{width:22px;height:22px}
+.status.success .status-icon svg{color:#22c55e}
+.status.warning .status-icon svg{color:#f59e0b}
+.status.error .status-icon svg{color:#f43f5e}
+
+/* --- Header 中繼資訊 --- */
+.header-meta{display:flex;flex-direction:column;gap:2px;font-size:12px;color:#94a3b8;text-align:right;white-space:nowrap}
+.source-line{display:flex;align-items:center;justify-content:flex-end;gap:4px}
+.source-line a{display:inline-flex;align-items:center;gap:4px;color:#93c5fd}
+.source-line svg{width:13px;height:13px}
+.source-line.stale{color:#fbbf24;font-weight:600}
+.search-clear{position:absolute;right:6px;top:6px;padding:5px;background:transparent;border:0;color:#94a3b8}
+.search-clear svg{position:static;width:16px}
+.search input[type='search']::-webkit-search-cancel-button{display:none}
+
+/* --- 屆次／會期選擇 --- */
+.selector-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.selector-fields label{display:block}
+.selector-fields label>span{display:flex;align-items:center;gap:6px;color:#94a3b8;font-size:13px;margin-bottom:6px}
+.selector-fields label>span svg{width:15px;height:15px}
+.selector-fields select,.filters select{width:100%;background:#020617;border:1px solid #334155;color:#fff;border-radius:10px;padding:10px}
+.selector select:disabled{opacity:.55}
+.selector p{margin:12px 0 0;font-size:13px}
+
+/* --- 篩選列 --- */
+.filters-panel .filters{grid-template-columns:repeat(auto-fit,minmax(170px,1fr));align-items:center}
+.filters-panel .filters label{display:block}
+.filters-panel .search{max-width:none;margin-left:0}
+.filters-panel button{justify-content:center}
+.filter-summary{display:flex;align-items:center;gap:8px;margin:0;color:#94a3b8;font-size:13px}
+.filter-summary svg{width:16px;height:16px}
+
+/* --- 統計卡片 --- */
+.card b{display:block;line-height:1.15}
+.card-hint{margin-top:4px;font-size:12px}
+.card-icon svg{width:26px;height:26px;color:#60a5fa}
+.card.warning{border-color:#92400e}
+.card.warning .card-icon svg{color:#f59e0b}
+.card.error{border-color:#9f1239}
+.card.error .card-icon svg{color:#f43f5e}
+.card.success{border-color:#166534}
+
+/* --- 圖表 --- */
+.chart-scope{margin:0 0 10px;font-size:13px}
+.chartbox{height:300px}
+.chart svg .recharts-cartesian-axis-tick-value{fill:#94a3b8}
+.data-table{width:100%;border-collapse:collapse;margin-top:14px;font-size:14px}
+.data-table caption{text-align:left;color:#94a3b8;padding-bottom:8px}
+.data-table th,.data-table td{border:1px solid #1e293b;padding:8px 10px;text-align:left}
+.data-table thead th{background:#020617;color:#cbd5e1}
+.data-table tbody th{font-weight:600;color:#f8fafc}
+.muted svg{width:16px;height:16px;vertical-align:-3px}
+
+/* --- 同步紀錄 --- */
+.sync-runs{flex-basis:100%;width:100%;border-top:1px solid #1e293b;margin-top:6px;padding-top:12px}
+.sync-runs h3{display:flex;align-items:center;gap:8px;margin:0 0 8px;font-size:15px;color:#cbd5e1}
+.sync-runs h3 svg{width:16px;height:16px}
+.log-list{list-style:none;margin:0;padding:0}
+.log-list .log{padding:11px 0}
+.log-list .log b{font-size:14px}
+.log-error{color:#fca5a5}
+.dot.warning{background:#f59e0b}
+.stale-warning{display:flex;align-items:center;gap:6px;margin:8px 0 0;color:#fbbf24;font-size:13px}
+.stale-warning svg{width:15px;height:15px}
+
+/* --- 委員名錄 --- */
+.grid{list-style:none;padding:0;margin:0}
+.grid>li{display:flex}
+.grid>li>article{width:100%;display:flex;flex-direction:column;gap:10px}
+.grid>li>article>footer{margin-top:auto}
+.membertop small{display:block;color:#94a3b8}
+.icon-button{padding:7px;background:transparent;border-color:#1e293b}
+article p{margin:0;font-size:14px}
+article footer span{font-size:13px}
+
+/* --- 詳情側欄 --- */
+.overlay aside h1{margin:12px 0 6px;display:flex;align-items:center;gap:10px;font-size:26px}
+.overlay aside h1 em{font-style:normal;font-size:12px;background:#f59e0b;color:#111827;padding:3px 7px;border-radius:6px}
+.overlay aside p{display:flex;align-items:center;gap:6px}
+.overlay aside p svg{width:15px;height:15px}
+.detail-actions{display:flex;gap:10px;margin:18px 0 4px}
+.chip-list{list-style:none;display:flex;flex-wrap:wrap;gap:6px;padding:0;margin:0}
+.chip-list li{display:flex;gap:4px;align-items:center}
+.chip{background:#1e293b;border:1px solid #334155;border-radius:999px;padding:3px 10px;font-size:13px}
+.chip.plain{background:#020617;color:#cbd5e1}
+.chip.convener{background:#f59e0b;border-color:#f59e0b;color:#111827;font-weight:600}
+dl{grid-template-columns:150px 1fr}
+dd small{display:block;color:#94a3b8;margin-top:4px}
+dd code,.log code{background:#020617;border:1px solid #1e293b;border-radius:6px;padding:1px 6px;font-size:12px;color:#cbd5e1}
+.old-value{color:#fda4af;text-decoration:line-through}
+.new-value{color:#86efac}
+
+/* --- 可及性 --- */
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+:focus-visible{outline:2px solid #60a5fa;outline-offset:2px}
+
+/* --- 響應式 --- */
+@media(max-width:1100px){.controls,.split{grid-template-columns:1fr}}
+@media(max-width:900px){.header-meta{text-align:left;white-space:normal}.selector-fields{grid-template-columns:1fr}}

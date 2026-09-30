@@ -1,0 +1,29 @@
+{
+  "name": "ly-dashboard-web",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "立委觀測站前端（資料一律來自同源 /api/v1/*）",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -b",
+    "smoke": "tsx scripts/smoke.ts && tsx scripts/render-smoke.ts",
+    "test": "tsc -b && tsx scripts/smoke.ts && tsx scripts/render-smoke.ts"
+  },
+  "dependencies": {
+    "lucide-react": "^1.49.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "recharts": "^3.10.1"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "vite": "^8.3.1"
+  }
+}

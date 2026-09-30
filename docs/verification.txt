@@ -1,0 +1,52 @@
+# 驗證紀錄 2026-09-30 09:22:53 CST
+# 指令：bash scripts/verify.sh
+
+=== 1) 後端單元 + 整合測試（用真實 API fixture，不打網路）
+ℹ tests 18
+ℹ suites 0
+ℹ pass 18
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 766.294334
+
+=== 1b) 前端型別檢查 + 煙霧測試（四態、URL 狀態、錯誤處理）
+— ChangesPanel（自行抓資料，僅驗 loading 態）—
+  ok  loading 態
+
+通過 27 項，失敗 0 項
+
+=== 2) 對真實立法院 API 做一次 ingestion（獨立臨時 DB）
+[ingest] id9：HTTP 200、151947 bytes、嘗試 1 次、快照已保存
+[ingest] id14：HTTP 200、1406990 bytes、嘗試 1 次、快照已保存
+[ingest] 警告：游錫堃 在本屆無任何會期委員會紀錄（辭職），僅出現於全屆次檢視
+[ingest] 警告：李貞秀 在本屆無任何會期委員會紀錄（開除黨籍），僅出現於全屆次檢視
+[ingest] 已套用：123 位委員、783 筆席次、5 個會期、異動 0 筆
+status: success
+stats: {"legislators": 123, "memberships": 567, "seats": 783, "committees": 11, "sessions": 5, "current_session": "11-5", "current_roster": 113, "conveners_current_session": 23, "conveners_any_session": 68}
+warnings: ['游錫堃 在本屆無任何會期委員會紀錄（辭職），僅出現於全屆次檢視', '李貞秀 在本屆無任何會期委員會紀錄（開除黨籍），僅出現於全屆次檢視']
+
+=== 3) 第二次 ingestion（應為 skipped，sha256 未變）
+[ingest] id9：HTTP 200、151947 bytes、嘗試 1 次、快照已存在
+[ingest] id14：HTTP 200、1406990 bytes、嘗試 1 次、快照已存在
+[ingest] 警告：游錫堃 在本屆無任何會期委員會紀錄（辭職），僅出現於全屆次檢視
+[ingest] 警告：李貞秀 在本屆無任何會期委員會紀錄（開除黨籍），僅出現於全屆次檢視
+[ingest] 內容未變更，略過寫入
+status: skipped
+
+=== 4) 起 API 並驗證端點
+[api] 立委觀測站 API 已啟動：http://127.0.0.1:8799（靜態檔：/Users/hermes/ly-dashboard/web/dist）
+health.ok: True | stale: False | db: {"legislators": 123, "memberships": 567, "committee_seats": 783, "sessions": 5, "committees": 11, "changes": 0, "snapshots": 2}
+current: {"term": 11, "session": "11-5"} | sessions: ['11-1', '11-2', '11-3', '11-4', '11-5']
+committees: 11 | 第一個: 修憲委員會 39 席
+legislators?convener=1                 total: 23 session: 11-5
+legislators?session=11-1               total: 113 session: 11-1
+legislators?session=all                total: 123 session: None
+legislators?committee=內政委員會  total: 13 session: 11-5
+legislators?q=雲林                   total: 2 session: 11-5
+
+=== 5) 前端靜態檔
+GET / → HTTP 200
+
+全部驗證完成。
