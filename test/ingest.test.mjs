@@ -227,14 +227,18 @@ test('社群同步：成功時寫入並出現在委員資料；失敗時保留�
   const db = seeded();
   const ok = await runSocialIngest(db, { logger: silent, fetchImpl: async () => ({ text: socialCsv, status: 200, attempts: 1 }) });
   assert.equal(ok.status, 'success');
-  assert.equal(getHealth(db).db.social_accounts, 113);
+  // 113 位在職委員各有一個 facebook；吳思瑤另外由更正表補上 threads → 114 筆
+  assert.equal(getHealth(db).db.social_accounts, 114);
   const wu = listLegislators(db, { q: '吳思瑤' }).items[0];
-  assert.equal(wu.social[0].platform, 'facebook');
-  assert.equal(wu.social[0].url, 'https://www.facebook.com/taipeineedyou');
+  const wuFacebook = wu.social.find((a) => a.platform === 'facebook');
+  const wuThreads = wu.social.find((a) => a.platform === 'threads');
+  assert.equal(wuFacebook.url, 'https://www.facebook.com/taipeineedyou', '臉書列保留（目前無法查看，但未刪除）');
+  assert.equal(wuThreads.url, 'https://www.threads.com/@wusuyao541');
+  assert.equal(wuThreads.source, 'override');
 
   const blocked = await runSocialIngest(db, { logger: silent, fetchImpl: async () => ({ text: '<!DOCTYPE html>login', status: 200, attempts: 1 }) });
   assert.equal(blocked.status, 'failed', '試算表被改回私人（回登入頁）要 fail closed');
-  assert.equal(getHealth(db).db.social_accounts, 113);
+  assert.equal(getHealth(db).db.social_accounts, 114, '失敗時保留舊資料');
 });
 
 /* ---------------- Review 修正的回歸測試（M1/M2/M3/M4/M5） ---------------- */
@@ -318,7 +322,7 @@ test('M4: 社群帳號數掉超過 20% 時 fail closed，保留舊資料', async
     fetchImpl: async () => ({ text: csv, status: 200, headers: {}, bytes: csv.length, sha256: 'x', attempts: 1 }),
   });
   assert.equal(ok.status, 'success');
-  assert.equal(ok.accounts, 113);
+  assert.equal(ok.accounts, 114, '113 位 facebook + 吳思瑤的 threads');
 });
 
 test('M5: 新聞同步有時間預算，用完標記 partial 而不是失敗', async () => {
@@ -568,7 +572,7 @@ test('社群更正表：覆蓋整理表的錯誤網址，並清掉屬於舊網�
   const overrides = [{ legislator: name, url: 'https://www.facebook.com/correct-page/', page_name: `${name} 粉專` }];
   const result = normalizeSocial(csv, idByName, { overrides });
 
-  assert.deepEqual(result.overridesApplied, [name]);
+  assert.deepEqual(result.overridesApplied, [`${name}(facebook)`]);
   const fixed = result.accounts.find((a) => a.legislator_id === target.legislator_id);
   assert.equal(fixed.url, 'https://www.facebook.com/correct-page/');
   assert.equal(fixed.source, 'override');
@@ -607,18 +611,66 @@ test('社群更正表：補上整理表沒有的委員；非 facebook 網址要 
   );
 });
 
-test('真實更正表檔案：9 筆都對得到在職委員，且都是 facebook 網址', async () => {
+test('社群更正表：支援 threads（整理表沒有這個平台，只能由更正表補）', () => {
+  const db = seeded();
+  const dataset = buildDataset(fixture('id9.json'), fixture('id14.json'));
+  const idByName = new Map(dataset.legislators.map((l) => [newsName(l.name), l.id]));
+  const csv = fixtureText('social.csv');
+  const before = normalizeSocial(csv, idByName).accounts;
+  const target = dataset.legislators.find((l) => before.some((a) => a.legislator_id === l.id));
+
+  const result = normalizeSocial(csv, idByName, {
+    overrides: [{ legislator: target.name, platform: 'threads', action: 'add', url: 'https://www.threads.com/@someone' }],
+  });
+  assert.deepEqual(result.overridesApplied, [`${target.name}(threads)`]);
+  const added = result.accounts.filter((a) => a.legislator_id === target.id);
+  assert.equal(added.length, 2, '臉書列保留、Threads 另外新增一列');
+  assert.deepEqual(added.map((a) => a.platform).sort(), ['facebook', 'threads']);
+  assert.equal(added.find((a) => a.platform === 'threads').source, 'override');
+
+  // 同一平台的 add 不該重複插入
+  const again = normalizeSocial(csv, idByName, {
+    overrides: [{ legislator: target.name, platform: 'facebook', action: 'add', url: 'https://www.facebook.com/dup/' }],
+  });
+  assert.equal(again.accounts.filter((a) => a.legislator_id === target.id && a.platform === 'facebook').length, 1);
+
+  // 平台與網址格式要對得上
+  assert.throws(
+    () => normalizeSocial(csv, idByName, { overrides: [{ legislator: target.name, platform: 'threads', url: 'https://www.facebook.com/x/' }] }),
+    DataValidationError,
+    'threads 平台不接受 facebook 網址',
+  );
+  assert.throws(
+    () => normalizeSocial(csv, idByName, { overrides: [{ legislator: target.name, platform: 'twitter', url: 'https://x.com/x' }] }),
+    DataValidationError,
+    '不支援的平台要 fail closed',
+  );
+
+  // 寫進資料庫：一位委員可以有兩個平台
+  const stored = normalizeSocial(csv, idByName, {
+    overrides: [{ legislator: target.name, platform: 'threads', action: 'add', url: 'https://www.threads.com/@someone' }],
+  });
+  applySocial(db, stored.accounts, { fetchedAt: '2026-09-30T09:00:00.000Z' });
+  assert.equal(Number(db.prepare('SELECT COUNT(*) AS n FROM social_accounts WHERE legislator_id = ?').get(target.id).n), 2);
+});
+
+test('真實更正表檔案：16 筆（含 1 筆 threads）、平台與網址格式一致、沒有重複', async () => {
   const file = JSON.parse(readFileSync(fileURLToPath(new URL('../server/social-overrides.json', import.meta.url)), 'utf8'));
   const db = seeded();
   const dataset = buildDataset(fixture('id9.json'), fixture('id14.json'));
   const idByName = new Map(dataset.legislators.map((l) => [newsName(l.name), l.id]));
   const result = normalizeSocial(fixtureText('social.csv'), idByName, { overrides: file.overrides });
 
-  assert.equal(file.overrides.length, 9);
-  assert.equal(result.overridesApplied.length, 9, '每一筆都要對到委員');
+  assert.equal(file.overrides.length, 16);
+  assert.equal(result.overridesApplied.length, 16, '每一筆都要對到委員');
+  assert.equal(file.overrides.filter((o) => o.platform === 'threads').length, 1);
   for (const o of file.overrides) {
-    assert.match(o.url, /^https:\/\/(www\.|m\.)?facebook\.com\//);
-    assert.ok(o.reason && o.verified_at, '每筆更正都要寫原因與確認日期');
+    const platform = o.platform ?? 'facebook';
+    assert.ok(platform === 'facebook' || platform === 'threads', `${o.legislator} 平台不合法`);
+    if (platform === 'threads') assert.match(o.url, /^https:\/\/(www\.)?threads\.(com|net)\/@[\w.]+\/?$/, `${o.legislator} threads 網址格式`);
+    else assert.match(o.url, /^https:\/\/(www\.|m\.)?facebook\.com\//, `${o.legislator} facebook 網址格式`);
+    assert.ok(o.reason && o.verified_at, `${o.legislator} 缺 reason 或 verified_at`);
   }
-  assert.equal(new Set(result.accounts.map((a) => a.url)).size, result.accounts.length, '更正後不該出現重複網址');
+  const keys = result.accounts.map((a) => `${a.legislator_id}|${a.platform}|${a.url}`);
+  assert.equal(new Set(keys).size, keys.length, '不該有重複');
 });

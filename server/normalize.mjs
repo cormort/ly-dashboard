@@ -648,6 +648,12 @@ export function parseCsv(text) {
   return rows.filter((r) => r.some((x) => x.trim() !== ''));
 }
 
+/** 各平台可接受的網址格式（更正表用；整理表本身只收 facebook） */
+const SOCIAL_URL_PATTERNS = {
+  facebook: /^https:\/\/(www\.|m\.)?facebook\.com\/\S+$/,
+  threads: /^https:\/\/(www\.)?threads\.(com|net)\/@[\w.]+\/?$/,
+};
+
 const SOCIAL_COLUMNS = { name: '姓名', pageName: '臉書專頁名稱', latestDate: '最新貼文日期', summary: '最新貼文主題摘要', url: '貼文或粉專連結' };
 
 /**
@@ -688,6 +694,8 @@ export function normalizeSocial(csvText, legislatorIdByNewsName, { overrides = [
   const warnings = unmatched.length ? [`社群整理表有 ${unmatched.length} 個姓名對不到委員：${unmatched.join('、')}`] : [];
 
   // 更正表（server/social-overrides.json）：整理表是人工維護的，貼錯網址時用這份覆蓋。
+  // - platform：facebook（預設）或 threads（整理表沒有 threads 欄位，只能由更正表補）
+  // - action：replace（預設，覆蓋同平台的既有列）或 add（新增一個平台，不動其他列）
   // 覆蓋時**清掉 latest_post_***：那筆貼文摘要屬於舊網址，留著會變成「顯示別人粉專的貼文」。
   const applied = [];
   for (const override of overrides) {
@@ -696,29 +704,41 @@ export function normalizeSocial(csvText, legislatorIdByNewsName, { overrides = [
       warnings.push(`更正表的「${override.legislator}」對不到在職委員，已略過`);
       continue;
     }
-    if (!/^https:\/\/(www\.|m\.)?facebook\.com\//.test(override.url ?? '')) {
-      throw new DataValidationError(`更正表的網址不是 facebook 專頁：${override.url}`);
+    const platform = override.platform ?? 'facebook';
+    if (!SOCIAL_URL_PATTERNS[platform]) {
+      throw new DataValidationError(`更正表有不支援的平台「${platform}」（${override.legislator}）`);
     }
-    const index = accounts.findIndex((a) => a.legislator_id === legislatorId);
+    if (!SOCIAL_URL_PATTERNS[platform].test(override.url ?? '')) {
+      throw new DataValidationError(`更正表的 ${platform} 網址格式不符：${override.url}`);
+    }
     const entry = {
       legislator_id: legislatorId,
-      platform: 'facebook',
+      platform,
       page_name: override.page_name ?? '',
       url: override.url,
       latest_post_date: '',
       latest_post_summary: '',
       source: 'override',
     };
-    if (index >= 0) {
-      warnings.push(`以更正表覆蓋 ${override.legislator} 的粉專：${accounts[index].url} → ${override.url}`);
+    const index = accounts.findIndex((a) => a.legislator_id === legislatorId && a.platform === platform);
+    if (index >= 0 && override.action !== 'add') {
+      warnings.push(`以更正表覆蓋 ${override.legislator} 的 ${platform}：${accounts[index].url} → ${override.url}`);
       accounts[index] = entry;
+    } else if (index >= 0) {
+      warnings.push(`更正表略過 ${override.legislator} 的 ${platform}（已存在且 action=add）`);
+      continue;
     } else {
-      warnings.push(`更正表補上 ${override.legislator} 的粉專：${override.url}`);
+      warnings.push(`更正表補上 ${override.legislator} 的 ${platform}：${override.url}`);
       accounts.push(entry);
     }
-    applied.push(override.legislator);
+    applied.push(`${override.legislator}(${platform})`);
   }
   for (const account of accounts) if (!account.source) account.source = 'sheet';
+
+  const duplicated = accounts.map((a) => `${a.legislator_id}|${a.platform}|${a.url}`);
+  if (new Set(duplicated).size !== duplicated.length) {
+    throw new DataValidationError('社群帳號出現重複（同一位委員、同一平台、同一網址）');
+  }
 
   return { accounts, warnings, overridesApplied: applied };
 }

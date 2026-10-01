@@ -36,10 +36,31 @@
 更正時會**清空 `latest_post_date`／`latest_post_summary`**：那筆貼文摘要屬於舊（錯誤）網址，
 留著等於顯示別人粉專的貼文。等整理表更新這 9 筆的貼文欄位後會自動補回。
 
+### 第二批修正（7 筆「目前無法查看」）
+
+| 委員 | 更正後 | 頁面顯示 | 追蹤者 |
+| --- | --- | --- | --- |
+| 吳思瑤 | **Threads** `threads.com/@wusuyao541` | 吳思瑤（@wusuyao541） | 13 萬 |
+| 翁曉玲 | `facebook.com/p/翁曉玲-Hsiao-Ling-Weng-61555223878555/` | 翁曉玲 Hsiao-Ling Weng | 2.8 萬 |
+| 莊瑞雄 | `facebook.com/dpp.ptbear/` | 莊瑞雄 | 7.3 萬 |
+| 邱若華 | `facebook.com/Tai.Chill2022/` | 邱若華 | 3 萬 |
+| 顏寬恒 | `facebook.com/kuanheng99/` | 顏寬恒 | 16 萬 |
+| 馬文君 | `facebook.com/mawenchun/` | 馬文君 | 1.6 萬 |
+| 黃秀芳 | `facebook.com/smilefangfang/` | 黃秀芳 | 4 萬 |
+
+吳思瑤是 **Threads**（不是臉書）：更正表新增 `platform` 與 `action` 兩個欄位，
+`action: "add"` 表示「新增一個平台」而不是覆蓋既有列，所以她的臉書列（`taipeineedyou`，目前無法查看）**保留不動**，
+委員檔案會同時顯示「臉書：…」與「Threads：…」。要不要移除那條無法查看的臉書連結，等你決定。
+
 ### 尚未處理
 
-- **陳永康**：原網址是中國國民黨 KMT 粉專，這次未提供替代網址。
-- **7 筆「目前無法查看」**（吳思瑤、翁曉玲、莊瑞雄、邱若華、顏寬恒、馬文君、黃秀芳）：粉專可能已刪除／改名／限制分享，需人工確認。
+- **陳永康**：原網址是中國國民黨 KMT 粉專，兩批都沒有提供替代網址。
+
+### 更正表現況
+
+`server/social-overrides.json` 共 **16 筆**（15 筆 facebook ＋ 1 筆 threads），
+每筆都有 `reason` 與 `verified_at`；同步時套用，`social_accounts.source = 'override'` 可辨識。
+帳號總數 113 → **114**（113 位 facebook ＋ 吳思瑤的 threads）。
 
 ## ❌ 原始判定：指向其他實體（已於上表修正）
 
