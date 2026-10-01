@@ -394,6 +394,8 @@ export interface NewsArticlesResponse {
   source_total: number;
   /** 前 30 家媒體與報導則數（不受媒體條件影響） */
   sources: { name: string; count: number }[];
+  /** 只有 scope=officials 才有：首長名單（依則數排序），party 欄放「機關＋職稱」 */
+  people?: { id: string; name: string; party: string; count: number }[];
   items: NewsArticle[];
 }
 

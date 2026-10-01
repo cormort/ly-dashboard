@@ -318,6 +318,12 @@ test('最近動態：取貼文／新聞／議案中最新者排序，只列在�
   assert.ok(listNewsArticles(db, { source: outlet }).items.every((a) => a.source === outlet), '依媒體篩選');
   assert.equal(listNewsArticles(db, { source: outlet }).sources[0].name, outlet, '媒體統計不受媒體條件影響');
   assert.equal(listNewsArticles(db, { q: '丁學忠' }).items.every((a) => a.title.includes('丁學忠')), true, '關鍵字比對標題');
+  db.prepare("INSERT INTO topic_news(topic, url, title, source, published_at, fetched_at) VALUES('official:卓榮泰', 'https://example.com/o1', '卓榮泰談物價', 'UDN', '2026-09-30T00:00:00.000Z', '2026-09-30T00:00:00.000Z')").run();
+  const officialNews = listNewsArticles(db, { scope: 'officials' });
+  assert.equal(officialNews.total, 1);
+  assert.equal(officialNews.items[0].legislators[0].name, '卓榮泰', '首長新聞列出被提到的首長');
+  assert.equal(officialNews.people.find((p) => p.id === '卓榮泰').count, 1, '首長名單附則數');
+  assert.equal(listNewsArticles(db, { scope: 'officials', legislator: '劉世芳' }).total, 0);
   const { sources, source_total: sourceTotal } = listNews(db, {});
   assert.ok(sources.length > 0 && sources.length <= Math.min(12, sourceTotal), '新聞來源最多 12 家');
   assert.ok(sources.every((s, i, a) => i === 0 || a[i - 1].count >= s.count), '依則數排序');

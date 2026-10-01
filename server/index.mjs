@@ -146,7 +146,7 @@ export function createServer(db) {
           case '/api/v1/news':
             return sendJson(res, 200, listNews(db, { legislator: q.legislator || null, limit: q.limit }));
           case '/api/v1/news/articles':
-            return sendJson(res, 200, listNewsArticles(db, { q: q.q, source: q.source, legislator: q.legislator, limit: q.limit, offset: q.offset }));
+            return sendJson(res, 200, listNewsArticles(db, { q: q.q, source: q.source, legislator: q.legislator, scope: q.scope, limit: q.limit, offset: q.offset }));
           case '/api/v1/rankings':
             return sendJson(res, 200, listRankings(db, { type: q.type || 'all', days: q.days, limit: q.limit }));
           case '/api/v1/changes':

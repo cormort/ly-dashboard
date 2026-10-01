@@ -335,6 +335,8 @@ export async function runBillsIngest(db, { logger = console, fetchImpl = fetchJs
   }
 }
 
+const OFFICIALS = JSON.parse(readFileSync(new URL('./officials.json', import.meta.url), 'utf8')).officials;
+
 export function newsFeedUrl(name, q = `"${name}" 立委`) {
   const qs = new URLSearchParams({ q: `${q} when:${CONFIG.news.windowDays}d`, hl: 'zh-TW', gl: 'TW', ceid: 'TW:zh-Hant' });
   return `${CONFIG.news.url}?${qs}`;
@@ -394,6 +396,18 @@ export async function runNewsIngest(
     upsertTopicNews(db, 'dgbas', parseNewsRss(text, { name: '主計' }).filter((n) => n.published_at >= cutoff), { fetchedAt: now().toISOString() });
   } catch (error) {
     logger.warn(`[news] 主計總處新聞抓取失敗：${error?.message || error}`);
+  }
+  // 機關首長：逐位抓，標題含姓名才收（兩字姓名另需標題含機關關鍵字）；失敗只記警告
+  for (const o of OFFICIALS) {
+    if (Date.now() >= deadline) break;
+    await pause(delayMs);
+    try {
+      const { text } = await fetchImpl(newsFeedUrl(o.name, `"${o.name}" ${o.agency}`), { ua: CONFIG.userAgent, text: true, retries: 2 });
+      const items = parseNewsRss(text, { name: o.name }).filter((n) => n.published_at >= cutoff && (!o.hint || o.hint.some((h) => n.title.includes(h))));
+      upsertTopicNews(db, `official:${o.name}`, items, { fetchedAt: now().toISOString() });
+    } catch (error) {
+      logger.warn(`[news] ${o.agency}${o.title}${o.name} 新聞抓取失敗：${error?.message || error}`);
+    }
   }
   const pruned = pruneNews(db, { keepDays: CONFIG.news.keepDays, now: now() });
 

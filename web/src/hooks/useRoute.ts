@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 
-export type Route = 'home' | 'dashboard' | 'legislators' | 'bills' | 'budget' | 'rankings' | 'compare' | 'funds' | 'agencies' | 'foundations' | 'administrative' | 'dgbas' | 'committees' | 'news';
+export type Route = 'home' | 'dashboard' | 'legislators' | 'bills' | 'budget' | 'rankings' | 'compare' | 'funds' | 'agencies' | 'foundations' | 'administrative' | 'dgbas' | 'committees' | 'news' | 'officials';
 
 const PATHS: Record<Route, string> = {
   // 預設首頁是總覽；最近動態移到 /activity
@@ -18,6 +18,7 @@ const PATHS: Record<Route, string> = {
   dgbas: '/dgbas',
   committees: '/committees',
   news: '/news',
+  officials: '/officials',
 };
 
 export function routeOf(pathname: string): Route {
@@ -34,6 +35,7 @@ export function routeOf(pathname: string): Route {
   if (pathname.startsWith('/dgbas')) return 'dgbas';
   if (pathname.startsWith('/committees')) return 'committees';
   if (pathname.startsWith('/news')) return 'news';
+  if (pathname.startsWith('/officials')) return 'officials';
   // `/dashboard` 是舊網址，一併導到總覽
   return 'dashboard';
 }

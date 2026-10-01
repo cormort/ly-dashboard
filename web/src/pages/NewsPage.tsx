@@ -11,6 +11,8 @@ import { partyStyle } from '../lib/parties';
 export interface NewsPageProps {
   refreshToken: number;
   onOpenId: (id: string) => void;
+  /** officials＝機關首長新聞（server/officials.json），預設看委員新聞 */
+  scope?: 'legislators' | 'officials';
 }
 
 const PAGE = 30;
@@ -27,7 +29,9 @@ const readFilters = (): Filters => {
 };
 
 /** 新聞：所有委員的新聞合併成一份（同一篇只列一次），可依關鍵字與媒體篩選，並看各媒體的報導量。 */
-export function NewsPage({ refreshToken, onOpenId }: NewsPageProps) {
+export function NewsPage({ refreshToken, onOpenId, scope = 'legislators' }: NewsPageProps) {
+  const officials = scope === 'officials';
+  const route = officials ? 'officials' : 'news';
   const [filters, setFilters] = useState<Filters>(readFilters);
   const [draft, setDraft] = useState(filters.q);
   const [page, setPage] = useState(0);
@@ -45,12 +49,14 @@ export function NewsPage({ refreshToken, onOpenId }: NewsPageProps) {
     const next = { ...filters, ...patch };
     setFilters(next);
     setPage(0);
-    window.history.replaceState(null, '', pathFor('news', { ...next }));
+    window.history.replaceState(null, '', pathFor(route, { ...next }));
   };
 
-  const res = useApi<NewsArticlesResponse>(buildUrl('/news/articles', { ...filters, limit: PAGE, offset: page * PAGE }), { refreshToken });
+  const res = useApi<NewsArticlesResponse>(buildUrl('/news/articles', { ...filters, scope, limit: PAGE, offset: page * PAGE }), { refreshToken });
   const roster = useApi<LegislatorsResponse>(buildUrl('/legislators', { session: 'all' }), { refreshToken });
-  const people = (roster.data?.items ?? []).filter((l) => !l.former).sort((a, b) => b.news_count - a.news_count || a.name.localeCompare(b.name, 'zh-Hant'));
+  const people = officials
+    ? (res.data?.people ?? []).map((p) => ({ id: p.id, name: p.name, count: p.count }))
+    : (roster.data?.items ?? []).filter((l) => !l.former).map((l) => ({ id: l.id, name: l.name, count: l.news_count })).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'zh-Hant'));
   const picked = people.find((l) => l.id === filters.legislator);
   const data = res.data;
   const pages = data ? Math.max(1, Math.ceil(data.total / PAGE)) : 1;
@@ -63,8 +69,10 @@ export function NewsPage({ refreshToken, onOpenId }: NewsPageProps) {
   return (
     <>
       <div className="page-head">
-        <h1>新聞</h1>
-        <p className="muted">標題提到委員的報導（Google 新聞，近 180 天），同一篇只列一次。</p>
+        <h1>{officials ? '機關首長新聞' : '新聞'}</h1>
+        <p className="muted">
+          {officials ? '標題提到行政院院長、副院長與各部會首長的報導（名單見 server/officials.json）' : '標題提到委員的報導'}（Google 新聞，近 180 天），同一篇只列一次。
+        </p>
       </div>
 
       <form
@@ -75,11 +83,11 @@ export function NewsPage({ refreshToken, onOpenId }: NewsPageProps) {
           change({ q: draft.trim() });
         }}
       >
-        <select value={filters.legislator} aria-label="依委員分析" onChange={(event) => change({ legislator: event.target.value, source: '' })}>
-          <option value="">全部委員</option>
+        <select value={filters.legislator} aria-label={officials ? '依首長分析' : '依委員分析'} onChange={(event) => change({ legislator: event.target.value, source: '' })}>
+          <option value="">{officials ? '全部首長' : '全部委員'}</option>
           {people.map((l) => (
             <option key={l.id} value={l.id}>
-              {l.name} {l.news_count}
+              {l.name} {l.count}
             </option>
           ))}
         </select>
@@ -142,7 +150,14 @@ export function NewsPage({ refreshToken, onOpenId }: NewsPageProps) {
                       {a.source}
                     </button>
                     {a.legislators.map((l) => (
-                      <button key={l.id} type="button" className="name-button" style={{ color: partyStyle(l.party).color }} onClick={() => onOpenId(l.id)}>
+                      <button
+                        key={l.id}
+                        type="button"
+                        className="name-button"
+                        style={officials ? undefined : { color: partyStyle(l.party).color }}
+                        title={officials ? l.party : undefined}
+                        onClick={() => (officials ? change({ legislator: l.id }) : onOpenId(l.id))}
+                      >
                         {l.name}
                       </button>
                     ))}

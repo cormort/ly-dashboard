@@ -864,15 +864,24 @@ export function listNews(db, { legislator = null, limit = 10 } = {}) {
 
 /**
  * 新聞頁：同一篇報導（網址相同）合併成一列，附上提到的委員；可依關鍵字（標題）、媒體、委員篩選。
+ * `scope=officials` 改看機關首長（server/officials.json）的新聞，`legislator` 此時是首長姓名，另回傳 `people`（依則數排序）。
  * 媒體統計在套用媒體條件「之前」算（同 listBills），選了某家後其他家的數字不會消失。
  */
-export function listNewsArticles(db, { q = '', source = '', legislator = '', limit = 30, offset = 0 } = {}) {
+export function listNewsArticles(db, { q = '', source = '', legislator = '', scope = 'legislators', limit = 30, offset = 0 } = {}) {
   const resolvedLimit = Math.max(1, Math.min(Number(limit) || 30, 100));
   const resolvedOffset = Math.max(0, Math.trunc(Number(offset) || 0));
   const keyword = String(q).trim();
-  const people = new Map(db.prepare('SELECT id, name, party FROM legislators').all().map((l) => [l.id, { id: l.id, name: l.name, party: l.party }]));
+  const officials = scope === 'officials';
+  const people = officials
+    ? new Map(OFFICIALS.map((o) => [o.name, { id: o.name, name: o.name, party: `${o.agency}${o.title}` }]))
+    : new Map(db.prepare('SELECT id, name, party FROM legislators').all().map((l) => [l.id, { id: l.id, name: l.name, party: l.party }]));
+  const newsRows = officials
+    ? db.prepare("SELECT substr(topic, 10) AS legislator_id, * FROM topic_news WHERE topic LIKE 'official:%' ORDER BY published_at DESC, url").all()
+    : db.prepare('SELECT * FROM news ORDER BY published_at DESC, url').all();
   const byUrl = new Map();
-  for (const r of db.prepare('SELECT * FROM news ORDER BY published_at DESC, url').all()) {
+  const perPerson = new Map();
+  for (const r of newsRows) {
+    perPerson.set(r.legislator_id, (perPerson.get(r.legislator_id) ?? 0) + 1);
     if (legislator && r.legislator_id !== legislator) continue;
     if (keyword && !r.title.includes(keyword)) continue;
     const a = byUrl.get(r.url) ?? byUrl.set(r.url, { url: r.url, title: r.title, source: r.source || '未知', published_at: r.published_at, legislators: [] }).get(r.url);
@@ -886,6 +895,7 @@ export function listNewsArticles(db, { q = '', source = '', legislator = '', lim
     meta: { ...envelope(db), news_fetched_at: getMeta(db, 'news_fetched_at') },
     total: matching.length,
     source_total: counts.size,
+    people: officials ? [...people.values()].map((p) => ({ ...p, count: perPerson.get(p.id) ?? 0 })).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'zh-Hant')) : undefined,
     sources: [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 30).map(([name, count]) => ({ name, count })),
     items: matching.slice(resolvedOffset, resolvedOffset + resolvedLimit),
   };
@@ -1012,6 +1022,7 @@ export function listBudgetMeetings(db, { limit = 15 } = {}) {
  * - 行政法人：fund-config.json 的 administrative，加上標題中「行政法人XXX」
  * - 財團法人：標題中「財團法人XXX」取出的名稱（之後不帶前綴出現也算）；清單外的「基金會」歸到「其他基金會」
  */
+const OFFICIALS = JSON.parse(readFileSync(new URL('./officials.json', import.meta.url), 'utf8')).officials;
 const FUND_CONFIG = JSON.parse(readFileSync(new URL('./fund-config.json', import.meta.url), 'utf8'));
 export const OTHER_FUND = '其他基金';
 export const OTHER_FOUNDATION = '其他基金會';
