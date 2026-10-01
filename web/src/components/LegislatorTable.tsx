@@ -81,6 +81,7 @@ export function LegislatorTable({ items, isTracked, onToggleTrack, onOpen }: Leg
                 </button>
               </th>
             ))}
+            <th scope="col">主要媒體</th>
             <th scope="col">委員會</th>
           </tr>
         </thead>
@@ -117,6 +118,7 @@ export function LegislatorTable({ items, isTracked, onToggleTrack, onOpen }: Leg
                 <td className="num">{l.bill_count}</td>
                 <td className="num">{l.news_count}</td>
                 <td className="num">{latestPost(l) ? latestPost(l).slice(5).replace('-', '/') : '—'}</td>
+                <td>{l.top_source ? `${l.top_source.name} ${Math.round((l.top_source.count / l.news_count) * 100)}%` : '—'}</td>
                 <td className="committees">
                   {l.committees.length
                     ? l.committees.map((c) => (

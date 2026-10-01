@@ -15,7 +15,7 @@ import { ErrorState, LoadingState } from '../components/DataStates';
 import { useApi, type ApiResource } from '../hooks/useApi';
 import { pathFor, type Route } from '../hooks/useRoute';
 import { billTitle } from '../lib/format';
-import { partyStyle } from '../lib/parties';
+import { partyStyle, sortParties } from '../lib/parties';
 
 export interface DashboardPageProps {
   refreshToken: number;
@@ -83,7 +83,7 @@ export function DashboardPage({ refreshToken, onOpenId, onNavigate }: DashboardP
   const [regionsOpen, setRegionsOpen] = useState(false);
   // 每張卡只取 3 則：總覽的任務是「指出重點並導向」，不是把所有清單攤開
   const activity = useApi<ActivityResponse>(buildUrl('/activity', { limit: 4 }), opts);
-  const news = useApi<NewsResponse>(buildUrl('/news', { limit: 3 }), opts);
+  const news = useApi<NewsResponse>(buildUrl('/news', { limit: 8 }), opts);
   const bills = useApi<BillsResponse>(buildUrl('/bills', { limit: 3 }), opts);
   const passed = useApi<BillsResponse>(buildUrl('/bills', { status: '三讀', limit: 3 }), opts);
   const budget = useApi<BudgetResponse>(buildUrl('/budget', { limit: 3 }), opts);
@@ -171,6 +171,33 @@ export function DashboardPage({ refreshToken, onOpenId, onNavigate }: DashboardP
               ))}
             </ul>
           )}
+        </Card>
+
+        <Card title="新聞來源" href={link('home')} onNavigate={onNavigate} resource={news}>
+          {(data) => {
+            const max = Math.max(1, ...data.sources.map((s) => s.count));
+            return (
+              <>
+                <p className="muted">近 180 天 {data.source_total} 家媒體；長條為報導則數，顏色為提到的委員黨籍比例</p>
+                <ul className="source-bars">
+                  {data.sources.map((s) => {
+                    const total = Object.values(s.parties).reduce((a, b) => a + b, 0) || 1;
+                    return (
+                      <li key={s.name}>
+                        <span className="source-name">{s.name}</span>
+                        <span className="source-bar" style={{ width: `${(s.count / max) * 100}%` }} title={sortParties(Object.keys(s.parties)).map((p) => `${partyStyle(p).short} ${s.parties[p]}`).join('、')}>
+                          {sortParties(Object.keys(s.parties)).map((p) => (
+                            <span key={p} style={{ flexGrow: s.parties[p] / total, background: partyStyle(p).color }} />
+                          ))}
+                        </span>
+                        <span className="source-count">{s.count}</span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </>
+            );
+          }}
         </Card>
 
         <Card title="法案最新進度" href={link('bills')} onNavigate={onNavigate} resource={bills}>

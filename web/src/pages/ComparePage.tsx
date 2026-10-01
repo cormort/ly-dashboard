@@ -122,6 +122,20 @@ export function ComparePage({ refreshToken, onOpenId }: ComparePageProps) {
                 ))}
               </tr>
               <tr>
+                <th scope="row">新聞主要媒體</th>
+                {items.map((i) => (
+                  <td key={i.legislator.id}>
+                    <ul className="plain-list">
+                      {i.top_sources.map((s) => (
+                        <li key={s.name}>
+                          {s.name} <span className="muted">{s.count}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </td>
+                ))}
+              </tr>
+              <tr>
                 <th scope="row">最常涉及的法律</th>
                 {items.map((i) => (
                   <td key={i.legislator.id}>

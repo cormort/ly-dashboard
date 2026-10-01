@@ -186,6 +186,8 @@ export interface Legislator {
   bill_count: number;
   /** 近 180 天新聞則數 */
   news_count: number;
+  /** 報導最多的媒體（沒有新聞時為 null） */
+  top_source: { name: string; count: number } | null;
   photo_url: string | null;
   degree: string | null;
   experience: string | null;
@@ -340,6 +342,8 @@ export interface CompareItem {
   passed_bills: number;
   news_30d: number;
   committees: { id: string; is_convener: boolean }[];
+  /** 新聞最多的前 5 家媒體 */
+  top_sources: { name: string; count: number }[];
   top_laws: BillLawCount[];
 }
 
@@ -367,6 +371,10 @@ export interface NewsResponse {
   meta: Meta & { news_fetched_at: string | null; news_source: { name: string; url: string } };
   total: number;
   count: number;
+  /** 新聞來源分析：前 12 家媒體，count＝報導則數（同網址算一次），parties＝提到的委員黨籍人次 */
+  sources: { name: string; count: number; parties: Record<string, number> }[];
+  /** 媒體家數 */
+  source_total: number;
   items: NewsItem[];
 }
 

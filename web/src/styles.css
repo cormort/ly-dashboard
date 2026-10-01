@@ -921,7 +921,7 @@ a.stat-tile { text-decoration: none; color: inherit; transition: border-color va
 a.stat-tile:hover { border-color: #98a2b3; box-shadow: var(--card-base-hover); transform: translateY(-2px); }
 /* 固定兩欄（寬螢幕）：第一張卡橫跨兩欄當作「主要焦點」，其餘是等重的次要卡。
    原本 auto-fill 會讓 8 張卡擠成 3-4 欄，每張都一樣大 → 看不出重點。 */
-.dash-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4); align-items: start; }
+.dash-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4); align-items: stretch; }
 .dash-card { padding: var(--space-4) var(--space-4); }
 .dash-card h2 { font-size: var(--fs-base); }
 /* 焦點卡：標題大一級、內文大一級，讓視線先落在這裡 */
@@ -1047,3 +1047,11 @@ a.stat-tile:hover { border-color: #98a2b3; box-shadow: var(--card-base-hover); t
 .pager { display: flex; align-items: center; justify-content: center; gap: var(--space-3); margin-top: var(--space-4); font-size: var(--fs-sm); }
 .pager .link-button { border: 1px solid var(--rule); border-radius: var(--radius-md); padding: 4px 12px; background: var(--surface); }
 .pager .link-button:disabled { opacity: 0.45; }
+
+/* 總覽「新聞來源」：媒體名稱｜依黨籍分色的長條｜則數 */
+.source-bars { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
+.source-bars li { display: grid; grid-template-columns: 9em 1fr 3em; align-items: center; gap: 8px; font-size: 0.9rem; }
+.source-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.source-bar { display: flex; height: 10px; min-width: 2px; border-radius: 3px; overflow: hidden; }
+.source-bar.mono { background: var(--ink); opacity: 0.45; }
+.source-count { text-align: right; font-variant-numeric: tabular-nums; }

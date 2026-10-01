@@ -98,6 +98,11 @@ export function listLegislators(db, query = {}) {
   // 名錄表格要用的活動量：提案數、近期新聞數（一次 GROUP BY，不逐人查）
   const billCount = new Map(db.prepare('SELECT legislator_id, COUNT(*) AS n FROM bill_sponsors GROUP BY legislator_id').all().map((r) => [r.legislator_id, Number(r.n)]));
   const newsCount = new Map(db.prepare('SELECT legislator_id, COUNT(*) AS n FROM news GROUP BY legislator_id').all().map((r) => [r.legislator_id, Number(r.n)]));
+  // 每位委員報導最多的媒體（同數量取名稱較前者）
+  const topSource = new Map();
+  for (const r of db.prepare("SELECT legislator_id, COALESCE(NULLIF(source, ''), '未知') AS name, COUNT(*) AS n FROM news GROUP BY 1, 2 ORDER BY n DESC, name").all()) {
+    if (!topSource.has(r.legislator_id)) topSource.set(r.legislator_id, { name: r.name, count: Number(r.n) });
+  }
   const socialByLegislator = new Map();
   for (const s of db.prepare('SELECT * FROM social_accounts ORDER BY platform, url').all()) {
     const list = socialByLegislator.get(s.legislator_id) ?? [];
@@ -156,6 +161,7 @@ export function listLegislators(db, query = {}) {
       social: socialByLegislator.get(id) ?? [],
       bill_count: billCount.get(id) ?? 0,
       news_count: newsCount.get(id) ?? 0,
+      top_source: topSource.get(id) ?? null,
       term: scope.term,
       sessions,
       committees,
@@ -827,10 +833,31 @@ export function listNews(db, { legislator = null, limit = 10 } = {}) {
   const rows = legislator
     ? db.prepare(`${select} WHERE n.legislator_id = ? ${order}`).all(legislator, resolvedLimit)
     : db.prepare(`${select} ${order}`).all(resolvedLimit);
+  // 新聞來源分析：各媒體的報導則數（同一網址只算一次）與提到的委員黨籍（人次）；取前 12 家
+  const sourceRows = db
+    .prepare(
+      `SELECT COALESCE(NULLIF(n.source, ''), '未知') AS name, l.party, COUNT(*) AS mentions, COUNT(DISTINCT n.url) AS articles
+       FROM news n JOIN legislators l ON l.id = n.legislator_id ${legislator ? 'WHERE n.legislator_id = ?' : ''} GROUP BY 1, 2`,
+    )
+    .all(...(legislator ? [legislator] : []));
+  const articles = new Map(
+    db
+      .prepare(`SELECT COALESCE(NULLIF(source, ''), '未知') AS name, COUNT(DISTINCT url) AS n FROM news ${legislator ? 'WHERE legislator_id = ?' : ''} GROUP BY 1`)
+      .all(...(legislator ? [legislator] : []))
+      .map((r) => [r.name, Number(r.n)]),
+  );
+  const parties = new Map();
+  for (const r of sourceRows) (parties.get(r.name) ?? parties.set(r.name, {}).get(r.name))[r.party] = Number(r.mentions);
+  const sources = [...articles]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, 12)
+    .map(([name, count]) => ({ name, count, parties: parties.get(name) ?? {} }));
   return {
     meta: { ...envelope(db), news_fetched_at: getMeta(db, 'news_fetched_at'), news_source: { name: CONFIG.news.name, url: 'https://news.google.com/' } },
     total,
     count: rows.length,
+    sources,
+    source_total: articles.size,
     items: rows.map((r) => ({ legislator_id: r.legislator_id, legislator_name: r.legislator_name, legislator_party: r.legislator_party, title: r.title, source: r.source, url: r.url, published_at: r.published_at })),
   };
 }
@@ -1198,6 +1225,10 @@ export function compareLegislators(db, { ids = '' } = {}) {
       passed_bills: bills.filter((b) => PASSED.has(b.status)).length,
       news_30d: Number(db.prepare('SELECT COUNT(*) AS n FROM news WHERE legislator_id = ? AND published_at >= ?').get(id, monthAgo).n),
       committees: committees.map((c) => ({ id: c.committee_id, is_convener: Number(c.is_convener) === 1 })),
+      top_sources: db
+        .prepare("SELECT COALESCE(NULLIF(source, ''), '未知') AS name, COUNT(*) AS count FROM news WHERE legislator_id = ? GROUP BY 1 ORDER BY count DESC, name LIMIT 5")
+        .all(id)
+        .map((r) => ({ name: r.name, count: Number(r.count) })),
       top_laws: [...lawCounts].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([name, count]) => ({ name, count })),
     });
   }

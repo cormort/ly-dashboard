@@ -309,6 +309,13 @@ test('最近動態：取貼文／新聞／議案中最新者排序，只列在�
   assert.equal(ting.news.title, '丁學忠質詢');
   assert.ok(ting.post?.summary);
   assert.equal(listNews(db, {}).items[0].legislator_name, '丁學忠');
+  const tingRow = listLegislators(db, { session: 'all' }).items.find((x) => x.id === idByName.get('丁學忠'));
+  assert.ok(tingRow.top_source && tingRow.top_source.count <= tingRow.news_count, '名冊附每人報導最多的媒體');
+  assert.ok(compareLegislators(db, { ids: tingRow.id }).items[0].top_sources.length > 0, '比較頁附前 5 家媒體');
+  const { sources, source_total: sourceTotal } = listNews(db, {});
+  assert.ok(sources.length > 0 && sources.length <= Math.min(12, sourceTotal), '新聞來源最多 12 家');
+  assert.ok(sources.every((s, i, a) => i === 0 || a[i - 1].count >= s.count), '依則數排序');
+  assert.ok(sources.every((s) => Object.values(s.parties).reduce((x, y) => x + y, 0) >= s.count), '黨籍人次不少於則數');
 });
 
 test('依 id 取單一委員（首頁／法案頁開檔案用）', () => {
