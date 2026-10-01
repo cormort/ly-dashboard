@@ -576,3 +576,13 @@ test('機關回覆與會議附件：依種類分開、標題對出委員、依�
   const named = inner.replies.items.find((r) => r.title.includes('徐欣瑩'));
   assert.deepEqual(named?.legislators.map((l) => l.name), ['徐欣瑩']);
 });
+
+test('社群整理表：有 Threads 欄位才讀，貼文日期與摘要跟著帳號', () => {
+  const dataset = buildDataset(fixture('id9.json'), fixture('id14.json'));
+  const ids = new Map(dataset.legislators.map((l) => [newsName(l.name), l.id]));
+  const [head, first, ...rest] = text('social.csv').trimEnd().split(/\r?\n/);
+  const csv = [`${head},Threads連結,Threads最新貼文日期,Threads最新貼文主題摘要`, `${first},https://www.threads.com/@wu_szuyao,2026-09-28,選戰摘要`, ...rest].join('\n');
+  const threads = normalizeSocial(csv, ids).accounts.filter((a) => a.platform === 'threads');
+  assert.deepEqual(threads.map((a) => [a.url, a.latest_post_date, a.latest_post_summary]), [['https://www.threads.com/@wu_szuyao', '2026-09-28', '選戰摘要']]);
+  assert.equal(normalizeSocial(text('social.csv'), ids).accounts.filter((a) => a.platform === 'threads').length, 0, '沒有欄位就不產生 Threads');
+});

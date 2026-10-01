@@ -655,6 +655,8 @@ const SOCIAL_URL_PATTERNS = {
 };
 
 const SOCIAL_COLUMNS = { name: '姓名', pageName: '臉書專頁名稱', latestDate: '最新貼文日期', summary: '最新貼文主題摘要', url: '貼文或粉專連結' };
+/** Threads 欄位是選填：整理表有加才讀，沒加維持只有臉書 */
+const THREADS_COLUMNS = { url: 'Threads連結', latestDate: 'Threads最新貼文日期', summary: 'Threads最新貼文主題摘要' };
 
 /**
  * 社群帳號整理表 → [{ legislator_id, platform, page_name, url, latest_post_date, latest_post_summary }]。
@@ -666,6 +668,7 @@ export function normalizeSocial(csvText, legislatorIdByNewsName, { overrides = [
   const missing = Object.entries(col).filter(([, i]) => i < 0).map(([key]) => SOCIAL_COLUMNS[key]);
   if (missing.length) throw new DataValidationError(`社群整理表缺少欄位：${missing.join('、')}`);
   if (rows.length < 100) throw new DataValidationError(`社群整理表筆數異常（${rows.length} < 100）`);
+  const threadsCol = Object.fromEntries(Object.entries(THREADS_COLUMNS).map(([key, label]) => [key, header.findIndex((h) => h.trim() === label)]));
 
   const accounts = [];
   const unmatched = [];
@@ -676,6 +679,18 @@ export function normalizeSocial(csvText, legislatorIdByNewsName, { overrides = [
     if (!legislatorId) {
       unmatched.push(name);
       continue;
+    }
+    const threadsUrl = (row[threadsCol.url] ?? '').trim();
+    if (SOCIAL_URL_PATTERNS.threads.test(threadsUrl)) {
+      const threadsDate = (row[threadsCol.latestDate] ?? '').trim();
+      accounts.push({
+        legislator_id: legislatorId,
+        platform: 'threads',
+        page_name: '',
+        url: threadsUrl,
+        latest_post_date: /^\d{4}-\d{2}-\d{2}$/.test(threadsDate) ? threadsDate : '',
+        latest_post_summary: (row[threadsCol.summary] ?? '').trim(),
+      });
     }
     if (!/^https:\/\/(www\.|m\.)?facebook\.com\//.test(url)) continue; // 只收臉書網址，擋掉空白與誤貼
     const date = (row[col.latestDate] ?? '').trim();
