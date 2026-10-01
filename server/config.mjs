@@ -72,10 +72,11 @@ export const CONFIG = {
     news: process.env.LY_SKIP_NEWS === '1',
     social: process.env.LY_SKIP_SOCIAL === '1',
   },
-  // 前端會顯示的兩種「紀錄」保留上限（同步紀錄／異動紀錄）；0 = 不刪
+  // 前端會顯示的兩種「紀錄」保留上限（同步紀錄／異動紀錄）。
+  // 預設 0 = 全部保留（要落地就留著）；要設上限再給環境變數，例：LY_SYNC_RUNS_KEEP=200
   retention: {
-    syncRuns: Number(process.env.LY_SYNC_RUNS_KEEP ?? 200),
-    changeLog: Number(process.env.LY_CHANGE_LOG_KEEP ?? 500),
+    syncRuns: Number(process.env.LY_SYNC_RUNS_KEEP ?? 0),
+    changeLog: Number(process.env.LY_CHANGE_LOG_KEEP ?? 0),
   },
   staleAfterHours: Number(process.env.LY_STALE_HOURS || 36),
   syncIntervalMs: Number(process.env.LY_SYNC_INTERVAL_MS || 24 * 60 * 60 * 1000),

@@ -152,19 +152,23 @@ warnings: ['游錫堃 在本屆無任何會期委員會紀錄（辭職）', '李
 | 議案、預算案、預算報告、委員會會議與紀錄 | **SQLite** | 每次同步整批覆寫 |
 | 新聞標題與連結（`news`） | **SQLite** | **累積**保存 180 天（`LY_NEWS_*`），過期自動刪 |
 | 臉書專頁與最新貼文摘要（`social_accounts`） | **SQLite** | 每次同步整批覆寫；人工更正過的帳號會清空貼文摘要 |
-| 「最近異動」面板（`change_log`） | **SQLite** | **保留最近 500 筆**（`LY_CHANGE_LOG_KEEP`，0＝不刪） |
-| 「同步紀錄」面板（`sync_runs`） | **SQLite** | **保留最近 200 筆**（`LY_SYNC_RUNS_KEEP`，0＝不刪） |
+| 「最近異動」面板（`change_log`） | **SQLite** | **預設全部保留**；可設 `LY_CHANGE_LOG_KEEP=500` 只留最近 500 筆 |
+| 「同步紀錄」面板（`sync_runs`） | **SQLite** | **預設全部保留**；可設 `LY_SYNC_RUNS_KEEP=200` 只留最近 200 筆 |
 | 原始 API 回應快照（`raw_snapshots`，gzip） | **SQLite** | 內容有變才存一份，目前 5 筆；用來回溯「上一版長什麼樣」 |
 | 篩選條件（`?term=&session=&q=…`） | **網址**（可分享、重整後還在） | 不落地 |
 | ⭐ 追蹤名單、卡片／列表偏好、上次造訪 | **瀏覽器 localStorage** | 只在使用者自己的瀏覽器，伺服器看不到 |
 | 「找不到這位委員的資料」等提示 | **前端記憶體** | 重新整理就消失 |
 
-保留上限可調：
+預設**不刪任何紀錄**（使用者確認要落地）。若要限制成長，再給上限：
 
 ```bash
-LY_SYNC_RUNS_KEEP=50 LY_CHANGE_LOG_KEEP=200 node server/ingest.mjs
-curl -s localhost:8787/api/v1/health | jq .retention   # 看目前筆數與上限
+LY_SYNC_RUNS_KEEP=200 LY_CHANGE_LOG_KEEP=500 node server/ingest.mjs   # 只留最近 N 筆；0 = 不刪
+curl -s localhost:8787/api/v1/health | jq .retention                   # 目前筆數與上限
 ```
+
+實測成長量：一輪完整同步約產生 9 筆同步紀錄；異動紀錄只在欄位真的變動時才寫入
+（本次 113 位委員的粉專更正產生 16 筆，之後每次同步 0 筆）。以每天同步一次估算，
+一年約 3,300 筆同步紀錄，對 SQLite 是無感的量。
 
 ## Code Review（2026-09-30）
 

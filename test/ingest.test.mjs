@@ -706,11 +706,19 @@ test('紀錄保留：同步紀錄與異動紀錄只留最近 N 筆，其餘刪�
   assert.equal(Number(db.prepare('SELECT COUNT(*) AS n FROM sync_runs').get().n), 200);
 });
 
-test('紀錄保留：health 回報目前筆數與上限', () => {
+test('紀錄保留：預設不刪（要落地），health 回報目前筆數與上限', () => {
   const db = seeded();
   const health = getHealth(db);
   assert.ok(Number.isFinite(health.db.sync_runs));
-  assert.equal(health.retention.sync_runs.kept, CONFIG.retention.syncRuns);
-  assert.equal(health.retention.change_log.kept, CONFIG.retention.changeLog);
   assert.equal(health.retention.change_log.current, health.db.changes);
+  // 預設 0 = 不刪任何紀錄；使用者確認要落地
+  assert.equal(CONFIG.retention.syncRuns, 0);
+  assert.equal(CONFIG.retention.changeLog, 0);
+  assert.equal(health.retention.sync_runs.kept, 0);
+  // 真的跑一次 pruneLogs 也不該刪東西
+  const insert = db.prepare("INSERT INTO sync_runs(dataset, status, started_at) VALUES('id9','success','2026-09-30T00:00:00.000Z')");
+  for (let i = 0; i < 5; i += 1) insert.run();
+  const before = Number(db.prepare('SELECT COUNT(*) AS n FROM sync_runs').get().n);
+  assert.deepEqual(pruneLogs(db, CONFIG.retention), { sync_runs: 0, change_log: 0 });
+  assert.equal(Number(db.prepare('SELECT COUNT(*) AS n FROM sync_runs').get().n), before, '預設不該刪掉任何紀錄');
 });
