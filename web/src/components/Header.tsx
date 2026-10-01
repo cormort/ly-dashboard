@@ -24,8 +24,9 @@ export interface HeaderProps {
 }
 
 /**
- * 導覽改成兩層（原本一列 9 個項目，每個等重 → 使用者說「雜亂沒有重點」）：
+ * 導覽兩層（原本一列 9 個項目，每個等重 → 使用者說「雜亂沒有重點」）：
  * 上層 5 個主題，進入主題後才顯示該主題的次級頁面。
+ * 上層順序：總覽 → 最近動態 → 委員 → 議事 → 機關／基金。
  */
 interface NavGroup {
   id: string;
@@ -36,6 +37,7 @@ interface NavGroup {
 
 const NAV: NavGroup[] = [
   { id: 'overview', label: '總覽', home: 'dashboard', routes: [{ route: 'dashboard', label: '總覽' }] },
+  { id: 'activity', label: '最近動態', home: 'home', routes: [{ route: 'home', label: '最近動態' }] },
   {
     id: 'members',
     label: '委員',
@@ -68,7 +70,6 @@ const NAV: NavGroup[] = [
       { route: 'dgbas', label: '行政院主計總處' },
     ],
   },
-  { id: 'activity', label: '最近動態', home: 'home', routes: [{ route: 'home', label: '最近動態' }] },
 ];
 
 const groupOf = (route: Route): NavGroup => NAV.find((group) => group.routes.some((item) => item.route === route)) ?? NAV[0];

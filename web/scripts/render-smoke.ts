@@ -192,6 +192,15 @@ expectAll('最近動態（/activity）：站名、導覽、動態／議題／新
 ]);
 expectNone('最上層導覽不該再把所有子頁面平鋪出來', homeHtml, ['排行榜', '法案查詢', '委員比較']);
 check('首頁初始不顯示任何委員', !homeHtml.includes('查看檔案'));
+// 上層導覽順序：總覽 → 最近動態 → 委員 → 議事 → 機關／基金（使用者指定）
+check(
+  '上層導覽的順序是 總覽→最近動態→委員→議事→機關／基金',
+  (() => {
+    const nav = dashboardHtml.match(/<nav aria-label="主要頁面">([\s\S]*?)<\/nav>/)?.[1] ?? '';
+    const labels = [...nav.matchAll(/>([^<>]+)<\/a>/g)].map((m) => m[1].trim()).filter(Boolean);
+    return labels.join('→') === '總覽→最近動態→委員→議事→機關／基金';
+  })(),
+);
 check('不含示範／假資料字串', !/甲黨|示範資料|林怡安|陳宏宇|乙黨/.test(homeHtml));
 check('/funds、/agencies、/foundations、/administrative 各對應一頁', routeOf('/funds') === 'funds' && routeOf('/agencies') === 'agencies' && routeOf('/foundations') === 'foundations' && routeOf('/administrative') === 'administrative' && routeOf('/dgbas') === 'dgbas');
 check('/activity 對應最近動態、舊網址 /dashboard 仍是總覽', routeOf('/activity') === 'home' && routeOf('/dashboard') === 'dashboard' && routeOf('/') === 'dashboard');
