@@ -50,7 +50,7 @@ export function NewsPage({ refreshToken, onOpenId }: NewsPageProps) {
 
   const res = useApi<NewsArticlesResponse>(buildUrl('/news/articles', { ...filters, limit: PAGE, offset: page * PAGE }), { refreshToken });
   const roster = useApi<LegislatorsResponse>(buildUrl('/legislators', { session: 'all' }), { refreshToken });
-  const people = (roster.data?.items ?? []).filter((l) => !l.former).sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'));
+  const people = (roster.data?.items ?? []).filter((l) => !l.former).sort((a, b) => b.news_count - a.news_count || a.name.localeCompare(b.name, 'zh-Hant'));
   const picked = people.find((l) => l.id === filters.legislator);
   const data = res.data;
   const pages = data ? Math.max(1, Math.ceil(data.total / PAGE)) : 1;
@@ -79,7 +79,7 @@ export function NewsPage({ refreshToken, onOpenId }: NewsPageProps) {
           <option value="">全部委員</option>
           {people.map((l) => (
             <option key={l.id} value={l.id}>
-              {l.name}（{partyStyle(l.party).short}）
+              {l.name} {l.news_count}
             </option>
           ))}
         </select>
