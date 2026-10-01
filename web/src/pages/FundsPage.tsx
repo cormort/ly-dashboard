@@ -11,7 +11,6 @@ export interface FundsPageProps {
   type: FundType;
   refreshToken: number;
   onOpenId: (id: string) => void;
-  onNavigate: (href: string) => void;
 }
 
 const KIND_LABEL: Record<FundKind, string> = { news: '新聞', post: '臉書', bill: '委員提案', budget: '預算審議', report: '預算中心報告' };
@@ -37,7 +36,7 @@ const COPY = {
 } as const;
 
 /** 基金、機關、財團法人、行政法人四頁共用：總覽各來源中提到該類的項目（關鍵字見 server/fund-config.json） */
-export function FundsPage({ type, refreshToken, onOpenId, onNavigate }: FundsPageProps) {
+export function FundsPage({ type, refreshToken, onOpenId }: FundsPageProps) {
   const [filters, setFilters] = useState<Filters>(readFilters);
   const [page, setPage] = useState(0);
   useEffect(() => {
@@ -64,22 +63,6 @@ export function FundsPage({ type, refreshToken, onOpenId, onNavigate }: FundsPag
 
   return (
     <>
-      <nav className="subnav" aria-label="機關／基金分類">
-        {(Object.keys(COPY) as FundType[]).map((t) => (
-          <a
-            key={t}
-            href={pathFor(COPY[t].route)}
-            aria-current={t === type ? 'page' : undefined}
-            onClick={(event) => {
-              event.preventDefault();
-              onNavigate(pathFor(COPY[t].route));
-            }}
-          >
-            {COPY[t].title}
-          </a>
-        ))}
-      </nav>
-
       <div className="page-head">
         <h1>{COPY[type].title}</h1>
         <p className="muted">新聞、臉書、提案、預算審議與預算中心報告中，{COPY[type].intro}</p>

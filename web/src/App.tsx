@@ -146,7 +146,7 @@ export default function App() {
         {route === 'dashboard' ? <DashboardPage refreshToken={refreshToken} onOpenId={setPendingId} onNavigate={navigate} /> : null}
         {route === 'budget' ? <BudgetPage refreshToken={refreshToken} onOpenId={setPendingId} /> : null}
         {route in FUND_TYPE ? (
-          <FundsPage key={route} type={FUND_TYPE[route as keyof typeof FUND_TYPE]} refreshToken={refreshToken} onOpenId={setPendingId} onNavigate={navigate} />
+          <FundsPage key={route} type={FUND_TYPE[route as keyof typeof FUND_TYPE]} refreshToken={refreshToken} onOpenId={setPendingId} />
         ) : null}
         {route === 'committees' ? <CommitteesPage refreshToken={refreshToken} onOpenId={setPendingId} /> : null}
         {route === 'compare' ? <ComparePage refreshToken={refreshToken} onOpenId={setPendingId} /> : null}

@@ -65,7 +65,7 @@ const NAV: NavGroup[] = [
       { route: 'agencies', label: '機關' },
       { route: 'foundations', label: '財團法人' },
       { route: 'administrative', label: '行政法人' },
-      { route: 'dgbas', label: '主計總處' },
+      { route: 'dgbas', label: '行政院主計總處' },
     ],
   },
   { id: 'activity', label: '最近動態', home: 'home', routes: [{ route: 'home', label: '最近動態' }] },
