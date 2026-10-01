@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { openDb, applyDataset, applyBills, applySocial, upsertNews, getMeta, setMeta } from '../server/db.mjs';
-import { buildDataset, normalizeBills, normalizeMeetings, normalizeSocial, newsName, rocDate } from '../server/normalize.mjs';
+import { buildDataset, normalizeBills, normalizeMeetings, normalizeSocial, newsName, rocDate, DataValidationError } from '../server/normalize.mjs';
 import { CONFIG } from '../server/config.mjs';
 import { runIngest, runBillsIngest, runBudgetIngest, runBudgetReportsIngest, runMeetingsIngest, budgetPageUrl, runNewsIngest, runSocialIngest, runAll } from '../server/ingest.mjs';
 import { getHealth, listBills, listBudget, listBudgetMeetings, listBudgetReports, budgetState, listChanges, listLegislators, listNews, listSyncRuns } from '../server/queries.mjs';
@@ -549,4 +549,76 @@ test('非 200 且不可重試（403）只打一次就失敗', async () => {
     (error) => error.status === 403 && error.retryable === false,
   );
   assert.equal(calls, 1, 'WAF 403 重試沒有意義，只該打一次');
+});
+
+/* ---------------- 社群更正表（人工確認過的粉專覆蓋整理表） ---------------- */
+
+test('社群更正表：覆蓋整理表的錯誤網址，並清掉屬於舊網址的貼文摘要', () => {
+  const db = seeded();
+  const dataset = buildDataset(fixture('id9.json'), fixture('id14.json'));
+  const idByName = new Map(dataset.legislators.map((l) => [newsName(l.name), l.id]));
+  const csv = fixtureText('social.csv');
+  const { accounts } = normalizeSocial(csv, idByName);
+
+  // 先找一位在整理表裡有資料的委員，模擬「整理表貼錯網址」
+  const target = accounts.find((a) => a.latest_post_date && a.legislator_id);
+  const name = dataset.legislators.find((l) => l.id === target.legislator_id).name;
+  const wrongUrl = target.url;
+
+  const overrides = [{ legislator: name, url: 'https://www.facebook.com/correct-page/', page_name: `${name} 粉專` }];
+  const result = normalizeSocial(csv, idByName, { overrides });
+
+  assert.deepEqual(result.overridesApplied, [name]);
+  const fixed = result.accounts.find((a) => a.legislator_id === target.legislator_id);
+  assert.equal(fixed.url, 'https://www.facebook.com/correct-page/');
+  assert.equal(fixed.source, 'override');
+  assert.equal(fixed.latest_post_date, '', '舊網址的貼文摘要必須清掉，否則會顯示別人粉專的貼文');
+  assert.equal(fixed.latest_post_summary, '');
+  assert.ok(result.warnings.some((w) => w.includes(wrongUrl)), '要留下覆蓋紀錄');
+
+  // 沒有被覆蓋的維持 sheet
+  assert.ok(result.accounts.every((a) => a.source === 'override' || a.source === 'sheet'));
+  assert.equal(result.accounts.length, accounts.length, '覆蓋不應該改變帳號總數');
+
+  // 寫進資料庫後 source 也要留著
+  applySocial(db, result.accounts, { fetchedAt: '2026-09-30T09:00:00.000Z' });
+  const stored = db.prepare('SELECT url, source FROM social_accounts WHERE legislator_id = ?').get(target.legislator_id);
+  assert.equal(stored.source, 'override');
+  assert.equal(stored.url, 'https://www.facebook.com/correct-page/');
+});
+
+test('社群更正表：補上整理表沒有的委員；非 facebook 網址要 fail closed', () => {
+  const db = seeded();
+  const dataset = buildDataset(fixture('id9.json'), fixture('id14.json'));
+  const idByName = new Map(dataset.legislators.map((l) => [newsName(l.name), l.id]));
+  const csv = fixtureText('social.csv');
+  const before = normalizeSocial(csv, idByName).accounts;
+  const missingName = dataset.legislators.find((l) => !before.some((a) => a.legislator_id === l.id)).name;
+
+  const added = normalizeSocial(csv, idByName, {
+    overrides: [{ legislator: missingName, url: 'https://www.facebook.com/added-page/', page_name: missingName }],
+  });
+  assert.equal(added.accounts.length, before.length + 1, '整理表沒有的委員要用更正表補上');
+  assert.ok(added.warnings.some((w) => w.includes('補上')));
+
+  assert.throws(
+    () => normalizeSocial(csv, idByName, { overrides: [{ legislator: missingName, url: 'https://example.com/x' }] }),
+    DataValidationError,
+  );
+});
+
+test('真實更正表檔案：9 筆都對得到在職委員，且都是 facebook 網址', async () => {
+  const file = JSON.parse(readFileSync(fileURLToPath(new URL('../server/social-overrides.json', import.meta.url)), 'utf8'));
+  const db = seeded();
+  const dataset = buildDataset(fixture('id9.json'), fixture('id14.json'));
+  const idByName = new Map(dataset.legislators.map((l) => [newsName(l.name), l.id]));
+  const result = normalizeSocial(fixtureText('social.csv'), idByName, { overrides: file.overrides });
+
+  assert.equal(file.overrides.length, 9);
+  assert.equal(result.overridesApplied.length, 9, '每一筆都要對到委員');
+  for (const o of file.overrides) {
+    assert.match(o.url, /^https:\/\/(www\.|m\.)?facebook\.com\//);
+    assert.ok(o.reason && o.verified_at, '每筆更正都要寫原因與確認日期');
+  }
+  assert.equal(new Set(result.accounts.map((a) => a.url)).size, result.accounts.length, '更正後不該出現重複網址');
 });

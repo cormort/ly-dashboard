@@ -157,9 +157,11 @@ export interface LegislatorSocial {
   /** 專頁名稱 */
   name: string;
   url: string;
-  /** 最新貼文日期（YYYY-MM-DD，來自人工整理表） */
+  /** 最新貼文日期（YYYY-MM-DD，來自人工整理表）；人工更正過的帳號會清空，因為舊摘要屬於舊網址 */
   latest_post_date: string;
   latest_post_summary: string;
+  /** 'sheet'＝整理表、'override'＝人工更正表（server/social-overrides.json） */
+  source?: 'sheet' | 'override';
 }
 
 export interface Legislator {

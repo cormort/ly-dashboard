@@ -1,4 +1,5 @@
 import { pathToFileURL } from 'node:url';
+import { readFileSync } from 'node:fs';
 import { CONFIG } from './config.mjs';
 import { openDb, recordSyncRun, saveSnapshot, applyDataset, applyBills, applyBudget, applyBudgetReports, applyCommitteeMeets, applyCommitteeRecords, applyMeetings, applySocial, upsertNews, upsertTopicNews, pruneNews, getMeta, setMeta } from './db.mjs';
 import { buildDataset, normalizeBills, normalizeBudget, normalizeBudgetReports, normalizeCommitteeMeets, normalizeCommitteeRecords, normalizeMeetings, normalizeSocial, newsName, parseNewsRss, DataValidationError, NORMALIZER_VERSION } from './normalize.mjs';
@@ -336,6 +337,15 @@ export function newsFeedUrl(name, q = `"${name}" 立委`) {
 
 const pause = (ms) => (ms > 0 ? new Promise((r) => setTimeout(r, ms)) : Promise.resolve());
 
+/** 人工確認過的粉專更正表（覆蓋整理表）；檔案不存在時視為沒有更正 */
+const SOCIAL_OVERRIDES = (() => {
+  try {
+    return JSON.parse(readFileSync(new URL('./social-overrides.json', import.meta.url), 'utf8')).overrides ?? [];
+  } catch {
+    return [];
+  }
+})();
+
 /**
  * 新聞同步：在職委員逐位抓 Google News RSS（依序＋間隔，避免被限流）。
  * 單一委員失敗不影響其他人；超過一半失敗才整體標記 failed（多半是被擋或斷網）。
@@ -413,7 +423,8 @@ export async function runSocialIngest(db, { logger = console, fetchImpl = fetchJ
   try {
     const result = await fetchImpl(CONFIG.social.url, { ua: CONFIG.userAgent, text: true });
     const idByName = new Map(db.prepare('SELECT name, id FROM legislators WHERE leave_flag = 0').all().map((r) => [newsName(r.name), r.id]));
-    const { accounts, warnings } = normalizeSocial(result.text, idByName);
+    const { accounts, warnings, overridesApplied } = normalizeSocial(result.text, idByName, { overrides: SOCIAL_OVERRIDES });
+    if (overridesApplied.length) logger.log(`[social] 已套用 ${overridesApplied.length} 筆人工更正：${overridesApplied.join('、')}`);
 
     // M4：整理表是可被編輯的外部來源。除了絕對門檻（normalizeSocial 內），
     // 這裡再和「上一次的筆數」比：掉超過 20% 就 fail closed，寧可留舊資料。

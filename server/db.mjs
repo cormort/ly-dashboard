@@ -135,6 +135,8 @@ CREATE TABLE IF NOT EXISTS social_accounts (
   url TEXT NOT NULL,
   latest_post_date TEXT,
   latest_post_summary TEXT,
+  -- 'sheet'（整理表）或 'override'（人工更正表）；用來分辨哪些是追蹤過的資料
+  source TEXT,
   PRIMARY KEY (legislator_id, platform, url)
 );
 CREATE TABLE IF NOT EXISTS budget_bills (
@@ -206,6 +208,11 @@ export function migrate(db) {
     db.exec('ALTER TABLE legislators ADD COLUMN contacts TEXT');
     // 舊資料沒有這個欄位：清掉 applied_sha，下次同步即使內容未變也會重新套用
     db.prepare("DELETE FROM meta WHERE key = 'applied_sha'").run();
+  }
+  const socialCols = new Set(db.prepare('PRAGMA table_info(social_accounts)').all().map((c) => c.name));
+  if (!socialCols.has('source')) {
+    db.exec('ALTER TABLE social_accounts ADD COLUMN source TEXT');
+    db.prepare("DELETE FROM meta WHERE key = 'social_applied_sha'").run();
   }
 }
 
@@ -578,10 +585,12 @@ export function applySocial(db, accounts, { fetchedAt }) {
 
     db.exec('DELETE FROM social_accounts');
     const insert = db.prepare(
-      `INSERT OR REPLACE INTO social_accounts(legislator_id, platform, page_name, url, latest_post_date, latest_post_summary)
-       VALUES(?, ?, ?, ?, ?, ?)`,
+      `INSERT OR REPLACE INTO social_accounts(legislator_id, platform, page_name, url, latest_post_date, latest_post_summary, source)
+       VALUES(?, ?, ?, ?, ?, ?, ?)`,
     );
-    for (const a of accounts) insert.run(a.legislator_id, a.platform, a.page_name, a.url, a.latest_post_date, a.latest_post_summary);
+    for (const a of accounts) {
+      insert.run(a.legislator_id, a.platform, a.page_name, a.url, a.latest_post_date, a.latest_post_summary, a.source ?? 'sheet');
+    }
     setMeta(db, 'social_fetched_at', fetchedAt);
     setMeta(db, 'social_count', String(accounts.length));
     db.exec('COMMIT');

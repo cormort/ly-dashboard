@@ -1,0 +1,78 @@
+{
+  "updated_at": "2026-09-30",
+  "note": "委員社群帳號的更正表。整理表（Google 試算表）是主要來源，但欄位由人工維護、可能貼錯網址；這裡放經人工確認過的正確粉專，同步時覆蓋整理表的值。每一筆都用已登入的瀏覽器開過該網址、確認頁面顯示名稱與委員相符。",
+  "overrides": [
+    {
+      "legislator": "蔡其昌",
+      "url": "https://www.facebook.com/tsaimimi0416/",
+      "page_name": "蔡其昌",
+      "followers": "35 萬",
+      "verified_at": "2026-09-30",
+      "reason": "原本的 tsaichihchang 指向個人檔案「蔡璋」（無追蹤者、非粉專）"
+    },
+    {
+      "legislator": "陳秀寳",
+      "url": "https://www.facebook.com/showpowerchen/",
+      "page_name": "陳秀寶",
+      "followers": "2.2 萬",
+      "verified_at": "2026-09-30",
+      "reason": "原本的 hsiupao.chen 轉到個人檔案而非粉專（顯示名稱「陳秀寶」為寳／寶異體字）"
+    },
+    {
+      "legislator": "許忠信",
+      "url": "https://www.facebook.com/hsuchunghsin/",
+      "page_name": "許忠信",
+      "followers": "1.9 萬",
+      "verified_at": "2026-09-30",
+      "reason": "原本的 FTVNews53 是民視新聞粉專"
+    },
+    {
+      "legislator": "劉書彬",
+      "url": "https://www.facebook.com/p/%E5%8A%89%E6%9B%B8%E5%BD%AC-61570373315266/",
+      "page_name": "劉書彬",
+      "followers": "5,447",
+      "verified_at": "2026-09-30",
+      "reason": "原本的 TPPfanpage 是台灣民眾黨粉專"
+    },
+    {
+      "legislator": "牛煦庭",
+      "url": "https://www.facebook.com/18NIUstart/",
+      "page_name": "牛煦庭",
+      "followers": "5.4 萬",
+      "verified_at": "2026-09-30",
+      "reason": "原本的 kyoung.tw 是國民黨青年團專頁"
+    },
+    {
+      "legislator": "張嘉郡",
+      "url": "https://www.facebook.com/Sweet.Yunlin/",
+      "page_name": "張嘉郡",
+      "followers": "10 萬",
+      "verified_at": "2026-09-30",
+      "reason": "原本的 YunLinynn20ch 是雲林新聞網粉專"
+    },
+    {
+      "legislator": "蘇清泉",
+      "url": "https://www.facebook.com/ptdrsu/",
+      "page_name": "蘇清泉",
+      "followers": "5.8 萬",
+      "verified_at": "2026-09-30",
+      "reason": "原本的 tsmh.antai 是安泰醫院專頁"
+    },
+    {
+      "legislator": "林宜瑾",
+      "url": "https://www.facebook.com/ichin0825/",
+      "page_name": "林宜瑾",
+      "followers": "4.7 萬",
+      "verified_at": "2026-09-30",
+      "reason": "原本的 100070964465267 指向個人檔案「林時」"
+    },
+    {
+      "legislator": "陳雪生",
+      "url": "https://www.facebook.com/p/%E9%99%B3%E9%9B%AA%E7%94%9F-100002730369711/",
+      "page_name": "陳雪生",
+      "followers": "",
+      "verified_at": "2026-09-30",
+      "reason": "原本的 /p/陳雪生-100063745266187/ 頁面 ID 已指向他人（Balaram Harijan）"
+    }
+  ]
+}

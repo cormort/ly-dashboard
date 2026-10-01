@@ -101,7 +101,7 @@ export function listLegislators(db, query = {}) {
   const socialByLegislator = new Map();
   for (const s of db.prepare('SELECT * FROM social_accounts ORDER BY platform, url').all()) {
     const list = socialByLegislator.get(s.legislator_id) ?? [];
-    list.push({ platform: s.platform, name: s.page_name, url: s.url, latest_post_date: s.latest_post_date, latest_post_summary: s.latest_post_summary });
+    list.push({ platform: s.platform, name: s.page_name, url: s.url, latest_post_date: s.latest_post_date, latest_post_summary: s.latest_post_summary, source: s.source ?? 'sheet' });
     socialByLegislator.set(s.legislator_id, list);
   }
   const byId = new Map(legislatorRows.map((l) => [l.id, l]));

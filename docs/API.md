@@ -113,7 +113,7 @@ Query 參數（全部可選）：
       "sex": "男",
       "onboard_date": "2024/02/01",
       "contacts": [ { "label": "國會研究室", "tel": "02-2358-0000", "fax": "02-2358-0001", "addr": "台北市中正區濟南路1段3之1號" } ],
-      "social": [ { "platform": "facebook", "name": "吳思瑤", "url": "https://www.facebook.com/taipeineedyou", "latest_post_date": "2026-09-27", "latest_post_summary": "…" } ],
+      "social": [ { "platform": "facebook", "name": "吳思瑤", "url": "https://www.facebook.com/taipeineedyou", "latest_post_date": "2026-09-27", "latest_post_summary": "…", "source": "sheet" } ],
       "photo_url": "http://www.ly.gov.tw//Images/Legislators/110001.jpg",
       "degree": "…",
       "experience": "…",
@@ -133,6 +133,8 @@ Query 參數（全部可選）：
 - `region` 由後端從 `area_name` 歸併（去掉「第N選舉區」），前端不得自行推算。
 - `contacts` 依處所合併立院 `tel`／`fax`／`addr` 三個字串欄位；沒有資料時為 `[]`。
 - `social` 來自人工整理的 Google 試算表（`LY_SOCIAL_CSV` 可覆寫），每次同步整批覆寫；`latest_post_*` 是整理表記錄的最新貼文，不是即時抓取。
+- `social[].source`：`sheet`＝整理表、`override`＝人工更正表（`server/social-overrides.json`）。
+  更正過的帳號會清空 `latest_post_*`，因為原本的貼文摘要屬於舊（錯誤）網址；等整理表補上資料後才會再出現。
 - `is_convener` 是**該會期**的召委，不是「曾經當過」。
 - 無資料時回 `items: []`、`count: 0`，**不得**回傳任何示範／假資料。
 

@@ -654,7 +654,7 @@ const SOCIAL_COLUMNS = { name: '姓名', pageName: '臉書專頁名稱', latestD
  * 社群帳號整理表 → [{ legislator_id, platform, page_name, url, latest_post_date, latest_post_summary }]。
  * 以漢名（newsName）對應委員；對不到比例過高或欄位改名時 fail closed。
  */
-export function normalizeSocial(csvText, legislatorIdByNewsName) {
+export function normalizeSocial(csvText, legislatorIdByNewsName, { overrides = [] } = {}) {
   const [header = [], ...rows] = parseCsv(csvText);
   const col = Object.fromEntries(Object.entries(SOCIAL_COLUMNS).map(([key, label]) => [key, header.findIndex((h) => h.trim() === label)]));
   const missing = Object.entries(col).filter(([, i]) => i < 0).map(([key]) => SOCIAL_COLUMNS[key]);
@@ -686,5 +686,39 @@ export function normalizeSocial(csvText, legislatorIdByNewsName) {
     throw new DataValidationError(`社群整理表有 ${unmatched.length} 個姓名對不到委員：${unmatched.slice(0, 5).join('、')}`);
   }
   const warnings = unmatched.length ? [`社群整理表有 ${unmatched.length} 個姓名對不到委員：${unmatched.join('、')}`] : [];
-  return { accounts, warnings };
+
+  // 更正表（server/social-overrides.json）：整理表是人工維護的，貼錯網址時用這份覆蓋。
+  // 覆蓋時**清掉 latest_post_***：那筆貼文摘要屬於舊網址，留著會變成「顯示別人粉專的貼文」。
+  const applied = [];
+  for (const override of overrides) {
+    const legislatorId = legislatorIdByNewsName.get(newsName(override.legislator));
+    if (!legislatorId) {
+      warnings.push(`更正表的「${override.legislator}」對不到在職委員，已略過`);
+      continue;
+    }
+    if (!/^https:\/\/(www\.|m\.)?facebook\.com\//.test(override.url ?? '')) {
+      throw new DataValidationError(`更正表的網址不是 facebook 專頁：${override.url}`);
+    }
+    const index = accounts.findIndex((a) => a.legislator_id === legislatorId);
+    const entry = {
+      legislator_id: legislatorId,
+      platform: 'facebook',
+      page_name: override.page_name ?? '',
+      url: override.url,
+      latest_post_date: '',
+      latest_post_summary: '',
+      source: 'override',
+    };
+    if (index >= 0) {
+      warnings.push(`以更正表覆蓋 ${override.legislator} 的粉專：${accounts[index].url} → ${override.url}`);
+      accounts[index] = entry;
+    } else {
+      warnings.push(`更正表補上 ${override.legislator} 的粉專：${override.url}`);
+      accounts.push(entry);
+    }
+    applied.push(override.legislator);
+  }
+  for (const account of accounts) if (!account.source) account.source = 'sheet';
+
+  return { accounts, warnings, overridesApplied: applied };
 }
