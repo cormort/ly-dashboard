@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ExternalLink, X } from 'lucide-react';
 import { buildUrl } from '../api/client';
-import type { NewsArticlesResponse } from '../api/types';
+import type { LegislatorsResponse, NewsArticlesResponse } from '../api/types';
 import { EmptyState, ErrorState, LoadingState } from '../components/DataStates';
 import { useApi } from '../hooks/useApi';
 import { pathFor } from '../hooks/useRoute';
@@ -18,11 +18,12 @@ const PAGE = 30;
 interface Filters {
   q: string;
   source: string;
+  legislator: string;
 }
 
 const readFilters = (): Filters => {
   const p = new URLSearchParams(window.location.search);
-  return { q: p.get('q') ?? '', source: p.get('source') ?? '' };
+  return { q: p.get('q') ?? '', source: p.get('source') ?? '', legislator: p.get('legislator') ?? '' };
 };
 
 /** 新聞：所有委員的新聞合併成一份（同一篇只列一次），可依關鍵字與媒體篩選，並看各媒體的報導量。 */
@@ -48,6 +49,9 @@ export function NewsPage({ refreshToken, onOpenId }: NewsPageProps) {
   };
 
   const res = useApi<NewsArticlesResponse>(buildUrl('/news/articles', { ...filters, limit: PAGE, offset: page * PAGE }), { refreshToken });
+  const roster = useApi<LegislatorsResponse>(buildUrl('/legislators', { session: 'all' }), { refreshToken });
+  const people = (roster.data?.items ?? []).filter((l) => !l.former).sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'));
+  const picked = people.find((l) => l.id === filters.legislator);
   const data = res.data;
   const pages = data ? Math.max(1, Math.ceil(data.total / PAGE)) : 1;
   const max = Math.max(1, ...(data?.sources ?? []).map((s) => s.count));
@@ -71,6 +75,14 @@ export function NewsPage({ refreshToken, onOpenId }: NewsPageProps) {
           change({ q: draft.trim() });
         }}
       >
+        <select value={filters.legislator} aria-label="依委員分析" onChange={(event) => change({ legislator: event.target.value, source: '' })}>
+          <option value="">全部委員</option>
+          {people.map((l) => (
+            <option key={l.id} value={l.id}>
+              {l.name}（{partyStyle(l.party).short}）
+            </option>
+          ))}
+        </select>
         <input type="search" value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="搜尋標題關鍵字" aria-label="搜尋新聞標題" />
         <button type="submit">搜尋</button>
         {filters.q ? (
@@ -90,7 +102,7 @@ export function NewsPage({ refreshToken, onOpenId }: NewsPageProps) {
       {data ? (
         <section className="panel" aria-label="媒體分布">
           <div className="sectionhead">
-            <h2>媒體分布</h2>
+            <h2>{picked ? `${picked.name}的媒體分布` : '媒體分布'}</h2>
             <span className="muted">共 {data.source_total} 家，點媒體可篩選</span>
           </div>
           <ul className="source-bars">
