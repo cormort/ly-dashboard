@@ -378,6 +378,25 @@ export interface NewsResponse {
   items: NewsItem[];
 }
 
+/* ---------- /news/articles ---------- */
+
+export interface NewsArticle {
+  url: string;
+  title: string;
+  source: string;
+  published_at: string;
+  legislators: { id: string; name: string; party: string }[];
+}
+
+export interface NewsArticlesResponse {
+  meta: Meta & { news_fetched_at: string | null };
+  total: number;
+  source_total: number;
+  /** 前 30 家媒體與報導則數（不受媒體條件影響） */
+  sources: { name: string; count: number }[];
+  items: NewsArticle[];
+}
+
 /* ---------- /topics ---------- */
 
 export interface TopicItem {

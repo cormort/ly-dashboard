@@ -157,7 +157,7 @@ export function DashboardPage({ refreshToken, onOpenId, onNavigate }: DashboardP
           )}
         </Card>
 
-        <Card title="最新新聞" href={link('home')} onNavigate={onNavigate} resource={news}>
+        <Card title="最新新聞" href={link('news')} onNavigate={onNavigate} resource={news}>
           {(data) => (
             <ul className="dash-list">
               {data.items.map((n) => (
@@ -173,7 +173,7 @@ export function DashboardPage({ refreshToken, onOpenId, onNavigate }: DashboardP
           )}
         </Card>
 
-        <Card title="新聞來源" href={link('home')} onNavigate={onNavigate} resource={news}>
+        <Card title="新聞來源" href={link('news')} onNavigate={onNavigate} resource={news}>
           {(data) => {
             const max = Math.max(1, ...data.sources.map((s) => s.count));
             return (

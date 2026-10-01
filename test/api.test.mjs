@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 import { openDb, applyDataset, applyBills, applySocial, upsertNews, saveSnapshot, recordSyncRun, getMeta, migrate } from '../server/db.mjs';
 import { buildDataset, normalizeBills, normalizeSocial, newsName } from '../server/normalize.mjs';
-import { billsCsv, compareLegislators, csvRow, makeTagger, listCommitteeActivity, listCosponsors, listFunds, listRegions, getHealth, getMetaPayload, listActivity, listBills, listTopics, listNews, listChanges, listCommittees, listLegislators, listRankings, listSyncRuns } from '../server/queries.mjs';
+import { billsCsv, compareLegislators, csvRow, makeTagger, listCommitteeActivity, listCosponsors, listFunds, listRegions, getHealth, getMetaPayload, listActivity, listBills, listTopics, listNews, listNewsArticles, listChanges, listCommittees, listLegislators, listRankings, listSyncRuns } from '../server/queries.mjs';
 
 const fixture = (name) => JSON.parse(readFileSync(fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url)), 'utf8'));
 
@@ -312,6 +312,12 @@ test('最近動態：取貼文／新聞／議案中最新者排序，只列在�
   const tingRow = listLegislators(db, { session: 'all' }).items.find((x) => x.id === idByName.get('丁學忠'));
   assert.ok(tingRow.top_source && tingRow.top_source.count <= tingRow.news_count, '名冊附每人報導最多的媒體');
   assert.ok(compareLegislators(db, { ids: tingRow.id }).items[0].top_sources.length > 0, '比較頁附前 5 家媒體');
+  const articles = listNewsArticles(db, { limit: 100 });
+  assert.equal(new Set(articles.items.map((a) => a.url)).size, articles.items.length, '同一篇只列一次');
+  const outlet = articles.sources[0].name;
+  assert.ok(listNewsArticles(db, { source: outlet }).items.every((a) => a.source === outlet), '依媒體篩選');
+  assert.equal(listNewsArticles(db, { source: outlet }).sources[0].name, outlet, '媒體統計不受媒體條件影響');
+  assert.equal(listNewsArticles(db, { q: '丁學忠' }).items.every((a) => a.title.includes('丁學忠')), true, '關鍵字比對標題');
   const { sources, source_total: sourceTotal } = listNews(db, {});
   assert.ok(sources.length > 0 && sources.length <= Math.min(12, sourceTotal), '新聞來源最多 12 家');
   assert.ok(sources.every((s, i, a) => i === 0 || a[i - 1].count >= s.count), '依則數排序');

@@ -20,6 +20,7 @@ import { FundsPage } from './pages/FundsPage';
 
 const FUND_TYPE = { funds: 'fund', agencies: 'agency', foundations: 'foundation', administrative: 'administrative', dgbas: 'dgbas' } as const;
 import { ComparePage } from './pages/ComparePage';
+import { NewsPage } from './pages/NewsPage';
 import { HomePage } from './pages/HomePage';
 import { LegislatorsPage } from './pages/LegislatorsPage';
 import { RankingsPage } from './pages/RankingsPage';
@@ -149,6 +150,7 @@ export default function App() {
           <FundsPage key={route} type={FUND_TYPE[route as keyof typeof FUND_TYPE]} refreshToken={refreshToken} onOpenId={setPendingId} />
         ) : null}
         {route === 'committees' ? <CommitteesPage refreshToken={refreshToken} onOpenId={setPendingId} /> : null}
+        {route === 'news' ? <NewsPage refreshToken={refreshToken} onOpenId={setPendingId} /> : null}
         {route === 'compare' ? <ComparePage refreshToken={refreshToken} onOpenId={setPendingId} /> : null}
         {route === 'rankings' ? <RankingsPage refreshToken={refreshToken} onOpenId={setPendingId} onNavigate={navigate} /> : null}
       </AppShell>

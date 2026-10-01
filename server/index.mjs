@@ -5,7 +5,7 @@ import { pathToFileURL } from 'node:url';
 import { CONFIG } from './config.mjs';
 import { openDb, getMeta } from './db.mjs';
 import {
-  billsCsv, budgetCsv, compareLegislators, listBudget, listRegions, listFunds, listCommitteeActivity, listBudgetMeetings, listBudgetReports, getHealth, getMetaPayload, listActivity, listBills, listCosponsors, listNews, listTopics, listChanges,
+  billsCsv, budgetCsv, compareLegislators, listBudget, listRegions, listFunds, listCommitteeActivity, listBudgetMeetings, listBudgetReports, getHealth, getMetaPayload, listActivity, listBills, listCosponsors, listNews, listNewsArticles, listTopics, listChanges,
   listCommittees, listLegislators, listRankings, listSyncRuns,
 } from './queries.mjs';
 import { runAll, runIngest } from './ingest.mjs';
@@ -145,6 +145,8 @@ export function createServer(db) {
             return sendJson(res, 200, listActivity(db, { limit: q.limit, ids: q.ids || null }));
           case '/api/v1/news':
             return sendJson(res, 200, listNews(db, { legislator: q.legislator || null, limit: q.limit }));
+          case '/api/v1/news/articles':
+            return sendJson(res, 200, listNewsArticles(db, { q: q.q, source: q.source, legislator: q.legislator, limit: q.limit, offset: q.offset }));
           case '/api/v1/rankings':
             return sendJson(res, 200, listRankings(db, { type: q.type || 'all', days: q.days, limit: q.limit }));
           case '/api/v1/changes':

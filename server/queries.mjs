@@ -863,6 +863,35 @@ export function listNews(db, { legislator = null, limit = 10 } = {}) {
 }
 
 /**
+ * 新聞頁：同一篇報導（網址相同）合併成一列，附上提到的委員；可依關鍵字（標題）、媒體、委員篩選。
+ * 媒體統計在套用媒體條件「之前」算（同 listBills），選了某家後其他家的數字不會消失。
+ */
+export function listNewsArticles(db, { q = '', source = '', legislator = '', limit = 30, offset = 0 } = {}) {
+  const resolvedLimit = Math.max(1, Math.min(Number(limit) || 30, 100));
+  const resolvedOffset = Math.max(0, Math.trunc(Number(offset) || 0));
+  const keyword = String(q).trim();
+  const people = new Map(db.prepare('SELECT id, name, party FROM legislators').all().map((l) => [l.id, { id: l.id, name: l.name, party: l.party }]));
+  const byUrl = new Map();
+  for (const r of db.prepare('SELECT * FROM news ORDER BY published_at DESC, url').all()) {
+    if (legislator && r.legislator_id !== legislator) continue;
+    if (keyword && !r.title.includes(keyword)) continue;
+    const a = byUrl.get(r.url) ?? byUrl.set(r.url, { url: r.url, title: r.title, source: r.source || '未知', published_at: r.published_at, legislators: [] }).get(r.url);
+    if (people.has(r.legislator_id)) a.legislators.push(people.get(r.legislator_id));
+  }
+  const all = [...byUrl.values()];
+  const counts = new Map();
+  for (const a of all) counts.set(a.source, (counts.get(a.source) ?? 0) + 1);
+  const matching = source ? all.filter((a) => a.source === source) : all;
+  return {
+    meta: { ...envelope(db), news_fetched_at: getMeta(db, 'news_fetched_at') },
+    total: matching.length,
+    source_total: counts.size,
+    sources: [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 30).map(([name, count]) => ({ name, count })),
+    items: matching.slice(resolvedOffset, resolvedOffset + resolvedLimit),
+  };
+}
+
+/**
  * 預算類議案的審議狀態分三類。定期報告多半「交付查照」即結案（不經審查），
  * 所以不套委員提案的五階段流程，只分審議中／已結案／退回。
  */
