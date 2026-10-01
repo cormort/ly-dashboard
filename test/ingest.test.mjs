@@ -196,7 +196,7 @@ test('新聞同步：只存標題含姓名的項目、可累積去重、在職�
   const now = () => new Date('2026-09-30T00:00:00.000Z');
   const first = await runNewsIngest(db, { logger: silent, fetchImpl, now, delayMs: 0 });
   assert.equal(first.status, 'success');
-  assert.equal(urls.length, listLegislators(db, { session: 'all' }).items.filter((x) => !x.former).length, '只抓在職委員');
+  assert.equal(urls.filter((u) => u.includes('%E7%AB%8B%E5%A7%94')).length, listLegislators(db, { session: 'all' }).items.filter((x) => !x.former).length, '只抓在職委員');
   assert.ok(urls.every((u) => u.includes('news.google.com')));
   const ting = listLegislators(db, { q: '丁學忠' }).items[0].id;
   const news = listNews(db, { legislator: ting, limit: 100 });

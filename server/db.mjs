@@ -118,6 +118,16 @@ CREATE TABLE IF NOT EXISTS news (
   PRIMARY KEY (legislator_id, url)
 );
 CREATE INDEX IF NOT EXISTS idx_news_legislator_date ON news(legislator_id, published_at DESC);
+-- 主題新聞（不限委員）：目前只有主計總處專頁用，topic = 'dgbas'
+CREATE TABLE IF NOT EXISTS topic_news (
+  topic TEXT NOT NULL,
+  url TEXT NOT NULL,
+  title TEXT NOT NULL,
+  source TEXT,
+  published_at TEXT NOT NULL,
+  fetched_at TEXT NOT NULL,
+  PRIMARY KEY (topic, url)
+);
 CREATE TABLE IF NOT EXISTS social_accounts (
   legislator_id TEXT NOT NULL,
   platform TEXT NOT NULL,
@@ -533,8 +543,16 @@ export function upsertNews(db, legislatorId, items, { fetchedAt }) {
   return added;
 }
 
+export function upsertTopicNews(db, topic, items, { fetchedAt }) {
+  const stmt = db.prepare(
+    'INSERT INTO topic_news(topic, url, title, source, published_at, fetched_at) VALUES(?, ?, ?, ?, ?, ?) ON CONFLICT(topic, url) DO UPDATE SET title = excluded.title, source = excluded.source',
+  );
+  return items.reduce((n, i) => n + Number(stmt.run(topic, i.url, i.title, i.source, i.published_at, fetchedAt).changes), 0);
+}
+
 export function pruneNews(db, { keepDays, now = new Date() }) {
   const cutoff = new Date(now.getTime() - keepDays * 86_400_000).toISOString();
+  db.prepare('DELETE FROM topic_news WHERE published_at < ?').run(cutoff);
   return Number(db.prepare('DELETE FROM news WHERE published_at < ?').run(cutoff).changes);
 }
 

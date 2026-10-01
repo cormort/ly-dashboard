@@ -980,13 +980,14 @@ export function makeTagger(texts) {
 const FUND_KINDS = ['news', 'post', 'bill', 'budget', 'report'];
 
 /**
- * 主計總處專頁（`type=dgbas`）：預算類議案的提案機關是主計總處 →「主計總處提送」；標題提到 →「提及主計總處」。
- * 只認「主計總處」「主計長」，不把國防部主計局、縣市主計處算進來。
+ * 主計總處專頁（`type=dgbas`）：預算類議案的提案機關是主計總處 →「主計總處提送」；標題提到 →「提及主計總處」；
+ * 只說「主計」的另外標示：縣市政府主計處 →「地方主計處」，其餘（主計局、泛稱主計）→「僅提及主計」。
  */
 const DGBAS_RE = /主計總處|主計長/;
+const LOCAL_ACCOUNTING_RE = /[縣市](政府)?主計處/;
 const dgbasOf = (r) => [
   ...(r.kind === 'budget' && DGBAS_RE.test(r.source ?? '') ? ['主計總處提送'] : []),
-  ...(DGBAS_RE.test(r.title) ? ['提及主計總處'] : []),
+  ...(DGBAS_RE.test(r.title) ? ['提及主計總處'] : LOCAL_ACCOUNTING_RE.test(r.title) ? ['地方主計處'] : r.title.includes('主計') ? ['僅提及主計'] : []),
 ];
 
 /**
@@ -1002,6 +1003,10 @@ export function listFunds(db, { type = 'fund', fund = '', kind = '', limit = 30,
   const resolvedType = ENTITY_TYPES.includes(type) || type === 'dgbas' ? type : 'fund';
   const rows = [
     ...db.prepare('SELECT * FROM news').all().map((r) => ({ kind: 'news', date: r.published_at.slice(0, 10), title: r.title, url: r.url, source: r.source, legislator: people.get(r.legislator_id) })),
+    // 主計總處專頁另收不限委員的主計總處新聞（ingest 的 topic_news）
+    ...(resolvedType === 'dgbas'
+      ? db.prepare("SELECT * FROM topic_news WHERE topic = 'dgbas'").all().map((r) => ({ kind: 'news', date: r.published_at.slice(0, 10), title: r.title, url: r.url, source: r.source }))
+      : []),
     ...db
       .prepare("SELECT * FROM social_accounts WHERE latest_post_summary <> ''")
       .all()

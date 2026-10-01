@@ -1,6 +1,6 @@
 import { pathToFileURL } from 'node:url';
 import { CONFIG } from './config.mjs';
-import { openDb, recordSyncRun, saveSnapshot, applyDataset, applyBills, applyBudget, applyBudgetReports, applyCommitteeMeets, applyCommitteeRecords, applyMeetings, applySocial, upsertNews, pruneNews, getMeta, setMeta } from './db.mjs';
+import { openDb, recordSyncRun, saveSnapshot, applyDataset, applyBills, applyBudget, applyBudgetReports, applyCommitteeMeets, applyCommitteeRecords, applyMeetings, applySocial, upsertNews, upsertTopicNews, pruneNews, getMeta, setMeta } from './db.mjs';
 import { buildDataset, normalizeBills, normalizeBudget, normalizeBudgetReports, normalizeCommitteeMeets, normalizeCommitteeRecords, normalizeMeetings, normalizeSocial, newsName, parseNewsRss, DataValidationError, NORMALIZER_VERSION } from './normalize.mjs';
 import { fetchJson, FetchError, sha256 } from './fetch-ly.mjs';
 
@@ -329,8 +329,8 @@ export async function runBillsIngest(db, { logger = console, fetchImpl = fetchJs
   }
 }
 
-export function newsFeedUrl(name) {
-  const qs = new URLSearchParams({ q: `"${name}" 立委 when:${CONFIG.news.windowDays}d`, hl: 'zh-TW', gl: 'TW', ceid: 'TW:zh-Hant' });
+export function newsFeedUrl(name, q = `"${name}" 立委`) {
+  const qs = new URLSearchParams({ q: `${q} when:${CONFIG.news.windowDays}d`, hl: 'zh-TW', gl: 'TW', ceid: 'TW:zh-Hant' });
   return `${CONFIG.news.url}?${qs}`;
 }
 
@@ -372,6 +372,13 @@ export async function runNewsIngest(
     } catch (error) {
       failures.push(`${l.name}：${error?.message || error}`);
     }
+  }
+  // 主計總處專頁：不限委員，標題提到「主計」的新聞都收（地方主計處等在頁面上另外標示）
+  try {
+    const { text } = await fetchImpl(newsFeedUrl('主計', '"主計"'), { ua: CONFIG.userAgent, text: true, retries: 2 });
+    upsertTopicNews(db, 'dgbas', parseNewsRss(text, { name: '主計' }).filter((n) => n.published_at >= cutoff), { fetchedAt: now().toISOString() });
+  } catch (error) {
+    logger.warn(`[news] 主計總處新聞抓取失敗：${error?.message || error}`);
   }
   const pruned = pruneNews(db, { keepDays: CONFIG.news.keepDays, now: now() });
 

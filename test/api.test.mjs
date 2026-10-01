@@ -517,8 +517,11 @@ test('基金／機關／財團法人／行政法人：名稱與簡稱歸到正�
   db.prepare('INSERT INTO budget_bills (id, category, name, status, proposer, latest_date, url) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
     'b3', '預(決) 算決議案、定期報告', '函送國防部主計局報告', '交付查照', '國防部', '2026-09-03', 'https://example.com/b3',
   );
+  db.prepare('INSERT INTO budget_bills (id, category, name, status, proposer, latest_date, url) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
+    'b4', '預(決) 算決議案、定期報告', '函送臺北市政府主計處資料', '交付查照', '臺北市政府', '2026-09-04', 'https://example.com/b4',
+  );
   const dgbas = listFunds(db, { type: 'dgbas' });
-  assert.deepEqual(dgbas.items.map((x) => x.funds), [['主計總處提送']], '提案機關是主計總處才算，國防部主計局不算');
+  assert.deepEqual(dgbas.items.map((x) => x.funds), [['地方主計處'], ['僅提及主計'], ['主計總處提送']], '只說主計的另外標示，地方主計處單獨一類');
 });
 
 test('委員會動態：公報只留委員會紀錄、依委員會篩選（聯席會議兩邊都算）', async () => {
