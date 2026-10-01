@@ -283,6 +283,7 @@ export function getHealth(db) {
     )
     .all()
     .map(toSyncRun);
+  const configRetention = CONFIG.retention ?? { syncRuns: 0, changeLog: 0 };
   const stats = {
     legislators: count('legislators'),
     memberships: count('memberships'),
@@ -291,6 +292,7 @@ export function getHealth(db) {
     committees: count('committees'),
     changes: count('change_log'),
     snapshots: count('raw_snapshots'),
+    sync_runs: count('sync_runs'),
     bills: count('bills'),
     budget_bills: count('budget_bills'),
     budget_reports: count('budget_reports'),
@@ -309,6 +311,11 @@ export function getHealth(db) {
     meta: envelope(db),
     ok: stats.legislators > 0 && !isStale(db),
     db: stats,
+    // 前端會顯示的兩種紀錄目前保留幾筆、上限多少（見 DECISIONS.md：為什麼是保留而不是不存）
+    retention: {
+      sync_runs: { kept: configRetention.syncRuns, current: stats.sync_runs },
+      change_log: { kept: configRetention.changeLog, current: stats.changes },
+    },
     datasets: {
       id9: { fetched_at: getMeta(db, 'last_success_at'), count: stats.legislators },
       id14: { fetched_at: getMeta(db, 'last_success_at'), count: stats.committee_seats },

@@ -72,6 +72,11 @@ export const CONFIG = {
     news: process.env.LY_SKIP_NEWS === '1',
     social: process.env.LY_SKIP_SOCIAL === '1',
   },
+  // 前端會顯示的兩種「紀錄」保留上限（同步紀錄／異動紀錄）；0 = 不刪
+  retention: {
+    syncRuns: Number(process.env.LY_SYNC_RUNS_KEEP ?? 200),
+    changeLog: Number(process.env.LY_CHANGE_LOG_KEEP ?? 500),
+  },
   staleAfterHours: Number(process.env.LY_STALE_HOURS || 36),
   syncIntervalMs: Number(process.env.LY_SYNC_INTERVAL_MS || 24 * 60 * 60 * 1000),
   fetchTimeoutMs: Number(process.env.LY_FETCH_TIMEOUT_MS || 30_000),

@@ -1,7 +1,7 @@
 import { pathToFileURL } from 'node:url';
 import { readFileSync } from 'node:fs';
 import { CONFIG } from './config.mjs';
-import { openDb, recordSyncRun, saveSnapshot, applyDataset, applyBills, applyBudget, applyBudgetReports, applyCommitteeMeets, applyCommitteeRecords, applyMeetings, applySocial, upsertNews, upsertTopicNews, pruneNews, getMeta, setMeta } from './db.mjs';
+import { openDb, recordSyncRun, saveSnapshot, applyDataset, applyBills, applyBudget, applyBudgetReports, applyCommitteeMeets, applyCommitteeRecords, applyMeetings, applySocial, upsertNews, upsertTopicNews, pruneNews, pruneLogs, getMeta, setMeta } from './db.mjs';
 import { buildDataset, normalizeBills, normalizeBudget, normalizeBudgetReports, normalizeCommitteeMeets, normalizeCommitteeRecords, normalizeMeetings, normalizeSocial, newsName, parseNewsRss, DataValidationError, NORMALIZER_VERSION } from './normalize.mjs';
 import { fetchJson, FetchError, sha256 } from './fetch-ly.mjs';
 
@@ -108,6 +108,11 @@ export async function runIngest(db, { logger = console, fetchImpl = fetchJson, n
       error: null,
     });
     runs.push({ dataset: item.dataset, status, records: item.dataset === 'id9' ? dataset.stats.legislators : dataset.seats.length });
+  }
+
+  const pruned = pruneLogs(db, CONFIG.retention);
+  if (pruned.sync_runs || pruned.change_log) {
+    logger.log(`[ingest] 清理舊紀錄：同步紀錄 ${pruned.sync_runs} 筆、異動紀錄 ${pruned.change_log} 筆（保留上限 ${CONFIG.retention.syncRuns}／${CONFIG.retention.changeLog}）`);
   }
 
   if (dataset.warnings.length) for (const w of dataset.warnings) logger.warn(`[ingest] 警告：${w}`);

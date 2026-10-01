@@ -557,6 +557,26 @@ export function upsertTopicNews(db, topic, items, { fetchedAt }) {
   return items.reduce((n, i) => n + Number(stmt.run(topic, i.url, i.title, i.source, i.published_at, fetchedAt).changes), 0);
 }
 
+/**
+ * 前端會顯示的「訊息」有兩種是**紀錄**而不是資料：同步紀錄（sync_runs）與異動紀錄（change_log）。
+ * 它們本來就該留著（要能回看「什麼時候失敗、什麼欄位變了」），但不能無上限長大。
+ * 這裡只保留最近 N 筆，其餘刪除；N 由 LY_SYNC_RUNS_KEEP / LY_CHANGE_LOG_KEEP 控制。
+ */
+export function pruneLogs(db, { syncRuns, changeLog } = {}) {
+  const removed = { sync_runs: 0, change_log: 0 };
+  if (syncRuns > 0) {
+    removed.sync_runs = Number(
+      db.prepare('DELETE FROM sync_runs WHERE id NOT IN (SELECT id FROM sync_runs ORDER BY id DESC LIMIT ?)').run(syncRuns).changes,
+    );
+  }
+  if (changeLog > 0) {
+    removed.change_log = Number(
+      db.prepare('DELETE FROM change_log WHERE id NOT IN (SELECT id FROM change_log ORDER BY id DESC LIMIT ?)').run(changeLog).changes,
+    );
+  }
+  return removed;
+}
+
 export function pruneNews(db, { keepDays, now = new Date() }) {
   const cutoff = new Date(now.getTime() - keepDays * 86_400_000).toISOString();
   db.prepare('DELETE FROM topic_news WHERE published_at < ?').run(cutoff);

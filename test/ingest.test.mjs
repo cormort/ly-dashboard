@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { openDb, applyDataset, applyBills, applySocial, upsertNews, getMeta, setMeta } from '../server/db.mjs';
+import { openDb, applyDataset, applyBills, applySocial, upsertNews, pruneLogs, getMeta, setMeta } from '../server/db.mjs';
 import { buildDataset, normalizeBills, normalizeMeetings, normalizeSocial, newsName, rocDate, DataValidationError } from '../server/normalize.mjs';
 import { CONFIG } from '../server/config.mjs';
 import { runIngest, runBillsIngest, runBudgetIngest, runBudgetReportsIngest, runMeetingsIngest, budgetPageUrl, runNewsIngest, runSocialIngest, runAll } from '../server/ingest.mjs';
@@ -673,4 +673,44 @@ test('真實更正表檔案：16 筆（含 1 筆 threads）、平台與網址格
   }
   const keys = result.accounts.map((a) => `${a.legislator_id}|${a.platform}|${a.url}`);
   assert.equal(new Set(keys).size, keys.length, '不該有重複');
+});
+
+/* ---------------- 紀錄保留上限（前端顯示的同步紀錄／異動紀錄） ---------------- */
+
+test('紀錄保留：同步紀錄與異動紀錄只留最近 N 筆，其餘刪除', () => {
+  const db = seeded();
+  const insert = db.prepare(
+    `INSERT INTO sync_runs(dataset, status, started_at, finished_at, records, attempt, http_status, duration_ms, ua, error)
+     VALUES(?, 'success', ?, ?, 1, 1, 200, 10, 'ua', ?)`,
+  );
+  for (let i = 0; i < 250; i += 1) insert.run('id9', '2026-09-30T00:00:00.000Z', '2026-09-30T00:00:01.000Z', `run-${i}`);
+  const change = db.prepare("INSERT INTO change_log(at, entity, entity_id, field, old_value, new_value) VALUES('2026-09-30T00:00:00.000Z','legislator',?,'party','A','B')");
+  for (let i = 0; i < 600; i += 1) change.run(`id-${i}`);
+
+  assert.equal(Number(db.prepare('SELECT COUNT(*) AS n FROM sync_runs').get().n), 250);
+  const removed = pruneLogs(db, { syncRuns: 200, changeLog: 500 });
+
+  assert.equal(removed.sync_runs, 50, '250 → 200，刪 50');
+  assert.equal(removed.change_log, 100, '600 → 500，刪 100');
+  assert.equal(Number(db.prepare('SELECT COUNT(*) AS n FROM sync_runs').get().n), 200);
+  assert.equal(Number(db.prepare('SELECT COUNT(*) AS n FROM change_log').get().n), 500);
+
+  // 留下來的必須是「最新的」：最新那筆的 error 字串還在
+  const newest = db.prepare('SELECT error FROM sync_runs ORDER BY id DESC LIMIT 1').get().error;
+  assert.equal(newest, 'run-249');
+  const oldest = db.prepare('SELECT error FROM sync_runs ORDER BY id ASC LIMIT 1').get().error;
+  assert.equal(oldest, 'run-50', '最舊的被刪掉，不是新的');
+
+  // 0 = 不刪
+  assert.deepEqual(pruneLogs(db, { syncRuns: 0, changeLog: 0 }), { sync_runs: 0, change_log: 0 });
+  assert.equal(Number(db.prepare('SELECT COUNT(*) AS n FROM sync_runs').get().n), 200);
+});
+
+test('紀錄保留：health 回報目前筆數與上限', () => {
+  const db = seeded();
+  const health = getHealth(db);
+  assert.ok(Number.isFinite(health.db.sync_runs));
+  assert.equal(health.retention.sync_runs.kept, CONFIG.retention.syncRuns);
+  assert.equal(health.retention.change_log.kept, CONFIG.retention.changeLog);
+  assert.equal(health.retention.change_log.current, health.db.changes);
 });

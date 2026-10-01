@@ -58,6 +58,8 @@ export interface HealthDbCounts {
   committees: number;
   changes: number;
   snapshots: number;
+  /** 同步紀錄筆數（前端「同步紀錄」面板的來源） */
+  sync_runs: number;
   bills: number;
   news: number;
   social_accounts: number;
@@ -77,6 +79,8 @@ export interface HealthResponse {
   db: HealthDbCounts;
   /** 每個資料集的最後同步時間與筆數（後端 /api/v1/health） */
   datasets: Record<'id9' | 'id14' | 'bills' | 'budget' | 'news' | 'social', DatasetStatus>;
+  /** 前端會顯示的兩種紀錄：目前筆數與保留上限 */
+  retention: Record<'sync_runs' | 'change_log', { kept: number; current: number }>;
   last_runs: SyncRun[];
   warnings: string[];
 }
