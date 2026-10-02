@@ -25,6 +25,7 @@ import { ComparePage } from './pages/ComparePage';
 import { NewsPage } from './pages/NewsPage';
 import { HomePage } from './pages/HomePage';
 import { LegislatorsPage } from './pages/LegislatorsPage';
+import { MyAgencyPage } from './pages/MyAgencyPage';
 import { RankingsPage } from './pages/RankingsPage';
 
 /**
@@ -160,6 +161,7 @@ export default function App() {
           <FundsPage key={route} type={FUND_TYPE[route as keyof typeof FUND_TYPE]} refreshToken={refreshToken} onOpenId={setPendingId} />
         ) : null}
         {route === 'counties' ? <CountiesPage refreshToken={refreshToken} onOpenId={setPendingId} /> : null}
+        {route === 'my' ? <MyAgencyPage refreshToken={refreshToken} onOpenId={setPendingId} onNavigate={navigate} /> : null}
         {route === 'committees' ? <CommitteesPage refreshToken={refreshToken} onOpenId={setPendingId} /> : null}
         {route === 'news' ? <NewsPage refreshToken={refreshToken} onOpenId={setPendingId} /> : null}
         {route === 'officials' ? <NewsPage scope="officials" refreshToken={refreshToken} onOpenId={setPendingId} /> : null}

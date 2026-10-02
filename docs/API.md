@@ -542,3 +542,35 @@ Query 參數（全部可選）：
 6. 排行榜的排序與 `intensity` 一律用 `/api/v1/rankings` 的回傳值，前端不得自行重算名次。
 7. 查單一委員一律帶 `session=all`（前端封裝為 `legislatorDetailUrl()`）：名錄預設只回本會期在職者，
    而法案提案人與排行榜會出現已離職委員。
+
+## GET /api/v1/agency
+
+「我的機關」首頁：以單一機關為中心彙整各來源。
+
+| 參數 | 說明 |
+| --- | --- |
+| `name` | 機關名稱（須在 `agencies` 清單內）。省略或不認得時 `agency` 為 `null`，只回機關清單供選單使用 |
+| `per` | 每個來源回傳最新幾則，1–20，預設 5 |
+
+比對方式：標題（預算審議另看提案單位）含機關全名，或 `server/fund-config.json` `aliases` 中的簡稱。
+
+回應：
+
+```jsonc
+{
+  "meta": { ... },
+  "agencies": [{ "name": "財政部", "heads": [{ "name": "莊翠雲", "title": "部長" }] }],  // 機關清單＋首長名單裡的機關
+  "agency": { "name": "財政部", "heads": [...], "terms": ["財政部"] },                      // 無此機關時為 null，以下欄位皆不出現
+  "kinds": {                                                                                 // news / bill / budget / report / post
+    "news": { "total": 38, "items": [{ "kind": "news", "date": "2026-10-02", "title": "...", "url": "...", "source": "..." }] }
+  },
+  "official_news": { "total": 5, "items": [{ "...": "...", "head": "莊翠雲" }] },           // 首長新聞（topic_news official:<首長>）
+  "meetings": { "total": 3, "items": [{ "date": "...", "name": "...", "committees": [], "speakers": [{ "id": "...", "name": "...", "party": "..." }] }] },
+  "replies":  { "total": 2, "items": [{ "date": "...", "meeting": "...", "title": "...", "url": "..." }] },  // 機關書面回覆
+  "watchers": [{ "id": "...", "name": "...", "party": "...", "count": 9 }]                    // 誰在關注，最多 8 位
+}
+```
+
+- `meetings` 只含**已開過**且議程提到該機關者；資料中沒有未來行事曆。
+- `watchers` 次數 = 新聞／臉書／提案（首位提案人）掛名次數（新聞同一則掛在多位委員底下時每人各算一次）＋提到該機關的會議中登記發言的次數。
+

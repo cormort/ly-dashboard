@@ -24,6 +24,7 @@ import { ChangesPanel } from '../src/components/ChangesPanel';
 import { CommitteeChart } from '../src/components/CommitteeChart';
 import { FacetChips } from '../src/components/FacetChips';
 import { Header } from '../src/components/Header';
+import { MyAgencyPage } from '../src/pages/MyAgencyPage';
 import { LegislatorGrid } from '../src/components/LegislatorGrid';
 import { SessionSelector } from '../src/components/SessionSelector';
 import { Hemicycle, seatLayout } from '../src/components/Hemicycle';
@@ -202,13 +203,13 @@ expectAll('最近動態（/activity）：站名、導覽、動態／議題／新
 const topNav = homeHtml.match(/<nav aria-label="主要頁面">([\s\S]*?)<\/nav>/)?.[1] ?? '';
 expectNone('最上層導覽不該再把所有子頁面平鋪出來', topNav, ['排行榜', '法案查詢', '委員比較', '縣市', '最近動態', '機關首長新聞']);
 check('首頁初始不顯示任何委員', !homeHtml.includes('查看檔案'));
-// 上層導覽順序（機關首長視角）：總覽 → 議事 → 委員 → 新聞 → 機關／基金；縣市、最近動態收進「委員」，首長新聞收進「新聞」
+// 上層導覽順序（機關首長視角）：總覽 → 我的機關 → 議事 → 委員 → 新聞 → 機關／基金；縣市、最近動態收進「委員」，首長新聞收進「新聞」
 check(
-  '上層導覽的順序是 總覽→議事→委員→新聞→機關／基金',
+  '上層導覽的順序是 總覽→我的機關→議事→委員→新聞→機關／基金',
   (() => {
     const nav = dashboardHtml.match(/<nav aria-label="主要頁面">([\s\S]*?)<\/nav>/)?.[1] ?? '';
     const labels = [...nav.matchAll(/>([^<>]+)<\/a>/g)].map((m) => m[1].trim()).filter(Boolean);
-    return labels.join('→') === '總覽→議事→委員→新聞→機關／基金';
+    return labels.join('→') === '總覽→我的機關→議事→委員→新聞→機關／基金';
   })(),
 );
 check('不含示範／假資料字串', !/甲黨|示範資料|林怡安|陳宏宇|乙黨/.test(homeHtml));
@@ -228,6 +229,12 @@ expectAll('委員查詢頁：屆次、篩選、名錄、委員會、異動骨架
   '列表',
 ]);
 (window as unknown as { location: { pathname: string } }).location.pathname = '/';
+
+console.log('\n— 我的機關 —');
+check('/my 對應我的機關頁', routeOf('/my') === 'my' && routeOf('/my?agency=%E8%B2%A1%E6%94%BF%E9%83%A8') === 'my');
+const myAgencyHtml = render(createElement(MyAgencyPage, { refreshToken: 0, onOpenId: () => undefined, onNavigate: () => undefined }));
+expectAll('我的機關：尚未選機關時引導選擇，並提供機關輸入清單', myAgencyHtml, ['我的機關', '選擇機關', 'list="agency-options"', 'id="agency-options"', '選擇會記在這個瀏覽器']);
+expectNone('我的機關：尚未選機關時不先畫各區塊', myAgencyHtml, ['會議與備詢', '誰在關注']);
 
 console.log('\n— FacetChips —');
 const facets = Array.from({ length: 30 }, (_, i) => ({ name: `單位${i + 1}`, count: 100 - i }));

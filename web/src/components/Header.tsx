@@ -30,7 +30,7 @@ export interface HeaderProps {
 
 /**
  * 導覽兩層，順序依「機關首長要面對立法院」的關心程度：
- * 總覽 → 議事（法案、預算、委員會＝對機關的直接影響）→ 委員（誰在問、誰在動）→ 新聞（委員與首長的輿情）→ 機關／基金（查詢工具）。
+ * 總覽 → 我的機關（選定機關後以它為中心）→ 議事（法案、預算、委員會＝對機關的直接影響）→ 委員（誰在問、誰在動）→ 新聞（委員與首長的輿情）→ 機關／基金（查詢工具）。
  * 縣市地圖與最近動態是看委員選區與活躍度用的，收進「委員」底下，不佔頂層。
  */
 interface NavGroup {
@@ -42,6 +42,7 @@ interface NavGroup {
 
 const NAV: NavGroup[] = [
   { id: 'overview', label: '總覽', home: 'dashboard', routes: [{ route: 'dashboard', label: '總覽' }] },
+  { id: 'my', label: '我的機關', home: 'my', routes: [{ route: 'my', label: '我的機關' }] },
   {
     id: 'agenda',
     label: '議事',
