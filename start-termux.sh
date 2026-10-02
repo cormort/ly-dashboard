@@ -12,7 +12,10 @@ command -v node >/dev/null || { echo "找不到 node，請先執行：pkg instal
 command -v termux-wake-lock >/dev/null && termux-wake-lock || true
 
 [ -d web/node_modules ] || npm --prefix web install
-[ -f web/dist/index.html ] || npm --prefix web run build
+# 前端原始碼比 dist 新（例如 git pull 之後）就重 build，避免一直開到舊版
+if [ ! -f web/dist/index.html ] || [ -n "$(find web/src web/index.html web/package.json -newer web/dist/index.html -print -quit 2>/dev/null)" ]; then
+  npm --prefix web run build
+fi
 
 echo "啟動中… 請在瀏覽器開 http://127.0.0.1:${PORT}"
 # 啟動時若資料不存在或超過 24 小時，伺服器會自動先同步一次

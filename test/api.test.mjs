@@ -951,7 +951,7 @@ test('罷免案：35 筆、來源是中選會官方、通過的只有陳柏惟�
   // 來源必須是官方頁面（使用者指定），不是 GitHub 轉存
   assert.match(res.source.page, /^https:\/\/db\.cec\.gov\.tw\/ElecTable\/Recall/);
   assert.match(res.source.endpoint, /^https:\/\/db\.cec\.gov\.tw\/static\/elections\/list\/RCL_L0\.json$/);
-  assert.ok(res.source.note.includes('沒有各案同意／不同意票數'), '限制要寫在資料裡，不是只寫在 README');
+  assert.ok(res.source.note.includes('只有案件清單') && res.source.note.includes('fetch-recall-results'), '限制與票數出處要寫在資料裡，不是只寫在 README');
 
   // 2025 兩波：7/26 有 24 案、8/23 有 7 案
   const jul = res.items.filter((r) => r.vote_date === '2025-07-26');

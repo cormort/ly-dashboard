@@ -761,10 +761,6 @@ export interface PartyShare {
   over_pct: number;
 }
 
-/**
- * 罷免案（中選會官方清單，`scripts/fetch-cec-recalls.mjs`）。
- * 只有案件層級資訊：中選會的罷免表**沒有**各案同意／不同意票數與投票率。
- */
 /** 官方文件裡的投開票數字（`scripts/fetch-recall-results.mjs` 解析，每一列的算式都驗過） */
 export interface RecallResults {
   electorate: number;
@@ -786,6 +782,10 @@ export interface RecallResults {
   read_from?: string;
 }
 
+/**
+ * 罷免案（中選會官方清單，`scripts/fetch-cec-recalls.mjs`）。
+ * 中選會的罷免表沒有票數；`results` 由 `scripts/fetch-recall-results.mjs` 從官方文件補入。
+ */
 export interface RecallItem {
   term: number;
   vote_date: string | null;

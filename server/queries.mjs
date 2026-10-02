@@ -1028,16 +1028,25 @@ export function listCounties(db) {
   };
 }
 
+let recalls = null;
+/** 中選會官方罷免清單（scripts/fetch-cec-recalls.mjs 產生）；檔案不存在時視為沒有資料（不讓 /legislator-votes 跟著 500） */
+const loadRecalls = () => {
+  if (recalls) return recalls;
+  try {
+    recalls = JSON.parse(readFileSync(new URL('./recalls.json', import.meta.url), 'utf8'));
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error;
+    recalls = { source: null, fetched_at: null, recalls: [] };
+  }
+  return recalls;
+};
+
 /**
  * 立委得票追蹤：在職委員歷次（2012 起，含補選）區域／原住民立委選舉的得票（server/legislator-votes.json）。
  * `id` 指定單一委員（含已離職）。
  * 以姓名比對（族語名分隔符號一律去掉）；不分區委員若曾參選區域也會列出。
  * `margin`：當選者對最高票落選者的領先票數，落選者對最低票當選者的差距（負值）；`change`：與本人前一次參選的得票差。
  */
-let recalls = null;
-/** 中選會官方罷免清單（scripts/fetch-cec-recalls.mjs 產生）；檔案不存在時視為沒有資料 */
-const loadRecalls = () => (recalls ??= JSON.parse(readFileSync(new URL('./recalls.json', import.meta.url), 'utf8')));
-
 let legislatorVotes = null;
 const loadLegislatorVotes = () => (legislatorVotes ??= JSON.parse(readFileSync(new URL('./legislator-votes.json', import.meta.url), 'utf8')));
 const round2 = (n) => Math.round(n * 100) / 100;
@@ -1189,10 +1198,10 @@ export function listLegislatorVotes(db, { id = null } = {}) {
     meta: envelope(db),
     years: source.years,
     sources: source.sources,
-    // 罷免是中選會官方清單（只有清單與結果，沒有同意／不同意票數）
+    // 罷免案件清單來自中選會選舉資料庫；票數另由官方公告／結果文件補入
     recalls: recallSource.recalls,
     recalls_source: { ...recallSource.source, fetched_at: recallSource.fetched_at },
-    // 票數來自公告 PDF（只有 2025 兩波有）
+    // 票數的官方文件出處（35 案都有）
     recalls_results_sources: recallSource.results_sources ?? [],
     recalls_results_updated_at: recallSource.results_updated_at ?? null,
     count: items.length,
@@ -1202,7 +1211,7 @@ export function listLegislatorVotes(db, { id = null } = {}) {
 
 /**
  * 立委罷免案清單（中選會官方，2015 起 35 案，含 2025 兩波 31 案）。
- * 只有案件層級資訊：屆次、投票日、被罷免人、選區、結果；**沒有**同意／不同意票數。
+ * 屆次、投票日、被罷免人、選區、結果，以及 `results`（官方公告／結果文件的同意／不同意票數）。
  */
 export function listRecalls(db) {
   const source = loadRecalls();
@@ -1212,7 +1221,7 @@ export function listRecalls(db) {
     source: { ...source.source, fetched_at: source.fetched_at },
     count: recalls.length,
     passed: recalls.filter((r) => r.passed).length,
-    // 有官方票數的案數（2025 兩波 31 案；公告 PDF 才有數字）
+    // 有官方票數的案數（目前 35 案都有）
     with_results: recalls.filter((r) => r.results).length,
     results_sources: source.results_sources ?? [],
     results_updated_at: source.results_updated_at ?? null,

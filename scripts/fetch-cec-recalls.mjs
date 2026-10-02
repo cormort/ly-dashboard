@@ -19,7 +19,7 @@
  * - 外層的 `area_name` 不可信（實測第 8 屆蔡正元那筆標成「雲林縣」，但標題寫臺北市），
  *   因此行政區一律從 `theme_name` 解析。
  */
-import { writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const PAGE_URL = 'https://db.cec.gov.tw/ElecTable/Recall?type=Legislator';
@@ -83,17 +83,28 @@ console.log(`[recalls] ${recalls.length} 筆（屆次分布 ${JSON.stringify(byT
 if (checkOnly) {
   console.log('[recalls] --check：只驗證，未寫檔');
 } else {
+  // 保留 fetch-recall-results.mjs 補進去的票數：這支只重抓案件清單，不能把 results 洗掉
+  const prev = existsSync(OUT) ? JSON.parse(readFileSync(OUT, 'utf8')) : {};
+  const prevResults = new Map((prev.recalls ?? []).filter((r) => r.results).map((r) => [r.theme_id ?? r.title, r.results]));
+  for (const r of recalls) {
+    const kept = prevResults.get(r.theme_id ?? r.title);
+    if (kept) r.results = kept;
+  }
   const out = {
     source: {
       label: '中選會選舉資料庫（官方）',
       page: PAGE_URL,
       endpoint: DATA_URL,
-      note: '罷免表只有案件清單（投票日與結果），沒有各案同意／不同意票數與投票率。',
+      note: '罷免表只有案件清單（投票日與結果）；各案票數由 scripts/fetch-recall-results.mjs 從官方公告／結果文件補入。',
     },
     fetched_at: new Date().toISOString(),
     count: recalls.length,
     recalls,
+    ...(prev.results_sources ? { results_sources: prev.results_sources } : {}),
+    ...(prev.results_updated_at ? { results_updated_at: prev.results_updated_at } : {}),
   };
+  const lost = (prev.recalls ?? []).filter((r) => r.results && !recalls.some((n) => (n.theme_id ?? n.title) === (r.theme_id ?? r.title)));
+  if (lost.length) console.warn(`[recalls] 警告：${lost.length} 筆舊票數對不到新清單（${lost.map((r) => r.name).join('、')}），請重跑 fetch-recall-results.mjs`);
   writeFileSync(OUT, `${JSON.stringify(out)}\n`);
   console.log(`[recalls] 已寫出 ${OUT}`);
 }

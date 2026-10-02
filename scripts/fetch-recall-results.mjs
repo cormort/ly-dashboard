@@ -13,7 +13,7 @@
  * 依賴：`pdftotext`（poppler）與 `unzip`。缺任何一個都會停下來說明，不會寫出半套資料。
  *
  * 每一列寫入前都會通過 `verifyRow()`：
- *   1. 同意 ＋ 不同意 ＋ 無效票 ＝ 投票人數，且無效票為正
+ *   1. 同意 ＋ 不同意 ＋ 無效票 ＝ 投票人數，且無效票不為負
  *   2. 投票人數 ÷ 選舉人總數 ＝ 文件上的投票率（誤差 ≤ 0.02）
  *   3. 文件若有印「同意票佔比」，重算要一致（分母各文件不同，一併記錄）
  *   4. 姓名必須在我們的清單中，且投票日相符
@@ -200,7 +200,7 @@ function verifyRow(row, recall, source) {
   const where = row.name ?? `${source.label}（${recall.name}）`;
   if (row.agree + row.disagree > row.voted) throw new Error(`${where}：同意＋不同意（${row.agree + row.disagree}）超過投票人數（${row.voted}）`);
   const invalid = row.invalid ?? row.voted - row.agree - row.disagree;
-  if (invalid <= 0) throw new Error(`${where}：無效票算出 ${invalid}，不合理`);
+  if (invalid < 0) throw new Error(`${where}：無效票算出 ${invalid}，不合理`);
   if (row.agree + row.disagree + invalid !== row.voted) throw new Error(`${where}：同意＋不同意＋無效票 ≠ 投票人數`);
   const turnout = Math.round((row.voted / row.electorate) * 10000) / 100;
   if (Math.abs(turnout - row.turnout_pct) > 0.02) throw new Error(`${where}：投票率 ${row.turnout_pct}% 與重算的 ${turnout}% 不符`);
@@ -237,6 +237,8 @@ for (const source of SOURCES) {
   else if (source.kind === 'manual-image-table') rows = [{ ...source.row, name: targets[0]?.name ?? null }];
   else throw new Error(`未知的 kind：${source.kind}`);
 
+  // 單一案件的文件沒有姓名、靠投票日對案子：那一天必須剛好只有一案，否則會對錯人
+  if (source.kind !== 'announcement-pdf' && targets.length !== 1) throw new Error(`${source.label}：投票日 ${source.vote_date} 應對到 1 案，實際 ${targets.length} 案`);
   if (source.expect && rows.length !== source.expect) throw new Error(`${source.label}：預期 ${source.expect} 列，實際 ${rows.length} 列`);
   if (!rows.length) throw new Error(`${source.label}：沒有解析到任何資料列`);
 
