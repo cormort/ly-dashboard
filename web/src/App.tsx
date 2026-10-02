@@ -9,6 +9,7 @@ import { legislatorDetailUrl } from './lib/legislators';
 import { SyncStatusBanner } from './components/SyncStatusBanner';
 import { useApi } from './hooks/useApi';
 import { useQueryState } from './hooks/useQueryState';
+import { useSync } from './hooks/useSync';
 import { pathFor, useRoute } from './hooks/useRoute';
 import { useTracked } from './hooks/useTracked';
 import { sessionLabelIndex } from './lib/sessions';
@@ -54,6 +55,8 @@ export default function App() {
   const [syncOpen, setSyncOpen] = useState(false);
   const tracked = useTracked();
 
+  const sync = useSync(() => setRefreshToken((value) => value + 1));
+
   const health = useApi<HealthResponse>(buildUrl('/health'), { refreshToken });
   const meta = useApi<MetaResponse>(buildUrl('/meta'), { refreshToken });
 
@@ -85,8 +88,14 @@ export default function App() {
             onSyncToggle={() => setSyncOpen((v) => !v)}
             query={route === 'legislators' ? query.filters.q : ''}
             onQueryChange={onQueryChange}
-            onRefresh={() => setRefreshToken((value) => value + 1)}
-            refreshing={health.phase === 'loading' || meta.phase === 'loading'}
+            onRefresh={() => void sync.start()}
+            refreshing={sync.state.phase === 'running' || health.phase === 'loading' || meta.phase === 'loading'}
+            syncMessage={
+              sync.state.phase === 'running'
+                ? `同步中…（已完成 ${sync.state.finished} 個來源）`
+                : sync.state.message
+            }
+            syncTone={sync.state.phase === 'running' ? 'running' : sync.state.phase === 'error' ? 'error' : 'ok'}
           />
         }
         sidebar={

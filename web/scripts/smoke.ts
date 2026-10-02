@@ -25,6 +25,7 @@ import {
   fetchMeta,
   fetchSyncRuns,
   legislatorParams,
+  startSync,
 } from '../src/api/client.ts';
 import { legislatorDetailUrl } from '../src/lib/legislators.ts';
 import { billStage } from '../src/lib/billStage.ts';
@@ -145,11 +146,13 @@ const ROUTES: Record<string, unknown> = {
 };
 
 const seen: string[] = [];
+const seenMethods: string[] = [];
 
 function stubFetch(): void {
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
     seen.push(url);
+    seenMethods.push(init?.method ?? 'GET');
     const { pathname } = new URL(url, 'http://stub.local');
 
     if (pathname === '/api/v1/boom') {
@@ -167,6 +170,12 @@ function stubFetch(): void {
           reject(new DOMException('aborted', 'AbortError'));
         });
       });
+    }
+    if (pathname === '/api/v1/sync') {
+      return new Response(
+        JSON.stringify({ accepted: true, started: true, scope: 'all', inflight_scope: 'all', message: '同步已在背景執行' }),
+        { status: 202, headers: { 'Content-Type': 'application/json' } },
+      );
     }
     const body = ROUTES[pathname];
     if (body === undefined) {
@@ -326,6 +335,17 @@ async function main(): Promise<void> {
     seen.length = 0;
     await fetchSyncRuns(50);
     assert.equal(seen[0], '/api/v1/sync-runs?limit=50');
+  });
+  await check('startSync 以 POST 打 /api/v1/sync，且其他請求維持 GET', async () => {
+    seen.length = 0;
+    seenMethods.length = 0;
+    const result = await startSync();
+    assert.equal(seen[0], '/api/v1/sync');
+    assert.equal(seenMethods[0], 'POST');
+    assert.equal(result.accepted, true);
+    seenMethods.length = 0;
+    await fetchSyncRuns(1);
+    assert.equal(seenMethods[0], 'GET');
   });
   await check('meta 的 current.session 可為 null 而不炸', async () => {
     const result = await fetchMeta();

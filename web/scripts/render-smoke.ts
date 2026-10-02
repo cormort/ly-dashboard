@@ -247,6 +247,16 @@ expectAll('顯示資料來源與資料截至時間', render(createElement(Header
 ]);
 // L6：同步面板是條件式 render，aria-controls 不能指向不存在的元素
 expectNone('面板不存在時，aria-controls 不該指向空號', render(createElement(Header, headerProps)), ['aria-controls="sync-panel"']);
+expectAll('同步中：按鈕停用並顯示進度', render(createElement(Header, { ...headerProps, refreshing: true, syncMessage: '同步中…（已完成 2 個來源）' })), [
+  '同步中…（已完成 2 個來源）',
+  'aria-label="同步更新中…"',
+  'disabled',
+]);
+expectAll('閒置時按鈕是「更新資料」', render(createElement(Header, headerProps)), ['aria-label="更新資料"']);
+expectAll('同步失敗訊息帶 error 樣式', render(createElement(Header, { ...headerProps, syncMessage: '1 個資料來源同步失敗，保留舊資料', syncTone: 'error' })), [
+  'sync-progress error',
+  '1 個資料來源同步失敗',
+]);
 expectAll('stale 時明示「可能非最新」', render(createElement(Header, { ...headerProps, stale: true })), ['可能非最新', 'sync-pill warning']);
 expectAll(
   '面板存在時（stale／失敗／展開）才給 aria-controls',

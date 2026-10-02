@@ -19,8 +19,12 @@ export interface HeaderProps {
   onSyncToggle: () => void;
   query: string;
   onQueryChange: (value: string) => void;
+  /** 按下去觸發後端同步（同步完才會重新載入畫面資料） */
   onRefresh: () => void;
   refreshing: boolean;
+  /** 同步進度／結果文字（如「同步中…（已完成 2 個來源）」）；無則不顯示 */
+  syncMessage?: string | null;
+  syncTone?: 'running' | 'ok' | 'error';
 }
 
 /**
@@ -91,6 +95,8 @@ export function Header({
   onQueryChange,
   onRefresh,
   refreshing,
+  syncMessage = null,
+  syncTone = 'running',
 }: HeaderProps) {
   const tone = failed ? 'error' : stale ? 'warning' : 'ok';
   const statusText = failed ? '同步失敗' : stale ? '可能非最新' : '資料截至';
@@ -154,13 +160,16 @@ export function Header({
           <span className="dot" aria-hidden="true" />
           {statusText} {formatDateTime(fetchedAt, '尚無成功同步紀錄')}
         </button>
+        <span className={`sync-progress ${syncTone}`} role="status" aria-live="polite">
+          {syncMessage}
+        </span>
         <button
           type="button"
           className="icon-button"
           onClick={onRefresh}
           disabled={refreshing}
-          aria-label={refreshing ? '重新載入中…' : '重新載入'}
-          title="重新載入"
+          aria-label={refreshing ? '同步更新中…' : '更新資料'}
+          title="從立法院重新同步最新資料"
         >
           <RefreshCw className={refreshing ? 'spin' : undefined} aria-hidden="true" />
         </button>
