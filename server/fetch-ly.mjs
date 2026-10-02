@@ -98,12 +98,19 @@ export async function fetchJson(url, options = {}) {
     retries = CONFIG.fetchRetries,
     ua = CONFIG.userAgent,
     text: asText = false,
+    // Retry-After 的等待上限；測試會注入小值，不必真的等
+    retryAfterCapMs = CONFIG.retryAfterCapMs,
     // 測試注入點：讓單元測試能模擬 429 → 200 的重試序列，不必真的打網路
     once: request = once,
+    sleepMs = sleep,
   } = options;
   let lastError = null;
+  let guard = 0;
 
-  for (let attempt = 1; attempt <= retries; attempt++) {
+  // 迴圈上限不能寫 `attempt <= retries`：429 會把 maxAttempts 拉高到 5，
+  // 但那個上限在迴圈條件裡永遠到不了（D41 的「多給幾次機會」會變成死碼）。
+  // 改由下面的 `attempt >= maxAttempts` 負責結束，`guard` 只是防呆。
+  for (let attempt = 1; guard++ < 50; attempt++) {
     try {
       let target = url;
       await pace(target);
@@ -148,8 +155,10 @@ export async function fetchJson(url, options = {}) {
       const maxAttempts = error.status === 429 ? Math.max(retries, 5) : retries;
       if (!retryable || attempt >= maxAttempts) break;
       const backoff = Math.round(500 * 2 ** (attempt - 1) * (0.7 + Math.random() * 0.6));
-      const delay = Math.max(backoff, error.retryAfterMs ?? 0);
-      await sleep(delay);
+      // Retry-After 可能是一小時（甚至更久）：尊重它，但不能讓一個標頭把整個同步階段卡死。
+      // 上限預設 60 秒（LY_RETRY_AFTER_CAP_MS），超過就照上限等，之後仍會重試。
+      const delay = Math.min(Math.max(backoff, error.retryAfterMs ?? 0), retryAfterCapMs);
+      await sleepMs(delay);
     }
   }
 

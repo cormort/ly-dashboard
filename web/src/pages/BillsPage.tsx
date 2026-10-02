@@ -3,6 +3,7 @@ import { Download, ExternalLink, X } from 'lucide-react';
 import { buildUrl } from '../api/client';
 import type { BillsResponse } from '../api/types';
 import { BillStageBar } from '../components/BillStage';
+import { PASSED_STATUSES } from '../lib/billStage';
 import { EmptyState, ErrorState, LoadingState } from '../components/DataStates';
 import { SearchField } from '../components/SearchField';
 import { useApi } from '../hooks/useApi';
@@ -31,7 +32,6 @@ const readFilters = (): BillFilters => {
 };
 
 const PAGE = 30;
-const PASSED = new Set(['三讀', '審查完畢(三讀)', '照案通過']);
 
 /**
  * 法案查詢：關鍵字（議案名稱或法律）、法律、狀態。條件寫在網址（可分享、首頁議題可直接連進來）。
@@ -214,7 +214,7 @@ export function BillsPage({ refreshToken, onOpenId }: BillsPageProps) {
 
 /** 單一法律的總覽：件數、三讀、期間、各黨主提案分布（依篩選後結果）。 */
 function LawSummary({ law, data }: { law: string; data: BillsResponse }) {
-  const passed = data.statuses.filter((s) => PASSED.has(s.name)).reduce((sum, s) => sum + s.count, 0);
+  const passed = data.statuses.filter((s) => PASSED_STATUSES.has(s.name)).reduce((sum, s) => sum + s.count, 0);
   const parties = sortParties(Object.keys(data.parties));
   const latest = data.items[0]?.latest_date;
   return (

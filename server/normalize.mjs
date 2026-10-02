@@ -444,7 +444,16 @@ export function budgetTypes(name) {
 /** 民國日期「113/03/07」或「1130307」→ ISO「2024-03-07」；格式不符回 null */
 export function rocDate(value) {
   const m = /^(\d{2,3})\/?(\d{2})\/?(\d{2})$/.exec(String(value ?? '').trim());
-  return m ? `${Number(m[1]) + 1911}-${m[2]}-${m[3]}` : null;
+  if (!m) return null;
+  const year = Number(m[1]) + 1911;
+  const month = Number(m[2]);
+  const day = Number(m[3]);
+  // 不驗證月日的話 '113/13/45' 會變成 '2024-13-45' 寫進資料庫並參與排序／篩選。
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  // 還要擋「格式對、日期不存在」（2 月 31 日）。注意不能用 Date.parse 回讀：
+  // V8 會把 '2024-02-31' 進位成 3 月 2 日而不是回 NaN。
+  if (day > new Date(Date.UTC(year, month, 0)).getUTCDate()) return null;
+  return `${year}-${m[2]}-${m[3]}`;
 }
 
 /**
@@ -654,6 +663,9 @@ const SOCIAL_URL_PATTERNS = {
   threads: /^https:\/\/(www\.)?threads\.(com|net)\/@[\w.]+\/?$/,
 };
 
+/** 更正表允許的動作；打錯字要 fail closed，不能默默當成 replace */
+const SOCIAL_ACTIONS = new Set(['replace', 'add', 'deny']);
+
 const SOCIAL_COLUMNS = { name: '姓名', pageName: '臉書專頁名稱', latestDate: '最新貼文日期', summary: '最新貼文主題摘要', url: '貼文或粉專連結' };
 /** Threads 欄位是選填：整理表有加才讀，沒加維持只有臉書 */
 const THREADS_COLUMNS = { url: 'Threads連結', latestDate: 'Threads最新貼文日期', summary: 'Threads最新貼文主題摘要' };
@@ -710,7 +722,8 @@ export function normalizeSocial(csvText, legislatorIdByNewsName, { overrides = [
 
   // 更正表（server/social-overrides.json）：整理表是人工維護的，貼錯網址時用這份覆蓋。
   // - platform：facebook（預設）或 threads（整理表沒有 threads 欄位，只能由更正表補）
-  // - action：replace（預設，覆蓋同平台的既有列）或 add（新增一個平台，不動其他列）
+  // - action：replace（預設，覆蓋同平台的既有列）、add（新增一個平台，不動其他列）、
+  //           deny（確認指向錯誤對象 → 移除該列。寧可沒有連結，也不要連到別人）
   // 覆蓋時**清掉 latest_post_***：那筆貼文摘要屬於舊網址，留著會變成「顯示別人粉專的貼文」。
   const applied = [];
   for (const override of overrides) {
@@ -723,6 +736,25 @@ export function normalizeSocial(csvText, legislatorIdByNewsName, { overrides = [
     if (!SOCIAL_URL_PATTERNS[platform]) {
       throw new DataValidationError(`更正表有不支援的平台「${platform}」（${override.legislator}）`);
     }
+    const action = override.action ?? 'replace';
+    if (!SOCIAL_ACTIONS.has(action)) {
+      throw new DataValidationError(`更正表有不支援的 action「${action}」（${override.legislator}）；只接受 ${[...SOCIAL_ACTIONS].join('／')}`);
+    }
+
+    // deny：人工已確認這一列的網址指向別的實體（政黨、媒體、他人頁面），直接移除。
+    // 不動使用者的試算表、也不刪任何歷史紀錄；要恢復只要把這筆從更正表拿掉。
+    if (action === 'deny') {
+      const index = accounts.findIndex((a) => a.legislator_id === legislatorId && a.platform === platform);
+      if (index < 0) {
+        warnings.push(`更正表標記「${override.legislator}」的 ${platform} 網址有誤，但整理表已經沒有這一列`);
+        continue;
+      }
+      warnings.push(`更正表移除「${override.legislator}」的 ${platform} 連結（${accounts[index].url}）：${override.reason ?? '已確認指向錯誤對象'}`);
+      accounts.splice(index, 1);
+      applied.push(`${override.legislator}(${platform}·移除)`);
+      continue;
+    }
+
     if (!SOCIAL_URL_PATTERNS[platform].test(override.url ?? '')) {
       throw new DataValidationError(`更正表的 ${platform} 網址格式不符：${override.url}`);
     }
@@ -736,7 +768,7 @@ export function normalizeSocial(csvText, legislatorIdByNewsName, { overrides = [
       source: 'override',
     };
     const index = accounts.findIndex((a) => a.legislator_id === legislatorId && a.platform === platform);
-    if (index >= 0 && override.action !== 'add') {
+    if (index >= 0 && action !== 'add') {
       warnings.push(`以更正表覆蓋 ${override.legislator} 的 ${platform}：${accounts[index].url} → ${override.url}`);
       accounts[index] = entry;
     } else if (index >= 0) {
@@ -750,9 +782,11 @@ export function normalizeSocial(csvText, legislatorIdByNewsName, { overrides = [
   }
   for (const account of accounts) if (!account.source) account.source = 'sheet';
 
-  const duplicated = accounts.map((a) => `${a.legislator_id}|${a.platform}|${a.url}`);
+  // 同一位委員、同一平台只能有一列：用三元組比對會放過「同一人同一平台、兩個不同網址」，
+  // 那會讓名錄顯示兩個粉專，而且更正表的 findIndex 只換掉第一筆，另一筆永遠是錯的。
+  const duplicated = accounts.map((a) => `${a.legislator_id}|${a.platform}`);
   if (new Set(duplicated).size !== duplicated.length) {
-    throw new DataValidationError('社群帳號出現重複（同一位委員、同一平台、同一網址）');
+    throw new DataValidationError('社群帳號出現重複（同一位委員、同一平台有多筆）');
   }
 
   return { accounts, warnings, overridesApplied: applied };

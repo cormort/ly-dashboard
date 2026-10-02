@@ -36,3 +36,9 @@ const STAGE_BY_STATUS: Record<string, BillStage> = {
 export function billStage(status: string): BillStage | null {
   return STAGE_BY_STATUS[status] ?? null;
 }
+
+/**
+ * 「已三讀」的狀態集合：總覽的統計卡與法案頁的統計列都用這一份，
+ * 唯一定義處（以前兩頁各有一份 new Set，新增狀態時只會改到一邊）。
+ */
+export const PASSED_STATUSES: ReadonlySet<string> = new Set(['三讀', '審查完畢(三讀)', '照案通過']);

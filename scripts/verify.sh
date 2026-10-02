@@ -107,6 +107,18 @@ curl -s -o /tmp/verify-sync.json -w "HTTP %{http_code} " -X POST "http://127.0.0
 python3 -c 'import json;d=json.load(open("/tmp/verify-sync.json"));print(d["message"],"| scope:",d["scope"])'
 
 echo
+echo "--- CR-7：設了 LY_SYNC_TOKEN 之後，POST /api/v1/sync 要擋掉沒有帶 token 的請求"
+LY_SYNC_TOKEN=verify-token PORT=$((PORT + 1)) node server/index.mjs --no-scheduler >/tmp/verify-api-token.log 2>&1 &
+TOKEN_PID=$!
+trap 'kill $API_PID $TOKEN_PID 2>/dev/null || true' EXIT
+for _ in $(seq 1 40); do curl -sf "http://127.0.0.1:$((PORT + 1))/api/v1/health" >/dev/null && break; sleep 0.3; done
+printf "  沒有 token        → HTTP %s（預期 401）\n" "$(curl -s -o /dev/null -w '%{http_code}' -X POST "http://127.0.0.1:$((PORT + 1))/api/v1/sync?scope=roster")"
+printf "  錯誤 token        → HTTP %s（預期 401）\n" "$(curl -s -o /dev/null -w '%{http_code}' -H 'x-sync-token: wrong' -X POST "http://127.0.0.1:$((PORT + 1))/api/v1/sync?scope=roster")"
+printf "  正確 token        → HTTP %s（預期 202）\n" "$(curl -s -o /dev/null -w '%{http_code}' -H 'x-sync-token: verify-token' -X POST "http://127.0.0.1:$((PORT + 1))/api/v1/sync?scope=roster")"
+printf "  GET 端點不受影響  → HTTP %s（預期 200）\n" "$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$((PORT + 1))/api/v1/legislators?limit=1")"
+kill $TOKEN_PID 2>/dev/null || true
+
+echo
 echo "=== 5) 前端靜態檔與 SPA fallback"
 for path in "/" "/legislators" "/bills" "/rankings"; do
   printf "  GET %-14s → " "$path"

@@ -486,6 +486,16 @@ Query 參數（全部可選）：
 
 同時只允許一個同步在跑（single-flight）；已有同步進行時 `started` 為 `false`，該請求會被合併。
 
+### 授權（CR-7，2026-10-02 起）
+
+| 情境 | 行為 |
+| --- | --- |
+| 伺服器綁 loopback（預設 `LY_HOST=127.0.0.1`）且未設 `LY_SYNC_TOKEN` | 放行（本機維運） |
+| 設了 `LY_SYNC_TOKEN` | 必須帶 `x-sync-token: <token>`，否則 **401** |
+| 綁非 loopback 但沒設 `LY_SYNC_TOKEN` | **403 `sync_disabled`**（直接停用，不是警告） |
+
+`GET /api/v1/*` 完全不受影響。錯誤回應沿用 `{ "error": { "code", "message" } }`。
+
 ## 前端使用規則
 
 1. **不要**直接呼叫 `data.ly.gov.tw`（會被 CORS 擋、也會被 WAF 403）。一律呼叫 `/api/v1/*`。

@@ -14,7 +14,7 @@
 | id14 涵蓋第 4–11 屆，只按姓名 join → 122/123 人被污染、召委 84 人 | 只取本屆（term 11），召委綁 `(session, committee, legislator)`，去重後 **68 人／本會期 23 人** |
 | 委員 id 用陣列索引 → 追蹤會錯人 | 用立院 `lgno`（退回 `ename`）當穩定 id |
 | 同步失敗就端出假資料 | **fail closed**：驗證不過就保留舊資料、記錄失敗、標記 stale，前端顯示「資料截至 …」 |
-| 無異動紀錄、無原始快照、無測試 | `change_log` + `raw_snapshots`(gzip) + 56 項後端測試＋68 項前端測試 |
+| 無異動紀錄、無原始快照、無測試 | `change_log` + `raw_snapshots`(gzip) + 98 項後端測試＋58 項前端測試 |
 
 ## 快速開始
 
@@ -22,7 +22,7 @@
 # 1) 抓資料進 SQLite（打真實立法院 API，約 7 秒）
 node server/ingest.mjs
 
-# 2) 跑測試（56 項，不需要網路，用 test/fixtures 的真實 API 回應）
+# 2) 跑測試（98 項，不需要網路，用 test/fixtures 的真實 API 回應）
 npm test
 
 # 3) 建置前端
@@ -34,7 +34,7 @@ node server/index.mjs
 ```
 
 - `--no-scheduler`：只開 API，不在啟動時自動同步（開發用）。
-- 環境變數：`PORT`、`LY_DB`、`LY_UA`、`LY_STALE_HOURS`、`LY_SYNC_INTERVAL_MS`、`LY_FETCH_TIMEOUT_MS`、`LY_FETCH_RETRIES`、`LY_SKIP_BUDGET`（跳過預算三個來源）。
+- 環境變數：`PORT`、`LY_HOST`、`LY_SYNC_TOKEN`、`LY_DB`、`LY_UA`、`LY_STALE_HOURS`、`LY_SYNC_INTERVAL_MS`、`LY_FETCH_TIMEOUT_MS`、`LY_FETCH_RETRIES`、`LY_RETRY_AFTER_CAP_MS`、`LY_SHRINK_MIN_RATIO`、`LY_ALLOW_SHRINK`、`LY_SKIP_BUDGET`（跳過預算三個來源）。
 
 ## 架構
 
@@ -81,8 +81,8 @@ cron/啟動排程 (24h)                      server/ingest.mjs
 ```bash
 bash scripts/verify.sh                      # 一鍵（快速：跳過外部來源，約 15 秒）
 bash scripts/verify.sh --full               # 一鍵（完整：含 g0v／Google 新聞／試算表，約 4 分鐘）
-npm test                                    # 後端 56 passed（fail-closed、交易回滾、change_log、排行榜、M1–M5 回歸）
-npm --prefix web test                       # 前端 tsc -b + 煙霧 27 + 渲染 41，全過
+npm test                                    # 後端 98 passed（fail-closed、交易回滾、change_log、排行榜、M1–M5 與第三輪回歸）
+npm --prefix web test                       # 前端 tsc -b＋煙霧／渲染煙霧，58 項全過
 node server/ingest.mjs                      # 123 位委員 / 783 席次 / 5 會期 / 113 本會期名錄 + 議案／社群／新聞
 node server/ingest.mjs                      # 第二次：名錄 status=skipped（sha256 + 正規化版本未變）
 LY_SKIP_NEWS=1 LY_SKIP_BILLS=1 node server/ingest.mjs   # 只同步名錄（秒級，不打第三方）
@@ -120,6 +120,13 @@ warnings: ['游錫堃 在本屆無任何會期委員會紀錄（辭職）', '李
 2. **前端**：`web/dist` 是純靜態檔，放 Pages/Vercel/任何空間。
 3. 破壞性／需帳號的動作（例如建立 Worker、push、對外發布）尚未執行，記錄於 `DECISIONS.md`。
 
+部署到非 loopback 時的**必要設定**（CR-7 已實作，2026-10-02）：
+
+```bash
+LY_HOST=0.0.0.0 LY_SYNC_TOKEN=<隨機字串> node server/index.mjs   # 沒有 token 時 POST /api/v1/sync 直接回 403（停用）
+curl -X POST -H "x-sync-token: <隨機字串>" localhost:8787/api/v1/sync?scope=roster
+```
+
 ## 維運與限制
 
 執行時**不需要 AI**：只有 Node + SQLite + 靜態前端，程式裡沒有呼叫任何 AI 服務。
@@ -132,9 +139,11 @@ warnings: ['游錫堃 在本屆無任何會期委員會紀錄（辭職）', '李
 | --- | --- | --- |
 | **伺服器沒在跑** | 排程在伺服器程式內（不是系統 cron），關機或程式停止就不會更新 | 放在常開的機器上；或改用系統 cron 定時跑 `node server/ingest.mjs` |
 | **外部來源改版** | 該資料集持續同步失敗，畫面標示資料過期。g0v 立法院 API 是社群維護的非官方 API，改版機率高於官方 | 看 `/api/v1/sync-runs` 的錯誤訊息，改 `server/normalize.mjs` 或 `server/config.mjs` |
-| **社群帳號整理表** | 人工維護的 Google 試算表；委員換帳號、遞補時不會自動更新 | 有人定期更新表格（網址可用 `LY_SOCIAL_CSV` 覆寫） |
+| **社群帳號整理表** | 人工維護的 Google 試算表；委員換帳號、遞補時不會自動更新 | 有人定期更新表格（網址可用 `LY_SOCIAL_CSV` 覆寫）。已知錯誤的網址放在版本控管的更正表 `server/social-overrides.json`（17 筆：15 筆 facebook 覆蓋＋1 筆 threads＋1 筆 deny） |
 | **分類規則遇到新寫法** | 新的議案狀態或名稱寫法對不到規則：落到「其他」、不顯示流程條或預算類型，不會壞掉 | 偶爾檢查，補 `web/src/lib/billStage.ts`、`server/normalize.mjs` 的 `budgetTypes()`、`server/queries.mjs` 的 `BUDGET_PENDING` |
-| **換屆（第 12 屆）** | 程式會依名錄切換屆次，但沒有實際測過換屆當下 | 換屆後手動同步一次並檢查各頁 |
+| **換屆（第 12 屆）** | 會依名錄切換屆次；合成測試已涵蓋（屆次／會期／席次整組切換、舊屆次查不到、`?session=舊會期` 退回最新會期），但**真實換屆當下仍然沒有跑過** | 換屆後手動同步一次並檢查各頁 |
+| **來源回應被截斷**（回了一半、分頁壞掉） | 整批覆寫的表（名錄／席次／公報紀錄／會議附件／ID223）會比對上次成功的筆數，掉超過 20% 就 **fail closed** 保留舊資料，並寫入 `sync_runs` 的 failed | 看 `/api/v1/sync-runs` 的錯誤；若確認是來源合法縮減，用 `LY_ALLOW_SHRINK=1 node server/ingest.mjs` 強制覆寫一次 |
+| **更正表的委員離職／改名** | 更正表對不到在職委員時**整個社群階段 fail closed**（不再只是警告後靜默丟棄，見 D44） | 錯誤訊息會指出是哪一筆；把該筆從 `server/social-overrides.json` 移除或改成現任委員 |
 
 另外幾個已知的資料性質（不是故障）：
 
@@ -167,7 +176,7 @@ curl -s localhost:8787/api/v1/health | jq .retention                   # 目前�
 ```
 
 實測成長量：一輪完整同步約產生 9 筆同步紀錄；異動紀錄只在欄位真的變動時才寫入
-（本次 113 位委員的粉專更正產生 16 筆，之後每次同步 0 筆）。以每天同步一次估算，
+（本次 113 位委員的粉專更正產生 16 筆，之後每次同步 0 筆；2026-10-02 再追加 1 筆 deny）。以每天同步一次估算，
 一年約 3,300 筆同步紀錄，對 SQLite 是無感的量。
 
 ## Code Review（2026-09-30）
@@ -183,7 +192,7 @@ curl -s localhost:8787/api/v1/health | jq .retention                   # 目前�
 | CR-3 | `HealthDbCounts` 缺 `sessions` / `committees` / `snapshots` | 補齊 |
 | CR-4 | `HealthResponse` 缺 `warnings` | 補齊 |
 | CR-5 | `applyDataset` 與 `buildDataset` 中 O(n²) 線性掃描 | 改用 `Map` |
-| CR-6 | `ALL_SESSIONS` 在 `types.ts` 與 `urlState.ts` 重複定義 | `types.ts` 匯出，`urlState.ts` 改為 re-export |
+| CR-6 | `ALL_SESSIONS` 在 `types.ts` 與 `urlState.ts` 重複定義 | 唯一定義處在 `web/src/lib/urlState.ts`，其他模組由它 import（原本這格把方向寫反了，2026-10-02 更正） |
 
 ### 🔴 第二輪已修正（Bug）
 
@@ -200,9 +209,9 @@ curl -s localhost:8787/api/v1/health | jq .retention                   # 目前�
 
 | # | 問題 | 現況 |
 |---|---|---|
-| CR-7 | `POST /api/v1/sync` 無驗證 | 綁 `127.0.0.1`，部署前需加保護（見 `DECISIONS.md` D8） |
+| CR-7 | `POST /api/v1/sync` 無驗證 | **已修正（2026-10-02）**：`LY_SYNC_TOKEN` 常數時間比對，沒設 token 時僅 loopback 可用、對外直接 403（見 D51） |
 | CR-8 | `timer.unref()` | 無實際影響：HTTP server 本身會維持 process 存活；若日後排程與 server 拆開執行才需移除 |
-| CR-9 | `getHealth` 中 `count(table)` 使用字串插值（非參數化） | 所有呼叫者皆為字串常量，安全但不理想 |
+| CR-9 | `getHealth` 中 `count(table)` 使用字串插值（非參數化） | **已修正（2026-10-02）**：改成由常數清單 `HEALTH_TABLES` 產生，呼叫端再也傳不進字串 |
 | CR-10 | `queries.mjs` 動態 `IN` 子句 | 參數化正確但依賴 `resolveScope` 驗證，加了 invariant 註解 |
 | CR-11 | 根目錄無 `package-lock.json` | server 端目前零 npm 依賴，不需要 lockfile |
 
@@ -239,7 +248,7 @@ curl -s localhost:8787/api/v1/health | jq .retention                   # 目前�
 | L6 | `aria-controls="sync-panel"` 指向條件式 render 的元素 | 只有面板存在時才設定 |
 | L7 | 人像沒有 `onError` 後備，且 `photo_url` 是 `http://` | 新增共用 `Portrait` 元件；後端升級為 https（實測圖床支援，200 image/jpeg） |
 | L8 | 選了議案狀態後，狀態下拉只剩一個選項 | 統計改在「套用 status 篩選前」計算 |
-| L9 | 死碼 `committeeAxisLabel`／`deriveParties`，且委員會短名重寫三次 | 共用 `shortCommittee()`，移除死碼 |
+| L9 | 死碼 `committeeAxisLabel`／`deriveParties`，且委員會短名重寫三次 | 共用 `shortCommittee()`，移除死碼（2026-10-02 補完：`deriveParties` 與兩處 inline `replace(/委員會$/)` 都已清掉） |
 
 ### 實作中新發現
 
@@ -323,9 +332,84 @@ curl -s localhost:8787/api/v1/health | jq .retention                   # 目前�
 - **人口與得票關聯**：人口為 2026-08，晚於 2020／2024 選舉；屬區域層級相關（生態謬誤），不代表個人行為或因果。
 
 ### 開發環境注意
-- `npm test`（`node --test test/`）在 Node 22.22 會找不到 `test` 模組而失敗；目前改用 `node --test test/ingest.test.mjs`（42 項全過）。
-- 端對端截圖中 CSV 匯出的檔名在 headless Chromium 顯示為 `download`（`downloadCsv` 立即 revoke object URL），一般瀏覽器未驗證。
+- `npm test`（`node --test test/`）在 Node 22.22 會找不到 `test` 模組而失敗；本機 Node 26.10 正常（99 項全過）。
+- ~~端對端截圖中 CSV 匯出的檔名在 headless Chromium 顯示為 `download`（`downloadCsv` 立即 revoke object URL）~~
+  → 2026-10-02 已修：`downloadCsv` 改為下載後延遲 1 秒才 `revokeObjectURL`（同一個 tick revoke，Firefox／Safari 有機會取消下載）。
+## 第三輪 Code Review（2026-10-02）
 
+第二輪之後又累積了一批修正，這一輪分成三個角度獨立複審（API 查詢層／前端／ingestion 管線），
+**每一條都先寫出可重現的失敗、修好、再補一個會紅的回歸測試**。後端 84 → **98 項**，前端維持 58 項全過。
+
+### 🔴 先講最重要的：整批覆寫前的相對筆數門檻（B1／B2）
+
+原本所有「整批覆寫」的表只有**絕對下限**（例如 `length < 100`）。真實席次是 783 筆，
+來源回了一半（367 筆）照樣通過驗證、`status = success`，而 `applyDataset` / `replaceAll`
+是 `DELETE` + `INSERT` —— 一覆寫，完整的舊資料就沒了，唯一的訊號是 `meta.warnings` 裡一行字。
+
+現在 `guardShrink()` 拿**上一次成功套用的筆數**當基準（記在 `meta`），掉超過 20% 就中止並記 `failed`：
+名錄／席次、公報委員會紀錄、會議附件／機關回覆、ID223 登記發言都適用。
+合法縮減時用 `LY_ALLOW_SHRINK=1` 強制覆寫一次。**測試**：把 fixture 的 committee 欄位清空一半 → `status = 'failed'`、`committee_seats` 仍是 783。
+
+### 🔴 高（會回錯資料或服務 500）
+
+| # | 問題 | 修正 | 測試 |
+| --- | --- | --- | --- |
+| F1 | `?vocab=category` 的熱門議題**靜默漏掉所有預算案**：SQL 把 `category` 別名成 `laws`，取鍵卻讀 `row.category` → `keys` 恆為空陣列 | SQL 取回真正的 `category`；`anchor`／`earliest` 也一併納入 `budget_bills`（否則 bills 一空整頁回空） | `F1: vocab=category 要把預算案一起算進來` |
+| B1 | 名錄部分回應被判 success 並整批覆寫（見上） | `guardShrink` | `B1: 名錄部分回應（席次掉一半）要 fail closed` |
+| B2 | 公報紀錄／會議附件／ID223 只有「非空」驗證 → 截斷的回應靜默蓋掉完整資料 | 同上 | `B2: records 被截斷時要 fail closed` |
+| B4 | 新聞**全部失敗**時 `news_status` 仍寫 `complete:113/113`，前端看起來像成功 | 寫 `failed:…`，並讓 `/health` 的 `warnings` 顯示它（以前只有 `partial` 會被顯示） | `B4: 新聞全部失敗時 news_status 要寫 failed` |
+| B3 | 社群更正表對不到在職委員時只警告、靜默丟棄（與 D44 寫的 fail closed 不符） | 改為 `DataValidationError`（整個社群階段 fail closed） | 涵蓋於 `社群更正表：補上整理表沒有的委員` 等測試 |
+
+### 🟠 中
+
+| # | 問題 | 修正 | 測試 |
+| --- | --- | --- | --- |
+| F2 | `/news` 的 `total` 用 `COUNT(*) FROM news`，items 用 `JOIN legislators` → 孤兒新聞讓 `total` 比實際可回傳的還大 | total 改用同一組 JOIN | `F2: /news 的 total 要跟 items 用同一組 JOIN` |
+| F3 | 名錄為空時 `/committee-activity` 的姓名 regex 變成空樣式 → `byHan.get('')` 是 undefined → **TypeError 500** | 空清單時直接回 `[]`；並對 `byHan.get()` 加防護 | `F3: 名錄為空時不可以 500` |
+| F4 | 排行榜**先 `LIMIT` 才過濾在職委員**：離職者佔走名額時榜單靜默短少（實測 `limit=1` 回空榜） | 在職條件下推進入 SQL | `F4: 排行榜先在 SQL 過濾在職委員` |
+| B5 | 「429 多給幾次機會」是**死碼**：迴圈上限寫 `attempt <= retries`，`maxAttempts = 5` 永遠到不了（D41 的意圖沒生效） | 迴圈結束條件交給 `attempt >= maxAttempts` | `B5: 429 會多給幾次機會（上限 5 次）` |
+| B6 | `Retry-After` 無上限：一個 `Retry-After: 3600` 就讓階段卡一小時，`LY_NEWS_BUDGET_MS` 攔不住 | 等待時間夾在 `LY_RETRY_AFTER_CAP_MS`（預設 60 秒） | `B6: Retry-After 再長也只在 cap 之內等待` |
+| F5 | `upsertTopicNews` 多列寫入沒有交易（同檔其他整批寫入都有） | 包 BEGIN／COMMIT／ROLLBACK | — |
+| F11 | `pruneLogs`／`pruneNews` 各刪兩張表但沒有交易 | 同上 | — |
+
+### 🟡 低（確定的小 bug）
+
+| # | 問題 | 修正 |
+| --- | --- | --- |
+| F6 | `?q=%`／`?q=_` 被當成 LIKE 萬用字元 → `q=%` 回傳全部議案 | `ESCAPE '\'` + 跳脫 `% _ \` |
+| F7 | 所有符合列 `latest_date` 為空時 `first_date` 會外洩字串 `"9999"` | 改成從 `null` 起算 |
+| F9 | `/bills` 的 `statuses` 會出現 `{name: null}`（`listBudget` 早有 `filter`，bills 漏了） | 空狀態不進統計 |
+| B9 | 同一位委員、同一平台可以有兩筆（不同網址），更正表的 `findIndex` 只換掉第一筆 | 重複檢查改成 `legislator_id\|platform` |
+| B10 | `rocDate('113/13/45')` 會產生 `2024-13-45` 寫進資料庫 | 驗證月日與每月天數 |
+| F8 | `change_log` 漏記「（無）→ 有值」的異動 | 允許 `old_value` 為空 |
+| M4 | `SyncStatusBanner` 的 `aria-controls` 指向收合時不存在的元素（L6 只在 Header 修了） | 有面板時才設 |
+| M5 | 在頁首搜尋框按 Esc 會冒泡到 window，**同時關掉**委員側欄 | Escape 分支加 `stopPropagation()` |
+| M1 | `Portrait` 的 `broken` 狀態會沿用給下一位委員（元件被重用）→ 一次 404 之後所有大頭照都變文字頭像 | `<Portrait key={legislator.id}>` |
+| M6 | 總覽的 `Card` 少了 `empty` 分支 → 空清單 render 出一張什麼都沒寫的卡 | 補 `EmptyState` |
+| H1 | URL 的 `?term=99`／`?session=99-9` 不在清單裡時，下拉顯示的是別的值、且使用者無法從 UI 切回去 | 清單外的值補一個「（無資料）」選項 |
+| L3 | `downloadCsv` 在 `a.click()` 同一個 tick 就 `revokeObjectURL`（Firefox／Safari 可能取消下載） | 延後 1 秒 revoke |
+| L4 | `ComparePage` 是唯一沒攔截的站內連結 → 整頁重載、掉 SPA 狀態 | 傳入 `onNavigate` 並 `preventDefault` |
+| L2 | README 宣稱「單一真相來源」但實際有兩處 inline 重寫委員會短名、`deriveParties` 是死碼、三讀狀態集合兩頁各一份 | 全部改用 `shortCommittee()`／`PASSED_STATUSES`，刪掉死碼 |
+
+### 已在這一輪補上的測試（把「沒測過」變成測過）
+
+- **換屆（第 12 屆）**：合成第 12 屆名錄 → 驗證屆次／會期／席次整組切換、舊屆次查不到、
+  以及 `?session=11-5` 這種換屆後的舊連結會**退回該屆最新會期**（`meta.session` 會明講），而不是回空清單或回上一屆的人。
+- **`/health` 的 stale 判斷**：資料用固定時間戳寫入，卻用「執行當下」判斷 stale —— 原測試在 2026-10-02 之後就會**自己變紅**（已經紅了）。
+  改成 `getHealth(db, { now })` 可注入時鐘，並補上「超過 `LY_STALE_HOURS` 必須 stale 且 `ok=false`」這條以前完全沒覆蓋的路徑。
+- **CR-7 的同步端點授權**：純函式 `authorizeSync()` 單元測試 + `verify.sh` 端到端（沒帶／錯 token → 401、對的 → 202、GET 不受影響）。
+
+### 刻意沒做（附理由）
+
+| 項目 | 為什麼不做 |
+| --- | --- |
+| `web/scripts` 沒有進 `tsconfig` 的型別檢查（32 個 TS 錯誤） | 要一次補 `@types/node`、`allowImportingTsExtensions` 與 32 處 fixture 型別；會動到測試骨架，留成獨立一件事 |
+| `fetch-ly` 的重導向跨 host／`http://` 目標、response body 無大小上限 | 目前來源固定且可信；上線後若改成打任意網址才需要 |
+| `raw_snapshots` 無上限、`gzipSync` 同步壓縮 | 一天一輪、內容有變才存，成長量無感；量大到有感時再換非同步 gzip＋保留上限 |
+| CLI 與 server 兩個 writer 會 `database is locked` | 目前維運方式就是單一行程；要雙寫得先換 WAL＋busy timeout |
+| `LY_UA` 還是 placeholder | 需要使用者提供真實可聯絡的網址／信箱 |
+| 委員會頁的「業務成果」區塊（會議概況、考察活動、審竣議案…） | 只存在於 ly.gov.tw 的網頁文章，沒有開放資料；要逐委員會爬網頁，是獨立功能不是 review 修正 |
+| 部署（Worker／VPS／Pages） | 需要帳號與費用，屬不可逆的對外動作 |
 ## 授權與資料來源
 
 資料來源：立法院開放資料（`https://data.ly.gov.tw/`），依「政府資料開放授權條款第 1 版」。

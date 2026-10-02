@@ -93,6 +93,8 @@ export function SearchField({
           }
           if (event.key === 'Escape' && latestDraftRef.current !== '') {
             event.preventDefault();
+            // 不擋冒泡的話會傳到 window 的 useEscapeKey，把開著的委員側欄一起關掉
+            event.stopPropagation();
             latestDraftRef.current = '';
             setDraft('');
             flush('');

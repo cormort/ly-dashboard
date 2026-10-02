@@ -2,10 +2,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { openDb, applyDataset, applyBills, applySocial, upsertNews, pruneLogs, getMeta, setMeta } from '../server/db.mjs';
-import { buildDataset, normalizeBills, normalizeMeetings, normalizeSocial, newsName, rocDate, DataValidationError } from '../server/normalize.mjs';
+import { openDb, applyDataset, applyBills, applySocial, applyCommitteeRecords, applyCommitteeMeets, upsertNews, pruneLogs, getMeta, setMeta } from '../server/db.mjs';
+import { buildDataset, normalizeBills, normalizeCommitteeRecords, normalizeMeetings, normalizeSocial, newsName, rocDate, DataValidationError } from '../server/normalize.mjs';
 import { CONFIG } from '../server/config.mjs';
-import { runIngest, runBillsIngest, runBudgetIngest, runBudgetReportsIngest, runMeetingsIngest, budgetPageUrl, runNewsIngest, runSocialIngest, runAll } from '../server/ingest.mjs';
+import { guardShrink, runIngest, runBillsIngest, runRecordsIngest, runBudgetIngest, runBudgetReportsIngest, runMeetingsIngest, budgetPageUrl, runNewsIngest, runSocialIngest, runAll } from '../server/ingest.mjs';
 import { getHealth, listBills, listBudget, listBudgetMeetings, listBudgetReports, budgetState, listChanges, listCounties, listLegislatorVotes, listRankings, compareLegislators, listRegions, listSplitTicket, listDemographics, listPopulationTrend, getTownMap, listLegislators, listNews, listSyncRuns } from '../server/queries.mjs';
 import { FetchError } from '../server/fetch-ly.mjs';
 import { syncOnce } from '../server/index.mjs';
@@ -227,8 +227,9 @@ test('社群同步：成功時寫入並出現在委員資料；失敗時保留�
   const db = seeded();
   const ok = await runSocialIngest(db, { logger: silent, fetchImpl: async () => ({ text: socialCsv, status: 200, attempts: 1 }) });
   assert.equal(ok.status, 'success');
-  // 113 位在職委員各有一個 facebook；吳思瑤另外由更正表補上 threads → 114 筆
-  assert.equal(getHealth(db).db.social_accounts, 114);
+  // 113 位在職委員各有一個 facebook，扣掉更正表 deny 掉的陳永康（指向 KMT 粉專）→ 112 筆，
+  // 再加上吳思瑤由更正表補的 threads → 113 筆。
+  assert.equal(getHealth(db).db.social_accounts, 113);
   const wu = listLegislators(db, { q: '吳思瑤' }).items[0];
   const wuFacebook = wu.social.find((a) => a.platform === 'facebook');
   const wuThreads = wu.social.find((a) => a.platform === 'threads');
@@ -236,9 +237,12 @@ test('社群同步：成功時寫入並出現在委員資料；失敗時保留�
   assert.equal(wuThreads.url, 'https://www.threads.com/@wusuyao541');
   assert.equal(wuThreads.source, 'override');
 
+  const chen = listLegislators(db, { q: '陳永康' }).items[0];
+  assert.deepEqual(chen.social, [], '陳永康的連結指向中國國民黨粉專，已被更正表 deny，寧可沒有也不要連到別人');
+
   const blocked = await runSocialIngest(db, { logger: silent, fetchImpl: async () => ({ text: '<!DOCTYPE html>login', status: 200, attempts: 1 }) });
   assert.equal(blocked.status, 'failed', '試算表被改回私人（回登入頁）要 fail closed');
-  assert.equal(getHealth(db).db.social_accounts, 114, '失敗時保留舊資料');
+  assert.equal(getHealth(db).db.social_accounts, 113, '失敗時保留舊資料');
 });
 
 /* ---------------- Review 修正的回歸測試（M1/M2/M3/M4/M5） ---------------- */
@@ -322,7 +326,7 @@ test('M4: 社群帳號數掉超過 20% 時 fail closed，保留舊資料', async
     fetchImpl: async () => ({ text: csv, status: 200, headers: {}, bytes: csv.length, sha256: 'x', attempts: 1 }),
   });
   assert.equal(ok.status, 'success');
-  assert.equal(ok.accounts, 114, '113 位 facebook + 吳思瑤的 threads');
+  assert.equal(ok.accounts, 113, '112 位 facebook（113 扣掉 deny 的陳永康）+ 吳思瑤的 threads');
 });
 
 test('M5: 新聞同步有時間預算，用完標記 partial 而不是失敗', async () => {
@@ -654,25 +658,72 @@ test('社群更正表：支援 threads（整理表沒有這個平台，只能由
   assert.equal(Number(db.prepare('SELECT COUNT(*) AS n FROM social_accounts WHERE legislator_id = ?').get(target.id).n), 2);
 });
 
-test('真實更正表檔案：16 筆（含 1 筆 threads）、平台與網址格式一致、沒有重複', async () => {
+test('真實更正表檔案：17 筆（含 1 筆 threads、1 筆 deny）、平台與網址格式一致、沒有重複', async () => {
   const file = JSON.parse(readFileSync(fileURLToPath(new URL('../server/social-overrides.json', import.meta.url)), 'utf8'));
   const db = seeded();
   const dataset = buildDataset(fixture('id9.json'), fixture('id14.json'));
   const idByName = new Map(dataset.legislators.map((l) => [newsName(l.name), l.id]));
   const result = normalizeSocial(fixtureText('social.csv'), idByName, { overrides: file.overrides });
 
-  assert.equal(file.overrides.length, 16);
-  assert.equal(result.overridesApplied.length, 16, '每一筆都要對到委員');
+  assert.equal(file.overrides.length, 17);
+  assert.equal(result.overridesApplied.length, 17, '每一筆都要生效（含 deny 的移除）');
   assert.equal(file.overrides.filter((o) => o.platform === 'threads').length, 1);
+  assert.equal(file.overrides.filter((o) => o.action === 'deny').length, 1);
   for (const o of file.overrides) {
     const platform = o.platform ?? 'facebook';
     assert.ok(platform === 'facebook' || platform === 'threads', `${o.legislator} 平台不合法`);
     if (platform === 'threads') assert.match(o.url, /^https:\/\/(www\.)?threads\.(com|net)\/@[\w.]+\/?$/, `${o.legislator} threads 網址格式`);
     else assert.match(o.url, /^https:\/\/(www\.|m\.)?facebook\.com\//, `${o.legislator} facebook 網址格式`);
     assert.ok(o.reason && o.verified_at, `${o.legislator} 缺 reason 或 verified_at`);
+    assert.ok(['replace', 'add', 'deny'].includes(o.action ?? 'replace'), `${o.legislator} action 不合法`);
   }
   const keys = result.accounts.map((a) => `${a.legislator_id}|${a.platform}|${a.url}`);
   assert.equal(new Set(keys).size, keys.length, '不該有重複');
+
+  // deny 的實際效果：整理表原本指到政黨粉專的那一列，產出的帳號清單裡不該再有它
+  const denied = file.overrides.find((o) => o.action === 'deny');
+  const deniedId = idByName.get(newsName(denied.legislator));
+  assert.ok(deniedId, `${denied.legislator} 應該對得到委員`);
+  assert.ok(!result.accounts.some((a) => a.legislator_id === deniedId), `${denied.legislator} 的錯誤連結必須被移除`);
+  assert.ok(result.accounts.length < file.overrides.length + 100, '移除一列不該讓總數爆走');
+});
+
+test('社群更正表：action=deny 移除已知錯誤的網址（可逆、不動整理表）', () => {
+  const db = seeded();
+  const dataset = buildDataset(fixture('id9.json'), fixture('id14.json'));
+  const idByName = new Map(dataset.legislators.map((l) => [newsName(l.name), l.id]));
+  const csv = fixtureText('social.csv');
+  const before = normalizeSocial(csv, idByName).accounts;
+  const target = before.find((a) => a.legislator_id);
+  const name = dataset.legislators.find((l) => l.id === target.legislator_id).name;
+
+  const result = normalizeSocial(csv, idByName, {
+    overrides: [{ legislator: name, platform: 'facebook', action: 'deny', url: target.url, reason: '指向別的實體' }],
+  });
+  assert.equal(result.accounts.length, before.length - 1, 'deny 會少一列');
+  assert.ok(!result.accounts.some((a) => a.legislator_id === target.legislator_id && a.platform === 'facebook'));
+  assert.deepEqual(result.overridesApplied, [`${name}(facebook·移除)`]);
+  assert.ok(result.warnings.some((w) => w.includes(target.url)), '要留下移除紀錄與被移除的網址');
+
+  // deny 不需要 url（只是記錄），但不支援的 action 要 fail closed
+  const noUrl = normalizeSocial(csv, idByName, {
+    overrides: [{ legislator: name, platform: 'facebook', action: 'deny', reason: '指向別的實體' }],
+  });
+  assert.equal(noUrl.accounts.length, before.length - 1);
+  assert.throws(
+    () => normalizeSocial(csv, idByName, { overrides: [{ legislator: name, action: 'remove', url: target.url }] }),
+    DataValidationError,
+    'action 打錯字要 fail closed，不能默默當成 replace',
+  );
+
+  // deny 套用到不存在的列 → 只警告，不崩潰
+  const missing = dataset.legislators.find((l) => !before.some((a) => a.legislator_id === l.id));
+  const none = normalizeSocial(csv, idByName, {
+    overrides: [{ legislator: missing.name, platform: 'facebook', action: 'deny', reason: '沒有這一列' }],
+  });
+  assert.equal(none.accounts.length, before.length);
+  assert.ok(none.warnings.some((w) => w.includes('已經沒有這一列')));
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM social_accounts').get().n, 0, '這個測試不寫資料庫');
 });
 
 /* ---------------- 紀錄保留上限（前端顯示的同步紀錄／異動紀錄） ---------------- */
@@ -723,160 +774,206 @@ test('紀錄保留：預設不刪（要落地），health 回報目前筆數與�
   assert.equal(Number(db.prepare('SELECT COUNT(*) AS n FROM sync_runs').get().n), before, '預設不該刪掉任何紀錄');
 });
 
-test('縣市：22 縣市都有人口、四場選舉與地圖，並附上該縣市區域立委', () => {
+/* ---------------- 換屆（README 列為「沒有實際測過」） ---------------- */
+
+function termShift(payload, from, to) {
+  const rows = payload.dataList.map((row) => {
+    const next = { ...row, term: String(to) };
+    if (typeof next.committee === 'string') next.committee = next.committee.replaceAll(`第${from}屆`, `第${to}屆`);
+    return next;
+  });
+  return { ...payload, dataList: rows };
+}
+
+test('換屆：第 12 屆名錄進來時，屆次／會期／席次要整組切過去，不能混到上一屆', () => {
+  const id9v12 = termShift(fixture('id9.json'), 11, 12);
+  // id14 是「第 4 屆至今」的完整名單，換屆時新屆次的列會一起出現；這裡把第 11 屆的列複製一份改成第 12 屆
+  const id14Source = fixture('id14.json');
+  const id14v12 = {
+    ...id14Source,
+    dataList: [...id14Source.dataList, ...id14Source.dataList.filter((r) => r.term === '11').map((r) => ({ ...r, term: '12' }))],
+  };
+
+  const dataset = buildDataset(id9v12, id14v12);
+  assert.equal(dataset.term, 12, '屆次跟著 id9 的最大屆別走');
+  assert.equal(dataset.stats.legislators, 123);
+  assert.equal(dataset.stats.current_roster, 113);
+  assert.equal(dataset.stats.seats, 783);
+  assert.equal(dataset.stats.sessions, 5);
+  assert.equal(dataset.currentSession, '12-5');
+  assert.ok(dataset.sessions.every((s) => s.id.startsWith('12-')), `不該殘留上一屆會期：${dataset.sessions.map((s) => s.id)}`);
+  assert.ok(dataset.sessions.every((s) => s.term === 12));
+  assert.ok(dataset.seats.every((s) => s.session_id.startsWith('12-')));
+  assert.ok(
+    dataset.committees.every((c) => !c.id.includes('會期')),
+    '委員會 id 仍不可含會期前綴（換屆後最容易復發的地方）',
+  );
+
+  // 寫進資料庫：舊屆次的資料必須整批換掉（這是「整批覆寫」的既定語意，README 已載明只保留當屆）
+  const db = openDb(':memory:');
+  applyDataset(db, buildDataset(fixture('id9.json'), fixture('id14.json')), {
+    fetchedAt: '2026-09-30T09:00:00.000Z',
+    sourceUrl: 'https://data.ly.gov.tw/',
+  });
+  assert.equal(getMeta(db, 'term'), '11');
+  assert.equal(listLegislators(db, {}).meta.session, '11-5');
+
+  applyDataset(db, dataset, { fetchedAt: '2026-12-01T09:00:00.000Z', sourceUrl: 'https://data.ly.gov.tw/' });
+  assert.equal(getMeta(db, 'term'), '12');
+  assert.equal(getMeta(db, 'current_session'), '12-5');
+  assert.equal(listLegislators(db, {}).total, 113, '預設查詢要看得到新屆次的名錄');
+  assert.equal(listLegislators(db, {}).meta.session, '12-5');
+  assert.equal(listLegislators(db, { session: '12-5' }).total, 113);
+  assert.equal(Number(db.prepare("SELECT COUNT(*) AS n FROM sessions WHERE id LIKE '11-%'").get().n), 0);
+  assert.equal(Number(db.prepare("SELECT COUNT(*) AS n FROM committee_seats WHERE session_id LIKE '11-%'").get().n), 0);
+  assert.equal(Number(db.prepare('SELECT COUNT(*) AS n FROM terms').get().n), 2, 'terms 表會同時保留第 11 與第 12 屆的標籤');
+
+  // 換屆後帶著舊會期的舊連結（?session=11-5）會怎樣？resolveScope 會退回「該屆最新會期」，
+  // 不是回空清單、也不會回上一屆的人；而且 meta.session 會明講是 12-5，前端照著顯示。
+  // 這條行為以前沒有測試，換屆時最容易變成「連結默默指到別的資料」而沒人發現。
+  const legacyLink = listLegislators(db, { session: '11-5' });
+  assert.equal(legacyLink.meta.session, '12-5', '不存在的會期要退回該屆最新會期，並在 meta 講清楚');
+  assert.equal(legacyLink.total, 113);
+  assert.equal(legacyLink.meta.term, 12);
+});
+
+/* ---------------- 第三輪 review（2026-10-02）：整批覆寫前的相對筆數門檻 ---------------- */
+
+test('B1: 名錄部分回應（席次掉一半）要 fail closed，不可以整批覆寫掉完整資料', async () => {
+  const db = seeded(); // 先有一份完整資料
+  const before = Number(db.prepare('SELECT COUNT(*) AS n FROM committee_seats').get().n);
+  assert.equal(before, 783);
+  // 正式路徑由 runIngest 在成功後記錄基準筆數；這裡的 seed 是直接 applyDataset，補上同一組基準
+  setMeta(db, 'seats_count', String(before));
+  setMeta(db, 'legislators_count', '123');
+
+  // 模擬來源只回了一半：id9 有一半委員的 committee 欄位是空的
+  const id9 = fixture('id9.json');
+  let n = 0;
+  const broken = {
+    ...id9,
+    dataList: id9.dataList.map((row) => {
+      if (row.term !== '11' || n++ % 2 === 1) return row;
+      return { ...row, committee: '' };
+    }),
+  };
+
+  const result = await runIngest(db, {
+    logger: silent,
+    now: () => new Date('2026-10-05T00:00:00.000Z'),
+    fetchImpl: async (url) => ({
+      json: url.includes('ID9') ? broken : fixture('id14.json'),
+      status: 200,
+      headers: {},
+      bytes: 100,
+      sha256: url.includes('ID9') ? 'broken-id9' : 'id14-sha',
+      attempts: 1,
+    }),
+  });
+
+  assert.equal(result.status, 'failed', '筆數腰斬不可以是 success');
+  assert.match(result.error, /席次/);
+  assert.equal(Number(db.prepare('SELECT COUNT(*) AS n FROM committee_seats').get().n), before, '舊資料必須原封不動');
+  assert.equal(getMeta(db, 'last_success_at'), '2026-09-30T09:00:00.000Z', '失敗不可改寫 last_success_at');
+  assert.equal(getMeta(db, 'term'), '11');
+  // 失敗要留下紀錄（前端橫幅靠 last_runs）
+  const failed = db.prepare("SELECT COUNT(*) AS n FROM sync_runs WHERE status = 'failed'").get().n;
+  assert.ok(Number(failed) >= 1);
+
+  // 真的合法縮減時，LY_ALLOW_SHRINK=1 是逃生門（CONFIG 是模組載入時讀的，這裡直接驗 guardShrink 的參數）
+  assert.throws(() => guardShrink(db, 'seats', '委員會席次', 367), DataValidationError);
+  guardShrink(db, 'seats', '委員會席次', 367, { minRatio: 0 });
+  assert.throws(() => guardShrink(db, 'seats', '委員會席次', 400, { minRatio: 0.8 }), /席次筆數異常/);
+});
+
+test('B2: records 被截斷時要 fail closed，不可以靜默覆寫', async () => {
   const db = seeded();
-  const res = listCounties(db);
-  assert.equal(res.count, 22);
-  for (const c of res.items) {
-    assert.ok(c.population > c.voting_age && c.voting_age > c.elderly, c.county);
-    assert.ok(c.path.startsWith('M'), c.county);
-    for (const key of ['president_2024', 'president_2020', 'mayor_2022', 'mayor_2018']) {
-      const e = c.elections[key];
-      assert.equal(e.margin, e.candidates[0].votes - e.candidates[1].votes, `${c.county} ${key}`);
-    }
-  }
-  // 2024 總統全國得票與中選會公告一致
-  const lai = res.items.reduce((s, c) => s + c.elections.president_2024.candidates.find((x) => x.name === '賴清德').votes, 0);
-  assert.equal(lai, 5586019);
-  const withLegislators = res.items.filter((c) => c.legislators.length > 0);
-  assert.ok(withLegislators.length > 0);
-  for (const c of withLegislators) for (const l of c.legislators) assert.ok(l.area_name.startsWith(c.county.slice(0, 2)), l.area_name);
+  const full = fixture('gazette-agendas.json');
+  const first = normalizeCommitteeRecords([full], CONFIG.records.category);
+  assert.ok(first.length >= 3, `fixture 應該有多筆委員會紀錄（實際 ${first.length}）`);
+  applyCommitteeRecords(db, first, { fetchedAt: '2026-09-30T09:00:00.000Z' });
+  setMeta(db, 'records_count', String(first.length));
+  setMeta(db, 'term', '11');
+
+  // 來源只回一筆（截斷、或上游分頁壞掉）：以前只有「非空」驗證，會直接 DELETE + INSERT 蓋掉完整資料
+  const truncated = { ...full, gazetteagendas: full.gazetteagendas.slice(0, 1), total_page: 1 };
+  const result = await runRecordsIngest(db, {
+    logger: silent,
+    now: () => new Date('2026-10-05T00:00:00.000Z'),
+    fetchImpl: async (url) => ({
+      json: url.includes('gazette_agendas') ? truncated : { total_page: 1, meets: [] },
+      status: 200,
+      headers: {},
+      bytes: 100,
+      sha256: 'truncated',
+      attempts: 1,
+    }),
+  });
+
+  assert.equal(result.status, 'failed', '筆數腰斬不可以是 success');
+  assert.match(result.error, /筆數異常/);
+  assert.equal(
+    Number(db.prepare('SELECT COUNT(*) AS n FROM committee_records').get().n),
+    first.length,
+    '舊資料必須保留',
+  );
 });
 
-test('縣市：歷次得票趨勢涵蓋 2012–2024 總統、不分區與 2009／10–2022 縣市長', () => {
-  const res = listCounties(seeded());
-  const years = (type) => res.items[0].trends[type].map((e) => e.year);
-  assert.deepEqual(years('president'), [2012, 2016, 2020, 2024]);
-  assert.deepEqual(years('party_list'), [2012, 2016, 2020, 2024]);
-  assert.deepEqual(years('mayor'), [2010, 2014, 2018, 2022]);
-  const dpp2016 = res.items.reduce((s, c) => s + c.trends.president.find((e) => e.year === 2016).votes['民主進步黨'], 0);
-  assert.equal(dpp2016, 6894744);
+test('B5: 429 會多給幾次機會（上限 5 次），不再是到不了的死碼', async () => {
+  let calls = 0;
+  const sleeps = [];
+  await assert.rejects(
+    () =>
+      fetchJson('https://example.com/x', {
+        retries: 3,
+        once: async () => {
+          calls += 1;
+          return { status: 429, headers: { 'retry-after': '0' }, body: Buffer.from('') };
+        },
+        sleepMs: async (ms) => sleeps.push(ms),
+      }),
+    FetchError,
+  );
+  assert.equal(calls, 5, 'retries=3 但 429 要打到 5 次（D41 的意圖）');
+  assert.equal(sleeps.length, 4);
+
+  // 非 429 的 5xx 仍然只給 retries 次
+  let calls5 = 0;
+  await assert.rejects(
+    () =>
+      fetchJson('https://example.com/x', {
+        retries: 3,
+        once: async () => {
+          calls5 += 1;
+          return { status: 503, headers: {}, body: Buffer.from('') };
+        },
+        sleepMs: async () => {},
+      }),
+    FetchError,
+  );
+  assert.equal(calls5, 3);
 });
 
-test('立委得票追蹤：在職區域與原住民委員都對得到 2024 當選紀錄', () => {
-  const res = listLegislatorVotes(seeded());
-  const elected = res.items.filter((i) => !/不分區/.test(i.legislator.area_name ?? ''));
-  assert.ok(elected.length > 0);
-  for (const item of elected) {
-    const last = item.history.find((h) => h.year === 2024 && h.elected);
-    assert.ok(last, `${item.legislator.name} 沒有 2024 當選紀錄`);
-    assert.ok(last.margin > 0);
-  }
-  const twice = res.items.find((i) => i.history.length > 1);
-  assert.equal(twice.history[1].change, twice.history[1].votes - twice.history[0].votes);
+test('B6: Retry-After 再長也只在 cap 之內等待（不讓一個標頭卡住整個同步階段）', async () => {
+  const sleeps = [];
+  await assert.rejects(
+    () =>
+      fetchJson('https://example.com/x', {
+        retries: 2,
+        retryAfterCapMs: 1000,
+        once: async () => ({ status: 429, headers: { 'retry-after': '99999' }, body: Buffer.from('') }),
+        sleepMs: async (ms) => sleeps.push(ms),
+      }),
+    FetchError,
+  );
+  // retries=2，但 429 給到 5 次上限 → 4 次等待，每次都夾在 1000ms
+  assert.deepEqual(sleeps, [1000, 1000, 1000, 1000], 'Retry-After: 99999 要被夾到 1000ms');
 });
 
-test('立委得票追蹤：含補選（2023 王鴻薇）且可用 id 查單一委員', () => {
-  const db = seeded();
-  const all = listLegislatorVotes(db);
-  const wang = all.items.find((i) => i.legislator.name === '王鴻薇');
-  const byElection = wang.history.find((h) => h.by_election);
-  assert.equal(byElection.year, 2023);
-  assert.equal(byElection.votes, 60519);
-  assert.equal(wang.history.at(-1).change, wang.history.at(-1).votes - byElection.votes);
-  const one = listLegislatorVotes(db, { id: wang.legislator.id });
-  assert.equal(one.count, 1);
-  assert.deepEqual(one.items[0].history, wang.history);
-});
-
-test('排行榜：險勝榜依領先幅度由小到大、流失榜依得票減少由多到少', () => {
-  const { boards } = listRankings(seeded(), { type: 'all', limit: 10 });
-  const close = boards.close.items.map((i) => i.value);
-  assert.deepEqual(close, [...close].sort((a, b) => a - b));
-  assert.ok(close[0] >= 0);
-  const drop = boards.drop.items.map((i) => i.value);
-  assert.deepEqual(drop, [...drop].sort((a, b) => b - a));
-  assert.ok(drop.every((v) => v > 0));
-});
-
-test('個人票對照政黨票：2024 各選區總統票加總等於各縣市加總，差值＝個人得票率−同黨得票率', () => {
-  const db = seeded();
-  const counties = listCounties(db).items;
-  const byCounty = counties.reduce((s, c) => s + c.trends.president.find((e) => e.year === 2024).votes['民主進步黨'], 0);
-  const races = JSON.parse(readFileSync(fileURLToPath(new URL('../server/legislator-votes.json', import.meta.url)), 'utf8')).races;
-  const byDistrict = races
-    .filter((r) => r.year === 2024 && r.kind === '區域' && !r.by_election)
-    .reduce((s, r) => s + r.party_votes.president.votes['民主進步黨'], 0);
-  assert.equal(byDistrict, byCounty);
-  const h = listLegislatorVotes(db).items.flatMap((i) => i.history).find((x) => x.year === 2024 && x.party_list);
-  assert.ok(Math.abs(h.party_list.over_pct - (h.pct - h.party_list.pct)) < 0.011);
-  assert.equal(listLegislatorVotes(db).items.flatMap((i) => i.history).filter((x) => x.by_election && x.party_list).length, 0);
-});
-
-test('名冊與比較頁：區域與原住民委員帶該屆當選的選舉摘要，不分區為 null', () => {
-  const db = seeded();
-  const items = listLegislators(db, {}).items;
-  const district = items.filter((l) => l.election);
-  assert.ok(district.length > 0);
-  for (const l of district) assert.ok(l.election.year >= 2024 && l.election.margin > 0, l.name);
-  assert.ok(items.filter((l) => /不分區/.test(l.area_name ?? '')).every((l) => l.election === null));
-  const wang = items.find((l) => l.name === '王鴻薇');
-  assert.equal(wang.election.votes, 105050);
-  const cmp = compareLegislators(db, { ids: wang.id });
-  assert.deepEqual(cmp.items[0].election, wang.election);
-});
-
-test('總覽各縣市卡片：縣市帶人口與勝選者，不分區與原住民為 null', () => {
-  const { items } = listRegions(seeded(), { per: 2 });
-  const taipei = items.find((r) => r.region === '臺北市');
-  assert.equal(taipei.stats.population, 2421830);
-  assert.equal(taipei.stats.mayor_2022.name, '蔣萬安');
-  assert.equal(taipei.stats.president_2024.party, '民主進步黨');
-  for (const r of items) assert.equal(r.stats === null, !/^..[縣市]$/.test(r.region), r.region);
-});
-
-test('分裂投票：每年 73 個選區，各選區總統與政黨票的有效票等於各黨加總', () => {
-  for (const year of [2012, 2016, 2020, 2024]) {
-    const res = listSplitTicket(seeded(), { year });
-    assert.equal(res.year, year);
-    assert.equal(res.count, 73);
-    for (const d of res.items) {
-      for (const type of ['president', 'party_list']) {
-        assert.equal(Object.values(d[type].votes).reduce((s, v) => s + v, 0), d[type].valid, `${year} ${d.district} ${type}`);
-      }
-    }
-  }
-  assert.equal(listSplitTicket(seeded(), { year: 1999 }).year, 2024);
-});
-
-test('人口結構 × 得票：368 鄉鎮市區，人口與各黨得票加總等於縣市加總', () => {
-  const db = seeded();
-  const res = listDemographics(db);
-  assert.equal(res.count, 368);
-  const counties = listCounties(db).items;
-  assert.equal(res.towns.reduce((s, t) => s + t.population, 0), counties.reduce((s, c) => s + c.population, 0));
-  const byTown = res.towns.reduce((s, t) => s + t.elections.party_list_2024.votes['台灣民眾黨'], 0);
-  const byCounty = counties.reduce((s, c) => s + c.trends.party_list.find((e) => e.year === 2024).votes['台灣民眾黨'], 0);
-  assert.equal(byTown, byCounty);
-  for (const t of res.towns) assert.ok(t.elderly_ratio > 0 && t.elderly_ratio < 60 && t.median_age > 20, t.town);
-});
-
-test('人口趨勢：2016-01 起每月，最新一月等於縣市人口；各年年齡結構加總等於鄉鎮人口', () => {
-  const db = seeded();
-  const res = listPopulationTrend(db);
-  assert.equal(res.months[0], '2016-01');
-  const last = res.months.length - 1;
-  const counties = listCounties(db).items;
-  for (const c of res.counties) {
-    assert.equal(c.monthly.length, res.months.length);
-    // 來源缺 2023-09，其他月份都有值
-    assert.deepEqual(c.monthly.flatMap((v, i) => (v === null ? [res.months[i]] : [])), ['2023-09']);
-    assert.equal(c.monthly[last], counties.find((x) => x.county === c.county).population, c.county);
-  }
-  for (const [i, year] of res.years.entries()) {
-    const fromAges = res.counties.reduce((s, c) => s + c.ages[i].population, 0);
-    const fromTowns = res.towns.reduce((s, t) => s + t.population[year], 0);
-    assert.equal(fromAges, fromTowns, year);
-  }
-});
-
-test('鄉鎮地圖：368 個鄉鎮都有 path，且與人口結構資料一一對應', () => {
-  const db = seeded();
-  const map = getTownMap(db);
-  assert.equal(map.count, 368);
-  const keys = new Set(listDemographics(db).towns.map((t) => t.county + t.town));
-  for (const t of map.towns) {
-    assert.ok(keys.has(t.county + t.town), t.county + t.town);
-    assert.match(t.path, /^M[\d.\- L]+Z/);
-  }
-});
+test('B10: rocDate 不合法月日要回 null，不能產生 2024-13-45', () => {
+  assert.equal(rocDate('1150930'), '2026-09-30');
+  assert.equal(rocDate('113/13/45'), null);
+  assert.equal(rocDate('113/02/31'), null);
+  assert.equal(rocDate('113/00/10'), null);
+  assert.equal(rocDate('113/12/31'), '2024-12-31');
+  assert.equal(rocDate('abc'), null);});

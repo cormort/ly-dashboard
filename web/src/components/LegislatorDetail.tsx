@@ -83,7 +83,7 @@ export function LegislatorDetail({
         </button>
 
         <div className="detail-head">
-          <Portrait legislator={legislator} />
+          <Portrait key={legislator.id} legislator={legislator} />
           <div>
             <h1 id={titleId}>
               {legislator.name}

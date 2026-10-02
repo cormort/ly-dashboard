@@ -356,8 +356,10 @@ export function applyDataset(db, dataset, { fetchedAt, sourceUrl }) {
           ['area_name', before.area_name, l.area_name],
           ['leave_flag', String(before.leave_flag), l.leave_flag ? '1' : '0'],
         ]) {
-          if (oldValue !== null && oldValue !== undefined && String(oldValue) !== String(newValue ?? '')) {
-            changes.push({ entity: 'legislator', entity_id: l.id, field, old_value: String(oldValue), new_value: String(newValue ?? '') });
+          // old_value 允許是空的：'（無）→ 有值' 也是一次異動（例如原本沒有黨籍、選區後補）。
+          // 只有「新舊完全相同」才不記。
+          if (String(oldValue ?? '') !== String(newValue ?? '')) {
+            changes.push({ entity: 'legislator', entity_id: l.id, field, old_value: String(oldValue ?? ''), new_value: String(newValue ?? '') });
           }
         }
       }
@@ -554,7 +556,16 @@ export function upsertTopicNews(db, topic, items, { fetchedAt }) {
   const stmt = db.prepare(
     'INSERT INTO topic_news(topic, url, title, source, published_at, fetched_at) VALUES(?, ?, ?, ?, ?, ?) ON CONFLICT(topic, url) DO UPDATE SET title = excluded.title, source = excluded.source',
   );
-  return items.reduce((n, i) => n + Number(stmt.run(topic, i.url, i.title, i.source, i.published_at, fetchedAt).changes), 0);
+  // 交易包起來，與本檔其他整批寫入一致：中途失敗就整批回滾，不留半套。
+  db.exec('BEGIN');
+  try {
+    const added = items.reduce((n, i) => n + Number(stmt.run(topic, i.url, i.title, i.source, i.published_at, fetchedAt).changes), 0);
+    db.exec('COMMIT');
+    return added;
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
 }
 
 /**
@@ -564,23 +575,39 @@ export function upsertTopicNews(db, topic, items, { fetchedAt }) {
  */
 export function pruneLogs(db, { syncRuns, changeLog } = {}) {
   const removed = { sync_runs: 0, change_log: 0 };
-  if (syncRuns > 0) {
-    removed.sync_runs = Number(
-      db.prepare('DELETE FROM sync_runs WHERE id NOT IN (SELECT id FROM sync_runs ORDER BY id DESC LIMIT ?)').run(syncRuns).changes,
-    );
-  }
-  if (changeLog > 0) {
-    removed.change_log = Number(
-      db.prepare('DELETE FROM change_log WHERE id NOT IN (SELECT id FROM change_log ORDER BY id DESC LIMIT ?)').run(changeLog).changes,
-    );
+  // 兩張表要嘛都刪、要嘛都不刪（跟其他整批寫入一樣）；中途失敗不留半套。
+  db.exec('BEGIN');
+  try {
+    if (syncRuns > 0) {
+      removed.sync_runs = Number(
+        db.prepare('DELETE FROM sync_runs WHERE id NOT IN (SELECT id FROM sync_runs ORDER BY id DESC LIMIT ?)').run(syncRuns).changes,
+      );
+    }
+    if (changeLog > 0) {
+      removed.change_log = Number(
+        db.prepare('DELETE FROM change_log WHERE id NOT IN (SELECT id FROM change_log ORDER BY id DESC LIMIT ?)').run(changeLog).changes,
+      );
+    }
+    db.exec('COMMIT');
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
   }
   return removed;
 }
 
 export function pruneNews(db, { keepDays, now = new Date() }) {
   const cutoff = new Date(now.getTime() - keepDays * 86_400_000).toISOString();
-  db.prepare('DELETE FROM topic_news WHERE published_at < ?').run(cutoff);
-  return Number(db.prepare('DELETE FROM news WHERE published_at < ?').run(cutoff).changes);
+  db.exec('BEGIN');
+  try {
+    db.prepare('DELETE FROM topic_news WHERE published_at < ?').run(cutoff);
+    const removed = Number(db.prepare('DELETE FROM news WHERE published_at < ?').run(cutoff).changes);
+    db.exec('COMMIT');
+    return removed;
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
 }
 
 /** 社群帳號整批覆寫（來源是人工整理表，以最新一版為準）。 */

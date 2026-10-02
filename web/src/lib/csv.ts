@@ -13,6 +13,9 @@ export function downloadCsv(filename: string, rows: readonly (readonly unknown[]
   const a = document.createElement('a');
   a.href = url;
   a.download = filename;
+  document.body.append(a);
   a.click();
-  URL.revokeObjectURL(url);
+  a.remove();
+  // 太早 revoke，Firefox／Safari 有機會把下載取消掉
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }

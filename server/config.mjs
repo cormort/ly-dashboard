@@ -6,6 +6,10 @@ export const CONFIG = {
   dbPath: process.env.LY_DB || here('../data/ly.db'),
   webDist: here('../web/dist'),
   port: Number(process.env.PORT || 8787),
+  // 預設只綁 loopback。對外部署時設 LY_HOST=0.0.0.0，此時 POST /api/v1/sync 會要求 LY_SYNC_TOKEN（見 index.mjs）。
+  host: process.env.LY_HOST || '127.0.0.1',
+  // CR-7／D8：手動同步端點的保護。沒設 token 時只有綁在 loopback 才開放同步。
+  syncToken: process.env.LY_SYNC_TOKEN || '',
   // 實測：預設函式庫 UA（python-requests / Go-http-client / Python-urllib）會被 WAF 回 403，
   // 具名且可聯絡的 UA 才會 200。這是禮貌也是必要條件。
   // 注意：HTTP header 只能是 latin-1，UA 不可放中文，否則 Node 會丟 Invalid character in header content。
@@ -84,4 +88,10 @@ export const CONFIG = {
   // 同一個 host 的最小請求間隔：g0v API 連續抓多頁會回 429（實測），溫和一點也保護對方
   minRequestIntervalMs: Number(process.env.LY_MIN_INTERVAL_MS ?? 400),
   fetchRetries: Number(process.env.LY_FETCH_RETRIES || 3),
+  // B6：Retry-After 可能要求等上數千秒；尊重它，但不能讓一個標頭把整個同步階段卡死。
+  retryAfterCapMs: Number(process.env.LY_RETRY_AFTER_CAP_MS ?? 60_000),
+  // B1／B2：整批覆寫的相對筆數門檻（低於上次成功的這個比例就中止，保留舊資料）。
+  // 真的遇到來源合法縮減（例如委員會減併）時，用 LY_ALLOW_SHRINK=1 強制覆寫一次。
+  shrinkMinRatio: Number(process.env.LY_SHRINK_MIN_RATIO ?? 0.8),
+  allowShrink: process.env.LY_ALLOW_SHRINK === '1',
 };

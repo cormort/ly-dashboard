@@ -49,8 +49,14 @@ export function SessionSelector({
     );
   }
 
-  const activeTerm = terms.find((item) => item.no === term) ?? terms[0];
-  const sessions = activeTerm.sessions;
+  // URL 可以帶任意 term／session（可分享、可手改，換屆後舊連結就是這種情況）。
+  // 不在清單裡的值一定要留在選單上：否則 select 會顯示清單第一項、資料卻是另一個東西，
+  // 而且使用者沒辦法從 UI 切回去（值已等於唯一選項，選它不會觸發 change）。
+  const knownTerm = terms.find((item) => item.no === term) ?? null;
+  const activeTerm = knownTerm ?? terms[0];
+  const unknownTerm = term !== null && !knownTerm;
+  const sessions = unknownTerm ? [] : activeTerm.sessions;
+  const unknownSession = session !== null && session !== ALL_SESSIONS && !sessions.some((item) => item.id === session);
 
   return (
     <section className="selector" aria-label="屆次與會期">
@@ -61,9 +67,10 @@ export function SessionSelector({
             屆次
           </span>
           <select
-            value={String(activeTerm.no)}
+            value={unknownTerm ? String(term) : String(activeTerm.no)}
             onChange={(event) => onTermChange(Number(event.target.value))}
           >
+            {unknownTerm ? <option value={term}>第 {term} 屆（無資料）</option> : null}
             {terms.map((item) => (
               <option key={item.no} value={item.no}>
                 第 {item.no} 屆
@@ -80,6 +87,7 @@ export function SessionSelector({
             disabled={sessions.length === 0}
           >
             <option value={ALL_SESSIONS}>全部會期</option>
+            {unknownSession ? <option value={session}>{session}（無資料）</option> : null}
             {sessions.map((item) => (
               <option key={item.id} value={item.id}>
                 {item.label}

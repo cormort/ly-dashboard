@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { createHash, timingSafeEqual } from 'node:crypto';
 import { readFile, stat } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -46,12 +47,50 @@ const MIME = {
   '.woff2': 'font/woff2',
 };
 
+// 所有回應都加上：不要讓瀏覽器猜 content-type（靜態檔可能是使用者上傳以外的內容）
+const SECURITY_HEADERS = { 'x-content-type-options': 'nosniff' };
+
+/** 常數時間比對，避免用前綴或長度差異時間側錄 token（CR-7） */
+export function syncTokenMatches(provided, expected) {
+  if (!provided || !expected) return false;
+  const a = createHash('sha256').update(String(provided)).digest();
+  const b = createHash('sha256').update(String(expected)).digest();
+  return timingSafeEqual(a, b);
+}
+
+const LOOPBACK_HOSTS = new Set(['127.0.0.1', '::1', 'localhost']);
+
+/**
+ * CR-7／D8：`POST /api/v1/sync` 的授權判斷（純函式，可單獨測試）。回傳 null 代表放行。
+ *
+ * 規則刻意做成「不安全就不開放」而不是「不安全就警告」：
+ * - 設了 `LY_SYNC_TOKEN` → 一律要求 `x-sync-token` 且正確，否則 401。
+ * - 沒設 token → 只有綁在 loopback 時才開放；一旦 `LY_HOST` 指向外部，直接 403 停用，
+ *   而不是讓任何人按一下就把伺服器的工作排程塞滿。
+ */
+export function authorizeSync(headers = {}, { host = CONFIG.host, token = CONFIG.syncToken } = {}) {
+  if (token) {
+    return syncTokenMatches(headers['x-sync-token'], token)
+      ? null
+      : { status: 401, code: 'unauthorized', message: 'POST /api/v1/sync 需要正確的 x-sync-token 標頭' };
+  }
+  if (!LOOPBACK_HOSTS.has(String(host))) {
+    return {
+      status: 403,
+      code: 'sync_disabled',
+      message: `未設定 LY_SYNC_TOKEN 時僅允許從 loopback 觸發同步（目前 LY_HOST=${host}）`,
+    };
+  }
+  return null;
+}
+
 const sendJson = (res, status, payload, extraHeaders = {}) => {
   const body = JSON.stringify(payload);
   res.writeHead(status, {
     'content-type': 'application/json; charset=utf-8',
     'content-length': Buffer.byteLength(body),
     'cache-control': 'public, max-age=300',
+    ...SECURITY_HEADERS,
     ...extraHeaders,
   });
   res.end(body);
@@ -65,6 +104,7 @@ const sendCsv = (res, filename, body) => {
     'content-length': buf.length,
     'content-disposition': `attachment; filename="${filename}"`,
     'cache-control': 'no-store',
+    ...SECURITY_HEADERS,
   });
   res.end(buf);
 };
@@ -85,6 +125,7 @@ async function serveStatic(res, urlPath) {
         'content-type': MIME[ext] ?? 'application/octet-stream',
         'content-length': body.length,
         'cache-control': immutable ? 'public, max-age=31536000, immutable' : 'no-cache',
+        ...SECURITY_HEADERS,
       });
       res.end(body);
       return true;
@@ -166,6 +207,9 @@ export function createServer(db) {
           case '/api/v1/sync-runs':
             return sendJson(res, 200, listSyncRuns(db, { limit: q.limit ?? 50 }));
           case '/api/v1/sync': {
+            // CR-7：這個端點會讓伺服器去打政府 API，不能無條件開放（沒設 token 時只限 loopback）。
+            const denied = authorizeSync(req.headers);
+            if (denied) return sendError(res, denied.status, denied.code, denied.message);
             // M3：同步可能長達數分鐘，不能在請求裡等。改回 202 並讓它跑在背景，進度看 /sync-runs。
             const scope = q.scope === 'roster' ? 'roster' : 'all';
             const started = getInflightScope() === null;
@@ -216,8 +260,12 @@ export function startScheduler(db, { logger = console } = {}) {
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const db = openDb(CONFIG.dbPath);
   const server = createServer(db);
-  server.listen(CONFIG.port, '127.0.0.1', () => {
-    console.log(`[api] 立委觀測站 API 已啟動：http://127.0.0.1:${CONFIG.port}（靜態檔：${CONFIG.webDist}）`);
+  server.listen(CONFIG.port, CONFIG.host, () => {
+    console.log(`[api] 立委觀測站 API 已啟動：http://${CONFIG.host}:${CONFIG.port}（靜態檔：${CONFIG.webDist}）`);
+    if (CONFIG.syncToken) console.log('[api] POST /api/v1/sync 已啟用 LY_SYNC_TOKEN 驗證');
+    else if (CONFIG.host !== '127.0.0.1' && CONFIG.host !== 'localhost' && CONFIG.host !== '::1') {
+      console.log('[api] 注意：LY_HOST 非 loopback 且未設 LY_SYNC_TOKEN → POST /api/v1/sync 已停用（回 403）');
+    }
   });
   if (!process.argv.includes('--no-scheduler')) startScheduler(db);
 }

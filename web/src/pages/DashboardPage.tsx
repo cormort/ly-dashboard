@@ -11,19 +11,18 @@ import type {
   RankingsResponse,
   RegionsResponse,
 } from '../api/types';
-import { ErrorState, LoadingState } from '../components/DataStates';
+import { EmptyState, ErrorState, LoadingState } from '../components/DataStates';
 import { useApi, type ApiResource } from '../hooks/useApi';
 import { pathFor, type Route } from '../hooks/useRoute';
-import { billTitle } from '../lib/format';
+import { PASSED_STATUSES } from '../lib/billStage';
+import { billTitle, shortCommittee } from '../lib/format';
 import { partyStyle, sortParties } from '../lib/parties';
-
 export interface DashboardPageProps {
   refreshToken: number;
   onOpenId: (id: string) => void;
   onNavigate: (href: string) => void;
 }
 
-const PASSED = new Set(['三讀', '審查完畢(三讀)', '照案通過']);
 const KIND_LABEL = { post: '臉書', news: '新聞', bill: '提案' } as const;
 const shortDate = (value: string | null | undefined) => (value ? value.slice(5, 10).replace('-', '/') : '');
 
@@ -60,7 +59,8 @@ function Card<T>({
       </div>
       {resource.phase === 'loading' && !resource.data ? <LoadingState label="讀取中…" /> : null}
       {resource.phase === 'error' ? <ErrorState title={`無法取得「${title}」`} error={resource.error} onRetry={resource.reload} /> : null}
-      {resource.data ? children(resource.data) : null}
+      {resource.phase === 'empty' ? <EmptyState message={`目前沒有「${title}」資料`} hint="換個會期或稍後再試；同步失敗時會保留上一版。" /> : null}
+      {resource.data && resource.phase !== 'empty' ? children(resource.data) : null}
     </section>
   );
 }
@@ -93,7 +93,7 @@ export function DashboardPage({ refreshToken, onOpenId, onNavigate }: DashboardP
   const regions = useApi<RegionsResponse>(buildUrl('/regions', { per: 2 }), opts);
 
   const link = (route: Route, params?: Record<string, string>) => pathFor(route, params);
-  const passedCount = bills.data?.statuses.filter((s) => PASSED.has(s.name)).reduce((sum, s) => sum + s.count, 0);
+  const passedCount = bills.data?.statuses.filter((s) => PASSED_STATUSES.has(s.name)).reduce((sum, s) => sum + s.count, 0);
   const tiles: { label: string; value: number | undefined; href: string }[] = [
     { label: '在職委員', value: regions.data?.items.reduce((sum, r) => sum + r.legislators.length, 0), href: link('legislators') },
     { label: '本屆委員提案', value: bills.data?.total, href: link('bills') },
@@ -273,7 +273,7 @@ export function DashboardPage({ refreshToken, onOpenId, onNavigate }: DashboardP
             <ul className="dash-list">
               {data.records.items.map((r) => (
                 <li key={r.id}>
-                  <span className="kind">{r.committees[0]?.replace(/委員會$/, '') ?? '會議'}</span>
+                  <span className="kind">{r.committees[0] ? shortCommittee(r.committees[0]) : '會議'}</span>
                   <a href={r.html_url ?? r.gazette_url ?? '#'} target="_blank" rel="noreferrer noopener" className="clamp-2">
                     {r.title}
                   </a>

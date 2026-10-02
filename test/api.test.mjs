@@ -3,11 +3,14 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
-import { openDb, applyDataset, applyBills, applySocial, upsertNews, saveSnapshot, recordSyncRun, getMeta, migrate } from '../server/db.mjs';
+import { openDb, applyDataset, applyBills, applySocial, applyCommitteeMeets, upsertNews, saveSnapshot, recordSyncRun, getMeta, migrate } from '../server/db.mjs';
 import { buildDataset, normalizeBills, normalizeSocial, newsName } from '../server/normalize.mjs';
 import { billsCsv, compareLegislators, csvRow, makeTagger, listCommitteeActivity, listCosponsors, listFunds, listRegions, getHealth, getMetaPayload, listActivity, listBills, listTopics, listNews, listNewsArticles, listChanges, listCommittees, listLegislators, listRankings, listSyncRuns } from '../server/queries.mjs';
-
+import { authorizeSync } from '../server/index.mjs';
+import { runNewsIngest } from '../server/ingest.mjs';
+import { FetchError } from '../server/fetch-ly.mjs';
 const fixture = (name) => JSON.parse(readFileSync(fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url)), 'utf8'));
+const silent = { log() {}, warn() {}, error() {} };
 
 function seeded() {
   const db = openDb(':memory:');
@@ -92,12 +95,26 @@ test('委員會端點：本會期 11 個委員會，且只包含本會期真實�
 
 test('health / meta / changes / sync-runs 端點形狀正確', () => {
   const { db } = seeded();
-  const health = getHealth(db);
+  // 固定時鐘：資料是用固定時間戳寫入的，若拿「執行當下」判斷 stale，過了 36 小時這個測試就會自己變紅。
+  const now = Date.parse('2026-09-30T10:00:00.000Z');
+  const health = getHealth(db, { now });
   assert.equal(health.db.legislators, 123);
   assert.equal(health.db.committee_seats, 783);
   assert.equal(health.db.snapshots, 1, '相同 sha256 的快照不重複寫入');
   assert.equal(health.last_runs[0].records, 123);
   assert.equal(health.meta.stale, false);
+  assert.equal(health.ok, true);
+
+  // 同一份資料，時鐘往後推 37 小時 → 必須標記 stale 且 ok=false（原本沒有任何測試覆蓋這條路）
+  const later = getHealth(db, { now: now + 37 * 3600 * 1000 });
+  assert.equal(later.meta.stale, true, '超過 LY_STALE_HOURS 要標記 stale');
+  assert.equal(later.ok, false, 'stale 時 /health 的 ok 應為 false');
+
+  // db 欄位是固定清單產生（CR-9），不該因為沒有資料而少欄位
+  assert.deepEqual(
+    Object.keys(health.db),
+    ['legislators', 'memberships', 'committee_seats', 'sessions', 'committees', 'changes', 'snapshots', 'sync_runs', 'bills', 'budget_bills', 'budget_reports', 'committee_meetings', 'news', 'social_accounts'],
+  );
 
   const meta = getMetaPayload(db);
   assert.equal(meta.terms.length, 1);
@@ -152,6 +169,26 @@ test('A4: getHealth().last_runs items have the same fields as listSyncRuns', () 
   for (const run of health.last_runs) {
     assert.deepEqual(Object.keys(run).sort(), expectedKeys);
   }
+});
+
+test('CR-7：POST /api/v1/sync 的授權（設了 token 就一定要帶對；沒設 token 只限 loopback）', () => {
+  // 沒設 token + 綁 loopback → 放行（本機維運的預設情境）
+  assert.equal(authorizeSync({}, { host: '127.0.0.1', token: '' }), null);
+  assert.equal(authorizeSync({}, { host: 'localhost', token: '' }), null);
+  assert.equal(authorizeSync({}, { host: '::1', token: '' }), null);
+
+  // 沒設 token + 綁對外 → 停用（不是警告，是直接不給用）
+  const disabled = authorizeSync({}, { host: '0.0.0.0', token: '' });
+  assert.equal(disabled?.status, 403);
+  assert.equal(disabled?.code, 'sync_disabled');
+
+  // 設了 token → 對外也開放，但一定要帶對
+  assert.equal(authorizeSync({ 'x-sync-token': 's3cret' }, { host: '0.0.0.0', token: 's3cret' }), null);
+  assert.equal(authorizeSync({}, { host: '0.0.0.0', token: 's3cret' })?.status, 401);
+  assert.equal(authorizeSync({ 'x-sync-token': 'wrong' }, { host: '0.0.0.0', token: 's3cret' })?.status, 401);
+  assert.equal(authorizeSync({ 'x-sync-token': 's3cre' }, { host: '127.0.0.1', token: 's3cret' })?.status, 401, '前綴不算通過');
+  // header 可能是陣列（Node 對重複標頭的行為）→ 不可以崩潰
+  assert.equal(authorizeSync({ 'x-sync-token': ['a', 'b'] }, { host: '127.0.0.1', token: 's3cret' })?.status, 401);
 });
 
 test('A5: Paging parameters are correctly clamped at trust boundary', () => {
@@ -372,10 +409,12 @@ test('排行榜：三種榜都有資料、名次連續、intensity 以第一名�
   const db = seededFull();
   const boards = listRankings(db, { type: 'all', limit: 10 });
 
-  assert.deepEqual(Object.keys(boards.boards).sort(), ['bills', 'facebook', 'news']);
+  // 新增「險勝」「得票流失」兩榜之後，這裡的清單沒有跟著更新 → 上游 main 一直是紅的（2026-10-02 修）
+  assert.deepEqual(Object.keys(boards.boards).sort(), ['bills', 'close', 'drop', 'facebook', 'news']);
   for (const board of Object.values(boards.boards)) {
     assert.ok(board.title && board.note, '每個榜都要有標題與說明');
-    assert.ok(board.items.length > 0, `${board.type} 應該有資料`);
+    // 險勝／流失榜來自選舉資料（靜態檔），這個 fixture 沒有選舉資料時可以是空的
+    if (board.type !== 'close' && board.type !== 'drop') assert.ok(board.items.length > 0, `${board.type} 應該有資料`);
     board.items.forEach((item, i) => {
       assert.equal(item.rank, i + 1, '名次要連續');
       assert.ok(item.legislator.id && item.legislator.name, '每列都要有委員');
@@ -603,5 +642,115 @@ test('社群整理表：有 Threads 欄位才讀，貼文日期與摘要跟著�
   const csv = [`${head},Threads連結,Threads最新貼文日期,Threads最新貼文主題摘要`, `${first},https://www.threads.com/@wu_szuyao,2026-09-28,選戰摘要`, ...rest].join('\n');
   const threads = normalizeSocial(csv, ids).accounts.filter((a) => a.platform === 'threads');
   assert.deepEqual(threads.map((a) => [a.url, a.latest_post_date, a.latest_post_summary]), [['https://www.threads.com/@wu_szuyao', '2026-09-28', '選戰摘要']]);
-  assert.equal(normalizeSocial(text('social.csv'), ids).accounts.filter((a) => a.platform === 'threads').length, 0, '沒有欄位就不產生 Threads');
+  assert.equal(normalizeSocial(text('social.csv'), ids).accounts.filter((a) => a.platform === 'threads').length, 0, '沒有欄位就不產生 Threads');});
+
+/* ---------------- 第三輪 review（2026-10-02）修掉的行為，每一條都先重現過才修 ---------------- */
+
+test('F1: vocab=category 要把預算案一起算進來（曾經整批被靜默丟掉）', () => {
+  const { db } = seeded();
+  db.prepare(
+    `INSERT INTO bills(id, term, session, name, status, category, proposer_text, laws, latest_date, url)
+     VALUES('b1', 11, '11-5', '法案一', '三讀', '法律案', '', '[]', '2026-09-29', 'u')`,
+  ).run();
+  db.prepare(
+    `INSERT INTO budget_bills(id, term, session, category, name, status, proposer, fiscal_year, latest_date, url)
+     VALUES('z1', 11, '11-5', '中央政府總預算案', '總預算', '交付審查', '行政院', '115', '2026-09-30', 'u')`,
+  ).run();
+
+  const topics = listTopics(db, { days: 'all', vocab: 'category' });
+  const names = topics.items.map((i) => i.name);
+  assert.ok(names.includes('中央政府總預算案'), `預算案的類別必須出現（實際：${names.join('、')}）`);
+  assert.equal(topics.items.find((i) => i.name === '中央政府總預算案').count, 1);
+  // 資料截止日也要把預算案算進去（只看 bills 的話 bills 一空整頁就回空）
+  assert.equal(topics.data_to, '2026-09-30');
 });
+
+test('F2: /news 的 total 要跟 items 用同一組 JOIN（孤兒新聞不可讓 total 虛胖）', () => {
+  const { db, dataset } = seeded();
+  upsertNews(db, dataset.legislators[0].id, [{ title: '正常新聞', source: 'x', url: 'https://e/1', published_at: '2026-09-30T00:00:00.000Z' }], {
+    fetchedAt: '2026-09-30T09:00:00.000Z',
+  });
+  // news 累積 180 天，但 legislators 每次同步整批重建 → 一定會有對不到委員的列
+  db.prepare(
+    `INSERT INTO news(legislator_id, title, source, url, published_at, fetched_at)
+     VALUES('已經不在名錄的人', '孤兒新聞', 'x', 'https://e/orphan', '2026-09-30T00:00:00.000Z', '2026-09-30T09:00:00.000Z')`,
+  ).run();
+
+  const res = listNews(db, { limit: 10 });
+  assert.equal(res.total, res.items.length, 'total 不可以比實際能回傳的列數多');
+  assert.equal(res.total, 1);
+});
+
+test('F3: 名錄為空時 /committee-activity 不可以 500（空樣式 regex 的 TypeError）', () => {
+  const db = openDb(':memory:');
+  applyCommitteeMeets(
+    db,
+    [
+      {
+        meet_code: 'M1',
+        title: '第11屆第5會期內政委員會第1次全體委員會議',
+        date: '2026-09-30',
+        committees: ['內政委員會'],
+        video_url: null,
+        attachments: [{ kind: 'reply', title: '書面答復', url: 'https://e/1' }],
+      },
+    ],
+    { fetchedAt: '2026-09-30T09:00:00.000Z' },
+  );
+  const res = listCommitteeActivity(db, {});
+  assert.equal(res.replies.total, 1);
+  assert.deepEqual(res.replies.items[0].legislators, [], '沒有委員名錄時回空陣列，不是崩潰');
+});
+
+test('F4: 排行榜先在 SQL 過濾在職委員，離職者不可以佔走榜單名額', () => {
+  const { db, dataset } = seeded();
+  const former = dataset.legislators.find((l) => l.leave_flag);
+  const sitting = dataset.legislators.find((l) => !l.leave_flag);
+  assert.ok(former && sitting);
+  const insert = db.prepare(
+    `INSERT INTO news(legislator_id, title, source, url, published_at, fetched_at) VALUES(?, ?, 's', ?, '2026-09-30T00:00:00.000Z', '2026-09-30T09:00:00.000Z')`,
+  );
+  for (let i = 0; i < 9; i += 1) insert.run(former.id, `前委員新聞${i}`, `https://e/f${i}`);
+  insert.run(sitting.id, '在職新聞', 'https://e/live');
+
+  const board = listRankings(db, { type: 'news', days: 3650, limit: 1 }).boards.news;
+  assert.equal(board.items.length, 1, 'limit=1 就該給出 1 位，即使第一名是離職者');
+  assert.equal(board.items[0].legislator.id, sitting.id);
+});
+
+test('F6/F7/F9: LIKE 萬用字元要跳脫、first_date 不可外洩 "9999"、statuses 不可有 null', () => {
+  const { db } = seeded();
+  db.prepare(
+    `INSERT INTO bills(id, term, session, name, status, category, proposer_text, laws, latest_date, url)
+     VALUES('b1', 11, '11-5', '平均地權條例', '三讀', '法律案', '', '[]', '', 'u')`,
+  ).run();
+  db.prepare(
+    `INSERT INTO bills(id, term, session, name, status, category, proposer_text, laws, latest_date, url)
+     VALUES('b2', 11, '11-5', '沒有狀態的議案', NULL, '法律案', '', '[]', '2026-09-28', 'u')`,
+  ).run();
+
+  // ?q=% 若不跳脫，LIKE '%%%' 會符合全部議案
+  assert.equal(listBills(db, { q: '%' }).total, 0, '% 是萬用字元，不是「全部」');
+  assert.equal(listBills(db, { q: '平均' }).total, 1);
+  assert.equal(listBills(db, { q: '_' }).total, 0);
+
+  const res = listBills(db, {});
+  assert.equal(res.first_date, '2026-09-28', 'latest_date 為空不可讓 "9999" 外洩');
+  assert.ok(res.statuses.every((s) => s.name), 'status 為 NULL 的議案不該產生 {name:null} 的統計列');
+  assert.deepEqual(res.statuses.map((s) => s.name), ['三讀']);
+});
+
+test('B4: 新聞全部失敗時 news_status 要寫 failed，不是 complete', async () => {
+  const { db } = seeded();
+  const result = await runNewsIngest(db, {
+    logger: silent,
+    delayMs: 0,
+    fetchImpl: async () => {
+      throw new FetchError('HTTP 503', { status: 503, attempts: 1 });
+    },
+  });
+  assert.equal(result.status, 'failed');
+  assert.match(getMeta(db, 'news_status'), /^failed:/, '失敗不可以寫成 complete');
+  // 而且要看得到（以前只有 partial 會變成 health 的 notice，failed 完全沒人顯示）
+  const health = getHealth(db, { now: Date.parse('2026-09-30T10:00:00.000Z') });
+  assert.ok(health.warnings.some((w) => w.includes('新聞同步失敗')), `warnings 應含新聞失敗，實際：${health.warnings}`);});

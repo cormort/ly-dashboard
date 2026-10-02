@@ -1,6 +1,6 @@
 {
-  "updated_at": "2026-09-30",
-  "note": "委員社群帳號的更正表。整理表（Google 試算表）是主要來源，但欄位由人工維護、可能貼錯網址；這裡放經人工確認過的正確粉專，同步時覆蓋整理表的值。每一筆都用已登入的瀏覽器開過該網址、確認頁面顯示名稱與委員相符。 支援 platform（facebook｜threads）與 action（replace｜add）；threads 只能由更正表補，因為整理表沒有這個欄位。",
+  "updated_at": "2026-10-02",
+  "note": "委員社群帳號的更正表。整理表（Google 試算表）是主要來源，但欄位由人工維護、可能貼錯網址；這裡放經人工確認過的正確粉專，同步時覆蓋整理表的值。每一筆都用已登入的瀏覽器開過該網址、確認頁面顯示名稱與委員相符。 支援 platform（facebook｜threads）與 action（replace｜add｜deny；deny＝確認指向錯誤對象就移除該列）；threads 只能由更正表補，因為整理表沒有這個欄位。",
   "overrides": [
     {
       "legislator": "蔡其昌",
@@ -131,6 +131,15 @@
       "followers": "4 萬",
       "verified_at": "2026-09-30",
       "reason": "原本的 HuangShiouFang 目前無法查看"
+    },
+    {
+      "legislator": "陳永康",
+      "platform": "facebook",
+      "action": "deny",
+      "url": "https://www.facebook.com/mykmt/",
+      "page_name": "中國國民黨 KMT",
+      "verified_at": "2026-10-02",
+      "reason": "整理表原網址指向中國國民黨 KMT 政黨粉專（64 萬追蹤），不是委員粉專；兩批更正都沒有替代網址。移除連結而不是連到錯的人（見 docs/fb-verification-2026-09-30.md）"
     }
   ]
 }

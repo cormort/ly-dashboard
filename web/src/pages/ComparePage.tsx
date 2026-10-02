@@ -12,12 +12,14 @@ import { ALL_SESSIONS } from '../lib/urlState';
 export interface ComparePageProps {
   refreshToken: number;
   onOpenId: (id: string) => void;
+  /** 站內連結要攔截，否則整個文件重載、SPA 狀態會掉 */
+  onNavigate: (href: string) => void;
 }
 
 const readIds = () => (new URLSearchParams(window.location.search).get('ids') ?? '').split(',').filter(Boolean).slice(0, 2);
 
 /** 兩位委員並排比較：提案、主提案、三讀、新聞、委員會、常涉法律，以及共同提案。條件寫在網址可分享。 */
-export function ComparePage({ refreshToken, onOpenId }: ComparePageProps) {
+export function ComparePage({ refreshToken, onOpenId, onNavigate }: ComparePageProps) {
   const [ids, setIds] = useState<string[]>(readIds);
   useEffect(() => {
     const onPop = () => setIds(readIds());
@@ -182,7 +184,13 @@ export function ComparePage({ refreshToken, onOpenId }: ComparePageProps) {
                     <ul className="plain-list">
                       {i.top_laws.map((law) => (
                         <li key={law.name}>
-                          <a href={pathFor('bills', { law: law.name })}>{law.name}</a> <span className="muted">{law.count}</span>
+                          <a
+                            href={pathFor('bills', { law: law.name })}
+                            onClick={(event) => {
+                              event.preventDefault();
+                              onNavigate(pathFor('bills', { law: law.name }));
+                            }}
+                          >{law.name}</a> <span className="muted">{law.count}</span>
                         </li>
                       ))}
                     </ul>

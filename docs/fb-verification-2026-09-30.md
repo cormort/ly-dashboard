@@ -52,15 +52,22 @@
 `action: "add"` 表示「新增一個平台」而不是覆蓋既有列，所以她的臉書列（`taipeineedyou`，目前無法查看）**保留不動**，
 委員檔案會同時顯示「臉書：…」與「Threads：…」。要不要移除那條無法查看的臉書連結，等你決定。
 
-### 尚未處理
+### 已處理（2026-10-02）：陳永康改用 `action: "deny"` 移除連結
 
 - **陳永康**：原網址是中國國民黨 KMT 粉專，兩批都沒有提供替代網址。
 
+  使用者沒有提供替代網址，所以**不編造**；改成在更正表加一筆 `action: "deny"`，
+  同步時直接把那一列移除（`overridesApplied` 會記為 `陳永康(facebook·移除)`，warning 保留被移除的網址與理由）。
+  委員會名錄仍看得到陳永康，只是社群區塊不再有那個會連到政黨粉專的連結。
+
+  「指到別人的粉專」比「沒有連結」更糟，而且這個做法**可逆**：把 `server/social-overrides.json`
+  的那一筆拿掉就會恢復。整理表（使用者的 Google 文件）完全沒有被改動。見 `DECISIONS.md` D53。
+
 ### 更正表現況
 
-`server/social-overrides.json` 共 **16 筆**（15 筆 facebook ＋ 1 筆 threads），
+`server/social-overrides.json` 共 **17 筆**（15 筆 facebook 覆蓋 ＋ 1 筆 threads ＋ 1 筆 deny），
 每筆都有 `reason` 與 `verified_at`；同步時套用，`social_accounts.source = 'override'` 可辨識。
-帳號總數 113 → **114**（113 位 facebook ＋ 吳思瑤的 threads）。
+帳號總數 **113**（112 位 facebook ＋ 吳思瑤的 threads；陳永康的錯誤連結已由 deny 移除）。
 
 ## ❌ 原始判定：指向其他實體（已於上表修正）
 

@@ -136,7 +136,7 @@ export function SyncStatusBanner({ health, refreshToken }: SyncStatusBannerProps
         type="button"
         onClick={() => setExpanded((value) => !value)}
         aria-expanded={expanded}
-        aria-controls="sync-run-list"
+        aria-controls={expanded ? 'sync-run-list' : undefined}
       >
         <FileClock aria-hidden="true" />
         同步紀錄

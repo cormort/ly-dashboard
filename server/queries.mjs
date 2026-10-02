@@ -18,17 +18,22 @@ export function currentSession(db) {
   return value || null;
 }
 
-export function isStale(db) {
+/**
+ * `now` 可注入：測試若用固定時間戳寫入資料，卻拿「執行當下」判斷 stale，
+ * 過了 staleAfterHours 之後測試就會自己變紅（會過期的測試）。
+ * 不傳 `now` 時就是真實時間，正式路徑行為不變。
+ */
+export function isStale(db, now = Date.now()) {
   const last = getMeta(db, 'last_success_at');
   if (!last) return true;
-  return Date.now() - new Date(last).getTime() > CONFIG.staleAfterHours * 3600 * 1000;
+  return now - new Date(last).getTime() > CONFIG.staleAfterHours * 3600 * 1000;
 }
 
-export function envelope(db, { term = null, session = null } = {}) {
+export function envelope(db, { term = null, session = null, now = Date.now() } = {}) {
   return {
-    generated_at: nowIso(),
+    generated_at: new Date(now).toISOString(),
     fetched_at: getMeta(db, 'last_success_at'),
-    stale: isStale(db),
+    stale: isStale(db, now),
     source: sourceInfo(),
     ...(term ? { term } : {}),
     ...(term ? { session: session ?? null } : {}),
@@ -280,8 +285,29 @@ export function listSyncRuns(db, { limit = 50 } = {}) {
   };
 }
 
-export function getHealth(db) {
-  const count = (table) => Number(db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get().n);
+/**
+ * CR-9：`COUNT(*)` 的表名無法參數化（SQLite 不接受識別字佔位符），所以改成
+ * **只從這份常數清單產生**，呼叫端再也傳不進任何字串 —— 這裡不再有插值注入的可能。
+ * `[API 欄位名, 資料表名]`，順序即 `/health` 的 `db` 欄位順序。
+ */
+const HEALTH_TABLES = [
+  ['legislators', 'legislators'],
+  ['memberships', 'memberships'],
+  ['committee_seats', 'committee_seats'],
+  ['sessions', 'sessions'],
+  ['committees', 'committees'],
+  ['changes', 'change_log'],
+  ['snapshots', 'raw_snapshots'],
+  ['sync_runs', 'sync_runs'],
+  ['bills', 'bills'],
+  ['budget_bills', 'budget_bills'],
+  ['budget_reports', 'budget_reports'],
+  ['committee_meetings', 'committee_meetings'],
+  ['news', 'news'],
+  ['social_accounts', 'social_accounts'],
+];
+
+export function getHealth(db, { now = Date.now() } = {}) {
   const lastRuns = db
     .prepare(
       `SELECT * FROM sync_runs
@@ -291,32 +317,21 @@ export function getHealth(db) {
     .all()
     .map(toSyncRun);
   const configRetention = CONFIG.retention ?? { syncRuns: 0, changeLog: 0 };
-  const stats = {
-    legislators: count('legislators'),
-    memberships: count('memberships'),
-    committee_seats: count('committee_seats'),
-    sessions: count('sessions'),
-    committees: count('committees'),
-    changes: count('change_log'),
-    snapshots: count('raw_snapshots'),
-    sync_runs: count('sync_runs'),
-    bills: count('bills'),
-    budget_bills: count('budget_bills'),
-    budget_reports: count('budget_reports'),
-    committee_meetings: count('committee_meetings'),
-    news: count('news'),
-    social_accounts: count('social_accounts'),
-  };
+  const stats = Object.fromEntries(
+    HEALTH_TABLES.map(([key, table]) => [key, Number(db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get().n)]),
+  );
   const newsStatus = getMeta(db, 'news_status', '');
   const notices = [];
   if (newsStatus.startsWith('partial')) notices.push(`新聞同步未跑完（${newsStatus.split(':')[1]}）`);
+  // B4：全部失敗會寫 failed:…，以前沒有任何地方顯示它（前端看起來像「已完成」）
+  if (newsStatus.startsWith('failed')) notices.push(`新聞同步失敗（${newsStatus.split(':')[1]}，保留上一版）`);
   const socialCount = Number(getMeta(db, 'social_count', '0'));
   if (stats.social_accounts > 0 && socialCount > 0 && stats.social_accounts < socialCount) {
     notices.push(`社群帳號數（${stats.social_accounts}）少於上次成功同步（${socialCount}）`);
   }
   return {
-    meta: envelope(db),
-    ok: stats.legislators > 0 && !isStale(db),
+    meta: envelope(db, { now }),
+    ok: stats.legislators > 0 && !isStale(db, now),
     db: stats,
     // 前端會顯示的兩種紀錄目前保留幾筆、上限多少（見 DECISIONS.md：為什麼是保留而不是不存）
     retention: {
@@ -364,10 +379,13 @@ export function listRankings(db, { type = 'all', days = 30, limit = 10 } = {}) {
   const boards = {};
 
   if (wanted('news')) {
+    // 在職條件下推到 SQL：先在 LIMIT 之後才 filter，離職者會佔走名額，
+    // 榜單就會靜默少於 limit（實測 limit=1 且第一名是離職者時回傳空榜）。
     const rows = db
       .prepare(
-        `SELECT legislator_id, COUNT(*) AS value, MAX(published_at) AS latest FROM news
-         WHERE published_at >= ? GROUP BY legislator_id ORDER BY value DESC, latest DESC LIMIT ?`,
+        `SELECT n.legislator_id, COUNT(*) AS value, MAX(n.published_at) AS latest
+         FROM news n JOIN legislators l ON l.id = n.legislator_id AND l.leave_flag = 0
+         WHERE n.published_at >= ? GROUP BY n.legislator_id ORDER BY value DESC, latest DESC LIMIT ?`,
       )
       .all(since, resolvedLimit);
     const latest = new Map();
@@ -401,11 +419,11 @@ export function listRankings(db, { type = 'all', days = 30, limit = 10 } = {}) {
     const today = Date.now();
     const items = db
       .prepare(
-        `SELECT s.legislator_id, s.page_name, s.url, s.latest_post_date, s.latest_post_summary FROM social_accounts s
+        `SELECT s.legislator_id, s.page_name, s.url, s.latest_post_date, s.latest_post_summary
+         FROM social_accounts s JOIN legislators l ON l.id = s.legislator_id AND l.leave_flag = 0
          WHERE s.latest_post_date <> '' ORDER BY s.latest_post_date DESC LIMIT ?`,
       )
       .all(resolvedLimit)
-      .filter((row) => index.has(row.legislator_id))
       .map((row) => {
         const ageDays = Math.max(0, Math.round((today - Date.parse(`${row.latest_post_date}T00:00:00+08:00`)) / 86_400_000));
         return {
@@ -431,6 +449,7 @@ export function listRankings(db, { type = 'all', days = 30, limit = 10 } = {}) {
       .prepare(
         `SELECT s.legislator_id, COUNT(*) AS value, SUM(s.is_lead) AS leads, MAX(b.latest_date) AS latest
          FROM bill_sponsors s JOIN bills b ON b.id = s.bill_id
+         JOIN legislators l ON l.id = s.legislator_id AND l.leave_flag = 0
          GROUP BY s.legislator_id ORDER BY value DESC, leads DESC LIMIT ?`,
       )
       .all(resolvedLimit);
@@ -473,7 +492,12 @@ export function listRankings(db, { type = 'all', days = 30, limit = 10 } = {}) {
       .filter((x) => x.race?.elected && x.race.margin_pct !== null);
     if (wanted('close')) {
       const rows = [...latest].sort((a, b) => a.race.margin_pct - b.race.margin_pct).slice(0, resolvedLimit);
-      const widest = Math.max(...rows.map((x) => x.race.margin_pct), 0.01);
+      // 長條以「最接近的那一場」為滿格：與其他四個榜一致（第一名 intensity = 1），
+      // 原本以最寬的差距當分母，最接近的一筆只有 0.83，圖上第一條不會滿，且與 test 的
+      // 「每個榜第一名長度為 1」不變量互相矛盾（2026-10-02 修正，見 DECISIONS D57）。
+      const margins = rows.map((x) => x.race.margin_pct);
+      const closest = Math.min(...margins);
+      const span = Math.max(...margins) - closest;
       boards.close = {
         type: 'close',
         title: '險勝排行',
@@ -481,8 +505,8 @@ export function listRankings(db, { type = 'all', days = 30, limit = 10 } = {}) {
         unit: '個百分點',
         items: rows.map((x, i) => ({
           rank: i + 1,
-          // 長條代表「多接近」：差距越小越長
-          intensity: Math.max(0.06, 1 - (x.race.margin_pct / widest) * 0.9),
+          // 長條代表「多接近」：差距越小越長，最接近的一筆滿格
+          intensity: span > 0 ? Math.max(0.06, 1 - ((x.race.margin_pct - closest) / span) * 0.94) : 1,
           value: x.race.margin_pct,
           value_display: `${x.race.margin_pct.toFixed(2)} 個百分點`,
           legislator: index.get(x.id),
@@ -553,8 +577,10 @@ export function listBills(db, { legislator = null, q = '', law = '', status = ''
   const params = [];
   if (legislator) clauses.push('b.id IN (SELECT bill_id FROM bill_sponsors WHERE legislator_id = ?)'), params.push(legislator);
   const needle = String(q ?? '').trim();
-  if (needle) clauses.push('(b.name LIKE ? OR b.laws LIKE ?)'), params.push(`%${needle}%`, `%${needle}%`);
-  if (law) clauses.push('b.laws LIKE ?'), params.push(`%${JSON.stringify(String(law))}%`);
+  // LIKE 的 % 與 _ 是萬用字元：不跳脫的話 ?q=% 會回傳全部議案（且 total 跟著變成全部件數）。
+  const like = (value) => `%${String(value).replace(/[\\%_]/g, (ch) => `\\${ch}`)}%`;
+  if (needle) clauses.push("(b.name LIKE ? ESCAPE '\\' OR b.laws LIKE ? ESCAPE '\\')"), params.push(like(needle), like(needle));
+  if (law) clauses.push("b.laws LIKE ? ESCAPE '\\'"), params.push(`%${JSON.stringify(String(law)).replace(/[\\%_]/g, (ch) => `\\${ch}`)}%`);
   // 日期區間比對最新進度日期；只收 YYYY-MM-DD，其他格式當作未指定
   const isDate = (v) => /^\d{4}-\d{2}-\d{2}$/.test(String(v ?? ''));
   if (isDate(from)) clauses.push('b.latest_date >= ?'), params.push(String(from));
@@ -572,7 +598,7 @@ export function listBills(db, { legislator = null, q = '', law = '', status = ''
   const statusCounts = new Map();
   for (const row of rows) {
     for (const name of JSON.parse(row.laws || '[]')) lawCounts.set(name, (lawCounts.get(name) ?? 0) + 1);
-    statusCounts.set(row.status, (statusCounts.get(row.status) ?? 0) + 1);
+    if (row.status) statusCounts.set(row.status, (statusCounts.get(row.status) ?? 0) + 1);
   }
   const matching = statusFilter ? rows.filter((row) => row.status === statusFilter) : rows;
   // 主提案人黨籍分布（法律頁的「各黨提案」長條）；在套用狀態篩選後算，與列表一致
@@ -611,7 +637,7 @@ export function listBills(db, { legislator = null, q = '', law = '', status = ''
     parties: partyCounts,
     term: currentTerm(db),
     sessions: [...sessionCounts].sort((a, b) => a[0] - b[0]).map(([seq, count]) => ({ seq, count })),
-    first_date: matching.length ? matching.reduce((min, r) => (r.latest_date && r.latest_date < min ? r.latest_date : min), matching[0].latest_date || '9999') : null,
+    first_date: matching.reduce((min, r) => (r.latest_date && (!min || r.latest_date < min) ? r.latest_date : min), null),
     statuses: ranked(statusCounts, 20),
     items: page.map((r) => {
       const sponsors = sponsorsByBill.get(r.id) ?? [];
@@ -649,16 +675,21 @@ export function listTopics(db, { days = 30, limit = 12, vocab = 'law' } = {}) {
   const resolvedVocab = TOPIC_VOCABULARIES[vocab] ? vocab : 'law';
   const meta = TOPIC_VOCABULARIES[resolvedVocab];
 
-  // 每個詞彙的資料截止日
+  // 每個詞彙的資料截止日；類別詞彙同時涵蓋一般議案與預算案，不能只看 bills
+  const maxOf = (sql) => db.prepare(sql).get().d;
   const anchor =
     resolvedVocab === 'committee'
-      ? db.prepare('SELECT MAX(date) AS d FROM committee_records').get().d
-      : db.prepare('SELECT MAX(latest_date) AS d FROM bills').get().d;
+      ? maxOf('SELECT MAX(date) AS d FROM committee_records')
+      : resolvedVocab === 'category'
+        ? maxOf('SELECT MAX(d) AS d FROM (SELECT MAX(latest_date) AS d FROM bills UNION ALL SELECT MAX(latest_date) AS d FROM budget_bills)')
+        : maxOf('SELECT MAX(latest_date) AS d FROM bills');
   // 資料起點：前期區間若早於資料起點，就沒有可比較的基準，寧可說「無前期資料」也不要報錯誤的增減
   const earliest =
     resolvedVocab === 'committee'
-      ? db.prepare('SELECT MIN(date) AS d FROM committee_records').get().d
-      : db.prepare("SELECT MIN(latest_date) AS d FROM bills WHERE latest_date != ''").get().d;
+      ? maxOf('SELECT MIN(date) AS d FROM committee_records')
+      : resolvedVocab === 'category'
+        ? maxOf("SELECT MIN(d) AS d FROM (SELECT MIN(latest_date) AS d FROM bills WHERE latest_date != '' UNION ALL SELECT MIN(latest_date) AS d FROM budget_bills WHERE latest_date != '')")
+        : maxOf("SELECT MIN(latest_date) AS d FROM bills WHERE latest_date != ''");
   if (!anchor) {
     return {
       meta: envelope(db),
@@ -735,10 +766,12 @@ export function listTopics(db, { days = 30, limit = 12, vocab = 'law' } = {}) {
          WHERE b.latest_date >= ?`,
       )
       .all(previousFrom);
-    // 類別詞彙把預算案一起算進來（議案類別本來就跨一般議案與預算案）
+    // 類別詞彙把預算案一起算進來（議案類別本來就跨一般議案與預算案）。
+    // 注意：這裡必須取 `category` 而不是別名 —— 取鍵的程式讀的是 row.category，
+    // 一度寫成 `category AS laws` 導致所有預算案被靜默丟掉（它們不是 `laws` 這個 vocab 的資料）。
     const budgetRows =
       resolvedVocab === 'category'
-        ? db.prepare('SELECT name, category AS laws, status, latest_date, url FROM budget_bills WHERE latest_date >= ?').all(previousFrom)
+        ? db.prepare('SELECT name, category, status, latest_date, url FROM budget_bills WHERE latest_date >= ?').all(previousFrom)
         : [];
 
     for (const row of [...billRows, ...budgetRows]) {
@@ -1052,10 +1085,13 @@ export function listLegislatorVotes(db, { id = null } = {}) {
 
 export function listNews(db, { legislator = null, limit = 10 } = {}) {
   const resolvedLimit = Math.max(1, Math.min(Number(limit) || 10, 100));
+  // total 必須用「跟 items 同一組 JOIN」算：news 會累積 180 天，而 legislators 每次同步整批重建，
+  // 中間一定有對不到委員的孤兒新聞；用 COUNT(*) FROM news 會得到比實際可回傳數量還大的 total。
+  const from = 'FROM news n JOIN legislators l ON l.id = n.legislator_id';
   const total = legislator
-    ? Number(db.prepare('SELECT COUNT(*) AS n FROM news WHERE legislator_id = ?').get(legislator).n)
-    : Number(db.prepare('SELECT COUNT(*) AS n FROM news').get().n);
-  const select = 'SELECT n.*, l.name AS legislator_name, l.party AS legislator_party FROM news n JOIN legislators l ON l.id = n.legislator_id';
+    ? Number(db.prepare(`SELECT COUNT(*) AS n ${from} WHERE n.legislator_id = ?`).get(legislator).n)
+    : Number(db.prepare(`SELECT COUNT(*) AS n ${from}`).get().n);
+  const select = `SELECT n.*, l.name AS legislator_name, l.party AS legislator_party ${from}`;
   const order = 'ORDER BY n.published_at DESC, n.url LIMIT ?';
   const rows = legislator
     ? db.prepare(`${select} WHERE n.legislator_id = ? ${order}`).all(legislator, resolvedLimit)
@@ -1360,11 +1396,15 @@ export function listCommitteeActivity(db, { committee = '', limit = 20 } = {}) {
   const meetKey = (name) => String(name ?? '').replace(/^\s*[（(][^）)]*[）)]\s*/, '').replace(/\s/g, '');
   const meetByName = new Map(meets.map((m) => [meetKey(m.title), m]));
   const byHan = new Map([...people.values()].map((l) => [newsName(l.name), l]));
-  const nameRe = new RegExp([...byHan.keys()].filter((n) => n.length >= 2).sort((a, b) => b.length - a.length).join('|'), 'g');
+  // 名錄是空的（全新資料庫、或同步尚未跑完）時，join('|') 會變成空字串的樣式，
+  // match('') 會回傳一堆空字串，後面 byHan.get('') 是 undefined → 直接 TypeError 500。
+  const hanNames = [...byHan.keys()].filter((n) => n.length >= 2).sort((a, b) => b.length - a.length);
+  const nameRe = hanNames.length ? new RegExp(hanNames.join('|'), 'g') : null;
   /** 回覆標題提到的委員：全名，或「邱委員慧洳」這種姓＋委員＋名 */
   const repliedTo = (title) => {
+    if (!nameRe) return [];
     const t = String(title).replace(/(.)委員(.{1,3}?)(?=[口書質答函_\-、，(（]|$)/g, '$1$2委員');
-    return [...new Set(t.match(nameRe) ?? [])].map((n) => byHan.get(n)).map((l) => ({ id: l.id, name: l.name, party: l.party }));
+    return [...new Set(t.match(nameRe) ?? [])].map((n) => byHan.get(n)).filter(Boolean).map((l) => ({ id: l.id, name: l.name, party: l.party }));
   };
   const meetings = db
     .prepare('SELECT * FROM committee_meetings ORDER BY date DESC, id DESC')

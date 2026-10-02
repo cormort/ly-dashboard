@@ -5,6 +5,7 @@ import type { CommitteeActivityResponse } from '../api/types';
 import { EmptyState, ErrorState, LoadingState } from '../components/DataStates';
 import { useApi } from '../hooks/useApi';
 import { pathFor } from '../hooks/useRoute';
+import { shortCommittee } from '../lib/format';
 import { partyStyle } from '../lib/parties';
 
 export interface CommitteesPageProps {
@@ -74,7 +75,7 @@ export function CommitteesPage({ refreshToken, onOpenId }: CommitteesPageProps) 
           </button>
           {data.committees.map((c) => (
             <button key={c.name} type="button" className="chip" aria-pressed={committee === c.name} onClick={() => choose(c.name)}>
-              {c.name.replace(/委員會$/, '')} <span className="muted">{c.count}</span>
+              {shortCommittee(c.name)} <span className="muted">{c.count}</span>
             </button>
           ))}
         </div>

@@ -63,6 +63,10 @@ export async function runIngest(db, { logger = console, fetchImpl = fetchJson, n
   let dataset;
   try {
     dataset = buildDataset(byDataset.id9.json, byDataset.id14.json, { sourceUrl: CONFIG.source.url });
+    // B1：絕對下限（< 100）擋不住「id9 的 committee 欄位掉一半」這種部分回應：
+    // 實測 783 筆席次掉到 367 筆仍會 status=success 並整批覆寫。改跟上次成功筆數比。
+    guardShrink(db, 'seats', '委員會席次', dataset.stats.seats);
+    guardShrink(db, 'legislators', '委員名錄', dataset.stats.legislators);
   } catch (error) {
     const message = error instanceof DataValidationError ? `資料驗證失敗：${error.message}` : String(error?.message || error);
     const finishedAt = now().toISOString();
@@ -92,6 +96,9 @@ export async function runIngest(db, { logger = console, fetchImpl = fetchJson, n
   } else {
     setMeta(db, 'last_success_at', fetchedAt);
   }
+  // 基準筆數只在確定套用成功後才更新，否則失敗的那一版會把門檻往下拉
+  recordCount(db, 'seats', dataset.stats.seats);
+  recordCount(db, 'legislators', dataset.stats.legislators);
 
   const finishedAt = now().toISOString();
   for (const item of fetched) {
@@ -263,7 +270,10 @@ export function runMeetingsIngest(db, { logger = console, fetchImpl = fetchJson,
     const idByName = new Map(db.prepare('SELECT name, id FROM legislators').all().map((r) => [r.name, r.id]));
     const { meetings, warnings } = normalizeMeetings(result.json, idByName);
     for (const w of warnings) logger.warn(`[meetings] 警告：${w}`);
+    // B2：ID223 也是整批覆寫，截斷的回應（例如只回一頁）不該蓋掉完整資料
+    guardShrink(db, 'meetings', '委員會登記發言名單', meetings.length);
     const records = applyMeetings(db, meetings, { fetchedAt: now().toISOString() });
+    recordCount(db, 'meetings', meetings.length);
     logger.log(`[meetings] 已套用：${records} 場委員會會議`);
     return { records, warnings };
   });
@@ -276,14 +286,21 @@ export function runRecordsIngest(db, { logger = console, fetchImpl = fetchJson, 
     if (!term) throw new DataValidationError('名錄尚未同步，無法判斷屆次');
     const urlFor = (page) => `${CONFIG.records.url}?${new URLSearchParams({ 屆: String(term), limit: '1000', page: String(page) })}`;
     const { pages } = await fetchAllPages(urlFor, fetchImpl, 'records');
-    const records = applyCommitteeRecords(db, normalizeCommitteeRecords(pages, CONFIG.records.category), { fetchedAt: now().toISOString() });
+    const normalizedRecords = normalizeCommitteeRecords(pages, CONFIG.records.category);
+    // B2：這張表也是先 DELETE 再整批 INSERT，只有「非空」驗證擋不住被截斷的回應
+    guardShrink(db, 'records', '委員會會議紀錄', normalizedRecords.length);
+    const records = applyCommitteeRecords(db, normalizedRecords, { fetchedAt: now().toISOString() });
     // 會議附件與機關回覆：同一來源的另一個端點，一起抓；多個「會議種類」參數是 OR
     const meetsUrl = (page) => {
       const qs = new URLSearchParams({ 屆: String(term), limit: '1000', page: String(page) });
       for (const t of CONFIG.records.meetTypes) qs.append('會議種類', t);
       return `${CONFIG.records.meetsUrl}?${qs}`;
     };
-    const meets = applyCommitteeMeets(db, normalizeCommitteeMeets((await fetchAllPages(meetsUrl, fetchImpl, 'meets')).pages), { fetchedAt: now().toISOString() });
+    const normalizedMeets = normalizeCommitteeMeets((await fetchAllPages(meetsUrl, fetchImpl, 'meets')).pages);
+    guardShrink(db, 'meets', '委員會會議附件', normalizedMeets.length);
+    const meets = applyCommitteeMeets(db, normalizedMeets, { fetchedAt: now().toISOString() });
+    recordCount(db, 'records', normalizedRecords.length);
+    recordCount(db, 'meets', normalizedMeets.length);
     logger.log(`[records] 已套用：${records} 筆委員會會議紀錄、${meets} 場會議附件`);
     return { records, meets };
   });
@@ -343,6 +360,36 @@ export function newsFeedUrl(name, q = `"${name}" 立委`) {
 }
 
 const pause = (ms) => (ms > 0 ? new Promise((r) => setTimeout(r, ms)) : Promise.resolve());
+
+/**
+ * 整批覆寫前的「相對筆數」門檻（fail closed）。
+ *
+ * 為什麼需要：絕對下限（例如 `length < 100`）擋不住「來源只回了一半」。
+ * 真實值 783 筆時，掉到 367 筆照樣通過所有驗證、`status='success'`，
+ * 而 applyDataset / replaceAll 是 DELETE + INSERT —— 一覆寫，完整的舊資料就沒了。
+ * 這裡跟「上一次成功套用的筆數」比（記在 meta），不是跟目前列數比，
+ * 否則每次掉一點、門檻跟著下修，最後什麼都擋不住（見 DECISIONS D51）。
+ *
+ * @param {number} nextCount 這次要寫入的筆數
+ * @param {number} minRatio  允許的最低比例（預設 0.8 = 不得掉超過 20%）
+ */
+export function guardShrink(db, metaKey, label, nextCount, { minRatio = CONFIG.shrinkMinRatio } = {}) {
+  if (CONFIG.allowShrink) return { previous: 0, next: nextCount };
+  const previous = Number(getMeta(db, `${metaKey}_count`, '0')) || 0;
+  if (previous > 0 && nextCount < previous * minRatio) {
+    throw new DataValidationError(
+      `${label}筆數異常：本次 ${nextCount} 筆，低於上次成功同步 ${previous} 筆的 ${Math.round(minRatio * 100)}%，` +
+        '疑似來源回應被截斷；已中止寫入並保留舊資料（可用 LY_ALLOW_SHRINK=1 強制覆寫）',
+      { previous, next: nextCount },
+    );
+  }
+  return { previous, next: nextCount };
+}
+
+/** 成功套用後記下筆數，供下一次 guardShrink 當基準 */
+export function recordCount(db, metaKey, count) {
+  setMeta(db, `${metaKey}_count`, String(count));
+}
 
 /** 人工確認過的粉專更正表（覆蓋整理表）；檔案不存在時視為沒有更正 */
 const SOCIAL_OVERRIDES = (() => {
@@ -417,7 +464,14 @@ export async function runNewsIngest(
   if (partial) notes.push(`時間預算用盡，只完成 ${processed}/${legislators.length} 位`);
   if (failures.length) notes.push(`${failures.length}/${processed} 位失敗，例：${failures.slice(0, 3).join('；')}`);
   const error = notes.length ? notes.join('；') : null;
-  setMeta(db, 'news_status', partial ? `partial:${processed}/${legislators.length}` : `complete:${processed}/${legislators.length}`);
+  // 全部失敗時不可以寫 complete：health 的 notices 只看 partial，前端橫幅只看 sync_runs，
+  // 若這裡寫 complete:113/113，等於在 UI 上說「新聞同步完成」而實際上什麼都沒抓到。
+  const newsStatus = failed
+    ? `failed:${processed}/${legislators.length}`
+    : partial
+      ? `partial:${processed}/${legislators.length}`
+      : `complete:${processed}/${legislators.length}`;
+  setMeta(db, 'news_status', newsStatus);
   if (!failed) setMeta(db, 'news_fetched_at', now().toISOString());
   recordSyncRun(db, {
     dataset: 'news',
