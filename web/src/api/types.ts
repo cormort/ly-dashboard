@@ -761,12 +761,30 @@ export interface PartyShare {
   over_pct: number;
 }
 
+/**
+ * 罷免案（中選會官方清單，`scripts/fetch-cec-recalls.mjs`）。
+ * 只有案件層級資訊：中選會的罷免表**沒有**各案同意／不同意票數與投票率。
+ */
+export interface RecallItem {
+  term: number;
+  vote_date: string | null;
+  name: string;
+  area: string;
+  district: string | null;
+  /** true = 罷免通過（中選會 vote_result = Y）；2015 起 35 案只有陳柏惟（2021）通過 */
+  passed: boolean;
+  title: string;
+}
+
 export interface LegislatorVotesResponse {
   meta: Meta;
   years: number[];
   sources: { label: string; url: string }[];
+  /** 全部罷免案（不篩委員）；委員自己的紀錄在 items[].recalls */
+  recalls: RecallItem[];
+  recalls_source: { label: string; page: string; endpoint: string; note?: string; fetched_at?: string };
   count: number;
-  items: { legislator: { id: string; name: string; party: string; area_name: string | null; region: string | null }; history: LegislatorRace[] }[];
+  items: { legislator: { id: string; name: string; party: string; area_name: string | null; region: string | null }; history: LegislatorRace[]; recalls: RecallItem[] }[];
 }
 
 /* ---------- /town-map ---------- */

@@ -969,6 +969,7 @@ const staticDatasetDefs = () => [
   // population-trend 的 years 最後一筆是「最新一期」（可能帶月份，例如 2026-08）
   { key: 'population_trend', label: '每月人口趨勢', load: loadPopulationTrend, count: (d) => d.months?.length ?? 0, asOf: (d) => d.years?.at(-1) ?? null },
   { key: 'town_map', label: '鄉鎮市區界圖資', load: loadTownMap, count: (d) => d.towns?.length ?? 0, asOf: (d) => d.built_at ?? null },
+  { key: 'recalls', label: '立委罷免案', load: loadRecalls, count: (d) => d.recalls?.length ?? 0, asOf: (d) => (d.fetched_at ? String(d.fetched_at).slice(0, 7) : null) },
   { key: 'legislator_votes', label: '立委歷次得票', load: loadLegislatorVotes, count: (d) => d.races?.length ?? 0, asOf: (d) => (d.years?.length ? String(d.years.at(-1)) : null) },
 ];
 
@@ -1033,6 +1034,10 @@ export function listCounties(db) {
  * 以姓名比對（族語名分隔符號一律去掉）；不分區委員若曾參選區域也會列出。
  * `margin`：當選者對最高票落選者的領先票數，落選者對最低票當選者的差距（負值）；`change`：與本人前一次參選的得票差。
  */
+let recalls = null;
+/** 中選會官方罷免清單（scripts/fetch-cec-recalls.mjs 產生）；檔案不存在時視為沒有資料 */
+const loadRecalls = () => (recalls ??= JSON.parse(readFileSync(new URL('./recalls.json', import.meta.url), 'utf8')));
+
 let legislatorVotes = null;
 const loadLegislatorVotes = () => (legislatorVotes ??= JSON.parse(readFileSync(new URL('./legislator-votes.json', import.meta.url), 'utf8')));
 const round2 = (n) => Math.round(n * 100) / 100;
@@ -1161,18 +1166,52 @@ export function listDemographics(db) {
 }
 
 export function listLegislatorVotes(db, { id = null } = {}) {
+  // 罷免紀錄以姓名比對（中選會的清單只有姓名）。同名風險與 raceHistory 相同：
+  // 目前名冊沒有同名者，且有測試盯著；未來若出現同名者要改成用候選人 id。
+  const recallByName = new Map();
+  for (const r of loadRecalls().recalls) {
+    recallByName.set(nameKey(r.name), [...(recallByName.get(nameKey(r.name)) ?? []), r]);
+  }
   const items = db
     .prepare(`SELECT id, name, party, area_name FROM legislators WHERE ${id ? 'id = ?' : 'leave_flag = 0'} ORDER BY area_name, name`)
     .all(...(id ? [id] : []))
     .map((l) => ({
       legislator: { id: l.id, name: l.name, party: l.party, area_name: l.area_name, region: regionOf(l.area_name) },
       history: raceHistory(l.name),
+      recalls: recallByName.get(nameKey(l.name)) ?? [],
     }));
   // 一定要自己初始化：raceHistory() 只在 items 非空時才會被呼叫，
   // 空名冊（全新安裝、首次同步還沒跑完）時 legislatorVotes 仍是 null → 這裡 TypeError 500，
   // 而且會不會爆取決於前端先打哪一支 API。
   const source = loadLegislatorVotes();
-  return { meta: envelope(db), years: source.years, sources: source.sources, count: items.length, items };
+  const recallSource = loadRecalls();
+  return {
+    meta: envelope(db),
+    years: source.years,
+    sources: source.sources,
+    // 罷免是中選會官方清單（只有清單與結果，沒有同意／不同意票數）
+    recalls: recallSource.recalls,
+    recalls_source: { ...recallSource.source, fetched_at: recallSource.fetched_at },
+    count: items.length,
+    items,
+  };
+}
+
+/**
+ * 立委罷免案清單（中選會官方，2015 起 35 案，含 2025 兩波 31 案）。
+ * 只有案件層級資訊：屆次、投票日、被罷免人、選區、結果；**沒有**同意／不同意票數。
+ */
+export function listRecalls(db) {
+  const source = loadRecalls();
+  const recalls = [...source.recalls].sort((a, b) => String(b.vote_date).localeCompare(String(a.vote_date)) || a.name.localeCompare(b.name, 'zh-Hant'));
+  return {
+    meta: envelope(db),
+    source: { ...source.source, fetched_at: source.fetched_at },
+    count: recalls.length,
+    passed: recalls.filter((r) => r.passed).length,
+    terms: [...new Set(recalls.map((r) => r.term))].sort((a, b) => b - a),
+    items: recalls,
+  };
 }
 
 export function listNews(db, { legislator = null, limit = 10 } = {}) {

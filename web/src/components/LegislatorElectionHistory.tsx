@@ -17,10 +17,32 @@ export function LegislatorElectionHistory({ legislatorId, region }: { legislator
   if (res.phase === 'loading' && !res.data) return <LoadingState label="讀取得票紀錄…" />;
   if (res.phase === 'error') return <ErrorState title="無法取得得票紀錄（/api/v1/legislator-votes）" error={res.error} onRetry={res.reload} />;
   const history = res.data?.items[0]?.history ?? [];
-  if (!history.length) return <EmptyState message="沒有區域或原住民立委的參選紀錄" hint="2012 年起的大選與補選；不分區委員沒有個人得票。" />;
+  const recalls = res.data?.items[0]?.recalls ?? [];
+  if (!history.length && !recalls.length) {
+    return <EmptyState message="沒有區域或原住民立委的參選紀錄" hint="2012 年起的大選與補選；不分區委員沒有個人得票。" />;
+  }
 
   return (
     <div className="election-history">
+      {recalls.length ? (
+        <div className="recall-record">
+          <h4>罷免紀錄</h4>
+          <ul>
+            {recalls.map((r) => (
+              <li key={r.title}>
+                <div>
+                  <b>{r.vote_date}</b> 第 {r.term} 屆 {r.area}
+                  {r.district ? ` ${r.district}` : ''}
+                  <span className={r.passed ? 'recall-passed' : 'muted'}> {r.passed ? '罷免通過' : '罷免未通過'}</span>
+                </div>
+              </li>
+            ))}
+          </ul>
+          {/* 中選會的罷免表只有清單與結果，沒有票數；講清楚才不會讓人以為漏了 */}
+          <small className="muted">資料來源：{res.data?.recalls_source?.label ?? '中選會'}（該表沒有同意／不同意票數）</small>
+        </div>
+      ) : null}
+      {history.length ? (
       <ol>
         {[...history].reverse().map((h) => (
           <li key={`${h.year}-${h.district}`}>
@@ -50,6 +72,7 @@ export function LegislatorElectionHistory({ legislatorId, region }: { legislator
           </li>
         ))}
       </ol>
+      ) : null}
       {/* 不分區與原住民沒有縣市：region 會是「山地原住民」這種值，
           連過去會被縣市頁的 `?? items[0]` 靜默換成第一個縣市（基隆市），
           使用者看到別人的得票表、自己的紀錄一列都沒有。所以不給連結。 */}

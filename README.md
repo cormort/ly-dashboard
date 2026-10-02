@@ -57,6 +57,7 @@ cron/啟動排程 (24h)                      server/ingest.mjs
 | `server/ingest.mjs` | 管線：FETCH → VALIDATE → NORMALIZE → PERSIST → sync_runs |
 | `server/queries.mjs` | API 視圖（本會期名錄、委員會、異動、健康狀態） |
 | `server/index.mjs` | HTTP API + 靜態檔 + SPA fallback + 每日排程 |
+| `scripts/fetch-cec-recalls.mjs` | 抓中選會官方罷免清單 → `server/recalls.json`（35 案） |
 | `docs/API.md` | 凍結的 API 契約（前端依此實作） |
 | `test/*.test.mjs` | 用真實 API 回應當 fixture 的回歸測試 |
 | `web/src/api/` | 型別化 API client（唯一出口，前端不碰政府端點） |
@@ -317,14 +318,21 @@ curl -s localhost:8787/api/v1/health | jq .retention                   # 目前�
 ### 尚未做的功能
 - **鄉鎮層級的得票趨勢與轉折**：鄉鎮地圖已有（2020／2024 得票），尚未納入 2012／2016 與縣市長的鄉鎮得票，轉折分析仍在縣市層級。
 - **2026 地方選舉（11 月）**：kiang/db.cec.gov.tw 已有 `data/elections/2026`，尚未確認內容；可做候選人一覽並以 2022 與歷次趨勢為基準。
+- **罷免案的票數**：中選會的罷免表不提供同意／不同意票數與投票率（只有清單與結果）。若要票數，得另找該站的下載附件（`{taskName}/data/attachments/RCL/{themeId}/{themeId}.zip`，實測需額外驗證）或中選會選舉資料庫的其他端點。
 - **data.gov.tw 資料集 13119**：環境網路政策擋住 data.gov.tw，尚未讀取內容、也未決定用途。
 - **tw_statistic_map 未移植的功能**：檔案上傳、手動填寫、GIF 動畫、多時間點趨勢分析（以「時間差異」與「得票趨勢」取代）。地圖用 SVG 自繪，未用 Plotly。
 
 ### 資料限制
-- **2025 罷免投票**：kiang/db.cec.gov.tw 沒有，需另找來源（中選會網站目前被網路政策擋住）。
+- ~~**2025 罷免投票**：kiang/db.cec.gov.tw 沒有，需另找來源（中選會網站目前被網路政策擋住）。~~
+  → **2026-10-02 已補上**：改用中選會官方選舉資料庫（`https://db.cec.gov.tw/ElecTable/Recall?type=Legislator`），
+  由 `scripts/fetch-cec-recalls.mjs` 抓成 `server/recalls.json`（35 案：第 8–11 屆，含 2025 兩波 31 案）。
+  「中選會被網路政策擋住」的說法**不成立**（實測 HTTP 200；被擋的是 data.gov.tw）。
+  **但中選會的罷免表只有案件清單與結果（Y／N），沒有各案同意／不同意票數與投票率** ——
+  這件事寫在 `recalls.json` 的 `source.note` 與畫面上，不只寫在這裡。
 - **人口與選舉為靜態檔**（`server/county-stats.json`、`server/legislator-votes.json`），不在同步流程內，需手動重跑 build 腳本；人口目前為 2026-08。
   它們**不在 `/health` 的 `datasets`**（沒有 `fetched_at`，不是抓來的），改列在 `static_data`：只有「資料截止 `as_of`」與筆數。人口月報超過 `LY_STATIC_STALE_MONTHS`（預設 3）個月沒更新、或任一個檔讀不到／是空的，都會出現在 `/health` 的 `warnings`。
 - **人口與選舉資料取自 GitHub 轉存**（kiang/data.moi.gov.tw、kiang/db.cec.gov.tw），非直接取自政府網站；縣市界為 ronnywang/twgeojson（2010 版，以縣市名對應）。
+  **例外：罷免案直接取自中選會官方**（`db.cec.gov.tw`，見上一條）。兩者的差別在可回溯性：GitHub 轉存可以被改寫歷史，官方端點則是原始來源。
 - **選區重劃**：2024 部分選區（如新竹縣拆成兩區）與前屆範圍不同；得票流失榜只比同名選區，個人歷次得票表仍列出跨重劃的比較。
 - **個人票對照政黨票**：2020 嘉義市有投開票所對不到立委選區，該年選區加總比縣市少 **472 票（總統）／468 票（政黨票）**（原本這裡寫 474，與實測不符，2026-10-02 更正）。這個差額目前只出現在 build log 的 `console.warn`，**沒有進輸出檔也沒有進 `/health`**；補選與原住民選區沒有此對照；2024 總統三強，對照總統票時差距偏大，預設以政黨票為準。
 - **委員對應以姓名比對**（去掉族語名分隔符號）。變體字與族語名沒問題（`陳秀寳`、`謝衣鳯`、`鄭天財 Sra．Kacaw` 三種分隔符都對得上），但**同名不同人會被合併**：資料裡有 2 組同一年同名不同人 —— 2020 `許淑華`（民進黨．臺北市第7）與 `許淑華`（國民黨．南投縣第2）、2020 `李中`（勞動黨．桃園市第4）與 `李中`（國民黨．臺中市第6）。

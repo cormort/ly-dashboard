@@ -7,7 +7,7 @@ import { CONFIG } from './config.mjs';
 import { openDb, getMeta } from './db.mjs';
 import {
   billsCsv, budgetCsv, compareLegislators, listBudget, listCounties, listLegislatorVotes, listSplitTicket, listDemographics, listPopulationTrend, getTownMap, listRegions, listFunds, listCommitteeActivity, listBudgetMeetings, listBudgetReports, getHealth, getMetaPayload, listActivity, listBills, listCosponsors, listNews, listNewsArticles, listTopics, listChanges,
-  listCommittees, listLegislators, listRankings, listSyncRuns,
+  listCommittees, listLegislators, listRankings, listSyncRuns, listRecalls,
 } from './queries.mjs';
 import { runAll, runIngest } from './ingest.mjs';
 
@@ -200,6 +200,8 @@ export function createServer(db) {
             return sendJson(res, 200, listNews(db, { legislator: q.legislator || null, limit: q.limit }));
           case '/api/v1/news/articles':
             return sendJson(res, 200, listNewsArticles(db, { q: q.q, source: q.source, legislator: q.legislator, scope: q.scope, limit: q.limit, offset: q.offset }));
+          case '/api/v1/recalls':
+            return sendJson(res, 200, listRecalls(db));
           case '/api/v1/rankings':
             return sendJson(res, 200, listRankings(db, { type: q.type || 'all', days: q.days, limit: q.limit }));
           case '/api/v1/changes':

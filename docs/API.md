@@ -496,6 +496,39 @@ Query 參數（全部可選）：
 
 `GET /api/v1/*` 完全不受影響。錯誤回應沿用 `{ "error": { "code", "message" } }`。
 
+## GET /api/v1/recalls
+
+立委罷免案清單（**中選會官方**，`https://db.cec.gov.tw/ElecTable/Recall?type=Legislator`；
+由 `scripts/fetch-cec-recalls.mjs` 抓成 `server/recalls.json`）。2015 起 35 案（第 8–11 屆，含 2025 兩波 31 案）。
+
+```json
+{
+  "meta": { "...": "..." },
+  "source": {
+    "label": "中選會選舉資料庫（官方）",
+    "page": "https://db.cec.gov.tw/ElecTable/Recall?type=Legislator",
+    "endpoint": "https://db.cec.gov.tw/static/elections/list/RCL_L0.json",
+    "note": "罷免表只有案件清單（投票日與結果），沒有各案同意／不同意票數與投票率。",
+    "fetched_at": "2026-10-02T10:07:15.788Z"
+  },
+  "count": 35, "passed": 1, "terms": [11, 10, 9, 8],
+  "items": [
+    { "term": 11, "vote_date": "2025-07-26", "name": "丁學忠", "area": "雲林縣",
+      "district": "第1選舉區", "passed": false, "result": "N",
+      "title": "雲林縣第11屆第1選舉區立法委員丁學忠罷免案", "theme_id": "…" }
+  ]
+}
+```
+
+| 欄位 | 說明 |
+| --- | --- |
+| `passed` | `true` = 罷免通過（中選會 `vote_result` = `Y`）；**2015 起只有陳柏惟（2021-10-23）通過** |
+| `area`／`district` | 由 `title` 解析，**不是**用中選會回傳的外層 `area_name`（實測第 8 屆蔡正元那筆被標成雲林縣，是錯的） |
+| 票數 | **沒有**：中選會的罷免表不提供同意／不同意票數與投票率 |
+
+`GET /api/v1/legislator-votes` 的回應另外多了兩個欄位：`recalls`（全部罷免案）與
+`recalls_source`（來源與 `fetched_at`）；每一位委員的 `items[].recalls` 是他的個人罷免紀錄（以姓名比對）。
+
 ## 前端使用規則
 
 1. **不要**直接呼叫 `data.ly.gov.tw`（會被 CORS 擋、也會被 WAF 403）。一律呼叫 `/api/v1/*`。

@@ -1133,6 +1133,11 @@ a.stat-tile:hover { border-color: #98a2b3; box-shadow: var(--card-base-hover); t
 .election-history li { display: grid; gap: 2px; font-size: var(--fs-sm); padding-bottom: 10px; border-bottom: 1px solid var(--rule-soft); }
 .election-history .pill { margin-left: 6px; }
 .election-won { font-weight: 700; }
+/* 罷免紀錄（中選會官方清單）：只有案件與結果，沒有票數 */
+.recall-record { margin-bottom: var(--space-3); padding: 10px 12px; border: 1px solid var(--rule-soft); border-radius: 8px; }
+.recall-record h4 { margin: 0 0 6px; font-size: var(--fs-sm); }
+.recall-record ul { list-style: none; margin: 0 0 6px; padding: 0; display: grid; gap: 4px; font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
+.recall-passed { font-weight: 700; color: var(--danger, #b91c1c); }
 .election-numbers { font-variant-numeric: tabular-nums; }
 .pvp-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; max-height: 520px; overflow-y: auto; }
 .pvp-list li { display: grid; grid-template-columns: 6em 4em minmax(80px, 1fr) minmax(0, 1.4fr); align-items: center; gap: 8px; font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }

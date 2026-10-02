@@ -5,13 +5,15 @@ import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 import { openDb, applyDataset, applyBills, applySocial, applyCommitteeMeets, upsertNews, saveSnapshot, recordSyncRun, getMeta, migrate } from '../server/db.mjs';
 import { buildDataset, normalizeBills, normalizeSocial, newsName } from '../server/normalize.mjs';
-import { billsCsv, compareLegislators, csvRow, makeTagger, listCommitteeActivity, listCosponsors, listFunds, listRegions, getHealth, getMetaPayload, listActivity, listBills, listTopics, listNews, listNewsArticles, listChanges, listCommittees, listLegislators, listRankings, listSyncRuns, listCounties, listDemographics, getTownMap, monthsSince, listLegislatorVotes, listSplitTicket } from '../server/queries.mjs';
+import { billsCsv, compareLegislators, csvRow, makeTagger, listCommitteeActivity, listCosponsors, listFunds, listRegions, getHealth, getMetaPayload, listActivity, listBills, listTopics, listNews, listNewsArticles, listChanges, listCommittees, listLegislators, listRankings, listSyncRuns, listCounties, listDemographics, getTownMap, monthsSince, listLegislatorVotes, listSplitTicket, listRecalls } from '../server/queries.mjs';
 import { regionOf } from '../server/normalize.mjs';
 import { authorizeSync } from '../server/index.mjs';
 import { runNewsIngest } from '../server/ingest.mjs';
 import { FetchError } from '../server/fetch-ly.mjs';
 const fixture = (name) => JSON.parse(readFileSync(fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url)), 'utf8'));
 const silent = { log() {}, warn() {}, error() {} };
+/** seeded() 已經寫入完整名冊，這裡只是讓「需要委員」的測試讀起來清楚 */
+const seededWithRoster = () => seeded();
 /** 讀 server/ 底下的資料檔（路徑相對於 test/fixtures） */
 const dataFile = (rel) => JSON.parse(readFileSync(fileURLToPath(new URL(rel, new URL('./fixtures/', import.meta.url))), 'utf8'));
 
@@ -769,7 +771,7 @@ test('靜態資料（人口／選舉／圖資）的資料截止與筆數要看�
   // 只有「資料截止」；以前 /health 完全看不到它們，畫面上的數字放多久都不會有訊號。
   const s = health.static_data;
   assert.ok(s, '/health 應該要有 static_data');
-  assert.deepEqual(Object.keys(s).sort(), ['counties', 'demographics', 'legislator_votes', 'population_trend', 'town_map']);
+  assert.deepEqual(Object.keys(s).sort(), ['counties', 'demographics', 'legislator_votes', 'population_trend', 'recalls', 'town_map']);
   assert.equal(s.counties.count, 22);
   assert.equal(s.demographics.count, 368);
   assert.equal(s.town_map.count, 368);
@@ -934,4 +936,59 @@ test('資料檔不變量：margin_pct 與 margin 一致、2012 總統的政黨�
   assert.deepEqual(lv.years, [2012, 2016, 2020, 2024]);
   const byElectionYears = lv.races.filter((r) => r.by_election).map((r) => r.year);
   assert.ok(byElectionYears.includes(2023), '補選場次仍在 races 裡（只是不在 years）');
+});
+
+/* -------- 罷免資料（中選會官方清單，scripts/fetch-cec-recalls.mjs） -------- */
+
+test('罷免案：35 筆、來源是中選會官方、通過的只有陳柏惟，且在職委員對得到', () => {
+  const { db } = seededWithRoster();
+  const res = listRecalls(db);
+
+  assert.equal(res.count, 35, '2015 起共 35 案（含 2025 兩波 31 案）');
+  assert.deepEqual(res.terms, [11, 10, 9, 8]);
+  assert.equal(res.passed, 1, '只有 2021 陳柏惟通過');
+  assert.equal(res.items.find((r) => r.passed)?.name, '陳柏惟');
+  // 來源必須是官方頁面（使用者指定），不是 GitHub 轉存
+  assert.match(res.source.page, /^https:\/\/db\.cec\.gov\.tw\/ElecTable\/Recall/);
+  assert.match(res.source.endpoint, /^https:\/\/db\.cec\.gov\.tw\/static\/elections\/list\/RCL_L0\.json$/);
+  assert.ok(res.source.note.includes('沒有各案同意／不同意票數'), '限制要寫在資料裡，不是只寫在 README');
+
+  // 2025 兩波：7/26 有 24 案、8/23 有 7 案
+  const jul = res.items.filter((r) => r.vote_date === '2025-07-26');
+  const aug = res.items.filter((r) => r.vote_date === '2025-08-23');
+  assert.equal(jul.length, 24);
+  assert.equal(aug.length, 7);
+  assert.ok(jul.every((r) => !r.passed), '2025 全部未通過');
+
+  // 外層 area_name 不可信（蔡正元那筆在中選會的清單裡被標成雲林縣）→ 一律由標題解析
+  const tsai = res.items.find((r) => r.name === '蔡正元');
+  assert.equal(tsai.area, '臺北市');
+  assert.equal(tsai.district, '第四選舉區');
+  assert.equal(tsai.vote_date, '2015-02-14');
+});
+
+test('罷免案：委員自己的紀錄會出現在 /legislator-votes（丁學忠 2025-07-26 未通過）', () => {
+  const { db } = seededWithRoster();
+  const ding = db.prepare("SELECT id FROM legislators WHERE name = '丁學忠'").get();
+  const res = listLegislatorVotes(db, { id: ding.id });
+  const item = res.items[0];
+  assert.equal(item.legislator.name, '丁學忠');
+  assert.equal(item.recalls.length, 1);
+  assert.equal(item.recalls[0].vote_date, '2025-07-26');
+  assert.equal(item.recalls[0].area, '雲林縣');
+  assert.equal(item.recalls[0].passed, false);
+
+  // 在職名錄預設查詢：31 位在職委員有罷免紀錄（2025 兩波都是現任）
+  const all = listLegislatorVotes(db, {});
+  assert.equal(all.items.filter((i) => i.recalls.length).length, 31);
+  // 沒有被罷免的委員是空陣列，不是 undefined（前端直接 .length）
+  assert.ok(all.items.every((i) => Array.isArray(i.recalls)));
+});
+
+test('靜態資料清單要把罷免案也納入監控', () => {
+  const { db } = seeded();
+  const health = getHealth(db, { now: Date.parse('2026-10-02T00:00:00.000Z') });
+  assert.ok(health.static_data.recalls, 'static_data 要有 recalls');
+  assert.equal(health.static_data.recalls.count, 35);
+  assert.match(health.static_data.recalls.as_of, /^\d{4}-\d{2}$/, '用 fetched_at 的年月當資料截止');
 });
