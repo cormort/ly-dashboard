@@ -89,3 +89,18 @@ test('簡稱也算提到（央行→中央銀行）；per 夾在 1..20', () => {
   assert.equal(getAgencyHome(db, { name: '財政部', per: 999 }).kinds.news.items.length, 2);
   assert.equal(getAgencyHome(db, { name: '財政部', per: 1 }).kinds.news.items.length, 1);
 });
+
+test('行政院主計總處：認得簡稱「主計總處」，並保留主計總處專頁的專屬新聞來源', () => {
+  const { db } = seeded();
+  const fetched = '2026-09-30T00:00:00.000Z';
+  const topic = db.prepare('INSERT INTO topic_news(topic, url, title, source, published_at, fetched_at) VALUES(?,?,?,?,?,?)');
+  topic.run('dgbas', 'https://d/1', '主計總處公布最新經濟成長率預測', '甲報', '2026-09-30T08:00:00.000Z', fetched); // 只有 dgbas 專屬查詢會抓到
+  topic.run('dgbas', 'https://d/2', '高雄市主計處說明市府預算', '乙報', '2026-09-30T09:00:00.000Z', fetched); // 地方主計處：不算
+  db.prepare('INSERT INTO budget_bills(id, term, session, category, name, status, proposer, fiscal_year, latest_date, url) VALUES(?,?,?,?,?,?,?,?,?,?)').run('B2', 11, 5, '總預算', '115年度中央政府總預算案', '交付審查', '行政院主計總處', 115, '2026-09-21', 'https://b/2');
+  const r = getAgencyHome(db, { name: '行政院主計總處' });
+  assert.deepEqual(r.kinds.news.items.map((i) => i.url), ['https://d/1'], '專屬主計新聞進來、地方主計處不算');
+  assert.equal(r.kinds.budget.total, 1, '提案單位是全名也算');
+  assert.ok(r.agency.heads.some((h) => h.title === '主計長'), '現任主計長');
+  // 其他機關不受影響：主計總處專屬新聞不會跑進財政部
+  assert.equal(getAgencyHome(db, { name: '財政部' }).kinds.news.items.some((i) => i.url === 'https://d/1'), false);
+});

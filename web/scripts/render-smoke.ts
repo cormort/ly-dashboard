@@ -243,9 +243,9 @@ check('按鈕用 aria-describedby 指向提示（讀螢幕程式讀得到）', (
 console.log('\n— 我的機關 —');
 check('/my 對應我的機關頁', routeOf('/my') === 'my' && routeOf('/my?agency=%E8%B2%A1%E6%94%BF%E9%83%A8') === 'my');
 const myAgencyHtml = render(createElement(MyAgencyPage, { refreshToken: 0, onOpenId: () => undefined, onNavigate: () => undefined }));
-expectAll('我的機關：尚未選機關時引導選擇，並提供機關輸入清單', myAgencyHtml, ['我的機關', '選擇機關', 'list="agency-options"', 'id="agency-options"', '選擇會記在這個瀏覽器']);
-expectNone('我的機關：尚未選機關時不先畫各區塊', myAgencyHtml, ['會議與備詢', '誰在關注']);
-
+// 沒選過機關時預設載入行政院主計總處（不再有「尚未選機關」狀態）；有輸入清單可更換，已是預設就不顯示「回到」按鈕
+expectAll('我的機關：預設載入行政院主計總處', myAgencyHtml, ['<h1>行政院主計總處</h1>', '讀取「行政院主計總處」', '更換機關', 'list="agency-options"', 'id="agency-options"', '主計總處專頁']);
+expectNone('我的機關：已是預設機關時沒有「取消選擇」或「回到」按鈕', myAgencyHtml, ['取消選擇', '回到行政院主計總處']);
 console.log('\n— FacetChips —');
 const facets = Array.from({ length: 30 }, (_, i) => ({ name: `單位${i + 1}`, count: 100 - i }));
 const facetHtml = render(createElement(FacetChips, { items: facets, label: '最常出現的機關', onPick: () => undefined }));
@@ -269,6 +269,15 @@ const headerProps = {
   onRefresh: () => undefined,
   refreshing: false,
 };
+// 主計總處移出「機關／基金」頁籤；它的網址仍在，高亮歸「我的機關」
+const orgsHeader = render(createElement(Header, { ...headerProps, route: 'funds' as const }));
+expectNone('機關／基金的頁籤不再有行政院主計總處', orgsHeader, ['行政院主計總處']);
+expectAll('機關／基金的頁籤仍有基金、機關、財團法人、行政法人', orgsHeader, ['基金', '機關', '財團法人', '行政法人']);
+check(
+  '/dgbas 仍可開啟，導覽高亮「我的機關」',
+  routeOf('/dgbas') === 'dgbas' && /aria-current="page"[^>]*>我的機關</.test(render(createElement(Header, { ...headerProps, route: 'dgbas' as const }))),
+);
+
 expectAll('顯示資料來源與資料截至時間', render(createElement(Header, headerProps)), [
   '立法院開放資料',
   '資料截至 2026/09/30',
