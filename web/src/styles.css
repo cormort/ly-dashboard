@@ -1189,3 +1189,11 @@ a.stat-tile:hover { border-color: #98a2b3; box-shadow: var(--card-base-hover); t
 .town-ranking li[aria-current='true'] { background: var(--accent-soft); }
 .town-layout { grid-template-columns: minmax(300px, 560px) minmax(0, 1fr); }
 @media (max-width: 860px) { .town-layout { grid-template-columns: 1fr; } }
+
+/* ---------- 我的機關 ---------- */
+.agency-picker { flex: 1 1 280px; max-width: 420px; }
+.agency-picker label { display: grid; gap: 4px; }
+.agency-picker input { width: 100%; }
+.agency-picker-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-3); }
+.watchers { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-6); }
+.watchers li { display: inline-flex; align-items: baseline; gap: 6px; }

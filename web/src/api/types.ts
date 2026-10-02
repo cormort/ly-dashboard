@@ -976,3 +976,52 @@ export interface CommitteeActivityResponse {
   replies: { total: number; period: { from: string; to: string } | null; items: CommitteeReplyItem[] };
   records: { total: number; period: { from: string; to: string } | null; items: CommitteeRecordItem[] };
 }
+
+/* ---------- /agency（我的機關） ---------- */
+
+export interface AgencyHead {
+  name: string;
+  title: string;
+}
+
+export interface AgencyListItem {
+  name: string;
+  heads: AgencyHead[];
+}
+
+export interface AgencyItem {
+  kind: FundKind;
+  date: string;
+  title: string;
+  url: string;
+  /** 預算：提案機關；報告：報告類型；新聞：媒體 */
+  source?: string;
+  status?: string;
+  legislator?: { id: string; name: string; party: string } | null;
+  /** 首長新聞才有：是哪位首長 */
+  head?: string;
+}
+
+export interface AgencyBlock<T> {
+  total: number;
+  items: T[];
+}
+
+export interface AgencyHomeResponse {
+  meta: Meta;
+  /** 可選的機關（含現任首長），選單用 */
+  agencies: AgencyListItem[];
+  /** 沒選或不認得時為 null，只有 agencies 有值 */
+  agency: { name: string; heads: AgencyHead[]; terms: string[] } | null;
+  kinds?: Record<FundKind, AgencyBlock<AgencyItem>>;
+  official_news?: AgencyBlock<AgencyItem>;
+  meetings?: AgencyBlock<{
+    date: string;
+    name: string;
+    committees: string[];
+    speakers: { id: string | null; name: string; party: string }[];
+  }>;
+  replies?: AgencyBlock<{ date: string; meeting: string; title: string; url: string }>;
+  /** 誰在關注：新聞／臉書／提案掛名＋會議發言的委員，依次數排序 */
+  watchers?: { id: string; name: string; party: string; count: number }[];
+}

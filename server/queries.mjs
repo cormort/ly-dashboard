@@ -1494,16 +1494,12 @@ const dgbasOf = (r) => [
 ];
 
 /**
- * 總覽各來源（新聞、臉書、委員提案、預算審議、預算中心報告）中與某一類（`type`：fund／agency／foundation／administrative）相關的項目，依日期新→舊。
- * `fund` 精確篩選該類的名稱、`kind` 篩選來源；統計依序在各自條件之前算（同 listBudget）。
- * ponytail: 每次請求全表掃描約 2 萬列＋一個正規式（實測數十毫秒）；變慢再在同步時預先標記。
+ * 基金／機關／財團法人／行政法人頁與「我的機關」共用：把新聞、臉書、提案、預算審議、預算中心報告攤成同一種資料列。
+ * `type === 'dgbas'` 另收不限委員的主計總處新聞；基金／機關新聞（topic_news 'entities'）所有類別都收。
  */
-export function listFunds(db, { type = 'fund', fund = '', kind = '', limit = 30, offset = 0 } = {}) {
-  const resolvedLimit = Math.max(1, Math.min(Number(limit) || 30, 200));
-  const resolvedOffset = Math.max(0, Math.trunc(Number(offset) || 0));
+function collectFundRows(db, resolvedType) {
   const people = new Map(db.prepare('SELECT id, name, party FROM legislators').all().map((l) => [l.id, { id: l.id, name: l.name, party: l.party }]));
   const lead = new Map(db.prepare('SELECT bill_id, legislator_id FROM bill_sponsors WHERE is_lead = 1').all().map((r) => [r.bill_id, people.get(r.legislator_id)]));
-  const resolvedType = ENTITY_TYPES.includes(type) || type === 'dgbas' ? type : 'fund';
   const rows = [
     ...db.prepare('SELECT * FROM news').all().map((r) => ({ kind: 'news', date: r.published_at.slice(0, 10), title: r.title, url: r.url, source: r.source, legislator: people.get(r.legislator_id) })),
     // 主計總處專頁另收不限委員的主計總處新聞（ingest 的 topic_news）
@@ -1520,6 +1516,19 @@ export function listFunds(db, { type = 'fund', fund = '', kind = '', limit = 30,
     ...db.prepare('SELECT * FROM budget_bills').all().map((r) => ({ kind: 'budget', date: r.latest_date, title: r.name, url: r.url, status: r.status, source: r.proposer })),
     ...db.prepare('SELECT * FROM budget_reports').all().map((r) => ({ kind: 'report', date: r.completed, title: r.title, url: r.url, source: r.type })),
   ];
+  return rows;
+}
+
+/**
+ * 總覽各來源（新聞、臉書、委員提案、預算審議、預算中心報告）中與某一類（`type`：fund／agency／foundation／administrative）相關的項目，依日期新→舊。
+ * `fund` 精確篩選該類的名稱、`kind` 篩選來源；統計依序在各自條件之前算（同 listBudget）。
+ * ponytail: 每次請求全表掃描約 2 萬列＋一個正規式（實測數十毫秒）；變慢再在同步時預先標記。
+ */
+export function listFunds(db, { type = 'fund', fund = '', kind = '', limit = 30, offset = 0 } = {}) {
+  const resolvedLimit = Math.max(1, Math.min(Number(limit) || 30, 200));
+  const resolvedOffset = Math.max(0, Math.trunc(Number(offset) || 0));
+  const resolvedType = ENTITY_TYPES.includes(type) || type === 'dgbas' ? type : 'fund';
+  const rows = collectFundRows(db, resolvedType);
   const tag = resolvedType === 'dgbas' ? dgbasOf : ((t) => (r) => t(r.title)[resolvedType])(makeTagger(rows.map((r) => r.title)));
   // 各來源的資料期間（全部資料，不只命中的）：新聞只保留近一個月，件數少要看得出原因
   const periods = {};
@@ -1548,6 +1557,91 @@ export function listFunds(db, { type = 'fund', fund = '', kind = '', limit = 30,
     periods,
     funds: [...funds].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'zh-Hant')).slice(0, 40).map(([name, count]) => ({ name, count })),
     items: matching.slice(resolvedOffset, resolvedOffset + resolvedLimit),
+  };
+}
+
+/** 「我的機關」可選的機關：機關清單（行政院所屬機關代碼表）＋首長名單裡的機關，各自附上現任首長 */
+export function listAgencies() {
+  const heads = new Map();
+  for (const o of OFFICIALS) heads.set(o.agency, [...(heads.get(o.agency) ?? []), { name: o.name, title: o.title }]);
+  return [...new Set([...FUND_CONFIG.agencies, ...heads.keys()])]
+    .sort((a, b) => a.localeCompare(b, 'zh-Hant'))
+    .map((name) => ({ name, heads: heads.get(name) ?? [] }));
+}
+
+const AGENCY_KINDS = ['news', 'bill', 'budget', 'report', 'post'];
+
+/**
+ * 「我的機關」首頁：以單一機關為中心彙整各來源。
+ * 比對：標題（預算審議另看提案單位）含機關全名或其簡稱（fund-config 的 aliases）。
+ * 不用 makeTagger，因為首長名單裡的「行政院」「公共工程委員會」不在機關清單內，用它會整個漏掉。
+ * 回傳：各來源（件數＋最新幾則）、首長新聞、近期議程提到該機關的會議、機關書面回覆，以及「誰在關注」
+ * （新聞／臉書／提案掛名的委員，加上提到該機關的會議中登記發言的委員，依次數排序）。
+ * 沒給 name 或不認得時 `agency` 為 null，只回機關清單供選單使用。
+ */
+export function getAgencyHome(db, { name = '', per = 5 } = {}) {
+  const agencies = listAgencies();
+  const known = agencies.find((a) => a.name === String(name).trim());
+  const base = { meta: envelope(db), agencies };
+  if (!known) return { ...base, agency: null };
+
+  const resolvedPer = Math.max(1, Math.min(Number(per) || 5, 20));
+  const terms = [known.name, ...Object.entries(FUND_CONFIG.aliases).filter(([, canonical]) => canonical === known.name).map(([alias]) => alias)];
+  const hit = (text) => terms.some((t) => String(text ?? '').includes(t));
+  const byDate = (a, b) => String(b.date ?? '').localeCompare(String(a.date ?? '')) || String(a.title ?? '').localeCompare(String(b.title ?? ''));
+
+  // 「誰在關注」要算到每位被掛名的委員，所以先留著去重前的列；顯示用的 matched 才把同一則新聞合併成一則
+  const hits = collectFundRows(db, 'agency').filter((r) => hit(r.title) || (r.kind === 'budget' && hit(r.source)));
+  const matched = hits
+    .filter((r, i, all) => r.kind !== 'news' || all.findIndex((x) => x.kind === 'news' && x.url === r.url) === i)
+    .sort(byDate);
+  const kinds = Object.fromEntries(
+    AGENCY_KINDS.map((k) => {
+      const list = matched.filter((r) => r.kind === k);
+      return [k, { total: list.length, items: list.slice(0, resolvedPer) }];
+    }),
+  );
+
+  const officialNews = known.heads.flatMap((h) =>
+    db.prepare('SELECT * FROM topic_news WHERE topic = ? ORDER BY published_at DESC, url').all(`official:${h.name}`).map((r) => ({ kind: 'news', date: r.published_at.slice(0, 10), title: r.title, url: r.url, source: r.source, head: h.name })),
+  ).sort(byDate);
+
+  const people = new Map(db.prepare('SELECT id, name, party FROM legislators').all().map((l) => [l.id, { id: l.id, name: l.name, party: l.party }]));
+  const meetings = db
+    .prepare('SELECT * FROM committee_meetings ORDER BY date DESC, id DESC')
+    .all()
+    .filter((m) => hit(m.name) || hit(m.content))
+    .map((m) => ({
+      date: m.date,
+      name: m.name,
+      committees: [...new Set([...committeesOf(m.committee), ...committeesOf(m.joint)])],
+      speakers: JSON.parse(m.speakers || '[]').map((s) => people.get(s.id) ?? { id: null, name: s.name, party: '' }),
+    }));
+  const replies = db
+    .prepare('SELECT * FROM committee_meets ORDER BY date DESC, code DESC')
+    .all()
+    .flatMap((m) =>
+      JSON.parse(m.attachments || '[]')
+        .filter((a) => a.kind === 'reply' && hit(a.title))
+        .map((a) => ({ date: m.date, meeting: m.title, title: a.title, url: a.url })),
+    );
+
+  const watch = new Map();
+  const bump = (l) => {
+    if (l?.id) watch.set(l.id, { ...l, count: (watch.get(l.id)?.count ?? 0) + 1 });
+  };
+  for (const r of hits) bump(r.legislator);
+  for (const m of meetings) for (const sp of m.speakers) bump(sp);
+  const watchers = [...watch.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'zh-Hant')).slice(0, 8);
+
+  return {
+    ...base,
+    agency: { name: known.name, heads: known.heads, terms },
+    kinds,
+    official_news: { total: officialNews.length, items: officialNews.slice(0, resolvedPer) },
+    meetings: { total: meetings.length, items: meetings.slice(0, resolvedPer) },
+    replies: { total: replies.length, items: replies.slice(0, resolvedPer) },
+    watchers,
   };
 }
 

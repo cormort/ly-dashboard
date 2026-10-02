@@ -6,7 +6,7 @@ import { pathToFileURL } from 'node:url';
 import { CONFIG } from './config.mjs';
 import { openDb, getMeta } from './db.mjs';
 import {
-  billsCsv, budgetCsv, compareLegislators, listBudget, listCounties, listLegislatorVotes, listSplitTicket, listDemographics, listPopulationTrend, getTownMap, listRegions, listFunds, listCommitteeActivity, listBudgetMeetings, listBudgetReports, getHealth, getMetaPayload, listActivity, listBills, listCosponsors, listNews, listNewsArticles, listTopics, listChanges,
+  billsCsv, budgetCsv, compareLegislators, listBudget, listCounties, listLegislatorVotes, listSplitTicket, listDemographics, listPopulationTrend, getTownMap, listRegions, listFunds, getAgencyHome, listCommitteeActivity, listBudgetMeetings, listBudgetReports, getHealth, getMetaPayload, listActivity, listBills, listCosponsors, listNews, listNewsArticles, listTopics, listChanges,
   listCommittees, listLegislators, listRankings, listSyncRuns, listRecalls,
 } from './queries.mjs';
 import { runAll, runIngest } from './ingest.mjs';
@@ -186,6 +186,8 @@ export function createServer(db) {
             return sendJson(res, 200, listLegislatorVotes(db, { id: q.id || null }));
           case '/api/v1/committee-activity':
             return sendJson(res, 200, listCommitteeActivity(db, { committee: q.committee, limit: q.limit }));
+          case '/api/v1/agency':
+            return sendJson(res, 200, getAgencyHome(db, { name: q.name, per: q.per }));
           case '/api/v1/funds':
             return sendJson(res, 200, listFunds(db, { type: q.type, fund: q.fund, kind: q.kind, limit: q.limit, offset: q.offset }));
           case '/api/v1/cosponsors':
