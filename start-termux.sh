@@ -18,7 +18,9 @@ if [ ! -f web/node_modules/.package-lock.json ] || [ web/package-lock.json -nt w
 fi
 # 前端原始碼比 dist 新（例如 git pull 之後）就重 build，避免一直開到舊版
 if [ ! -f web/dist/index.html ] || [ -n "$(find web/src web/index.html web/package.json web/package-lock.json web/vite.config.ts web/tsconfig.json -newer web/dist/index.html -print -quit 2>/dev/null)" ]; then
-  npm --prefix web run build
+  # 不用 npm run build：Termux:Widget 捷徑環境下 npm 不會把 node_modules/.bin 放進 PATH（tsc: not found），
+  # 直接用 node 呼叫在任何環境都可靠
+  (cd web && node node_modules/typescript/bin/tsc -b && node node_modules/vite/bin/vite.js build)
 fi
 
 echo "啟動中… 請在瀏覽器開 http://127.0.0.1:${PORT}"
