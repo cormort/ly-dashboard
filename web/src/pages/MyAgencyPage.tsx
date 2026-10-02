@@ -6,6 +6,7 @@ import { PageTitle } from '../components/PageTitle';
 import { EmptyState, ErrorState, LoadingState } from '../components/DataStates';
 import { useApi } from '../hooks/useApi';
 import { pathFor } from '../hooks/useRoute';
+import { RouteLink } from '../components/RouteLink';
 import { shortCommittee } from '../lib/format';
 import { partyStyle } from '../lib/parties';
 import { readPreference, writePreference } from '../lib/storage';
@@ -182,6 +183,14 @@ export function MyAgencyPage({ refreshToken, onOpenId, onNavigate }: MyAgencyPag
           ：另含「地方主計處」「僅提及主計」等較寬鬆的比對
         </p>
       ) : null}
+
+      <p className="muted cross-link">
+        各區塊的「看更多」會到「機關」頁看完整清單；想跨機關瀏覽、看哪些機關最常被提到，請到
+        <RouteLink href={pathFor('agencies')} onNavigate={onNavigate}>
+          機關頁
+        </RouteLink>
+        。
+      </p>
 
       <div className="agency-picker-row">
         {selector}

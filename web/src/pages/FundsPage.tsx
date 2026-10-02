@@ -5,6 +5,7 @@ import type { FundKind, FundsResponse, FundType } from '../api/types';
 import { PageTitle } from '../components/PageTitle';
 import { EmptyState, ErrorState, LoadingState } from '../components/DataStates';
 import { FacetChips } from '../components/FacetChips';
+import { RouteLink } from '../components/RouteLink';
 import { useApi } from '../hooks/useApi';
 import { pathFor } from '../hooks/useRoute';
 import { partyStyle } from '../lib/parties';
@@ -13,6 +14,8 @@ export interface FundsPageProps {
   type: FundType;
   refreshToken: number;
   onOpenId: (id: string) => void;
+  /** 站內導覽（連到「我的機關」用）；沒給就不顯示該連結 */
+  onNavigate?: (href: string) => void;
 }
 
 const KIND_LABEL: Record<FundKind, string> = { news: '新聞', post: '臉書', bill: '委員提案', budget: '預算審議', report: '預算中心報告' };
@@ -38,7 +41,7 @@ const COPY = {
 } as const;
 
 /** 基金、機關、財團法人、行政法人四頁共用：總覽各來源中提到該類的項目（關鍵字見 server/fund-config.json） */
-export function FundsPage({ type, refreshToken, onOpenId }: FundsPageProps) {
+export function FundsPage({ type, refreshToken, onOpenId, onNavigate }: FundsPageProps) {
   const [filters, setFilters] = useState<Filters>(readFilters);
   const [page, setPage] = useState(0);
   useEffect(() => {
@@ -100,6 +103,15 @@ export function FundsPage({ type, refreshToken, onOpenId }: FundsPageProps) {
           </button>
         ) : null}
       </div>
+
+      {type === 'agency' && filters.fund && onNavigate ? (
+        <p className="muted cross-link">
+          想看這個機關的整體摘要（近期會議、書面回覆、誰在關注、首長新聞）？
+          <RouteLink href={pathFor('my', { agency: filters.fund })} onNavigate={onNavigate}>
+            在「我的機關」查看{filters.fund}
+          </RouteLink>
+        </p>
+      ) : null}
 
       {data && !filters.fund ? (
         <FacetChips items={data.funds} label={`最常出現的${COPY[type].title}`} onPick={(fund) => change({ fund })} />
