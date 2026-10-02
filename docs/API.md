@@ -295,10 +295,13 @@ Query 參數（全部可選）：
 
 ## GET /api/v1/legislator-votes
 
-立委得票追蹤：在職委員 2012、2016、2020、2024 歷次參選區域／平地原住民／山地原住民立委的得票（`server/legislator-votes.json`，與縣市資料同一支腳本產生；不含補選）。
+立委得票追蹤：在職委員 2012、2016、2020、2024 歷次參選區域／平地原住民／山地原住民立委的得票，含 2015 與 2019 起的補選（`server/legislator-votes.json`，與縣市資料同一支腳本產生）。`id` 參數查單一委員（含已離職）。
 姓名比對時去掉空白與「‧」「·」等分隔符號。`items[]`：`{ legislator: { id, name, party, area_name, region }, history[] }`，
-`history`：`{ year, kind, district, party, votes, pct, rank, elected, seats, candidates, rival, margin, margin_pct, change }`；
+`history`：`{ year, kind, district, by_election, party, votes, pct, rank, elected, seats, candidates, rival, margin, margin_pct, change, president, party_list }`；
 `rival` 為當選者對照的最高票落選者、或落選者對照的最低票當選者，`margin` 為與其票數差（落選為負），`change` 為與本人前一次參選的得票差。
+`president`／`party_list`：同一天、同選區同黨的總統票與不分區政黨票（以投開票所對應選區加總；只有大選的區域立委有，無黨籍為 null），`{ votes, pct, over, over_pct }`，`over_pct` 為個人得票率減政黨得票率（百分點）。2020 有 2 個投開票所對不到選區，該年選區加總比縣市少 474 票。
+
+`/api/v1/rankings` 另有 `close`（險勝：最近一次當選的領先幅度）與 `drop`（得票流失：同選區與本人前次相比）兩榜，不受 `days` 影響。
 
 ## GET /api/v1/committee-activity?committee=&limit=20
 

@@ -699,6 +699,19 @@ export interface LegislatorRace {
   margin_pct: number | null;
   /** 與本人前一次參選的得票差 */
   change: number | null;
+  /** 同選區同黨的總統得票（大選的區域立委才有；無黨籍為 null） */
+  president: PartyShare | null;
+  /** 同選區同黨的不分區政黨票 */
+  party_list: PartyShare | null;
+}
+
+export interface PartyShare {
+  votes: number;
+  pct: number;
+  /** 個人票 − 政黨票（票數）；正值表示個人比黨強 */
+  over: number;
+  /** 個人得票率 − 政黨得票率（百分點） */
+  over_pct: number;
 }
 
 export interface LegislatorVotesResponse {

@@ -106,9 +106,10 @@ function loadCec(dir) {
   // 選區（或縣市）合計列：鄉鎮、村里、投開票所代碼皆為 0
   // 2018 以前部分檔案的投開票所代碼寫成 '0'，以數值判斷
   const isTotal = (r) => Number(r[3]) === 0 && Number(r[4]) === 0 && Number(r[5]) === 0;
-  const totals = rows(file('elctks')).filter(isTotal);
+  const all = rows(file('elctks'));
+  const totals = all.filter(isTotal);
   const prof = rows(file('elprof')).filter(isTotal);
-  return { candOf, countyOf, totals, prof };
+  return { candOf, countyOf, totals, prof, all };
 }
 
 /** 縣市層級結果（總統、縣市長、不分區政黨票） */
@@ -131,7 +132,7 @@ function districtRaces(dir, year, kind) {
   const races = new Map();
   for (const r of totals.filter(isRace)) {
     const key = r.slice(0, 3).join('');
-    const race = races.get(key) ?? { year, kind, county: kind === '區域' ? countyOf(r) : null, area: Number(r[2]), list: [] };
+    const race = races.get(key) ?? { year, kind, key, county: kind === '區域' ? countyOf(r) : null, area: Number(r[2]), list: [] };
     race.list.push({ ...candOf(r), votes: Number(r[7]), elected: r[9] === '*' });
     races.set(key, race);
   }
@@ -142,6 +143,39 @@ function districtRaces(dir, year, kind) {
     const district = kind !== '區域' ? `${kind}選舉區` : perCounty.get(race.county) > 1 ? `${race.county}第${area}選舉區` : `${race.county}選舉區`;
     return { ...race, district, valid, margin, margin_pct, candidates };
   });
+}
+
+/**
+ * 依立委選區加總同日的總統票與不分區政黨票：同一天投票、投開票所代碼相同，
+ * 以區域立委檔的投開票所 → 選區對照，把總統／政黨票逐所歸到選區。回傳 Map(選區代碼 → { president, party_list })。
+ */
+function districtPartyVotes(dir) {
+  const station = (r) => [r[0], r[1], r[3], r[4], Number(r[5])].join('-');
+  const isStation = (r) => Number(r[5]) !== 0;
+  const toDistrict = new Map();
+  for (const r of rows(join(dir, '區域立委', readdirSync(join(dir, '區域立委')).find((f) => f.startsWith('elctks'))))) {
+    if (isStation(r)) toDistrict.set(station(r), `${r[0]}${r[1]}${r[2]}`);
+  }
+  const out = new Map();
+  let missing = 0;
+  for (const [type, sub] of [['president', '總統'], ['party_list', '不分區政黨']]) {
+    const { candOf, all } = loadCec(join(dir, sub));
+    for (const r of all.filter(isStation)) {
+      const district = toDistrict.get(station(r));
+      if (!district) {
+        missing += 1;
+        continue;
+      }
+      const entry = out.get(district) ?? { president: { valid: 0, votes: {} }, party_list: { valid: 0, votes: {} } };
+      const bucket = entry[type];
+      const { party: p } = candOf(r);
+      bucket.valid += Number(r[7]);
+      bucket.votes[p] = (bucket.votes[p] ?? 0) + Number(r[7]);
+      out.set(district, entry);
+    }
+  }
+  if (missing) console.warn(`${dir}：${missing} 筆投開票所對不到立委選區（略過）`);
+  return out;
 }
 
 /** 含引號欄位的 CSV（補選明細的數字寫成 "1,141"）；UTF-8 解不開時改用 Big5 */
@@ -330,9 +364,13 @@ console.log(`wrote ${args.out}: ${counties.length} 縣市，人口 ${month}`);
 
 /* ---------- 立委選舉（區域、平地／山地原住民），2012 起 ---------- */
 const races = Object.entries(PRESIDENT).flatMap(([year, dir]) => [
-  ...districtRaces(cec(`${dir}/區域立委`), Number(year), '區域'),
+  // 區域立委附上同選區的總統票與政黨票（個人票對照政黨票用）
+  ...(() => {
+    const partyVotes = districtPartyVotes(cec(dir));
+    return districtRaces(cec(`${dir}/區域立委`), Number(year), '區域').map((race) => ({ ...race, party_votes: partyVotes.get(race.key) }));
+  })(),
   ...districtRaces(cec(`${dir}/平地立委`), Number(year), '平地原住民'),
   ...districtRaces(cec(`${dir}/山地立委`), Number(year), '山地原住民'),
-]).concat(byElections());
+]).concat(byElections()).map(({ key, ...race }) => race);
 writeFileSync(args['legislators-out'], `${JSON.stringify({ years: Object.keys(PRESIDENT).map(Number), sources: sources.slice(0, 1), races })}\n`);
 console.log(`wrote ${args['legislators-out']}: ${races.length} 場`);

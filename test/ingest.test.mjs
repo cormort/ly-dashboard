@@ -788,3 +788,17 @@ test('排行榜：險勝榜依領先幅度由小到大、流失榜依得票減�
   assert.deepEqual(drop, [...drop].sort((a, b) => b - a));
   assert.ok(drop.every((v) => v > 0));
 });
+
+test('個人票對照政黨票：2024 各選區總統票加總等於各縣市加總，差值＝個人得票率−同黨得票率', () => {
+  const db = seeded();
+  const counties = listCounties(db).items;
+  const byCounty = counties.reduce((s, c) => s + c.trends.president.find((e) => e.year === 2024).votes['民主進步黨'], 0);
+  const races = JSON.parse(readFileSync(fileURLToPath(new URL('../server/legislator-votes.json', import.meta.url)), 'utf8')).races;
+  const byDistrict = races
+    .filter((r) => r.year === 2024 && r.kind === '區域' && !r.by_election)
+    .reduce((s, r) => s + r.party_votes.president.votes['民主進步黨'], 0);
+  assert.equal(byDistrict, byCounty);
+  const h = listLegislatorVotes(db).items.flatMap((i) => i.history).find((x) => x.year === 2024 && x.party_list);
+  assert.ok(Math.abs(h.party_list.over_pct - (h.pct - h.party_list.pct)) < 0.011);
+  assert.equal(listLegislatorVotes(db).items.flatMap((i) => i.history).filter((x) => x.by_election && x.party_list).length, 0);
+});

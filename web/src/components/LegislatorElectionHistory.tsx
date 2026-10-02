@@ -36,6 +36,14 @@ export function LegislatorElectionHistory({ legislatorId, region }: { legislator
                 {Math.abs(h.margin_pct ?? 0).toFixed(2)} 個百分點
               </div>
             ) : null}
+            {h.party_list || h.president ? (
+              <div className="muted">
+                個人票比同黨
+                {h.party_list ? ` 政黨票 ${h.party_list.over_pct > 0 ? '+' : ''}${h.party_list.over_pct.toFixed(2)}` : ''}
+                {h.party_list && h.president ? '、' : ''}
+                {h.president ? ` 總統票 ${h.president.over_pct > 0 ? '+' : ''}${h.president.over_pct.toFixed(2)}` : ''} 個百分點
+              </div>
+            ) : null}
           </li>
         ))}
       </ol>

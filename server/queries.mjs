@@ -903,6 +903,14 @@ export function listCounties(db) {
  * `margin`：當選者對最高票落選者的領先票數，落選者對最低票當選者的差距（負值）；`change`：與本人前一次參選的得票差。
  */
 let legislatorVotes = null;
+const round2 = (n) => Math.round(n * 100) / 100;
+/** 同選區同黨的得票與得票率，以及委員個人票與它的差（票數、百分點）；`over` > 0 表示個人票多於政黨票 */
+function partyShare(bucket, c) {
+  const votes = bucket && c.party !== '無黨籍' ? bucket.votes[c.party] : undefined;
+  if (votes === undefined) return null;
+  const pct = (votes / bucket.valid) * 100;
+  return { votes, pct: round2(pct), over: c.votes - votes, over_pct: round2(c.pct - pct) };
+}
 export function listLegislatorVotes(db, { id = null } = {}) {
   legislatorVotes ??= JSON.parse(readFileSync(new URL('./legislator-votes.json', import.meta.url), 'utf8'));
   const key = (name) => String(name).replace(/[\s‧·・．.]/g, '');
@@ -927,6 +935,9 @@ export function listLegislatorVotes(db, { id = null } = {}) {
         rival: rival ? { name: rival.name, party: rival.party, votes: rival.votes } : null,
         margin: rival ? c.votes - rival.votes : null,
         margin_pct: rival ? Math.round((c.pct - rival.pct) * 100) / 100 : null,
+        // 個人票對照政黨票：同選區同黨的總統得票、不分區政黨票（只有大選的區域立委有；無黨籍不比）
+        president: partyShare(race.party_votes?.president, c),
+        party_list: partyShare(race.party_votes?.party_list, c),
       };
       byName.set(key(c.name), [...(byName.get(key(c.name)) ?? []), entry]);
     });
