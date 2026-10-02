@@ -40,7 +40,7 @@ import { ComparePage } from '../src/pages/ComparePage';
 import { BudgetPage } from '../src/pages/BudgetPage';
 import { DashboardPage } from '../src/pages/DashboardPage';
 import { CommitteesPage } from '../src/pages/CommitteesPage';
-import { routeOf } from '../src/hooks/useRoute';
+import { routeOf, type Route } from '../src/hooks/useRoute';
 import { BillStageBar } from '../src/components/BillStage';
 import { CountiesPage } from '../src/pages/CountiesPage';
 import { NewsPage } from '../src/pages/NewsPage';
@@ -239,6 +239,15 @@ const myAgencyHtml = render(createElement(MyAgencyPage, { refreshToken: 0, onOpe
 // 沒選過機關時預設載入行政院主計總處（不再有「尚未選機關」狀態）；有輸入清單可更換，已是預設就不顯示「回到」按鈕
 expectAll('我的機關：預設載入行政院主計總處', myAgencyHtml, ['<h1>行政院主計總處</h1>', '讀取「行政院主計總處」', '更換機關', 'list="agency-options"', 'id="agency-options"', '主計總處專頁']);
 expectNone('我的機關：已是預設機關時沒有「取消選擇」或「回到」按鈕', myAgencyHtml, ['取消選擇', '回到行政院主計總處']);
+// 我的機關的分區依首長與幕僚使用頻率：會議與備詢 → 誰在關注 → 新聞 → 預算與法案（只有資料到了才會渲染，這裡驗原始碼順序）
+check(
+  '我的機關：分區順序是 會議與備詢→誰在關注→新聞→預算與法案，統計卡是可跳到分區的連結',
+  (() => {
+    const src = readFileSync(new URL('../src/pages/MyAgencyPage.tsx', import.meta.url), 'utf8');
+    const order = ['my-meetings', 'my-watchers', 'my-news', 'my-budget'].map((id) => src.indexOf(`aria-labelledby="${id}"`));
+    return order.every((i, k) => i > 0 && (k === 0 || i > order[k - 1])) && src.includes('className="stat-tile" href={`#${t.id}`}');
+  })(),
+);
 // 「機關」頁與「我的機關」互相連結
 expectAll('我的機關連到機關頁', myAgencyHtml, ['href="/agencies"', '機關頁']);
 {
@@ -285,6 +294,25 @@ expectAll('機關／基金的頁籤仍有基金、機關、財團法人、行政
 check(
   '/dgbas 仍可開啟，導覽高亮「我的機關」',
   routeOf('/dgbas') === 'dgbas' && /aria-current="page"[^>]*>我的機關</.test(render(createElement(Header, { ...headerProps, route: 'dgbas' as const }))),
+);
+
+// 子頁也依首長與幕僚的使用頻率排，主題的預設頁就是第一個子頁
+check(
+  '子頁順序：議事 預算→委員會→法案、新聞 首長→委員、機關／基金 機關在前，主題連結指向第一個子頁',
+  (() => {
+    const subOf = (route: Route) => {
+      const sub = render(createElement(Header, { ...headerProps, route })).match(/<nav class="subnav"[^>]*>([\s\S]*?)<\/nav>/)?.[1] ?? '';
+      return [...sub.matchAll(/>([^<>]+)<\/a>/g)].map((m) => m[1].trim()).join('→');
+    };
+    const top = render(createElement(Header, { ...headerProps, route: 'dashboard' as const })).match(/<nav aria-label="主要頁面">([\s\S]*?)<\/nav>/)?.[1] ?? '';
+    return (
+      subOf('budget') === '預算審議→委員會→法案查詢' &&
+      subOf('officials') === '機關首長新聞→委員新聞' &&
+      subOf('agencies') === '機關→基金→財團法人→行政法人' &&
+      subOf('legislators') === '委員查詢→最近動態→排行榜→委員比較→縣市' &&
+      ['href="/budget"', 'href="/officials"', 'href="/agencies"'].every((h) => top.includes(h))
+    );
+  })(),
 );
 
 // 功能說明掛在分頁導覽上：單頁主題（總覽）在頂層導覽、有子頁的主題在次級導覽那一列右端
@@ -802,6 +830,18 @@ expectAll('預算頁：loading 態有類別、篩選與三個區塊骨架', rend
 
 expectAll('委員會頁：loading 態有標題與讀取提示', render(createElement(CommitteesPage, { refreshToken: 0, onOpenId: () => undefined })), ['委員會', '讀取委員會動態']);
 check('/committees 對應委員會頁', routeOf('/committees') === 'committees');
+// 委員會頁有自己的關鍵字搜尋（我的機關以機關全名＋簡稱連過來），頁首就不再放委員搜尋，免得兩個搜尋框混淆
+{
+  const win = window as unknown as { location: { search: string } };
+  const saved = win.location.search;
+  win.location.search = '?q=' + encodeURIComponent('行政院主計總處 主計總處');
+  expectAll('委員會頁：網址帶 q 時搜尋框帶入關鍵字', render(createElement(CommitteesPage, { refreshToken: 0, onOpenId: () => undefined })), [
+    'aria-label="搜尋會議、機關回覆與會議紀錄"',
+    'value="行政院主計總處 主計總處"',
+  ]);
+  win.location.search = saved;
+}
+expectNone('委員會頁：頁首不放委員搜尋', render(createElement(Header, { ...headerProps, route: 'committees' as const })), ['關鍵字搜尋立法委員']);
 
 const dashboardLoading = render(createElement(DashboardPage, { refreshToken: 0, onOpenId: () => undefined, onNavigate: () => undefined }));
 expectAll('總覽：loading 態有統計列、焦點卡與各區塊骨架', dashboardLoading, [
@@ -815,19 +855,27 @@ expectAll('總覽：loading 態有統計列、焦點卡與各區塊骨架', dash
   '各縣市最新動態',
   'href="/bills?status=%E4%B8%89%E8%AE%80"',
 ]);
-// 總覽依首長關心的順序分區：議事 → 委員 → 新聞；並有「機關首長新聞」卡
+// 總覽依首長關心的順序：我的機關摘要 → 議事 → 新聞 → 委員；並有「機關首長新聞」卡
 check(
-  '總覽：分區順序是 議事→委員→新聞，且新聞區有機關首長新聞卡',
+  '總覽：最上方是我的機關摘要（預設主計總處），分區順序是 議事→新聞→委員',
   (() => {
     const heads = [...dashboardLoading.matchAll(/<h2 id="dash-(\w+)">/g)].map((m) => m[1]).join('→');
-    return heads === 'agenda→members→news' && dashboardLoading.includes('aria-label="機關首長新聞"');
+    const strip = dashboardLoading.indexOf('aria-label="我的機關"');
+    return (
+      heads === 'agenda→news→members' &&
+      dashboardLoading.includes('aria-label="機關首長新聞"') &&
+      strip > 0 &&
+      strip < dashboardLoading.indexOf('id="dash-agenda"') &&
+      dashboardLoading.includes('行政院主計總處') &&
+      dashboardLoading.includes('前往我的機關')
+    );
   })(),
 );
 check(
-  '總覽：議事區的卡片順序是 預算審議→預算中心報告→法案→三讀→委員會',
+  '總覽：議事區的卡片順序是 預算審議→預算中心報告→委員會→法案→三讀',
   (() => {
-    const agenda = dashboardLoading.split('id="dash-members"')[0];
-    const order = ['預算審議最新進度', '預算中心報告', '法案最新進度', '最新三讀', '委員會會議紀錄'].map((t) => agenda.indexOf(`aria-label="${t}"`));
+    const agenda = dashboardLoading.split('id="dash-news"')[0];
+    const order = ['預算審議最新進度', '預算中心報告', '委員會會議紀錄', '法案最新進度', '最新三讀'].map((t) => agenda.indexOf(`aria-label="${t}"`));
     return order.every((i, k) => i > 0 && (k === 0 || i > order[k - 1]));
   })(),
 );

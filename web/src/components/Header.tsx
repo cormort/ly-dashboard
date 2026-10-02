@@ -33,7 +33,8 @@ export interface HeaderProps {
 
 /**
  * 導覽兩層，順序依「機關首長要面對立法院」的關心程度：
- * 總覽 → 我的機關（選定機關後以它為中心）→ 議事（法案、預算、委員會＝對機關的直接影響）→ 委員（誰在問、誰在動）→ 新聞（委員與首長的輿情）→ 機關／基金（查詢工具）。
+ * 總覽 → 我的機關（選定機關後以它為中心）→ 議事（預算、委員會、法案＝對機關的直接影響）→ 委員（誰在問、誰在動）→ 新聞（首長與委員的輿情）→ 機關／基金（查詢工具）。
+ * 每個主題的子頁也依首長與幕僚的使用頻率排，第一個就是點主題時的預設頁（例如「新聞」先開機關首長新聞）。
  * 縣市地圖與最近動態是看委員選區與活躍度用的，收進「委員」底下，不佔頂層。
  */
 interface NavGroup {
@@ -49,11 +50,11 @@ const NAV: NavGroup[] = [
   {
     id: 'agenda',
     label: '議事',
-    home: 'bills',
+    home: 'budget',
     routes: [
-      { route: 'bills', label: '法案查詢' },
       { route: 'budget', label: '預算審議' },
       { route: 'committees', label: '委員會' },
+      { route: 'bills', label: '法案查詢' },
     ],
   },
   {
@@ -63,27 +64,27 @@ const NAV: NavGroup[] = [
     routes: [
       { route: 'legislators', label: '委員查詢' },
       { route: 'home', label: '最近動態' },
-      { route: 'compare', label: '委員比較' },
       { route: 'rankings', label: '排行榜' },
+      { route: 'compare', label: '委員比較' },
       { route: 'counties', label: '縣市' },
     ],
   },
   {
     id: 'news',
     label: '新聞',
-    home: 'news',
+    home: 'officials',
     routes: [
-      { route: 'news', label: '委員新聞' },
       { route: 'officials', label: '機關首長新聞' },
+      { route: 'news', label: '委員新聞' },
     ],
   },
   {
     id: 'orgs',
     label: '機關／基金',
-    home: 'funds',
+    home: 'agencies',
     routes: [
-      { route: 'funds', label: '基金' },
       { route: 'agencies', label: '機關' },
+      { route: 'funds', label: '基金' },
       { route: 'foundations', label: '財團法人' },
       { route: 'administrative', label: '行政法人' },
     ],
@@ -156,8 +157,8 @@ export function Header({
         })}
       </nav>
 
-      {/* 法案頁有自己的搜尋框，兩個不同目標的搜尋框疊在一起會混淆 */}
-      {route !== 'bills' && route !== 'budget' ? (
+      {/* 法案、預算、委員會頁有自己的搜尋框，兩個不同目標的搜尋框疊在一起會混淆 */}
+      {route !== 'bills' && route !== 'budget' && route !== 'committees' ? (
         <SearchField
           value={query}
           onChange={onQueryChange}

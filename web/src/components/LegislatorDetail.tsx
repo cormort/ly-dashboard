@@ -115,50 +115,6 @@ export function LegislatorDetail({
         </div>
 
         <section className="detail-section">
-          <h2>社群</h2>
-          {legislator.social.length > 0 ? (
-            <ul className="contact-list" role="list">
-              {legislator.social.map((account) => (
-                <li key={account.url}>
-                  <a href={account.url} target="_blank" rel="noreferrer noopener">
-                    {account.platform === 'facebook' ? '臉書' : 'Threads'}：{account.name || account.url}
-                    <ExternalLink aria-hidden="true" />
-                  </a>
-                  {account.latest_post_date ? (
-                    <small>
-                      最新貼文 {account.latest_post_date}
-                      {account.latest_post_summary ? `：${account.latest_post_summary}` : ''}
-                    </small>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="muted">未提供</p>
-          )}
-        </section>
-
-        <section className="detail-section">
-          <h2>歷次得票</h2>
-          <LegislatorElectionHistory legislatorId={legislator.id} region={legislator.region} />
-        </section>
-
-        <section className="detail-section">
-          <h2>近期新聞</h2>
-          <LegislatorNews legislatorId={legislator.id} />
-        </section>
-
-        <section className="detail-section">
-          <h2>最近提案</h2>
-          <LegislatorBills legislatorId={legislator.id} />
-        </section>
-
-        <section className="detail-section">
-          <h2>最常一起提案</h2>
-          <LegislatorCosponsors legislatorId={legislator.id} onOpenId={onOpenId} />
-        </section>
-
-        <section className="detail-section">
           <h2>委員會與會期</h2>
           <dl>
             <dt>本會期委員會</dt>
@@ -193,6 +149,40 @@ export function LegislatorDetail({
             <dt>就職日期</dt>
             <dd>{text(legislator.onboard_date)}</dd>
           </dl>
+        </section>
+
+        <section className="detail-section">
+          <h2>社群</h2>
+          {legislator.social.length > 0 ? (
+            <ul className="contact-list" role="list">
+              {legislator.social.map((account) => (
+                <li key={account.url}>
+                  <a href={account.url} target="_blank" rel="noreferrer noopener">
+                    {account.platform === 'facebook' ? '臉書' : 'Threads'}：{account.name || account.url}
+                    <ExternalLink aria-hidden="true" />
+                  </a>
+                  {account.latest_post_date ? (
+                    <small>
+                      最新貼文 {account.latest_post_date}
+                      {account.latest_post_summary ? `：${account.latest_post_summary}` : ''}
+                    </small>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="muted">未提供</p>
+          )}
+        </section>
+
+        <section className="detail-section">
+          <h2>近期新聞</h2>
+          <LegislatorNews legislatorId={legislator.id} />
+        </section>
+
+        <section className="detail-section">
+          <h2>最近提案</h2>
+          <LegislatorBills legislatorId={legislator.id} />
         </section>
 
         <section className="detail-section">
@@ -231,6 +221,16 @@ export function LegislatorDetail({
             <dt>經歷</dt>
             <dd>{text(legislator.experience)}</dd>
           </dl>
+        </section>
+
+        <section className="detail-section">
+          <h2>歷次得票</h2>
+          <LegislatorElectionHistory legislatorId={legislator.id} region={legislator.region} />
+        </section>
+
+        <section className="detail-section">
+          <h2>最常一起提案</h2>
+          <LegislatorCosponsors legislatorId={legislator.id} onOpenId={onOpenId} />
         </section>
 
         <section className="detail-section">
