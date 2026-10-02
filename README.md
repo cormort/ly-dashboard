@@ -118,7 +118,8 @@ warnings: ['游錫堃 在本屆無任何會期委員會紀錄（辭職）', '李
 
 1. **排程宿主**：Cloudflare Worker + D1 + Cron，或小 VPS + SQLite + cron。兩者都必須先做 30 分鐘 spike：從目標 runtime 打一次 `data.ly.gov.tw`（帶具名 UA），確認 TLS 與 WAF 都過。
 2. **前端**：`web/dist` 是純靜態檔，放 Pages/Vercel/任何空間。
-3. 破壞性／需帳號的動作（例如建立 Worker、push、對外發布）尚未執行，記錄於 `DECISIONS.md`。
+3. **程式已推上 GitHub**（`main` → `0f96ff7`，2026-10-02；前一次是 `bce854c`）。**部署本身還沒做**：
+   建立 Worker／VPS／Pages、對外發布 API 都還沒執行，記錄於 `DECISIONS.md`（D9）。
 
 部署到非 loopback 時的**必要設定**（CR-7 已實作，2026-10-02）：
 
