@@ -31,7 +31,7 @@ function turnsOf(diffs: (number | null)[]): boolean[] {
   });
 }
 
-function turnText(years: number[], diffs: (number | null)[], turns: boolean[]): string {
+function turnText(years: string[], diffs: (number | null)[], turns: boolean[]): string {
   const list = turns.flatMap((t, i) => (t ? [`${years[i]} ${diffs[i]! > 0 ? '由減轉增' : '由增轉減'}`] : []));
   return list.length ? list.join('、') : '無';
 }
@@ -46,7 +46,8 @@ function nationalPoints(data: CountiesResponse, type: TrendType): TrendPoint[] {
       valid += p.valid;
       for (const [party, v] of Object.entries(p.votes)) votes[party] = (votes[party] ?? 0) + v;
     }
-    return { year: data.items[0].trends[type][i].year, valid, turnout: null, votes };
+    const { year, label } = data.items[0].trends[type][i];
+    return { year, label, valid, turnout: null, votes };
   });
 }
 
@@ -66,7 +67,7 @@ function TrendChart({ points, parties, measure, title }: { points: TrendPoint[];
   const W = 640;
   const H = 280;
   const pad = { l: 64, r: 92, t: 16, b: 28 };
-  const years = points.map((p) => p.year);
+  const years = points.map((p) => p.label);
   const lines = parties.map((party) => {
     const values = valuesOf(points, party, measure);
     const diffs = diffsOf(values);
@@ -177,7 +178,7 @@ function TrendChart({ points, parties, measure, title }: { points: TrendPoint[];
 }
 
 /**
- * 得票趨勢：總統（2012–2024）、縣市長（2014–2022）、不分區政黨票（2012–2024）各黨歷次得票與增減，
+ * 得票趨勢：總統（2012–2024）、縣市長（2009／10–2022）、不分區政黨票（2012–2024）各黨歷次得票與增減，
  * 標出增減方向改變（轉折）的年份；地圖為所選政黨最近一次的增減率。
  */
 export function VoteTrends({ data, selected, onSelect }: { data: CountiesResponse; selected: string; onSelect: (county: string) => void }) {
@@ -189,7 +190,7 @@ export function VoteTrends({ data, selected, onSelect }: { data: CountiesRespons
   const party = parties.includes(partyChoice) ? partyChoice : parties[0];
   const [scope, setScope] = useState<'county' | 'national'>('county');
   const county = data.items.find((c) => c.county === selected) ?? data.items[0];
-  const years = national.map((p) => p.year);
+  const years = national.map((p) => p.label);
   const label = data.trend_types[type];
 
   const rows = [

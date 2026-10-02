@@ -743,12 +743,12 @@ test('縣市：22 縣市都有人口、四場選舉與地圖，並附上該縣�
   for (const c of withLegislators) for (const l of c.legislators) assert.ok(l.area_name.startsWith(c.county.slice(0, 2)), l.area_name);
 });
 
-test('縣市：歷次得票趨勢涵蓋 2012–2024 總統、不分區與 2014–2022 縣市長', () => {
+test('縣市：歷次得票趨勢涵蓋 2012–2024 總統、不分區與 2009／10–2022 縣市長', () => {
   const res = listCounties(seeded());
   const years = (type) => res.items[0].trends[type].map((e) => e.year);
   assert.deepEqual(years('president'), [2012, 2016, 2020, 2024]);
   assert.deepEqual(years('party_list'), [2012, 2016, 2020, 2024]);
-  assert.deepEqual(years('mayor'), [2014, 2018, 2022]);
+  assert.deepEqual(years('mayor'), [2010, 2014, 2018, 2022]);
   const dpp2016 = res.items.reduce((s, c) => s + c.trends.president.find((e) => e.year === 2016).votes['民主進步黨'], 0);
   assert.equal(dpp2016, 6894744);
 });

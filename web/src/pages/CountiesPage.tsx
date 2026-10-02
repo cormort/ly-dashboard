@@ -388,7 +388,7 @@ export function CountiesPage({ refreshToken, onOpenId }: CountiesPageProps) {
       </div>
       <p className="page-lead">
         22 縣市的人口（{data.population_month}）與選舉指標（2024／2020 總統、2022／2018 縣市長）。點地圖上的縣市可看選舉細節與區域立委；
-        「得票趨勢」追蹤 2012 起歷次得票與轉折，「立委得票」追蹤每位委員歷次參選得票。
+        「得票趨勢」追蹤歷次得票與轉折（總統、不分區 2012 起，縣市長 2009／10 起），「立委得票」追蹤每位委員歷次參選得票。
       </p>
 
       <div className="stat-controls">

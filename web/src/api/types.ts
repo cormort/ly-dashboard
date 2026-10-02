@@ -643,6 +643,8 @@ export type TrendType = 'president' | 'mayor' | 'party_list';
 
 export interface TrendPoint {
   year: number;
+  /** 顯示用年份（縣市長 2009 與 2010 五都合為一輪：「2009／10」） */
+  label: string;
   valid: number;
   turnout: number | null;
   /** 政黨 → 得票數（無黨籍候選人合併為「無黨籍」） */

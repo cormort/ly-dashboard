@@ -149,7 +149,8 @@ function series(byYear) {
     for (const [county, e] of results) {
       const votes = {};
       for (const c of e.candidates) votes[c.party] = (votes[c.party] ?? 0) + c.votes;
-      out.set(county, [...(out.get(county) ?? []), { year, valid: e.valid, turnout: e.turnout, votes }]);
+      const label = year === 2010 ? '2009／10' : String(year);
+      out.set(county, [...(out.get(county) ?? []), { year, label, valid: e.valid, turnout: e.turnout, votes }]);
     }
   }
   return out;
@@ -226,6 +227,8 @@ const pop = population(args.moi);
 const president = new Map(Object.entries(PRESIDENT).map(([year, dir]) => [Number(year), cecElection(cec(`${dir}/總統`))]));
 const partyList = new Map(Object.entries(PRESIDENT).map(([year, dir]) => [Number(year), cecElection(cec(`${dir}/不分區政黨`))]));
 const mayor = new Map([
+  // 2009 縣市長（17 縣市）與 2010 五都市長合為同一輪，年份記 2010、標示「2009／10」
+  [2010, both(cecElection(cec('20091205-縣市長縣市議員及鄉鎮長/縣市長')), cecElection(cec('20101127-五都市長議員及里長/市長')))],
   [2014, both(cecElection(cec('2014-103年地方公職人員選舉/直轄市市長')), cecElection(cec('2014-103年地方公職人員選舉/縣市市長')))],
   [2018, both(cecElection(cec('2018-107年地方公職人員選舉/直轄市市長')), cecElection(cec('2018-107年地方公職人員選舉/縣市市長')))],
   [
