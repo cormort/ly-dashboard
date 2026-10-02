@@ -3,6 +3,8 @@ import { buildUrl } from '../api/client';
 import type { CountiesResponse, CountyElection, CountyElectionKey, CountyItem } from '../api/types';
 import { ErrorState, LoadingState } from '../components/DataStates';
 import { useApi } from '../hooks/useApi';
+import { colorAt, gradient, type ScaleName } from '../lib/colorScales';
+import { downloadCsv } from '../lib/csv';
 import { partyStyle } from '../lib/parties';
 
 export interface CountiesPageProps {
@@ -10,122 +12,218 @@ export interface CountiesPageProps {
   onOpenId: (id: string) => void;
 }
 
-type MetricKey = 'population' | 'voting_age' | 'elderly_ratio' | 'president_2024' | 'mayor_2022';
+/* ---------- 指標 ---------- */
+
+type Unit = '人' | '戶' | '%' | '票' | '百分點';
 
 interface Metric {
+  key: string;
   label: string;
-  /** 人口類指標用灰階深淺；選舉類指標用勝選黨色，深淺代表與第二名的差距 */
-  /** 選舉類指標對應的選舉 */
+  unit: Unit;
+  value: (c: CountyItem) => number | null;
+  /** 選舉指標：所屬選舉與欄位，用來配對前後兩次（時間差異） */
   election?: CountyElectionKey;
-  value: (c: CountyItem) => number;
-  display: (c: CountyItem) => string;
-  /** 排行用的短版 */
-  short: (c: CountyItem) => string;
+  field?: string;
 }
 
-const num = (n: number) => n.toLocaleString('zh-TW');
-const pct = (n: number) => `${n.toFixed(2)}%`;
+const ELECTIONS: CountyElectionKey[] = ['president_2024', 'president_2020', 'mayor_2022', 'mayor_2018'];
+/** 時間差異：新 ← 舊 */
+const PREVIOUS: Partial<Record<CountyElectionKey, CountyElectionKey>> = { president_2024: 'president_2020', mayor_2022: 'mayor_2018' };
+const PARTIES = ['民主進步黨', '中國國民黨', '台灣民眾黨'];
+
+const num = (n: number, digits = 0) => n.toLocaleString('zh-TW', { maximumFractionDigits: digits, minimumFractionDigits: digits });
 const ratio = (part: number, whole: number) => (part / whole) * 100;
+const isRate = (unit: Unit) => unit === '%' || unit === '百分點';
+const fmt = (value: number | null, unit: Unit) =>
+  value === null ? '—' : isRate(unit) ? `${num(value, 2)}${unit === '%' ? '%' : ' 個百分點'}` : `${num(value)} ${unit}`;
+const signed = (value: number, digits = 0) => `${value > 0 ? '+' : ''}${num(value, digits)}`;
 
-const METRICS: Record<MetricKey, Metric> = {
-  population: { label: '人口數', value: (c) => c.population, display: (c) => `${num(c.population)} 人`, short: (c) => num(c.population) },
-  voting_age: { label: '選舉年齡人口', value: (c) => c.voting_age, display: (c) => `${num(c.voting_age)} 人`, short: (c) => num(c.voting_age) },
-  elderly_ratio: {
-    label: '老年人口比率',
-    value: (c) => ratio(c.elderly, c.population),
-    display: (c) => `${pct(ratio(c.elderly, c.population))}（${num(c.elderly)} 人）`,
-    short: (c) => pct(ratio(c.elderly, c.population)),
-  },
-  president_2024: {
-    label: '2024 總統',
-    election: 'president_2024',
-    value: (c) => c.elections.president_2024.margin_pct ?? 0,
-    display: (c) => winnerText(c.elections.president_2024),
-    short: (c) => winnerShort(c.elections.president_2024),
-  },
-  mayor_2022: {
-    label: '2022 縣市長',
-    election: 'mayor_2022',
-    value: (c) => c.elections.mayor_2022.margin_pct ?? 0,
-    display: (c) => winnerText(c.elections.mayor_2022),
-    short: (c) => winnerShort(c.elections.mayor_2022),
-  },
-};
-
-function winnerText(e: CountyElection): string {
-  const [first] = e.candidates;
-  return `${first.name}（${partyStyle(first.party).short}）領先 ${num(e.margin ?? 0)} 票、${(e.margin_pct ?? 0).toFixed(2)} 個百分點`;
+function partyVotes(e: CountyElection, party: string): { votes: number; pct: number } | null {
+  const list = e.candidates.filter((c) => c.party === party);
+  if (!list.length) return null;
+  return { votes: list.reduce((s, c) => s + c.votes, 0), pct: list.reduce((s, c) => s + c.pct, 0) };
 }
 
-function winnerShort(e: CountyElection): string {
-  const [first] = e.candidates;
-  return `${partyStyle(first.party).short} ${first.name} +${(e.margin_pct ?? 0).toFixed(2)}`;
+/** 由資料列出所有可分析的數值指標（相當於 tw_statistic_map 的「數值欄位」） */
+function buildMetrics(data: CountiesResponse): Metric[] {
+  const metrics: Metric[] = [
+    { key: 'population', label: '人口數', unit: '人', value: (c) => c.population },
+    { key: 'households', label: '戶數', unit: '戶', value: (c) => c.households },
+    { key: 'voting_age', label: '選舉年齡人口（20 歲以上）', unit: '人', value: (c) => c.voting_age },
+    { key: 'voting_age_ratio', label: '選舉年齡人口比率', unit: '%', value: (c) => ratio(c.voting_age, c.population) },
+    { key: 'elderly', label: '老年人口（65 歲以上）', unit: '人', value: (c) => c.elderly },
+    { key: 'elderly_ratio', label: '老年人口比率', unit: '%', value: (c) => ratio(c.elderly, c.population) },
+  ];
+  for (const election of ELECTIONS) {
+    const label = data.elections[election].label;
+    const of = (c: CountyItem) => c.elections[election];
+    for (const party of PARTIES) {
+      if (!data.items.some((c) => partyVotes(of(c), party))) continue;
+      const short = partyStyle(party).short;
+      metrics.push(
+        { key: `${election}.${party}.votes`, label: `${label}・${short}得票數`, unit: '票', election, field: `${party}.votes`, value: (c) => partyVotes(of(c), party)?.votes ?? null },
+        { key: `${election}.${party}.pct`, label: `${label}・${short}得票率`, unit: '%', election, field: `${party}.pct`, value: (c) => partyVotes(of(c), party)?.pct ?? null },
+      );
+    }
+    metrics.push(
+      { key: `${election}.margin`, label: `${label}・第一名領先票數`, unit: '票', election, field: 'margin', value: (c) => of(c).margin },
+      { key: `${election}.margin_pct`, label: `${label}・第一名領先幅度`, unit: '百分點', election, field: 'margin_pct', value: (c) => of(c).margin_pct },
+    );
+    if (data.items.every((c) => of(c).turnout !== null)) {
+      metrics.push({ key: `${election}.turnout`, label: `${label}・投票率`, unit: '%', election, field: 'turnout', value: (c) => of(c).turnout });
+    }
+  }
+  return metrics;
 }
 
-/** 由網址 ?county=&metric= 還原狀態，切換時以 replaceState 寫回（可分享） */
-function readParam(key: string): string | null {
-  return new URLSearchParams(window.location.search).get(key);
-}
-function writeParams(next: Record<string, string>) {
-  const params = new URLSearchParams(window.location.search);
-  for (const [k, v] of Object.entries(next)) params.set(k, v);
-  window.history.replaceState(null, '', `/counties?${params.toString()}`);
+interface ComparePair {
+  key: string;
+  label: string;
+  older: Metric & { election: CountyElectionKey };
+  newer: Metric & { election: CountyElectionKey };
 }
 
-function CountyMap({
+/** 前後兩次選舉的同一欄位配成一組 */
+function buildPairs(metrics: Metric[], data: CountiesResponse): ComparePair[] {
+  const pairs: ComparePair[] = [];
+  for (const newer of metrics) {
+    const prev = newer.election && PREVIOUS[newer.election];
+    const older = prev ? metrics.find((m) => m.election === prev && m.field === newer.field) : undefined;
+    if (!older?.election || !newer.election) continue;
+    const from = data.elections[older.election].label;
+    const to = data.elections[newer.election].label;
+    pairs.push({
+      key: newer.key,
+      label: `${newer.label.replace(`${to}・`, '')}（${from} → ${to}）`,
+      older: { ...older, election: older.election },
+      newer: { ...newer, election: newer.election },
+    });
+  }
+  return pairs;
+}
+
+/* ---------- 網址狀態 ---------- */
+
+type Tab = 'map' | 'dual' | 'compare' | 'ranking' | 'data';
+const TABS: { key: Tab; label: string }[] = [
+  { key: 'map', label: '互動地圖' },
+  { key: 'dual', label: '雙指標對比' },
+  { key: 'compare', label: '時間差異' },
+  { key: 'ranking', label: '排行榜' },
+  { key: 'data', label: '原始資料' },
+];
+const SCALES: { key: ScaleName; label: string }[] = [
+  { key: 'YlOrRd', label: '紅色系' },
+  { key: 'Blues', label: '藍色系' },
+  { key: 'Greens', label: '綠色系' },
+  { key: 'Hot', label: '熱力圖' },
+];
+const TOP_N = ['5', '10', '15', '全部'];
+
+/** 狀態存在 ?key=（replaceState，可分享、重整後一致） */
+function useParam<T extends string>(key: string, fallback: T): [T, (value: T) => void] {
+  const [value, setValue] = useState<T>(() => (new URLSearchParams(window.location.search).get(key) as T | null) ?? fallback);
+  const update = (next: T) => {
+    setValue(next);
+    const params = new URLSearchParams(window.location.search);
+    params.set(key, next);
+    window.history.replaceState(null, '', `/counties?${params.toString()}`);
+  };
+  return [value, update];
+}
+
+/* ---------- 地圖 ---------- */
+
+function ChoroplethMap({
   items,
-  metric,
+  values,
+  scale,
+  title,
+  format,
+  diverging = false,
   selected,
   onSelect,
 }: {
   items: CountyItem[];
-  metric: Metric;
-  selected: string;
-  onSelect: (county: string) => void;
+  values: Map<string, number | null>;
+  scale: ScaleName;
+  title: string;
+  format: (value: number | null) => string;
+  /** 以 0 為中點的發散色階（時間差異） */
+  diverging?: boolean;
+  selected?: string;
+  onSelect?: (county: string) => void;
 }) {
-  const values = items.map(metric.value);
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const fill = (c: CountyItem): CSSProperties => {
-    const t = max === min ? 1 : (metric.value(c) - min) / (max - min);
-    if (metric.election) {
-      // 差距越大顏色越飽和；最少保留 30% 讓小差距的縣市也看得出黨色
-      const color = partyStyle(c.elections[metric.election].candidates[0].party).color;
-      return { fill: `color-mix(in srgb, ${color} ${Math.round(30 + 70 * t)}%, white)` };
-    }
-    return { fill: `color-mix(in srgb, var(--ink) ${Math.round(8 + 72 * t)}%, white)` };
-  };
+  const [hover, setHover] = useState<string | null>(null);
+  const nums = [...values.values()].filter((v): v is number => v !== null);
+  let min = Math.min(...nums);
+  let max = Math.max(...nums);
+  if (diverging) {
+    const m = Math.max(Math.abs(min), Math.abs(max)) || 1;
+    [min, max] = [-m, m];
+  }
+  const t = (v: number) => (max === min ? 1 : (v - min) / (max - min));
+  const focus = hover ?? selected ?? null;
   return (
-    <svg className="county-map" viewBox="0 0 530 735" role="group" aria-label={`縣市地圖：${metric.label}`}>
-      {/* 金門、連江的插圖框 */}
-      <rect className="county-inset" x="22" y="4" width="128" height="112" rx="6" />
-      <rect className="county-inset" x="3" y="166" width="66" height="54" rx="6" />
-      {items.map((c) => (
-        <path
-          key={c.county}
-          d={c.path}
-          className="county-shape"
-          aria-current={c.county === selected ? 'true' : undefined}
-          style={fill(c)}
-          tabIndex={0}
-          role="button"
-          aria-label={`${c.county}：${metric.display(c)}`}
-          onClick={() => onSelect(c.county)}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' || event.key === ' ') {
-              event.preventDefault();
-              onSelect(c.county);
-            }
-          }}
-        >
-          <title>{`${c.county}：${metric.display(c)}`}</title>
-        </path>
-      ))}
-      <text x="26" y="134" className="county-inset-label">連江縣</text>
-      <text x="6" y="238" className="county-inset-label">金門縣</text>
-    </svg>
+    <figure className="stat-map">
+      <figcaption>{title}</figcaption>
+      <svg viewBox="0 0 530 735" role="group" aria-label={title}>
+        {/* 金門、連江的插圖框 */}
+        <rect className="county-inset" x="22" y="4" width="128" height="112" rx="6" />
+        <rect className="county-inset" x="3" y="166" width="66" height="54" rx="6" />
+        {items.map((c) => {
+          const v = values.get(c.county) ?? null;
+          const label = `${c.county}：${format(v)}`;
+          return (
+            <path
+              key={c.county}
+              d={c.path}
+              className="county-shape"
+              aria-current={c.county === selected ? 'true' : undefined}
+              style={{ fill: v === null ? 'var(--seat-off)' : colorAt(scale, t(v)) }}
+              tabIndex={0}
+              role="button"
+              aria-label={label}
+              onMouseEnter={() => setHover(c.county)}
+              onMouseLeave={() => setHover(null)}
+              onFocus={() => setHover(c.county)}
+              onBlur={() => setHover(null)}
+              onClick={() => onSelect?.(c.county)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  onSelect?.(c.county);
+                }
+              }}
+            >
+              <title>{label}</title>
+            </path>
+          );
+        })}
+        <text x="26" y="134" className="county-inset-label">連江縣</text>
+        <text x="6" y="238" className="county-inset-label">金門縣</text>
+      </svg>
+      <p className="stat-map-hover" aria-live="polite">
+        {focus ? (
+          <>
+            <b>{focus}</b>　{format(values.get(focus) ?? null)}
+          </>
+        ) : (
+          <span className="muted">滑過或點選縣市看數值</span>
+        )}
+      </p>
+      {nums.length ? (
+        <div className="stat-legend">
+          <span>{format(min)}</span>
+          <i style={{ background: gradient(scale) }} aria-hidden="true" />
+          <span>{format(max)}</span>
+        </div>
+      ) : null}
+    </figure>
   );
 }
+
+/* ---------- 縣市詳情（選舉表） ---------- */
 
 function PartyTag({ party }: { party: string }) {
   const style = partyStyle(party);
@@ -137,30 +235,18 @@ function PartyTag({ party }: { party: string }) {
 }
 
 /** 一場選舉：各候選人得票、與前次同黨得票的增減、第一名與第二名的差距 */
-function ElectionTable({
-  title,
-  current,
-  previous,
-  previousLabel,
-}: {
-  title: string;
-  current: CountyElection;
-  previous: CountyElection;
-  previousLabel: string;
-}) {
-  const prevByParty = new Map<string, number>();
-  for (const c of previous.candidates) if (c.party !== '無黨籍') prevByParty.set(c.party, (prevByParty.get(c.party) ?? 0) + c.votes);
+function ElectionTable({ title, current, previous, previousLabel }: { title: string; current: CountyElection; previous: CountyElection; previousLabel: string }) {
   const [first, second] = current.candidates;
   return (
     <section className="county-election">
       <h3>{title}</h3>
       <p className="muted">
-        {current.turnout !== null ? `投票率 ${pct(current.turnout)}・` : ''}有效票 {num(current.valid)}
+        {current.turnout !== null ? `投票率 ${num(current.turnout, 2)}%・` : ''}有效票 {num(current.valid)}
         {current.electorate !== null ? `・選舉人 ${num(current.electorate)}` : ''}
       </p>
       {second ? (
         <p className="county-margin">
-          <b>{first.name}</b> 領先 <b>{second.name}</b> {num(current.margin ?? 0)} 票（{(current.margin_pct ?? 0).toFixed(2)} 個百分點）
+          <b>{first.name}</b> 領先 <b>{second.name}</b> {num(current.margin ?? 0)} 票（{num(current.margin_pct ?? 0, 2)} 個百分點）
         </p>
       ) : null}
       <div className="table-scroll">
@@ -177,8 +263,7 @@ function ElectionTable({
           </thead>
           <tbody>
             {current.candidates.map((c) => {
-              const prev = c.party === '無黨籍' ? undefined : prevByParty.get(c.party);
-              const diff = prev === undefined ? null : c.votes - prev;
+              const prev = c.party === '無黨籍' ? null : partyVotes(previous, c.party);
               return (
                 <tr key={c.name}>
                   <td>{c.name}</td>
@@ -186,9 +271,9 @@ function ElectionTable({
                     <PartyTag party={c.party} />
                   </td>
                   <td className="num">{num(c.votes)}</td>
-                  <td className="num">{pct(c.pct)}</td>
-                  <td className="num">{prev === undefined ? '—' : num(prev)}</td>
-                  <td className="num">{diff === null ? '—' : `${diff > 0 ? '+' : ''}${num(diff)}`}</td>
+                  <td className="num">{num(c.pct, 2)}%</td>
+                  <td className="num">{prev === null ? '—' : num(prev.votes)}</td>
+                  <td className="num">{prev === null ? '—' : signed(c.votes - prev.votes)}</td>
                 </tr>
               );
             })}
@@ -200,7 +285,7 @@ function ElectionTable({
         <ul>
           {previous.candidates.map((c) => (
             <li key={c.name}>
-              {c.name} <PartyTag party={c.party} /> {num(c.votes)} 票（{pct(c.pct)}）
+              {c.name} <PartyTag party={c.party} /> {num(c.votes)} 票（{num(c.pct, 2)}%）
             </li>
           ))}
         </ul>
@@ -221,14 +306,13 @@ function CountyDetail({ county, data, onOpenId }: { county: CountyItem; data: Co
         </div>
         <div className="stat-tile">
           <b className="stat-value">{num(county.voting_age)}</b>
-          <span className="stat-label">選舉年齡人口（20 歲以上，{pct(ratio(county.voting_age, county.population))}）</span>
+          <span className="stat-label">選舉年齡人口（20 歲以上，{num(ratio(county.voting_age, county.population), 2)}%）</span>
         </div>
         <div className="stat-tile">
           <b className="stat-value">{num(county.elderly)}</b>
-          <span className="stat-label">老年人口（65 歲以上，{pct(ratio(county.elderly, county.population))}）</span>
+          <span className="stat-label">老年人口（65 歲以上，{num(ratio(county.elderly, county.population), 2)}%）</span>
         </div>
       </div>
-
       <div className="county-legislators">
         <h3>區域立委</h3>
         {county.legislators.length ? (
@@ -245,7 +329,6 @@ function CountyDetail({ county, data, onOpenId }: { county: CountyItem; data: Co
           <span className="muted">尚無資料</span>
         )}
       </div>
-
       <ElectionTable
         title={`${e.president_2024.label}（${e.president_2024.date}）`}
         current={county.elections.president_2024}
@@ -262,91 +345,311 @@ function CountyDetail({ county, data, onOpenId }: { county: CountyItem; data: Co
   );
 }
 
+/* ---------- 數據總覽、排行榜 ---------- */
+
+function MetricSelect({ label, options, value, onChange }: { label: string; options: { key: string; label: string }[]; value: string; onChange: (key: string) => void }) {
+  return (
+    <label className="stat-control">
+      <span>{label}</span>
+      <select value={value} onChange={(event) => onChange(event.target.value)}>
+        {options.map((m) => (
+          <option key={m.key} value={m.key}>
+            {m.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+const valuesOf = (metric: Metric, items: CountyItem[]) =>
+  items.map((c) => ({ county: c.county, v: metric.value(c) })).filter((r): r is { county: string; v: number } => r.v !== null);
+
+/** 數據總覽：主要指標的全國加總（人數、票數類）、縣市平均、最高、最低 */
+function Overview({ metric, items }: { metric: Metric; items: CountyItem[] }) {
+  const rows = valuesOf(metric, items).sort((a, b) => b.v - a.v);
+  if (!rows.length) return null;
+  const sum = rows.reduce((s, r) => s + r.v, 0);
+  const tiles = [
+    ...(isRate(metric.unit) ? [] : [{ value: fmt(sum, metric.unit), label: `全國加總（${rows.length} 縣市）` }]),
+    { value: fmt(sum / rows.length, metric.unit), label: '縣市平均' },
+    { value: fmt(rows[0].v, metric.unit), label: `最高：${rows[0].county}` },
+    { value: fmt(rows[rows.length - 1].v, metric.unit), label: `最低：${rows[rows.length - 1].county}` },
+  ];
+  return (
+    <div className="stat-row stat-overview" aria-label={`數據總覽：${metric.label}`}>
+      {tiles.map((t) => (
+        <div key={t.label} className="stat-tile">
+          <b className="stat-value">{t.value}</b>
+          <span className="stat-label">{t.label}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function Ranking({ metric, items, top, onSelect }: { metric: Metric; items: CountyItem[]; top: string; onSelect: (county: string) => void }) {
+  const rows = valuesOf(metric, items)
+    .sort((a, b) => b.v - a.v)
+    .slice(0, top === '全部' ? undefined : Number(top));
+  const max = Math.max(...rows.map((r) => r.v)) || 1;
+  const min = Math.min(...rows.map((r) => r.v));
+  return (
+    <ol className="stat-ranking" aria-label={`${metric.label} 排行`}>
+      {rows.map((r, i) => (
+        <li key={r.county}>
+          <span className="muted">{i + 1}</span>
+          <button type="button" className="link-button" onClick={() => onSelect(r.county)}>
+            {r.county}
+          </button>
+          <span className="stat-bar" aria-hidden="true">
+            <i style={{ width: `${Math.max(2, (r.v / max) * 100)}%`, background: colorAt('Viridis', max === min ? 1 : (r.v - min) / (max - min)) }} />
+          </span>
+          <span className="stat-bar-value">{fmt(r.v, metric.unit)}</span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+/* ---------- 頁面 ---------- */
+
 /**
- * 縣市：地圖＋指標切換（參考 tw_statistic_map 的縣市面量圖），點縣市看人口、
- * 最近一次總統與縣市長選舉結果（與前次比較、與第二名差距）以及該縣市區域立委。
+ * 縣市統計地圖：依 tw_statistic_map（app.py）的功能重做——數據總覽、互動地圖（指標、配色）、
+ * 雙指標對比、時間差異（變化率）、排行榜、原始資料與 CSV 匯出；點縣市可看選舉細節與區域立委。
  * 人口與選舉是靜態資料（scripts/build-county-stats.mjs），立委名單來自同步資料。
  */
 export function CountiesPage({ refreshToken, onOpenId }: CountiesPageProps) {
   const res = useApi<CountiesResponse>(buildUrl('/counties'), { refreshToken });
-  const [metricKey, setMetricKey] = useState<MetricKey>(() => {
-    const raw = readParam('metric');
-    return raw && raw in METRICS ? (raw as MetricKey) : 'population';
-  });
-  const [selected, setSelected] = useState<string>(() => readParam('county') ?? '臺北市');
-  const metric = METRICS[metricKey];
+  const [tab, setTab] = useParam<Tab>('tab', 'map');
+  const [metricKey, setMetricKey] = useParam<string>('metric', 'population');
+  const [metric2Key, setMetric2Key] = useParam<string>('metric2', 'elderly_ratio');
+  const [pairKey, setPairKey] = useParam<string>('pair', 'president_2024.民主進步黨.votes');
+  const [scale, setScale] = useParam<ScaleName>('scale', 'YlOrRd');
+  const [top, setTop] = useParam<string>('top', '10');
+  const [selected, setSelected] = useParam<string>('county', '臺北市');
 
-  const items = res.data?.items ?? [];
-  const ranked = useMemo(() => [...items].sort((a, b) => metric.value(b) - metric.value(a)), [items, metric]);
+  const metrics = useMemo(() => (res.data ? buildMetrics(res.data) : []), [res.data]);
+  const pairs = useMemo(() => (res.data ? buildPairs(metrics, res.data) : []), [metrics, res.data]);
+
+  if (res.phase === 'loading' && !res.data) return <LoadingState label="載入縣市資料…" />;
+  if (!res.data) {
+    return res.phase === 'error' ? <ErrorState title="無法取得縣市資料（/api/v1/counties）" error={res.error} onRetry={res.reload} /> : null;
+  }
+
+  const data = res.data;
+  const items = data.items;
+  const metric = metrics.find((m) => m.key === metricKey) ?? metrics[0];
+  const metric2 = metrics.find((m) => m.key === metric2Key) ?? metrics[1];
+  const pair = pairs.find((p) => p.key === pairKey) ?? pairs[0];
   const current = items.find((c) => c.county === selected) ?? items[0];
+  const mapValues = (m: Metric) => new Map(items.map((c) => [c.county, m.value(c)]));
+  const formatOf = (m: Metric) => (v: number | null) => fmt(v, m.unit);
 
-  const select = (county: string) => {
-    setSelected(county);
-    writeParams({ county });
-  };
+  // 時間差異：變化率 =（新 − 舊）÷ 舊
+  const compareRows = items.map((c) => {
+    const a = pair.older.value(c);
+    const b = pair.newer.value(c);
+    return { county: c.county, a, b, diff: a === null || b === null ? null : b - a, rate: a === null || b === null || a === 0 ? null : ((b - a) / a) * 100 };
+  });
+  const rateFormat = (v: number | null) => (v === null ? '無可比較資料' : `${signed(v, 1)}%`);
+
+  const exportCsv = () =>
+    downloadCsv(`縣市統計_${data.population_month}.csv`, [
+      ['縣市', ...metrics.map((m) => `${m.label}（${m.unit}）`)],
+      ...items.map((c) => [
+        c.county,
+        ...metrics.map((m) => {
+          const v = m.value(c);
+          return v === null ? '' : isRate(m.unit) ? v.toFixed(2) : v;
+        }),
+      ]),
+    ]);
+  const tableMetrics = metrics.slice(0, 6).includes(metric) ? metrics.slice(0, 6) : [...metrics.slice(0, 6), metric];
 
   return (
     <>
       <div className="page-head">
-        <h1>縣市</h1>
-        <div className="segmented county-metrics" role="group" aria-label="地圖指標">
-          {(Object.keys(METRICS) as MetricKey[]).map((key) => (
-            <button
-              key={key}
-              type="button"
-              aria-pressed={metricKey === key}
-              onClick={() => {
-                setMetricKey(key);
-                writeParams({ metric: key });
-              }}
-            >
-              {METRICS[key].label}
-            </button>
-          ))}
-        </div>
+        <h1>縣市統計地圖</h1>
       </div>
       <p className="page-lead">
-        點地圖或排行選擇縣市。選舉指標以勝選政黨著色，顏色越深代表與第二名的差距越大；人口指標顏色越深數值越高。
+        22 縣市的人口（{data.population_month}）與選舉指標（2024／2020 總統、2022／2018 縣市長）。點地圖上的縣市可看選舉細節與區域立委。
       </p>
 
-      {res.phase === 'loading' && !res.data ? <LoadingState label="載入縣市資料…" /> : null}
-      {res.phase === 'error' && !res.data ? (
-        <ErrorState title="無法取得縣市資料（/api/v1/counties）" error={res.error} onRetry={res.reload} />
+      <div className="stat-controls">
+        <MetricSelect label="主要分析指標" options={metrics} value={metric.key} onChange={setMetricKey} />
+      </div>
+      <Overview metric={metric} items={items} />
+
+      <div className="segmented stat-tabs" role="group" aria-label="分析方式">
+        {TABS.map((t) => (
+          <button key={t.key} type="button" aria-pressed={tab === t.key} onClick={() => setTab(t.key)}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'map' ? (
+        <div className="county-layout">
+          <section className="panel county-map-panel">
+            <div className="segmented stat-scales" role="group" aria-label="地圖配色">
+              {SCALES.map((s) => (
+                <button key={s.key} type="button" aria-pressed={scale === s.key} onClick={() => setScale(s.key)}>
+                  {s.label}
+                </button>
+              ))}
+            </div>
+            <ChoroplethMap items={items} values={mapValues(metric)} scale={scale} format={formatOf(metric)} title={`${metric.label} - 地理分布圖`} selected={current.county} onSelect={setSelected} />
+          </section>
+          <CountyDetail county={current} data={data} onOpenId={onOpenId} />
+        </div>
       ) : null}
 
-      {res.data && current ? (
+      {tab === 'dual' ? (
         <>
-          <div className="county-layout">
-            <section className="panel county-map-panel" aria-label="縣市地圖與排行">
-              <CountyMap items={items} metric={metric} selected={current.county} onSelect={select} />
-              <ol className="county-ranking">
-                {ranked.map((c, i) => (
-                  <li key={c.county}>
-                    <button type="button" aria-pressed={c.county === current.county} onClick={() => select(c.county)}>
-                      <span className="muted">{i + 1}</span>
-                      <b>{c.county}</b>
-                      <span title={metric.display(c)}>{metric.short(c)}</span>
-                    </button>
-                  </li>
-                ))}
-              </ol>
-            </section>
-            <CountyDetail county={current} data={res.data} onOpenId={onOpenId} />
+          <div className="stat-controls">
+            <MetricSelect label="第二個分析指標" options={metrics} value={metric2.key} onChange={setMetric2Key} />
           </div>
-          <p className="muted">
-            人口統計：{res.data.population_month}。資料來源：
-            {res.data.sources.map((s, i) => (
-              <span key={s.url}>
-                {i ? '、' : ''}
-                <a href={s.url} target="_blank" rel="noreferrer noopener">
-                  {s.label}
-                </a>
-              </span>
-            ))}
-            。「前次同黨得票」以政黨對照，無黨籍不比較。
-          </p>
+          <div className="stat-dual">
+            <section className="panel">
+              <ChoroplethMap items={items} values={mapValues(metric)} scale="Blues" format={formatOf(metric)} title={metric.label} selected={current.county} onSelect={setSelected} />
+            </section>
+            <section className="panel">
+              <ChoroplethMap items={items} values={mapValues(metric2)} scale="OrRd" format={formatOf(metric2)} title={metric2.label} selected={current.county} onSelect={setSelected} />
+            </section>
+          </div>
         </>
       ) : null}
+
+      {tab === 'compare' ? (
+        <>
+          <div className="stat-controls">
+            <MetricSelect label="比較指標（前次 → 最近一次）" options={pairs} value={pair.key} onChange={setPairKey} />
+          </div>
+          <div className="county-layout">
+            <section className="panel county-map-panel">
+              <ChoroplethMap
+                items={items}
+                values={new Map(compareRows.map((r) => [r.county, r.rate]))}
+                scale="RdYlGn"
+                diverging
+                format={rateFormat}
+                title={`${pair.label} 變化率`}
+                selected={current.county}
+                onSelect={setSelected}
+              />
+            </section>
+            <section className="panel">
+              <div className="table-scroll">
+                <table className="county-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">縣市</th>
+                      <th scope="col" className="num">{data.elections[pair.older.election].label}</th>
+                      <th scope="col" className="num">{data.elections[pair.newer.election].label}</th>
+                      <th scope="col" className="num">差異</th>
+                      <th scope="col" className="num">變化率</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[...compareRows]
+                      .sort((x, y) => (y.rate ?? -Infinity) - (x.rate ?? -Infinity))
+                      .map((r) => (
+                        <tr key={r.county} aria-current={r.county === current.county ? 'true' : undefined}>
+                          <td>
+                            <button type="button" className="link-button" onClick={() => setSelected(r.county)}>
+                              {r.county}
+                            </button>
+                          </td>
+                          <td className="num">{fmt(r.a, pair.older.unit)}</td>
+                          <td className="num">{fmt(r.b, pair.newer.unit)}</td>
+                          <td className="num">{r.diff === null ? '—' : signed(r.diff, isRate(pair.newer.unit) ? 2 : 0)}</td>
+                          <td className="num">{r.rate === null ? '—' : `${signed(r.rate, 1)}%`}</td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </div>
+        </>
+      ) : null}
+
+      {tab === 'ranking' ? (
+        <section className="panel">
+          <div className="sectionhead">
+            <h2>
+              {metric.label}・{top === '全部' ? '全部縣市' : `前 ${top} 名`}
+            </h2>
+            <div className="segmented" role="group" aria-label="顯示名次數">
+              {TOP_N.map((n) => (
+                <button key={n} type="button" aria-pressed={top === n} onClick={() => setTop(n)}>
+                  {n === '全部' ? '全部' : `前 ${n}`}
+                </button>
+              ))}
+            </div>
+          </div>
+          <Ranking
+            metric={metric}
+            items={items}
+            top={top}
+            onSelect={(county) => {
+              setSelected(county);
+              setTab('map');
+            }}
+          />
+        </section>
+      ) : null}
+
+      {tab === 'data' ? (
+        <section className="panel">
+          <div className="sectionhead">
+            <h2>原始資料</h2>
+            <button type="button" onClick={exportCsv}>
+              匯出全部指標 CSV（{metrics.length} 欄）
+            </button>
+          </div>
+          <div className="table-scroll">
+            <table className="county-table">
+              <thead>
+                <tr>
+                  <th scope="col">縣市</th>
+                  {tableMetrics.map((m) => (
+                    <th key={m.key} scope="col" className="num">
+                      {m.label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((c) => (
+                  <tr key={c.county}>
+                    <td>{c.county}</td>
+                    {tableMetrics.map((m) => (
+                      <td key={m.key} className="num">
+                        {fmt(m.value(c), m.unit)}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ) : null}
+
+      <p className="muted">
+        資料來源：
+        {data.sources.map((s, i) => (
+          <span key={s.url}>
+            {i ? '、' : ''}
+            <a href={s.url} target="_blank" rel="noreferrer noopener">
+              {s.label}
+            </a>
+          </span>
+        ))}
+        。統計地圖的顏色代表數值；選舉表中的顏色代表黨籍。「前次同黨得票」以政黨對照，無黨籍不比較。
+      </p>
     </>
   );
 }

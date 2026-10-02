@@ -1056,21 +1056,34 @@ a.stat-tile:hover { border-color: #98a2b3; box-shadow: var(--card-base-hover); t
 .source-bar.mono { background: var(--ink); opacity: 0.45; }
 .source-count { text-align: right; font-variant-numeric: tabular-nums; }
 
-/* ---------- 縣市 ---------- */
-.county-layout { display: grid; grid-template-columns: minmax(280px, 400px) minmax(0, 1fr); gap: var(--space-4); align-items: start; margin-top: var(--space-4); }
+/* ---------- 縣市統計地圖 ---------- */
+.stat-controls { display: flex; flex-wrap: wrap; align-items: end; gap: var(--space-3); margin: var(--space-4) 0 var(--space-3); }
+.stat-control { display: grid; gap: 4px; font-size: var(--fs-sm); color: var(--muted); }
+.stat-control select { min-width: min(360px, 100%); max-width: 100%; }
+.stat-overview { margin-bottom: var(--space-4); }
+.stat-tabs, .stat-scales { flex-wrap: wrap; }
+.stat-tabs button, .stat-scales button { white-space: nowrap; }
+.county-layout { display: grid; grid-template-columns: minmax(280px, 420px) minmax(0, 1fr); gap: var(--space-4); align-items: start; margin-top: var(--space-4); }
 .county-map-panel { position: sticky; top: var(--space-3); display: grid; gap: var(--space-3); }
-.county-map { width: 100%; height: auto; max-height: 62vh; }
-.county-shape { stroke: var(--surface); stroke-width: 0.8; cursor: pointer; transition: opacity var(--t-fast); }
+.stat-dual { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); }
+.county-layout > *, .stat-dual > * { min-width: 0; }
+.stat-map { margin: 0; display: grid; gap: 8px; }
+.stat-map figcaption { font-weight: 700; text-align: center; }
+.stat-map svg { width: 100%; height: auto; max-height: 64vh; }
+.stat-map-hover { margin: 0; min-height: 1.5em; text-align: center; font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
+.stat-legend { display: grid; grid-template-columns: auto minmax(60px, 1fr) auto; align-items: center; gap: 8px; font-size: var(--fs-xs); color: var(--muted); font-variant-numeric: tabular-nums; }
+.stat-legend i { height: 12px; border-radius: 3px; border: 1px solid var(--rule); }
+.county-shape { stroke: #fff; stroke-width: 0.8; cursor: pointer; transition: opacity var(--t-fast); }
 .county-shape:hover { opacity: 0.8; }
 .county-shape:focus-visible { outline: none; stroke: var(--accent); stroke-width: 2.5; }
 .county-shape[aria-current='true'] { stroke: var(--ink); stroke-width: 2.5; }
 .county-inset { fill: none; stroke: var(--rule); stroke-dasharray: 4 3; }
 .county-inset-label { font-size: 15px; fill: var(--muted); }
-.county-metrics { flex-wrap: wrap; }
-.county-metrics button { white-space: nowrap; }
-.county-ranking { list-style: none; margin: 0; padding: 0; max-height: 300px; overflow-y: auto; font-size: var(--fs-sm); }
-.county-ranking button { display: grid; grid-template-columns: 22px 56px 1fr; gap: 6px; align-items: baseline; width: 100%; text-align: left; border: 0; border-radius: 6px; background: none; padding: 4px 6px; font-variant-numeric: tabular-nums; }
-.county-ranking button[aria-pressed='true'] { background: var(--accent-soft); color: var(--accent-ink); }
+.stat-ranking { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.stat-ranking li { display: grid; grid-template-columns: 24px 64px minmax(0, 1fr) auto; align-items: center; gap: 8px; font-variant-numeric: tabular-nums; font-size: var(--fs-sm); }
+.stat-bar { height: 16px; background: var(--rule-soft); border-radius: 3px; overflow: hidden; }
+.stat-bar i { display: block; height: 100%; }
+.stat-bar-value { min-width: 9em; text-align: right; }
 .county-detail { display: grid; gap: var(--space-4); }
 .county-detail h2, .county-detail h3 { margin: 0; }
 .county-legislators { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; }
@@ -1082,9 +1095,12 @@ a.stat-tile:hover { border-color: #98a2b3; box-shadow: var(--card-base-hover); t
 .county-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
 .county-table th, .county-table td { padding: 6px 8px; border-bottom: 1px solid var(--rule-soft); text-align: left; white-space: nowrap; }
 .county-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.county-table tr[aria-current='true'] td { background: var(--accent-soft); }
 .county-previous ul { margin: 6px 0 0; padding-left: 18px; font-size: var(--fs-sm); }
 @media (max-width: 860px) {
-  .county-layout { grid-template-columns: 1fr; }
+  .county-layout, .stat-dual { grid-template-columns: 1fr; }
   .county-map-panel { position: static; }
-  .county-map { max-height: 48vh; }
+  .stat-map svg { max-height: 52vh; }
+  .stat-ranking li { grid-template-columns: 20px 56px minmax(0, 1fr); }
+  .stat-bar-value { grid-column: 2 / -1; min-width: 0; text-align: left; }
 }
