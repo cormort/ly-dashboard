@@ -116,6 +116,26 @@ warnings: ['游錫堃 在本屆無任何會期委員會紀錄（辭職）', '李
 
 畫面截圖（2026-09-30 改版後）：`docs/shot-home.png`（最近動態）、`docs/shot-rankings.png`（排行榜）、`docs/shot-legislators.png`（委員查詢）。
 
+## Android 平板（Termux）
+
+需求：Termux（F-Droid 版）、`pkg install nodejs git`（Node ≥ 22.5）；要桌面捷徑再裝 **Termux:Widget**。
+
+```bash
+git clone https://github.com/cormort/ly-dashboard.git && cd ly-dashboard
+bash start-termux.sh                 # 直接啟動；瀏覽器開 http://127.0.0.1:8787
+bash termux/install-shortcuts.sh     # 建立兩個桌面捷徑（只需一次）
+```
+
+| 檔案 | 作用 |
+| --- | --- |
+| `start-termux.sh` | 套件變動時 `npm ci`、前端有改時重 build、啟動伺服器 |
+| `termux/launch.sh` | 結束舊伺服器 → 啟動 → 就緒後自動開瀏覽器（伺服器留在視窗前景，關視窗即停止） |
+| `termux/update.sh` | `git pull` 後執行 `launch.sh` |
+| `termux/install-shortcuts.sh` | 在 `~/.shortcuts` 建立「立委觀測站」「更新立委觀測站」兩個捷徑（只轉呼叫上面的腳本，更新腳本不必重裝捷徑） |
+
+注意：伺服器要保持執行，每日排程才會跑；`git pull` 需要 GitHub Token（私有儲存庫），可用 `git config --global credential.helper store` 記住。
+捷徑視窗可能帶 `NODE_ENV=production`，`launch.sh` 已明確覆寫，否則 npm 會略過 `tsc`/`vite` 導致 build 失敗。
+
 ## 部署（尚未執行，待決定）
 
 1. **排程宿主**：Cloudflare Worker + D1 + Cron，或小 VPS + SQLite + cron。兩者都必須先做 30 分鐘 spike：從目標 runtime 打一次 `data.ly.gov.tw`（帶具名 UA），確認 TLS 與 WAF 都過。
