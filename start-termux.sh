@@ -11,9 +11,12 @@ command -v node >/dev/null || { echo "找不到 node，請先執行：pkg instal
 # 防止平板休眠時 Termux 被系統殺掉
 command -v termux-wake-lock >/dev/null && termux-wake-lock || true
 
-[ -d web/node_modules ] || npm --prefix web install
+# 沒裝過、或 lockfile 比上次安裝新（git pull 帶進新套件）就重裝
+if [ ! -f web/node_modules/.package-lock.json ] || [ web/package-lock.json -nt web/node_modules/.package-lock.json ]; then
+  npm --prefix web install
+fi
 # 前端原始碼比 dist 新（例如 git pull 之後）就重 build，避免一直開到舊版
-if [ ! -f web/dist/index.html ] || [ -n "$(find web/src web/index.html web/package.json -newer web/dist/index.html -print -quit 2>/dev/null)" ]; then
+if [ ! -f web/dist/index.html ] || [ -n "$(find web/src web/index.html web/package.json web/package-lock.json web/vite.config.ts web/tsconfig.json -newer web/dist/index.html -print -quit 2>/dev/null)" ]; then
   npm --prefix web run build
 fi
 
