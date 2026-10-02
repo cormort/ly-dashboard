@@ -29,9 +29,9 @@ export interface HeaderProps {
 }
 
 /**
- * 導覽兩層（原本一列 9 個項目，每個等重 → 使用者說「雜亂沒有重點」）：
- * 上層 5 個主題，進入主題後才顯示該主題的次級頁面。
- * 上層順序：總覽 → 最近動態 → 委員 → 議事 → 機關／基金。
+ * 導覽兩層，順序依「機關首長要面對立法院」的關心程度：
+ * 總覽 → 議事（法案、預算、委員會＝對機關的直接影響）→ 委員（誰在問、誰在動）→ 新聞（委員與首長的輿情）→ 機關／基金（查詢工具）。
+ * 縣市地圖與最近動態是看委員選區與活躍度用的，收進「委員」底下，不佔頂層。
  */
 interface NavGroup {
   id: string;
@@ -42,20 +42,6 @@ interface NavGroup {
 
 const NAV: NavGroup[] = [
   { id: 'overview', label: '總覽', home: 'dashboard', routes: [{ route: 'dashboard', label: '總覽' }] },
-  { id: 'counties', label: '縣市', home: 'counties', routes: [{ route: 'counties', label: '縣市' }] },
-  { id: 'activity', label: '最近動態', home: 'home', routes: [{ route: 'home', label: '最近動態' }] },
-  { id: 'news', label: '新聞', home: 'news', routes: [{ route: 'news', label: '新聞' }] },
-  { id: 'officials', label: '機關首長新聞', home: 'officials', routes: [{ route: 'officials', label: '機關首長新聞' }] },
-  {
-    id: 'members',
-    label: '委員',
-    home: 'legislators',
-    routes: [
-      { route: 'legislators', label: '委員查詢' },
-      { route: 'compare', label: '委員比較' },
-      { route: 'rankings', label: '排行榜' },
-    ],
-  },
   {
     id: 'agenda',
     label: '議事',
@@ -64,6 +50,27 @@ const NAV: NavGroup[] = [
       { route: 'bills', label: '法案查詢' },
       { route: 'budget', label: '預算審議' },
       { route: 'committees', label: '委員會' },
+    ],
+  },
+  {
+    id: 'members',
+    label: '委員',
+    home: 'legislators',
+    routes: [
+      { route: 'legislators', label: '委員查詢' },
+      { route: 'home', label: '最近動態' },
+      { route: 'compare', label: '委員比較' },
+      { route: 'rankings', label: '排行榜' },
+      { route: 'counties', label: '縣市' },
+    ],
+  },
+  {
+    id: 'news',
+    label: '新聞',
+    home: 'news',
+    routes: [
+      { route: 'news', label: '委員新聞' },
+      { route: 'officials', label: '機關首長新聞' },
     ],
   },
   {

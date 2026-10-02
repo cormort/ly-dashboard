@@ -198,15 +198,17 @@ expectAll('最近動態（/activity）：站名、導覽、動態／議題／新
   '讀取議題',
   '讀取新聞',
 ]);
-expectNone('最上層導覽不該再把所有子頁面平鋪出來', homeHtml, ['排行榜', '法案查詢', '委員比較']);
+// 只看最上層導覽（<nav aria-label="主要頁面">）；子頁面屬於第二層 subnav，在所屬主題的頁面上本來就會出現
+const topNav = homeHtml.match(/<nav aria-label="主要頁面">([\s\S]*?)<\/nav>/)?.[1] ?? '';
+expectNone('最上層導覽不該再把所有子頁面平鋪出來', topNav, ['排行榜', '法案查詢', '委員比較', '縣市', '最近動態', '機關首長新聞']);
 check('首頁初始不顯示任何委員', !homeHtml.includes('查看檔案'));
-// 上層導覽順序：總覽 → 縣市 → 最近動態 → 新聞 → 機關首長新聞 → 委員 → 議事 → 機關／基金（原指定順序，之後加入的分頁插在其間）
+// 上層導覽順序（機關首長視角）：總覽 → 議事 → 委員 → 新聞 → 機關／基金；縣市、最近動態收進「委員」，首長新聞收進「新聞」
 check(
-  '上層導覽的順序是 總覽→縣市→最近動態→新聞→機關首長新聞→委員→議事→機關／基金',
+  '上層導覽的順序是 總覽→議事→委員→新聞→機關／基金',
   (() => {
     const nav = dashboardHtml.match(/<nav aria-label="主要頁面">([\s\S]*?)<\/nav>/)?.[1] ?? '';
     const labels = [...nav.matchAll(/>([^<>]+)<\/a>/g)].map((m) => m[1].trim()).filter(Boolean);
-    return labels.join('→') === '總覽→縣市→最近動態→新聞→機關首長新聞→委員→議事→機關／基金';
+    return labels.join('→') === '總覽→議事→委員→新聞→機關／基金';
   })(),
 );
 check('不含示範／假資料字串', !/甲黨|示範資料|林怡安|陳宏宇|乙黨/.test(homeHtml));
@@ -754,6 +756,22 @@ expectAll('總覽：loading 態有統計列、焦點卡與各區塊骨架', dash
   '各縣市最新動態',
   'href="/bills?status=%E4%B8%89%E8%AE%80"',
 ]);
+// 總覽依首長關心的順序分區：議事 → 委員 → 新聞；並有「機關首長新聞」卡
+check(
+  '總覽：分區順序是 議事→委員→新聞，且新聞區有機關首長新聞卡',
+  (() => {
+    const heads = [...dashboardLoading.matchAll(/<h2 id="dash-(\w+)">/g)].map((m) => m[1]).join('→');
+    return heads === 'agenda→members→news' && dashboardLoading.includes('aria-label="機關首長新聞"');
+  })(),
+);
+check(
+  '總覽：議事區的卡片順序是 預算審議→預算中心報告→法案→三讀→委員會',
+  (() => {
+    const agenda = dashboardLoading.split('id="dash-members"')[0];
+    const order = ['預算審議最新進度', '預算中心報告', '法案最新進度', '最新三讀', '委員會會議紀錄'].map((t) => agenda.indexOf(`aria-label="${t}"`));
+    return order.every((i, k) => i > 0 && (k === 0 || i > order[k - 1]));
+  })(),
+);
 // 各縣市改成預設收合的 disclosure：25 張卡片不再一次攤開
 check(
   '總覽：各縣市動態是預設收合的 <details>',

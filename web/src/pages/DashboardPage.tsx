@@ -7,6 +7,7 @@ import type {
   BudgetReportsResponse,
   BudgetResponse,
   CommitteeActivityResponse,
+  NewsArticlesResponse,
   NewsResponse,
   RankingsResponse,
   RegionsResponse,
@@ -84,6 +85,7 @@ export function DashboardPage({ refreshToken, onOpenId, onNavigate }: DashboardP
   // 每張卡只取 3 則：總覽的任務是「指出重點並導向」，不是把所有清單攤開
   const activity = useApi<ActivityResponse>(buildUrl('/activity', { limit: 4 }), opts);
   const news = useApi<NewsResponse>(buildUrl('/news', { limit: 8 }), opts);
+  const officialsNews = useApi<NewsArticlesResponse>(buildUrl('/news/articles', { scope: 'officials', limit: 5 }), opts);
   const bills = useApi<BillsResponse>(buildUrl('/bills', { limit: 3 }), opts);
   const passed = useApi<BillsResponse>(buildUrl('/bills', { status: '三讀', limit: 3 }), opts);
   const budget = useApi<BudgetResponse>(buildUrl('/budget', { limit: 3 }), opts);
@@ -95,10 +97,10 @@ export function DashboardPage({ refreshToken, onOpenId, onNavigate }: DashboardP
   const link = (route: Route, params?: Record<string, string>) => pathFor(route, params);
   const passedCount = bills.data?.statuses.filter((s) => PASSED_STATUSES.has(s.name)).reduce((sum, s) => sum + s.count, 0);
   const tiles: { label: string; value: number | undefined; href: string }[] = [
-    { label: '在職委員', value: regions.data?.items.reduce((sum, r) => sum + r.legislators.length, 0), href: link('legislators') },
+    { label: '預算審議中', value: budget.data?.states.pending, href: link('budget', { category: 'all', state: 'pending' }) },
     { label: '本屆委員提案', value: bills.data?.total, href: link('bills') },
     { label: '已三讀', value: passedCount, href: link('bills', { status: '三讀' }) },
-    { label: '預算審議中', value: budget.data?.states.pending, href: link('budget', { category: 'all', state: 'pending' }) },
+    { label: '在職委員', value: regions.data?.items.reduce((sum, r) => sum + r.legislators.length, 0), href: link('legislators') },
   ];
 
   return (
@@ -106,7 +108,7 @@ export function DashboardPage({ refreshToken, onOpenId, onNavigate }: DashboardP
       <div className="page-head">
         <h1>總覽</h1>
         <p className="page-lead">
-          本屆立法院的四個關鍵數字，接著是最新動態、法案、預算與委員會的重點摘要。
+          依機關最常需要的順序：先看議事（預算、法案、委員會），再看哪些委員在動，最後是新聞輿情。
           每個區塊右上角都能進入完整頁面；各縣市動態收在頁面最下方（預設收合）。
         </p>
       </div>
@@ -128,7 +130,100 @@ export function DashboardPage({ refreshToken, onOpenId, onNavigate }: DashboardP
         ))}
       </div>
 
-      <div className="dash-grid">
+      <section className="dash-section" aria-labelledby="dash-agenda">
+        <div className="dash-section-head">
+          <h2 id="dash-agenda">議事</h2>
+          <p className="muted">預算、法案與委員會：對機關最直接的影響</p>
+        </div>
+        <div className="dash-grid">
+        <Card title="預算審議最新進度" href={link('budget', { category: 'all' })} onNavigate={onNavigate} resource={budget}>
+          {(data) => (
+            <ul className="dash-list">
+              {data.items.map((b) => (
+                <li key={b.id}>
+                  <span className="status-tag">{b.proposer}</span>
+                  <a href={b.url} target="_blank" rel="noreferrer noopener" className="clamp-2">
+                    {b.name}
+                  </a>
+                  <time>{shortDate(b.latest_date)}</time>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+        <Card title="預算中心報告" href={link('budget', { category: 'all' })} onNavigate={onNavigate} resource={reports}>
+          {(data) => (
+            <ul className="dash-list">
+              {data.items.map((r) => (
+                <li key={r.no}>
+                  <span className="kind">{r.type.replace('評估', '')}</span>
+                  {r.url ? (
+                    <a href={r.url} target="_blank" rel="noreferrer noopener" className="clamp-2">
+                      {r.title}
+                    </a>
+                  ) : (
+                    <span className="clamp-2">{r.title}</span>
+                  )}
+                  <time>{r.completed?.slice(0, 7).replace('-', '/')}</time>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+        <Card title="法案最新進度" href={link('bills')} onNavigate={onNavigate} resource={bills}>
+          {(data) => (
+            <ul className="dash-list">
+              {data.items.map((b) => (
+                <li key={b.id}>
+                  <span className="status-tag">{b.status}</span>
+                  <a href={b.url} target="_blank" rel="noreferrer noopener" className="clamp-2">
+                    {billTitle(b.name)}
+                  </a>
+                  <time>{shortDate(b.latest_date)}</time>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+        <Card title="最新三讀" href={link('bills', { status: '三讀' })} onNavigate={onNavigate} resource={passed}>
+          {(data) => (
+            <ul className="dash-list">
+              {data.items.map((b) => (
+                <li key={b.id}>
+                  {b.sponsors[0] ? <Who {...b.sponsors[0]} onOpenId={onOpenId} /> : <span className="muted">黨團</span>}
+                  <a href={b.url} target="_blank" rel="noreferrer noopener" className="clamp-2">
+                    {billTitle(b.name)}
+                  </a>
+                  <time>{shortDate(b.latest_date)}</time>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+        <Card title="委員會會議紀錄" href={link('committees')} onNavigate={onNavigate} resource={committees} wide>
+          {(data) => (
+            <ul className="dash-list">
+              {data.records.items.map((r) => (
+                <li key={r.id}>
+                  <span className="kind">{r.committees[0] ? shortCommittee(r.committees[0]) : '會議'}</span>
+                  <a href={r.html_url ?? r.gazette_url ?? '#'} target="_blank" rel="noreferrer noopener" className="clamp-2">
+                    {r.title}
+                  </a>
+                  <time>{shortDate(r.date)}</time>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+        </div>
+      </section>
+
+      <section className="dash-section" aria-labelledby="dash-members">
+        <div className="dash-section-head">
+          <h2 id="dash-members">委員</h2>
+          <p className="muted">誰在關注、誰最活躍</p>
+        </div>
+        <div className="dash-grid">
         <Card title="最新動態" href={link('home')} onNavigate={onNavigate} resource={activity} wide>
           {(data) => (
             <ul className="dash-list">
@@ -156,7 +251,52 @@ export function DashboardPage({ refreshToken, onOpenId, onNavigate }: DashboardP
             </ul>
           )}
         </Card>
+        <Card title="排行榜（近 30 天）" href={link('rankings')} onNavigate={onNavigate} resource={rankings} wide>
+          {(data) => (
+            <div className="dash-boards">
+              {/* 總覽只放近期活動三榜；選舉兩榜（險勝、流失）在排行榜頁 */}
+              {[data.boards.news, data.boards.facebook, data.boards.bills].map((board) =>
+                board ? (
+                  <div key={board.type}>
+                    <h3>{board.title}</h3>
+                    <ol>
+                      {board.items.map((item) => (
+                        <li key={item.legislator.id}>
+                          <Who {...item.legislator} onOpenId={onOpenId} />
+                          <span className="muted">{item.value_display}</span>
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                ) : null,
+              )}
+            </div>
+          )}
+        </Card>
+        </div>
+      </section>
 
+      <section className="dash-section" aria-labelledby="dash-news">
+        <div className="dash-section-head">
+          <h2 id="dash-news">新聞</h2>
+          <p className="muted">首長與委員的輿情</p>
+        </div>
+        <div className="dash-grid">
+        <Card title="機關首長新聞" href={link('officials')} onNavigate={onNavigate} resource={officialsNews}>
+          {(data) => (
+            <ul className="dash-list">
+              {data.items.map((n) => (
+                <li key={n.url}>
+                  <span className="kind">{n.legislators[0]?.name ?? '首長'}</span>
+                  <a href={n.url} target="_blank" rel="noreferrer noopener" className="clamp-2">
+                    {n.title}
+                  </a>
+                  <time>{shortDate(n.published_at)}</time>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
         <Card title="最新新聞" href={link('news')} onNavigate={onNavigate} resource={news}>
           {(data) => (
             <ul className="dash-list">
@@ -172,8 +312,7 @@ export function DashboardPage({ refreshToken, onOpenId, onNavigate }: DashboardP
             </ul>
           )}
         </Card>
-
-        <Card title="新聞來源" href={link('news')} onNavigate={onNavigate} resource={news}>
+        <Card title="新聞來源" href={link('news')} onNavigate={onNavigate} resource={news} wide>
           {(data) => {
             const max = Math.max(1, ...data.sources.map((s) => s.count));
             return (
@@ -199,114 +338,8 @@ export function DashboardPage({ refreshToken, onOpenId, onNavigate }: DashboardP
             );
           }}
         </Card>
-
-        <Card title="法案最新進度" href={link('bills')} onNavigate={onNavigate} resource={bills}>
-          {(data) => (
-            <ul className="dash-list">
-              {data.items.map((b) => (
-                <li key={b.id}>
-                  <span className="status-tag">{b.status}</span>
-                  <a href={b.url} target="_blank" rel="noreferrer noopener" className="clamp-2">
-                    {billTitle(b.name)}
-                  </a>
-                  <time>{shortDate(b.latest_date)}</time>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-
-        <Card title="最新三讀" href={link('bills', { status: '三讀' })} onNavigate={onNavigate} resource={passed}>
-          {(data) => (
-            <ul className="dash-list">
-              {data.items.map((b) => (
-                <li key={b.id}>
-                  {b.sponsors[0] ? <Who {...b.sponsors[0]} onOpenId={onOpenId} /> : <span className="muted">黨團</span>}
-                  <a href={b.url} target="_blank" rel="noreferrer noopener" className="clamp-2">
-                    {billTitle(b.name)}
-                  </a>
-                  <time>{shortDate(b.latest_date)}</time>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-
-        <Card title="預算審議最新進度" href={link('budget', { category: 'all' })} onNavigate={onNavigate} resource={budget}>
-          {(data) => (
-            <ul className="dash-list">
-              {data.items.map((b) => (
-                <li key={b.id}>
-                  <span className="status-tag">{b.proposer}</span>
-                  <a href={b.url} target="_blank" rel="noreferrer noopener" className="clamp-2">
-                    {b.name}
-                  </a>
-                  <time>{shortDate(b.latest_date)}</time>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-
-        <Card title="預算中心報告" href={link('budget', { category: 'all' })} onNavigate={onNavigate} resource={reports}>
-          {(data) => (
-            <ul className="dash-list">
-              {data.items.map((r) => (
-                <li key={r.no}>
-                  <span className="kind">{r.type.replace('評估', '')}</span>
-                  {r.url ? (
-                    <a href={r.url} target="_blank" rel="noreferrer noopener" className="clamp-2">
-                      {r.title}
-                    </a>
-                  ) : (
-                    <span className="clamp-2">{r.title}</span>
-                  )}
-                  <time>{r.completed?.slice(0, 7).replace('-', '/')}</time>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-
-        <Card title="委員會會議紀錄" href={link('committees')} onNavigate={onNavigate} resource={committees}>
-          {(data) => (
-            <ul className="dash-list">
-              {data.records.items.map((r) => (
-                <li key={r.id}>
-                  <span className="kind">{r.committees[0] ? shortCommittee(r.committees[0]) : '會議'}</span>
-                  <a href={r.html_url ?? r.gazette_url ?? '#'} target="_blank" rel="noreferrer noopener" className="clamp-2">
-                    {r.title}
-                  </a>
-                  <time>{shortDate(r.date)}</time>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-
-        <Card title="排行榜（近 30 天）" href={link('rankings')} onNavigate={onNavigate} resource={rankings} wide>
-          {(data) => (
-            <div className="dash-boards">
-              {/* 總覽只放近期活動三榜；選舉兩榜（險勝、流失）在排行榜頁 */}
-              {[data.boards.news, data.boards.facebook, data.boards.bills].map((board) =>
-                board ? (
-                  <div key={board.type}>
-                    <h3>{board.title}</h3>
-                    <ol>
-                      {board.items.map((item) => (
-                        <li key={item.legislator.id}>
-                          <Who {...item.legislator} onOpenId={onOpenId} />
-                          <span className="muted">{item.value_display}</span>
-                        </li>
-                      ))}
-                    </ol>
-                  </div>
-                ) : null,
-              )}
-            </div>
-          )}
-        </Card>
-      </div>
+        </div>
+      </section>
 
       <details
         className="panel regions-details"
