@@ -398,6 +398,38 @@ Query 參數（全部可選）：
 - 登記名含族語名時只用漢名搜尋（`伍麗華Saidhai‧Tahovecahe` → `伍麗華`），異體字換成媒體常用字（`寳` → `寶`）。
 - 單一委員抓取失敗不影響其他人；超過半數失敗才把該次同步標為 `failed`，既有新聞保留。
 
+## GET /api/v1/news/articles?scope=&legislator=&q=&source=&limit=30&offset=0
+
+新聞頁（委員新聞 `/news`、機關首長新聞 `/officials`）與總覽用。同一篇報導（網址相同）合併成一列，附上標題提到的人；依發布時間新→舊。
+
+| 參數 | 說明 |
+| --- | --- |
+| `scope` | `legislators`（預設，委員新聞，資料同 `/news`）或 `officials`（機關首長新聞：`server/officials.json` 名單中的院長、副院長與部會首長，同樣是 Google 新聞、只收標題含姓名者，兩字姓名另需標題含機關關鍵字） |
+| `legislator` | 只看某人：委員新聞用委員 id，首長新聞用首長姓名 |
+| `q` | 標題關鍵字（子字串比對） |
+| `source` | 媒體名稱（精確比對，取自 `sources[].name`） |
+| `limit` / `offset` | 分頁；`limit` 1–100，預設 30 |
+
+```json
+{
+  "meta": { "...": "...", "news_fetched_at": "2026-10-02T21:42:39.026Z" },
+  "total": 1104,
+  "recent_7d": 349,
+  "source_total": 118,
+  "sources": [ { "name": "udn.com", "count": 88 } ],
+  "people": [ { "id": "卓榮泰", "name": "卓榮泰", "party": "行政院院長", "count": 128 } ],
+  "items": [
+    { "url": "https://news.google.com/rss/articles/…", "title": "…", "source": "LINE TODAY", "published_at": "2026-10-02T19:04:31.000Z",
+      "legislators": [ { "id": "卓榮泰", "name": "卓榮泰", "party": "行政院院長" } ] }
+  ]
+}
+```
+
+- `total`：套用全部條件後的篇數；`recent_7d`：其中從**現在**起算近 7 天的篇數（總覽「首長新聞（近 7 天）」統計卡用；同步停了就會往下掉）。
+- `sources`（前 30 家，依篇數排序）與 `source_total`：套用 `legislator`、`q` 之後、`source` **之前**統計，選了某家媒體後其他家的數字不會消失。
+- `people`：只有 `scope=officials` 才有，列出全部首長與各自則數（不受篩選條件影響），`id` 即姓名，`party` 欄放「機關＋職稱」。
+- `items[].legislators`：委員新聞為 `{ id, name, party }`；首長新聞為 `{ id: 姓名, name, party: 機關＋職稱 }`。指定 `legislator` 時只列該人。媒體不明時 `source` 為 `未知`。
+
 ## GET /api/v1/rankings
 
 三種排行榜：新聞曝光、臉書發文、法案提案。**只列入在職委員**（離職者仍有歷史提案，放進排行榜會誤導）。
