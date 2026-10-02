@@ -1018,6 +1018,13 @@ export function listSplitTicket(db, { year = 2024 } = {}) {
   return { meta: envelope(db), years, year: y, count: items.length, items };
 }
 
+/** 人口結構 × 得票：368 鄉鎮市區的年齡結構與 2020／2024 總統、不分區政黨票（server/demographics.json） */
+let demographics = null;
+export function listDemographics(db) {
+  demographics ??= JSON.parse(readFileSync(new URL('./demographics.json', import.meta.url), 'utf8'));
+  return { meta: envelope(db), ...demographics, count: demographics.towns.length };
+}
+
 export function listLegislatorVotes(db, { id = null } = {}) {
   const items = db
     .prepare(`SELECT id, name, party, area_name FROM legislators WHERE ${id ? 'id = ?' : 'leave_flag = 0'} ORDER BY area_name, name`)

@@ -6,7 +6,7 @@ import { openDb, applyDataset, applyBills, applySocial, upsertNews, pruneLogs, g
 import { buildDataset, normalizeBills, normalizeMeetings, normalizeSocial, newsName, rocDate, DataValidationError } from '../server/normalize.mjs';
 import { CONFIG } from '../server/config.mjs';
 import { runIngest, runBillsIngest, runBudgetIngest, runBudgetReportsIngest, runMeetingsIngest, budgetPageUrl, runNewsIngest, runSocialIngest, runAll } from '../server/ingest.mjs';
-import { getHealth, listBills, listBudget, listBudgetMeetings, listBudgetReports, budgetState, listChanges, listCounties, listLegislatorVotes, listRankings, compareLegislators, listRegions, listSplitTicket, listLegislators, listNews, listSyncRuns } from '../server/queries.mjs';
+import { getHealth, listBills, listBudget, listBudgetMeetings, listBudgetReports, budgetState, listChanges, listCounties, listLegislatorVotes, listRankings, compareLegislators, listRegions, listSplitTicket, listDemographics, listLegislators, listNews, listSyncRuns } from '../server/queries.mjs';
 import { FetchError } from '../server/fetch-ly.mjs';
 import { syncOnce } from '../server/index.mjs';
 
@@ -837,4 +837,16 @@ test('分裂投票：每年 73 個選區，各選區總統與政黨票的有效�
     }
   }
   assert.equal(listSplitTicket(seeded(), { year: 1999 }).year, 2024);
+});
+
+test('人口結構 × 得票：368 鄉鎮市區，人口與各黨得票加總等於縣市加總', () => {
+  const db = seeded();
+  const res = listDemographics(db);
+  assert.equal(res.count, 368);
+  const counties = listCounties(db).items;
+  assert.equal(res.towns.reduce((s, t) => s + t.population, 0), counties.reduce((s, c) => s + c.population, 0));
+  const byTown = res.towns.reduce((s, t) => s + t.elections.party_list_2024.votes['台灣民眾黨'], 0);
+  const byCounty = counties.reduce((s, c) => s + c.trends.party_list.find((e) => e.year === 2024).votes['台灣民眾黨'], 0);
+  assert.equal(byTown, byCounty);
+  for (const t of res.towns) assert.ok(t.elderly_ratio > 0 && t.elderly_ratio < 60 && t.median_age > 20, t.town);
 });

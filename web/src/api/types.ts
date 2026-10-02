@@ -759,6 +759,30 @@ export interface LegislatorVotesResponse {
   items: { legislator: { id: string; name: string; party: string; area_name: string | null; region: string | null }; history: LegislatorRace[] }[];
 }
 
+/* ---------- /demographics ---------- */
+
+export interface DemographicTown {
+  county: string;
+  town: string;
+  population: number;
+  /** 0–14、20–39、65 歲以上占人口比率（%） */
+  child_ratio: number;
+  young_ratio: number;
+  elderly_ratio: number;
+  median_age: number;
+  household_size: number;
+  elections: Record<'president_2024' | 'party_list_2024' | 'president_2020' | 'party_list_2020', PartyBucket | null>;
+}
+
+export interface DemographicsResponse {
+  meta: Meta;
+  population_month: string;
+  elections: Record<'president_2024' | 'party_list_2024' | 'president_2020' | 'party_list_2020', string>;
+  sources: { label: string; url: string }[];
+  count: number;
+  towns: DemographicTown[];
+}
+
 /* ---------- /split-ticket ---------- */
 
 export interface PartyBucket {

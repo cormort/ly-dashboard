@@ -22,6 +22,7 @@ const { values: args } = parseArgs({
     geo: { type: 'string' },
     out: { type: 'string', default: 'server/county-stats.json' },
     'legislators-out': { type: 'string', default: 'server/legislator-votes.json' },
+    'demographics-out': { type: 'string', default: 'server/demographics.json' },
   },
 });
 if (!args.cec || !args.moi || !args.geo) throw new Error('需要 --cec <dir> --moi <data.csv> --geo <geojson>');
@@ -57,6 +58,56 @@ function population(file) {
     out.set(county, c);
   }
   return { month: data[0][0], counties: out };
+}
+
+/** 鄉鎮市區人口結構（村里單一年齡加總）：各年齡層比率、年齡中位數、平均戶量 */
+function townPopulation(file) {
+  const [header, ...data] = rows(file);
+  const age0 = header.indexOf('0歲-男');
+  const out = new Map();
+  for (const r of data) {
+    const key = `${fixName(r[2].slice(0, 3))}${r[2].slice(3)}`;
+    const t = out.get(key) ?? { county: fixName(r[2].slice(0, 3)), town: r[2].slice(3), households: 0, population: 0, ages: new Array(101).fill(0) };
+    t.households += Number(r[4]);
+    t.population += Number(r[5]);
+    for (let age = 0; age <= 100; age += 1) t.ages[age] += Number(r[age0 + age * 2]) + Number(r[age0 + age * 2 + 1]);
+    out.set(key, t);
+  }
+  const share = (t, from, to) => Math.round((t.ages.slice(from, to + 1).reduce((s, n) => s + n, 0) / t.population) * 10000) / 100;
+  return new Map(
+    [...out].map(([key, t]) => {
+      let acc = 0;
+      const median = t.ages.findIndex((n) => (acc += n) >= t.population / 2);
+      return [
+        key,
+        {
+          county: t.county,
+          town: t.town,
+          population: t.population,
+          child_ratio: share(t, 0, 14),
+          young_ratio: share(t, 20, 39),
+          elderly_ratio: share(t, 65, 100),
+          median_age: median,
+          household_size: Math.round((t.population / t.households) * 100) / 100,
+        },
+      ];
+    }),
+  );
+}
+
+/** 鄉鎮市區層級的政黨得票（總統、不分區政黨票）：{ key → { valid, votes } } */
+function townVotes(dir) {
+  const { candOf, countyOf, townOf, all } = loadCec(dir);
+  const out = new Map();
+  for (const r of all.filter((x) => Number(x[0]) !== 0 && Number(x[3]) !== 0 && Number(x[4]) === 0 && Number(x[5]) === 0)) {
+    const key = `${countyOf(r)}${townOf(r)}`;
+    const t = out.get(key) ?? { valid: 0, votes: {} };
+    const { party: p } = candOf(r);
+    t.valid += Number(r[7]);
+    t.votes[p] = (t.votes[p] ?? 0) + Number(r[7]);
+    out.set(key, t);
+  }
+  return out;
 }
 
 /* ---------- 選舉（中選會 el* 原始檔） ---------- */
@@ -109,7 +160,8 @@ function loadCec(dir) {
   const all = rows(file('elctks'));
   const totals = all.filter(isTotal);
   const prof = rows(file('elprof')).filter(isTotal);
-  return { candOf, countyOf, totals, prof, all };
+  const townOf = (r) => names.get(`${r[0]}${r[1]}00${r[3]}0000`);
+  return { candOf, countyOf, townOf, totals, prof, all };
 }
 
 /** 縣市層級結果（總統、縣市長、不分區政黨票） */
@@ -374,3 +426,29 @@ const races = Object.entries(PRESIDENT).flatMap(([year, dir]) => [
 ]).concat(byElections()).map(({ key, ...race }) => race);
 writeFileSync(args['legislators-out'], `${JSON.stringify({ years: Object.keys(PRESIDENT).map(Number), sources: sources.slice(0, 1), races })}\n`);
 console.log(`wrote ${args['legislators-out']}: ${races.length} 場`);
+
+/* ---------- 鄉鎮市區：人口結構 × 得票（2020、2024 總統與不分區政黨票） ---------- */
+const towns = townPopulation(args.moi);
+const townElections = {};
+for (const year of [2020, 2024]) {
+  for (const [type, sub] of [['president', '總統'], ['party_list', '不分區政黨']]) {
+    const votes = townVotes(cec(`${PRESIDENT[year]}/${sub}`));
+    const unmatched = [...votes.keys()].filter((k) => !towns.has(k));
+    if (unmatched.length) throw new Error(`${year} ${sub} 對不到人口資料的鄉鎮：${unmatched.join('、')}`);
+    townElections[`${type}_${year}`] = votes;
+  }
+}
+const townItems = [...towns.values()].map((t) => {
+  const key = `${t.county}${t.town}`;
+  return { ...t, elections: Object.fromEntries(Object.entries(townElections).map(([k, m]) => [k, m.get(key) ?? null])) };
+});
+writeFileSync(
+  args['demographics-out'],
+  `${JSON.stringify({
+    population_month: month,
+    elections: { president_2024: '2024 總統', party_list_2024: '2024 不分區政黨票', president_2020: '2020 總統', party_list_2020: '2020 不分區政黨票' },
+    sources: sources.slice(0, 2),
+    towns: townItems,
+  })}\n`,
+);
+console.log(`wrote ${args['demographics-out']}: ${townItems.length} 鄉鎮市區`);

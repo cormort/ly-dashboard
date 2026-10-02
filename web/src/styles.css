@@ -1152,3 +1152,4 @@ a.stat-tile:hover { border-color: #98a2b3; box-shadow: var(--card-base-hover); t
 .split-table { max-height: 640px; overflow-y: auto; }
 .split-table thead th { position: sticky; top: 0; background: var(--surface); }
 .split-table tr[aria-current='true'] td { background: var(--accent-soft); }
+.corr-strong { font-weight: 700; background: var(--accent-soft); }

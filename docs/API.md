@@ -306,6 +306,13 @@ Query 參數（全部可選）：
 
 `/api/v1/rankings` 另有 `close`（險勝：最近一次當選的領先幅度）與 `drop`（得票流失：同選區與本人前次相比）兩榜，不受 `days` 影響。
 
+## GET /api/v1/demographics
+
+人口結構 × 得票：368 鄉鎮市區（`server/demographics.json`，同一支 build 腳本產生）。`towns[]`：
+`{ county, town, population, child_ratio（0–14）, young_ratio（20–39）, elderly_ratio（65+）, median_age, household_size, elections }`，
+`elections` 有 `president_2024`、`party_list_2024`、`president_2020`、`party_list_2020`，各為 `{ valid, votes: { 政黨: 票數 } }`（中選會鄉鎮市區合計列）。
+人口為村里單一年齡加總（`population_month`），各鄉鎮人口與得票加總皆等於縣市加總。
+
 ## GET /api/v1/split-ticket?year=2024
 
 分裂投票：某年大選（2012、2016、2020、2024；不合法時用最新一年）73 個區域立委選區的候選人得票（`candidates[{ name, party, votes, pct, elected }]`），
