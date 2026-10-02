@@ -86,6 +86,10 @@ export function ChoroplethMap({
         {outlines.map((d, i) => (
           <path key={i} d={d} className="map-outline" />
         ))}
+        {/* 選取／滑過的外框：SVG 沒有 z-index，區塊自己的描邊會被後面畫的鄰區蓋掉而時有時無，
+            所以另外在最上層畫一份不接收滑鼠的外框（白色光暈墊底＋細線） */}
+        {hover && hover !== selected ? <OutlineOverlay items={items} county={hover} className="map-hover" /> : null}
+        {selected ? <OutlineOverlay items={items} county={selected} className="map-selected" /> : null}
         <text x="26" y="134" className="county-inset-label">連江縣</text>
         <text x="6" y="238" className="county-inset-label">金門縣</text>
       </svg>
@@ -106,5 +110,16 @@ export function ChoroplethMap({
         </div>
       ) : null}
     </figure>
+  );
+}
+
+function OutlineOverlay({ items, county, className }: { items: { county: string; path: string }[]; county: string; className: string }) {
+  const d = items.find((c) => c.county === county)?.path;
+  if (!d) return null;
+  return (
+    <g className={className} aria-hidden="true" pointerEvents="none">
+      <path d={d} className="map-ring-halo" />
+      <path d={d} className="map-ring-line" />
+    </g>
   );
 }
