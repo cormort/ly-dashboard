@@ -11,12 +11,18 @@
  * 來源：中選會選舉資料庫（kiang/db.cec.gov.tw 轉存）、內政部戶政司村里人口單一年齡（kiang/data.moi.gov.tw 轉存）、
  * ronnywang/twgeojson 縣市界。
  */
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 
 const { values: args } = parseArgs({
-  options: { cec: { type: 'string' }, moi: { type: 'string' }, geo: { type: 'string' }, out: { type: 'string', default: 'server/county-stats.json' } },
+  options: {
+    cec: { type: 'string' },
+    moi: { type: 'string' },
+    geo: { type: 'string' },
+    out: { type: 'string', default: 'server/county-stats.json' },
+    'legislators-out': { type: 'string', default: 'server/legislator-votes.json' },
+  },
 });
 if (!args.cec || !args.moi || !args.geo) throw new Error('需要 --cec <dir> --moi <data.csv> --geo <geojson>');
 
@@ -31,7 +37,7 @@ const rows = (file) =>
     .replace(/^﻿/, '')
     .split(/\r?\n/)
     .filter(Boolean)
-    .map((line) => line.split(',').map((cell) => cell.replace(/^"|"$/g, '').trim()));
+    .map((line) => line.split(',').map((cell) => cell.replace(/^"|"$/g, '').replace(/^'/, '').trim()));
 
 /* ---------- 人口 ---------- */
 function population(file) {
@@ -73,29 +79,80 @@ function summarize(candidates, { electorate = null, turnout = null } = {}) {
   };
 }
 
-function cecElection(dir) {
-  const names = new Map(rows(join(dir, 'elbase.csv')).map((r) => [`${r[0]}${r[1]}${r[2]}${r[3]}${r[4]}`, r[5]]));
-  const parties = new Map(rows(join(dir, 'elpaty.csv')).map((r) => [r[0], r[1]]));
-  // 號次 → 候選人（總統選舉只留正手；縣市長以縣市代碼區分）
+/**
+ * 讀一組中選會 el* 原始檔。各年檔名不一（elcand.csv、elcand_T1.csv，2024 區域立委的 elbase 拼成 elbese），
+ * 2012／2014 的欄位還帶前導單引號（rows() 已去除）。
+ */
+function loadCec(dir) {
+  const files = readdirSync(dir);
+  const file = (...prefixes) => join(dir, files.find((f) => prefixes.some((p) => f.startsWith(p)) && f.endsWith('.csv')));
+  const names = new Map(rows(file('elbase', 'elbese')).map((r) => [r.slice(0, 5).join(''), r[5]]));
+  const parties = new Map(rows(file('elpaty')).map((r) => [r[0], r[1]]));
+  // 號次 → 候選人（只留正手）。全國性選舉以號次對應，地方選舉加上縣市（與選區）代碼
   const cands = new Map();
-  for (const r of rows(join(dir, 'elcand.csv'))) {
+  for (const r of rows(file('elcand'))) {
     if (r[15] === 'Y') continue;
-    cands.set(r[0] === '00' ? r[5] : `${r[0]}${r[1]}#${r[5]}`, { name: r[6], party: party(parties.get(r[7])) });
+    const cand = { name: r[6], party: party(parties.get(r[7])) };
+    if (r[0] === '00') cands.set(`#${r[5]}`, cand);
+    else {
+      cands.set(`${r[0]}${r[1]}${r[2]}#${r[5]}`, cand);
+      cands.set(`${r[0]}${r[1]}#${r[5]}`, cand);
+    }
   }
+  const candOf = (r) => cands.get(`${r[0]}${r[1]}${r[2]}#${r[6]}`) ?? cands.get(`${r[0]}${r[1]}#${r[6]}`) ?? cands.get(`#${r[6]}`);
+  const countyOf = (r) => fixName(names.get(`${r[0]}${r[1]}000000000`));
+  // 選區（或縣市）合計列：鄉鎮、村里、投開票所代碼皆為 0
+  // 2018 以前部分檔案的投開票所代碼寫成 '0'，以數值判斷
+  const isTotal = (r) => Number(r[3]) === 0 && Number(r[4]) === 0 && Number(r[5]) === 0;
+  const totals = rows(file('elctks')).filter(isTotal);
+  const prof = rows(file('elprof')).filter(isTotal);
+  return { candOf, countyOf, totals, prof };
+}
+
+/** 縣市層級結果（總統、縣市長、不分區政黨票） */
+function cecElection(dir) {
+  const { candOf, countyOf, totals, prof } = loadCec(dir);
+  const isCounty = (r) => Number(r[0]) !== 0 && Number(r[2]) === 0;
   const out = new Map();
-  const isCountyTotal = (r) => r[0] !== '00' && r[3] === '000' && r[4] === '0000' && r[5] === '0000';
-  for (const r of rows(join(dir, 'elctks.csv')).filter(isCountyTotal)) {
-    const county = fixName(names.get(`${r[0]}${r[1]}00${r[3]}${r[4]}`));
-    const cand = cands.get(r[6]) ?? cands.get(`${r[0]}${r[1]}#${r[6]}`);
-    const list = out.get(county) ?? [];
-    list.push({ ...cand, votes: Number(r[7]) });
-    out.set(county, list);
+  for (const r of totals.filter(isCounty)) {
+    const county = countyOf(r);
+    out.set(county, [...(out.get(county) ?? []), { ...candOf(r), votes: Number(r[7]) }]);
   }
-  const prof = new Map();
-  for (const r of rows(join(dir, 'elprof.csv')).filter(isCountyTotal)) {
-    prof.set(fixName(names.get(`${r[0]}${r[1]}00${r[3]}${r[4]}`)), { electorate: Number(r[9]), turnout: Number(r[18]) });
+  const meta = new Map(prof.filter(isCounty).map((r) => [countyOf(r), { electorate: Number(r[9]), turnout: Number(r[18]) }]));
+  return new Map([...out].map(([county, list]) => [county, summarize(list, meta.get(county))]));
+}
+
+/** 立委選舉各選區結果：區域（縣市第 N 選舉區）或平地／山地原住民（全國一區） */
+function districtRaces(dir, year, kind) {
+  const { candOf, countyOf, totals } = loadCec(dir);
+  const isRace = kind === '區域' ? (r) => Number(r[0]) !== 0 && Number(r[2]) !== 0 : (r) => Number(r[0]) === 0;
+  const races = new Map();
+  for (const r of totals.filter(isRace)) {
+    const key = r.slice(0, 3).join('');
+    const race = races.get(key) ?? { year, kind, county: kind === '區域' ? countyOf(r) : null, area: Number(r[2]), list: [] };
+    race.list.push({ ...candOf(r), votes: Number(r[7]), elected: r[9] === '*' });
+    races.set(key, race);
   }
-  return new Map([...out].map(([county, list]) => [county, summarize(list, prof.get(county))]));
+  const perCounty = new Map();
+  for (const race of races.values()) perCounty.set(race.county, (perCounty.get(race.county) ?? 0) + 1);
+  return [...races.values()].map(({ list, area, ...race }) => {
+    const { candidates, valid, margin, margin_pct } = summarize(list);
+    const district = kind !== '區域' ? `${kind}選舉區` : perCounty.get(race.county) > 1 ? `${race.county}第${area}選舉區` : `${race.county}選舉區`;
+    return { ...race, district, valid, margin, margin_pct, candidates };
+  });
+}
+
+/** 每個縣市的歷次得票（依政黨加總），給「得票趨勢」用 */
+function series(byYear) {
+  const out = new Map();
+  for (const [year, results] of byYear) {
+    for (const [county, e] of results) {
+      const votes = {};
+      for (const c of e.candidates) votes[c.party] = (votes[c.party] ?? 0) + c.votes;
+      out.set(county, [...(out.get(county) ?? []), { year, valid: e.valid, turnout: e.turnout, votes }]);
+    }
+  }
+  return out;
 }
 
 /** 2022 嘉義市長延期重行選舉，只有投開票所明細 */
@@ -109,20 +166,6 @@ function chiayiRerun(dir) {
     cands.map((c, i) => ({ name: c[1], party: party(c[2]), votes: votes[i] })),
     { electorate, turnout: Math.round((cast / electorate) * 10000) / 100 },
   );
-}
-
-/** 2018 縣市長只有 kiang 整理的候選人總表（沒有選舉人數） */
-function summaryCsv(files) {
-  const out = new Map();
-  for (const file of files) {
-    for (const r of rows(file).slice(1)) {
-      const county = fixName(r[0]);
-      const list = out.get(county) ?? [];
-      list.push({ name: r[2], party: party(r[3]), votes: Number(r[11]) });
-      out.set(county, list);
-    }
-  }
-  return new Map([...out].map(([county, list]) => [county, summarize(list)]));
 }
 
 /* ---------- 地圖：投影成 SVG path，並以 Douglas–Peucker 簡化 ---------- */
@@ -175,55 +218,75 @@ function mapPaths(file) {
 }
 
 /* ---------- 組合 ---------- */
+const cec = (path) => join(args.cec, 'voteData', path);
+const PRESIDENT = { 2012: '20120114-總統及立委', 2016: '2016總統立委', 2020: '2020總統立委', 2024: '2024總統立委' };
+const both = (...maps) => new Map(maps.flatMap((m) => [...m]));
+
 const pop = population(args.moi);
-const president2024 = cecElection(join(args.cec, 'voteData/2024總統立委/總統'));
-const president2020 = cecElection(join(args.cec, 'voteData/2020總統立委/總統'));
-const mayor2022 = new Map([
-  ...cecElection(join(args.cec, 'voteData/2022-111年地方公職人員選舉/C1/prv')),
-  ...cecElection(join(args.cec, 'voteData/2022-111年地方公職人員選舉/C1/city')),
-  ['嘉義市', chiayiRerun(join(args.cec, 'voteData/2022年_嘉義市長重行選舉'))],
+const president = new Map(Object.entries(PRESIDENT).map(([year, dir]) => [Number(year), cecElection(cec(`${dir}/總統`))]));
+const partyList = new Map(Object.entries(PRESIDENT).map(([year, dir]) => [Number(year), cecElection(cec(`${dir}/不分區政黨`))]));
+const mayor = new Map([
+  [2014, both(cecElection(cec('2014-103年地方公職人員選舉/直轄市市長')), cecElection(cec('2014-103年地方公職人員選舉/縣市市長')))],
+  [2018, both(cecElection(cec('2018-107年地方公職人員選舉/直轄市市長')), cecElection(cec('2018-107年地方公職人員選舉/縣市市長')))],
+  [
+    2022,
+    both(
+      cecElection(cec('2022-111年地方公職人員選舉/C1/prv')),
+      cecElection(cec('2022-111年地方公職人員選舉/C1/city')),
+      new Map([['嘉義市', chiayiRerun(cec('2022年_嘉義市長重行選舉'))]]),
+    ),
+  ],
 ]);
-const mayor2018 = summaryCsv([join(args.cec, 'data/2018/直轄市長.csv'), join(args.cec, 'data/2018/縣市長.csv')]);
+const trends = { president: series(president), mayor: series(mayor), party_list: series(partyList) };
 const paths = mapPaths(args.geo);
 
 const counties = COUNTIES.map((county) => {
+  const elections = {
+    president_2024: president.get(2024).get(county),
+    president_2020: president.get(2020).get(county),
+    mayor_2022: mayor.get(2022).get(county),
+    mayor_2018: mayor.get(2018).get(county),
+  };
   const p = pop.counties.get(county);
-  const missing = [p, president2024.get(county), president2020.get(county), mayor2022.get(county), mayor2018.get(county), paths[county]];
-  if (missing.some((x) => !x)) throw new Error(`${county} 資料不完整：${missing.map((x) => (x ? 1 : 0)).join("")}`);
+  const parts = [p, ...Object.values(elections), paths[county], ...Object.values(trends).map((t) => t.get(county))];
+  if (parts.some((x) => !x)) throw new Error(`${county} 資料不完整：${parts.map((x) => (x ? 1 : 0)).join('')}`);
   return {
     county,
     ...p,
-    elections: {
-      president_2024: president2024.get(county),
-      president_2020: president2020.get(county),
-      mayor_2022: mayor2022.get(county),
-      mayor_2018: mayor2018.get(county),
-    },
+    elections,
+    trends: Object.fromEntries(Object.entries(trends).map(([type, t]) => [type, t.get(county)])),
     path: paths[county],
   };
 });
 
 const month = `${Number(pop.month.slice(0, 3)) + 1911}-${pop.month.slice(3)}`;
+const sources = [
+  { label: '中選會選舉資料庫（kiang/db.cec.gov.tw 轉存）', url: 'https://github.com/kiang/db.cec.gov.tw' },
+  { label: `內政部戶政司村里人口單一年齡（${month}）`, url: 'https://github.com/kiang/data.moi.gov.tw' },
+  { label: '縣市界（ronnywang/twgeojson）', url: 'https://github.com/ronnywang/twgeojson' },
+];
 writeFileSync(
   args.out,
-  `${JSON.stringify(
-    {
-      population_month: month,
-      elections: {
-        president_2024: { label: '2024 總統', date: '2024-01-13' },
-        president_2020: { label: '2020 總統', date: '2020-01-11' },
-        mayor_2022: { label: '2022 縣市長', date: '2022-11-26' },
-        mayor_2018: { label: '2018 縣市長', date: '2018-11-24' },
-      },
-      sources: [
-        { label: '中選會選舉資料庫（kiang/db.cec.gov.tw 轉存）', url: 'https://github.com/kiang/db.cec.gov.tw' },
-        { label: `內政部戶政司村里人口單一年齡（${month}）`, url: 'https://github.com/kiang/data.moi.gov.tw' },
-        { label: '縣市界（ronnywang/twgeojson）', url: 'https://github.com/ronnywang/twgeojson' },
-      ],
-      counties,
+  `${JSON.stringify({
+    population_month: month,
+    elections: {
+      president_2024: { label: '2024 總統', date: '2024-01-13' },
+      president_2020: { label: '2020 總統', date: '2020-01-11' },
+      mayor_2022: { label: '2022 縣市長', date: '2022-11-26' },
+      mayor_2018: { label: '2018 縣市長', date: '2018-11-24' },
     },
-    null,
-    0,
-  )}\n`,
+    trend_types: { president: '總統', mayor: '縣市長', party_list: '不分區政黨票' },
+    sources,
+    counties,
+  })}\n`,
 );
 console.log(`wrote ${args.out}: ${counties.length} 縣市，人口 ${month}`);
+
+/* ---------- 立委選舉（區域、平地／山地原住民），2012 起 ---------- */
+const races = Object.entries(PRESIDENT).flatMap(([year, dir]) => [
+  ...districtRaces(cec(`${dir}/區域立委`), Number(year), '區域'),
+  ...districtRaces(cec(`${dir}/平地立委`), Number(year), '平地原住民'),
+  ...districtRaces(cec(`${dir}/山地立委`), Number(year), '山地原住民'),
+]);
+writeFileSync(args['legislators-out'], `${JSON.stringify({ years: Object.keys(PRESIDENT).map(Number), sources: sources.slice(0, 1), races })}\n`);
+console.log(`wrote ${args['legislators-out']}: ${races.length} 場`);

@@ -6,7 +6,7 @@ import { openDb, applyDataset, applyBills, applySocial, upsertNews, pruneLogs, g
 import { buildDataset, normalizeBills, normalizeMeetings, normalizeSocial, newsName, rocDate, DataValidationError } from '../server/normalize.mjs';
 import { CONFIG } from '../server/config.mjs';
 import { runIngest, runBillsIngest, runBudgetIngest, runBudgetReportsIngest, runMeetingsIngest, budgetPageUrl, runNewsIngest, runSocialIngest, runAll } from '../server/ingest.mjs';
-import { getHealth, listBills, listBudget, listBudgetMeetings, listBudgetReports, budgetState, listChanges, listCounties, listLegislators, listNews, listSyncRuns } from '../server/queries.mjs';
+import { getHealth, listBills, listBudget, listBudgetMeetings, listBudgetReports, budgetState, listChanges, listCounties, listLegislatorVotes, listLegislators, listNews, listSyncRuns } from '../server/queries.mjs';
 import { FetchError } from '../server/fetch-ly.mjs';
 import { syncOnce } from '../server/index.mjs';
 
@@ -741,4 +741,27 @@ test('縣市：22 縣市都有人口、四場選舉與地圖，並附上該縣�
   const withLegislators = res.items.filter((c) => c.legislators.length > 0);
   assert.ok(withLegislators.length > 0);
   for (const c of withLegislators) for (const l of c.legislators) assert.ok(l.area_name.startsWith(c.county.slice(0, 2)), l.area_name);
+});
+
+test('縣市：歷次得票趨勢涵蓋 2012–2024 總統、不分區與 2014–2022 縣市長', () => {
+  const res = listCounties(seeded());
+  const years = (type) => res.items[0].trends[type].map((e) => e.year);
+  assert.deepEqual(years('president'), [2012, 2016, 2020, 2024]);
+  assert.deepEqual(years('party_list'), [2012, 2016, 2020, 2024]);
+  assert.deepEqual(years('mayor'), [2014, 2018, 2022]);
+  const dpp2016 = res.items.reduce((s, c) => s + c.trends.president.find((e) => e.year === 2016).votes['民主進步黨'], 0);
+  assert.equal(dpp2016, 6894744);
+});
+
+test('立委得票追蹤：在職區域與原住民委員都對得到 2024 當選紀錄', () => {
+  const res = listLegislatorVotes(seeded());
+  const elected = res.items.filter((i) => !/不分區/.test(i.legislator.area_name ?? ''));
+  assert.ok(elected.length > 0);
+  for (const item of elected) {
+    const last = item.history.find((h) => h.year === 2024 && h.elected);
+    assert.ok(last, `${item.legislator.name} 沒有 2024 當選紀錄`);
+    assert.ok(last.margin > 0);
+  }
+  const twice = res.items.find((i) => i.history.length > 1);
+  assert.equal(twice.history[1].change, twice.history[1].votes - twice.history[0].votes);
 });

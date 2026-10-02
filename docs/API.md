@@ -291,6 +291,15 @@ Query 參數（全部可選）：
 `elections` 有 `president_2024`、`president_2020`、`mayor_2022`、`mayor_2018`，各為 `{ electorate, turnout, valid, candidates[{ name, party, votes, pct }], margin, margin_pct }`，
 候選人依票數排序，`margin`／`margin_pct` 為第一名與第二名的票數差與得票率差（百分點）。2018 縣市長沒有選舉人數與投票率（null）；嘉義市 2022 為 12/18 延期選舉。
 
+每縣市另有 `trends`：`{ president（2012–2024）, mayor（2014–2022）, party_list（不分區政黨票 2012–2024） }`，各為依年份排序的 `[{ year, valid, turnout, votes: { 政黨: 票數 } }]`（無黨籍候選人合併為「無黨籍」）；`trend_types` 為各類型名稱。
+
+## GET /api/v1/legislator-votes
+
+立委得票追蹤：在職委員 2012、2016、2020、2024 歷次參選區域／平地原住民／山地原住民立委的得票（`server/legislator-votes.json`，與縣市資料同一支腳本產生；不含補選）。
+姓名比對時去掉空白與「‧」「·」等分隔符號。`items[]`：`{ legislator: { id, name, party, area_name, region }, history[] }`，
+`history`：`{ year, kind, district, party, votes, pct, rank, elected, seats, candidates, rival, margin, margin_pct, change }`；
+`rival` 為當選者對照的最高票落選者、或落選者對照的最低票當選者，`margin` 為與其票數差（落選為負），`change` 為與本人前一次參選的得票差。
+
 ## GET /api/v1/committee-activity?committee=&limit=20
 
 委員會頁與總覽用。`meetings`：委員會會議（官方 ID223，議程與登記發言委員 `{ id, name, party }`，對不到本屆委員者 `id` 為 null）；

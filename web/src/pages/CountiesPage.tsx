@@ -3,7 +3,10 @@ import { buildUrl } from '../api/client';
 import type { CountiesResponse, CountyElection, CountyElectionKey, CountyItem } from '../api/types';
 import { ErrorState, LoadingState } from '../components/DataStates';
 import { useApi } from '../hooks/useApi';
-import { colorAt, gradient, type ScaleName } from '../lib/colorScales';
+import { ChoroplethMap } from '../components/ChoroplethMap';
+import { LegislatorVotes } from '../components/LegislatorVotes';
+import { VoteTrends } from '../components/VoteTrends';
+import { colorAt, type ScaleName } from '../lib/colorScales';
 import { downloadCsv } from '../lib/csv';
 import { partyStyle } from '../lib/parties';
 
@@ -104,9 +107,11 @@ function buildPairs(metrics: Metric[], data: CountiesResponse): ComparePair[] {
 
 /* ---------- 網址狀態 ---------- */
 
-type Tab = 'map' | 'dual' | 'compare' | 'ranking' | 'data';
+type Tab = 'map' | 'trend' | 'legislators' | 'dual' | 'compare' | 'ranking' | 'data';
 const TABS: { key: Tab; label: string }[] = [
   { key: 'map', label: '互動地圖' },
+  { key: 'trend', label: '得票趨勢' },
+  { key: 'legislators', label: '立委得票' },
   { key: 'dual', label: '雙指標對比' },
   { key: 'compare', label: '時間差異' },
   { key: 'ranking', label: '排行榜' },
@@ -130,97 +135,6 @@ function useParam<T extends string>(key: string, fallback: T): [T, (value: T) =>
     window.history.replaceState(null, '', `/counties?${params.toString()}`);
   };
   return [value, update];
-}
-
-/* ---------- 地圖 ---------- */
-
-function ChoroplethMap({
-  items,
-  values,
-  scale,
-  title,
-  format,
-  diverging = false,
-  selected,
-  onSelect,
-}: {
-  items: CountyItem[];
-  values: Map<string, number | null>;
-  scale: ScaleName;
-  title: string;
-  format: (value: number | null) => string;
-  /** 以 0 為中點的發散色階（時間差異） */
-  diverging?: boolean;
-  selected?: string;
-  onSelect?: (county: string) => void;
-}) {
-  const [hover, setHover] = useState<string | null>(null);
-  const nums = [...values.values()].filter((v): v is number => v !== null);
-  let min = Math.min(...nums);
-  let max = Math.max(...nums);
-  if (diverging) {
-    const m = Math.max(Math.abs(min), Math.abs(max)) || 1;
-    [min, max] = [-m, m];
-  }
-  const t = (v: number) => (max === min ? 1 : (v - min) / (max - min));
-  const focus = hover ?? selected ?? null;
-  return (
-    <figure className="stat-map">
-      <figcaption>{title}</figcaption>
-      <svg viewBox="0 0 530 735" role="group" aria-label={title}>
-        {/* 金門、連江的插圖框 */}
-        <rect className="county-inset" x="22" y="4" width="128" height="112" rx="6" />
-        <rect className="county-inset" x="3" y="166" width="66" height="54" rx="6" />
-        {items.map((c) => {
-          const v = values.get(c.county) ?? null;
-          const label = `${c.county}：${format(v)}`;
-          return (
-            <path
-              key={c.county}
-              d={c.path}
-              className="county-shape"
-              aria-current={c.county === selected ? 'true' : undefined}
-              style={{ fill: v === null ? 'var(--seat-off)' : colorAt(scale, t(v)) }}
-              tabIndex={0}
-              role="button"
-              aria-label={label}
-              onMouseEnter={() => setHover(c.county)}
-              onMouseLeave={() => setHover(null)}
-              onFocus={() => setHover(c.county)}
-              onBlur={() => setHover(null)}
-              onClick={() => onSelect?.(c.county)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                  event.preventDefault();
-                  onSelect?.(c.county);
-                }
-              }}
-            >
-              <title>{label}</title>
-            </path>
-          );
-        })}
-        <text x="26" y="134" className="county-inset-label">連江縣</text>
-        <text x="6" y="238" className="county-inset-label">金門縣</text>
-      </svg>
-      <p className="stat-map-hover" aria-live="polite">
-        {focus ? (
-          <>
-            <b>{focus}</b>　{format(values.get(focus) ?? null)}
-          </>
-        ) : (
-          <span className="muted">滑過或點選縣市看數值</span>
-        )}
-      </p>
-      {nums.length ? (
-        <div className="stat-legend">
-          <span>{format(min)}</span>
-          <i style={{ background: gradient(scale) }} aria-hidden="true" />
-          <span>{format(max)}</span>
-        </div>
-      ) : null}
-    </figure>
-  );
 }
 
 /* ---------- 縣市詳情（選舉表） ---------- */
@@ -473,7 +387,8 @@ export function CountiesPage({ refreshToken, onOpenId }: CountiesPageProps) {
         <h1>縣市統計地圖</h1>
       </div>
       <p className="page-lead">
-        22 縣市的人口（{data.population_month}）與選舉指標（2024／2020 總統、2022／2018 縣市長）。點地圖上的縣市可看選舉細節與區域立委。
+        22 縣市的人口（{data.population_month}）與選舉指標（2024／2020 總統、2022／2018 縣市長）。點地圖上的縣市可看選舉細節與區域立委；
+        「得票趨勢」追蹤 2012 起歷次得票與轉折，「立委得票」追蹤每位委員歷次參選得票。
       </p>
 
       <div className="stat-controls">
@@ -504,6 +419,10 @@ export function CountiesPage({ refreshToken, onOpenId }: CountiesPageProps) {
           <CountyDetail county={current} data={data} onOpenId={onOpenId} />
         </div>
       ) : null}
+
+      {tab === 'trend' ? <VoteTrends data={data} selected={current.county} onSelect={setSelected} /> : null}
+
+      {tab === 'legislators' ? <LegislatorVotes refreshToken={refreshToken} county={current.county} onOpenId={onOpenId} /> : null}
 
       {tab === 'dual' ? (
         <>

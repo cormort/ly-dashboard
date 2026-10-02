@@ -639,6 +639,16 @@ export interface CountyElection {
   margin_pct: number | null;
 }
 
+export type TrendType = 'president' | 'mayor' | 'party_list';
+
+export interface TrendPoint {
+  year: number;
+  valid: number;
+  turnout: number | null;
+  /** 政黨 → 得票數（無黨籍候選人合併為「無黨籍」） */
+  votes: Record<string, number>;
+}
+
 export interface CountyItem {
   county: string;
   households: number;
@@ -648,6 +658,8 @@ export interface CountyItem {
   /** 65 歲以上人口 */
   elderly: number;
   elections: Record<CountyElectionKey, CountyElection>;
+  /** 歷次得票（依政黨加總），依年份排序 */
+  trends: Record<TrendType, TrendPoint[]>;
   /** 地圖輪廓（SVG path，座標約在 0–530 × 0–735；金門、連江已平移成插圖） */
   path: string;
   legislators: { id: string; name: string; party: string; area_name: string }[];
@@ -658,9 +670,40 @@ export interface CountiesResponse {
   /** 人口統計年月（YYYY-MM） */
   population_month: string;
   elections: Record<CountyElectionKey, { label: string; date: string }>;
+  trend_types: Record<TrendType, string>;
   sources: { label: string; url: string }[];
   count: number;
   items: CountyItem[];
+}
+
+/* ---------- /legislator-votes ---------- */
+
+export interface LegislatorRace {
+  year: number;
+  kind: '區域' | '平地原住民' | '山地原住民';
+  district: string;
+  party: string;
+  votes: number;
+  pct: number;
+  /** 選區內名次 */
+  rank: number;
+  elected: boolean;
+  seats: number;
+  candidates: number;
+  /** 當選者對最高票落選者；落選者對最低票當選者 */
+  rival: { name: string; party: string; votes: number } | null;
+  margin: number | null;
+  margin_pct: number | null;
+  /** 與本人前一次參選的得票差 */
+  change: number | null;
+}
+
+export interface LegislatorVotesResponse {
+  meta: Meta;
+  years: number[];
+  sources: { label: string; url: string }[];
+  count: number;
+  items: { legislator: { id: string; name: string; party: string; area_name: string | null; region: string | null }; history: LegislatorRace[] }[];
 }
 
 /* ---------- /funds ---------- */

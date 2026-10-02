@@ -841,6 +841,52 @@ export function listCounties(db) {
   };
 }
 
+/**
+ * 立委得票追蹤：在職委員歷次（2012 起）區域／原住民立委選舉的得票（server/legislator-votes.json）。
+ * 以姓名比對（族語名分隔符號一律去掉）；不分區委員若曾參選區域也會列出。
+ * `margin`：當選者對最高票落選者的領先票數，落選者對最低票當選者的差距（負值）；`change`：與本人前一次參選的得票差。
+ */
+let legislatorVotes = null;
+export function listLegislatorVotes(db) {
+  legislatorVotes ??= JSON.parse(readFileSync(new URL('./legislator-votes.json', import.meta.url), 'utf8'));
+  const key = (name) => String(name).replace(/[\s‧·・．.]/g, '');
+  const byName = new Map();
+  for (const race of legislatorVotes.races) {
+    const elected = race.candidates.filter((c) => c.elected);
+    const losers = race.candidates.filter((c) => !c.elected);
+    race.candidates.forEach((c, i) => {
+      const rival = c.elected ? losers[0] : elected[elected.length - 1];
+      const entry = {
+        year: race.year,
+        kind: race.kind,
+        district: race.district,
+        party: c.party,
+        votes: c.votes,
+        pct: c.pct,
+        rank: i + 1,
+        elected: c.elected,
+        seats: elected.length,
+        candidates: race.candidates.length,
+        rival: rival ? { name: rival.name, party: rival.party, votes: rival.votes } : null,
+        margin: rival ? c.votes - rival.votes : null,
+        margin_pct: rival ? Math.round((c.pct - rival.pct) * 100) / 100 : null,
+      };
+      byName.set(key(c.name), [...(byName.get(key(c.name)) ?? []), entry]);
+    });
+  }
+  const items = db
+    .prepare('SELECT id, name, party, area_name FROM legislators WHERE leave_flag = 0 ORDER BY area_name, name')
+    .all()
+    .map((l) => {
+      const history = (byName.get(key(l.name)) ?? []).sort((a, b) => a.year - b.year);
+      return {
+        legislator: { id: l.id, name: l.name, party: l.party, area_name: l.area_name, region: regionOf(l.area_name) },
+        history: history.map((h, i) => ({ ...h, change: i ? h.votes - history[i - 1].votes : null })),
+      };
+    });
+  return { meta: envelope(db), years: legislatorVotes.years, sources: legislatorVotes.sources, count: items.length, items };
+}
+
 export function listNews(db, { legislator = null, limit = 10 } = {}) {
   const resolvedLimit = Math.max(1, Math.min(Number(limit) || 10, 100));
   const total = legislator
