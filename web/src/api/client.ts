@@ -14,6 +14,7 @@ import type {
   MetaResponse,
   SyncRun,
   SyncRunsResponse,
+  SyncStartResponse,
 } from './types';
 
 export const API_BASE = '/api/v1';
@@ -62,11 +63,13 @@ interface RequestOptions {
   signal?: AbortSignal;
   /** 預設 15 秒，逾時視為網路錯誤 */
   timeoutMs?: number;
+  /** 預設 GET；目前只有手動同步用 POST */
+  method?: 'GET' | 'POST';
 }
 
 /** 低階呼叫：回傳已解析的 JSON，並把失敗一律轉成 ApiError */
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const { signal, timeoutMs = 15_000 } = options;
+  const { signal, timeoutMs = 15_000, method = 'GET' } = options;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(new DOMException('timeout', 'TimeoutError')), timeoutMs);
   const onOuterAbort = () => controller.abort(signal?.reason);
@@ -78,6 +81,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   let response: Response;
   try {
     response = await fetch(path, {
+      method,
       signal: controller.signal,
       headers: { Accept: 'application/json' },
       cache: 'no-store',
@@ -181,6 +185,11 @@ export function fetchChanges(query: ChangesQuery = {}, options?: RequestOptions)
 
 export function fetchSyncRuns(limit = 50, options?: RequestOptions): Promise<SyncRunsResponse> {
   return apiRequest<SyncRunsResponse>(buildUrl('/sync-runs', { limit }), options);
+}
+
+/** 觸發後端背景同步（立刻回 202，進度看 fetchHealth().syncing 與 fetchSyncRuns） */
+export function startSync(options?: RequestOptions): Promise<SyncStartResponse> {
+  return apiRequest<SyncStartResponse>(buildUrl('/sync'), { ...options, method: 'POST' });
 }
 
 /** 只為了型別檢查時的自我說明用；實際渲染用不到。 */

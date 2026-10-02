@@ -149,7 +149,7 @@ export function createServer(db) {
         }
         switch (path) {
           case '/api/v1/health':
-            return sendJson(res, 200, getHealth(db));
+            return sendJson(res, 200, { ...getHealth(db), syncing: getInflightScope() });
           case '/api/v1/meta':
             return sendJson(res, 200, getMetaPayload(db));
           case '/api/v1/legislators':

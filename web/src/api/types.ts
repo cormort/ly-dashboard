@@ -93,6 +93,18 @@ export interface HealthResponse {
   >;
   last_runs: SyncRun[];
   warnings: string[];
+  /** 目前進行中的同步範圍；沒有同步時為 null（前端按鈕靠它判斷是否跑完） */
+  syncing: 'all' | 'roster' | null;
+}
+
+/** POST /api/v1/sync 的 202 回應 */
+export interface SyncStartResponse {
+  accepted: boolean;
+  /** false 代表已有同步在跑，本次請求被合併 */
+  started: boolean;
+  scope: 'all' | 'roster';
+  inflight_scope: 'all' | 'roster' | null;
+  message: string;
 }
 
 /* ---------- /meta ---------- */

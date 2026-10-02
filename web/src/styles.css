@@ -246,6 +246,9 @@ header nav a[aria-current='page'], .subnav a[aria-current='page'] { color: var(-
 .sync-pill.warning .dot { background: var(--warn); }
 .sync-pill.error { color: var(--error); background: var(--error-bg); }
 .sync-pill.error .dot { background: var(--error); }
+.sync-progress { font-size: var(--fs-sm); color: var(--muted); }
+.sync-progress:empty { display: none; }
+.sync-progress.error { color: var(--error); }
 .sync-pill[aria-expanded='true'] { border-color: var(--rule); background: var(--surface); }
 
 /* ---------- 版面 ---------- */
