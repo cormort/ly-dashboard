@@ -47,7 +47,7 @@ export function LegislatorElectionHistory({ legislatorId, region }: { legislator
               </li>
             ))}
           </ul>
-          {/* 案件清單來自中選會選舉資料庫（沒有票數）；票數另外解析自官方公告 PDF */}
+          {/* 案件清單來自中選會選舉資料庫（沒有票數）；票數另外解析自中選會官方公告／結果文件（PDF、ODS，陳柏惟案為公告圖片人工判讀） */}
           <small className="muted">
             案件：{res.data?.recalls_source?.label ?? '中選會'}・票數：中選會官方公告／結果文件（本人 {recalls.filter((x) => x.results).length}／{recalls.length} 案有）
           </small>
