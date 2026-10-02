@@ -26,6 +26,7 @@ import { FacetChips } from '../src/components/FacetChips';
 import { Header } from '../src/components/Header';
 import { MyAgencyPage } from '../src/pages/MyAgencyPage';
 import { PageTitle } from '../src/components/PageTitle';
+import { FundsPage } from '../src/pages/FundsPage';
 import { LegislatorGrid } from '../src/components/LegislatorGrid';
 import { SessionSelector } from '../src/components/SessionSelector';
 import { Hemicycle, seatLayout } from '../src/components/Hemicycle';
@@ -246,6 +247,22 @@ const myAgencyHtml = render(createElement(MyAgencyPage, { refreshToken: 0, onOpe
 // 沒選過機關時預設載入行政院主計總處（不再有「尚未選機關」狀態）；有輸入清單可更換，已是預設就不顯示「回到」按鈕
 expectAll('我的機關：預設載入行政院主計總處', myAgencyHtml, ['<h1>行政院主計總處</h1>', '讀取「行政院主計總處」', '更換機關', 'list="agency-options"', 'id="agency-options"', '主計總處專頁']);
 expectNone('我的機關：已是預設機關時沒有「取消選擇」或「回到」按鈕', myAgencyHtml, ['取消選擇', '回到行政院主計總處']);
+// 「機關」頁與「我的機關」互相連結
+expectAll('我的機關連到機關頁', myAgencyHtml, ['href="/agencies"', '機關頁']);
+{
+  const win = window as unknown as { location: { pathname: string; search: string } };
+  const saved = win.location.search;
+  const fundsProps = { refreshToken: 0, onOpenId: () => undefined, onNavigate: () => undefined };
+  win.location.search = '?fund=%E8%B2%A1%E6%94%BF%E9%83%A8'; // 財政部
+  const agencyWithFund = render(createElement(FundsPage, { ...fundsProps, type: 'agency' }));
+  expectAll('機關頁選了某機關：出現「在我的機關查看」連結', agencyWithFund, ['在「我的機關」查看財政部', 'href="/my?agency=%E8%B2%A1%E6%94%BF%E9%83%A8"']);
+  expectNone('基金頁不顯示（只有機關才有「我的機關」）', render(createElement(FundsPage, { ...fundsProps, type: 'fund' })), ['在「我的機關」查看']);
+  expectNone('沒有 onNavigate 就不顯示', render(createElement(FundsPage, { refreshToken: 0, onOpenId: () => undefined, type: 'agency' })), ['在「我的機關」查看']);
+  win.location.search = '';
+  expectNone('機關頁沒選機關：不顯示', render(createElement(FundsPage, { ...fundsProps, type: 'agency' })), ['在「我的機關」查看']);
+  win.location.search = saved;
+}
+
 console.log('\n— FacetChips —');
 const facets = Array.from({ length: 30 }, (_, i) => ({ name: `單位${i + 1}`, count: 100 - i }));
 const facetHtml = render(createElement(FacetChips, { items: facets, label: '最常出現的機關', onPick: () => undefined }));
