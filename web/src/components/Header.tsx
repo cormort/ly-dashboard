@@ -1,9 +1,12 @@
+import { Fragment } from 'react';
 import { RefreshCw } from 'lucide-react';
 import type { SourceInfo } from '../api/types';
 import type { Route } from '../hooks/useRoute';
 import { pathFor } from '../hooks/useRoute';
 import { formatDateTime } from '../lib/format';
 import { FontSizeControl } from './FontSizeControl';
+import { InfoTip } from './InfoTip';
+import { PAGE_HINTS } from '../lib/pageHints';
 import { SearchField } from './SearchField';
 
 export interface HeaderProps {
@@ -113,6 +116,9 @@ export function Header({
   // L6：同步面板是條件式 render，只有它存在時 aria-controls 才指得到東西
   const syncPanelExists = syncOpen || failed || stale;
   const activeGroup = groupOf(route);
+  // 目前頁面的功能說明：掛在分頁導覽上（頁面本身不再有重複分頁名稱的標題列）
+  const hint = PAGE_HINTS[route];
+  const hasSubnav = activeGroup.routes.length > 1;
 
   return (
     <>
@@ -131,19 +137,21 @@ export function Header({
 
       <nav aria-label="主要頁面">
         {NAV.map((group) => {
-          const active = groupOf(route).id === group.id;
+          const active = activeGroup.id === group.id;
           return (
-            <a
-              key={group.id}
-              href={pathFor(group.home)}
-              aria-current={active ? 'page' : undefined}
-              onClick={(event) => {
-                event.preventDefault();
-                onNavigate(pathFor(group.home));
-              }}
-            >
-              {group.label}
-            </a>
+            <Fragment key={group.id}>
+              <a
+                href={pathFor(group.home)}
+                aria-current={active ? 'page' : undefined}
+                onClick={(event) => {
+                  event.preventDefault();
+                  onNavigate(pathFor(group.home));
+                }}
+              >
+                {group.label}
+              </a>
+              {active && !hasSubnav && hint ? <InfoTip>{hint}</InfoTip> : null}
+            </Fragment>
           );
         })}
       </nav>
@@ -188,22 +196,25 @@ export function Header({
       </header>
 
       {/* 次級導覽：只在所屬主題有多個頁面時出現（兩層導覽的第二層） */}
-      {activeGroup.routes.length > 1 ? (
-        <nav className="subnav" aria-label={`${activeGroup.label}的頁面`}>
-          {activeGroup.routes.map((item) => (
-            <a
-              key={item.route}
-              href={pathFor(item.route)}
-              aria-current={route === item.route ? 'page' : undefined}
-              onClick={(event) => {
-                event.preventDefault();
-                onNavigate(pathFor(item.route));
-              }}
-            >
-              {item.label}
-            </a>
-          ))}
-        </nav>
+      {hasSubnav ? (
+        <div className="subnav-row">
+          <nav className="subnav" aria-label={`${activeGroup.label}的頁面`}>
+            {activeGroup.routes.map((item) => (
+              <a
+                key={item.route}
+                href={pathFor(item.route)}
+                aria-current={route === item.route ? 'page' : undefined}
+                onClick={(event) => {
+                  event.preventDefault();
+                  onNavigate(pathFor(item.route));
+                }}
+              >
+                {item.label}
+              </a>
+            ))}
+          </nav>
+          {hint ? <InfoTip align="end">{hint}</InfoTip> : null}
+        </div>
       ) : null}
     </>
   );

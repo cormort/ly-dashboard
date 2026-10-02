@@ -2,13 +2,13 @@ import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { Info } from 'lucide-react';
 
 /**
- * 頁面標題＋說明提示。原本標題下方的一段介紹改成收在 ⓘ 裡：滑鼠移到標題或圖示上、鍵盤聚焦、
- * 或手指點圖示（平板沒有 hover）都會顯示；再點一次、點別處或按 Esc 關閉。
- * 說明文字一直在 DOM 裡（只是看不見），讀螢幕程式透過 aria-describedby 仍然讀得到。
+ * ⓘ 說明提示：滑鼠移到圖示上、鍵盤聚焦、或手指點圖示（平板沒有 hover）都會顯示；
+ * 再點一次、點別處或按 Esc 關閉。說明文字一直在 DOM 裡（只是看不見），讀螢幕程式透過 aria-describedby 讀得到。
+ * 提示相對於最近的定位祖先（導覽列）定位，所以放在會捲動的容器之外才不會被裁切。
  */
-export function PageTitle({ title, children }: { title: ReactNode; children: ReactNode }) {
+export function InfoTip({ children, align = 'start' }: { children: ReactNode; align?: 'start' | 'end' }) {
   const id = useId();
-  const root = useRef<HTMLDivElement>(null);
+  const root = useRef<HTMLSpanElement>(null);
   const [hover, setHover] = useState(false);
   const [focus, setFocus] = useState(false);
   const [pinned, setPinned] = useState(false);
@@ -23,15 +23,15 @@ export function PageTitle({ title, children }: { title: ReactNode; children: Rea
     return () => document.removeEventListener('pointerdown', onDown);
   }, [pinned]);
 
-  // 只有滑鼠才用 hover：觸控點一下會補發 mouseenter 卻不會有 mouseleave，提示會卡住關不掉
+  // 只有滑鼠才用 hover：觸控點一下會補發 mouseenter 卻不會有 mouseleave，提示會卡住
   const mouseOnly = (value: boolean) => (event: React.PointerEvent) => {
     if (event.pointerType === 'mouse') setHover(value);
   };
 
   return (
-    <div
+    <span
       ref={root}
-      className="page-title"
+      className={align === 'end' ? 'info-wrap end' : 'info-wrap'}
       onPointerEnter={mouseOnly(true)}
       onPointerLeave={mouseOnly(false)}
       onKeyDown={(event) => {
@@ -43,11 +43,10 @@ export function PageTitle({ title, children }: { title: ReactNode; children: Rea
         }
       }}
     >
-      <h1>{title}</h1>
       <button
         type="button"
         className="icon-button info-button"
-        aria-label="說明"
+        aria-label="這個頁面的說明"
         aria-expanded={open}
         aria-describedby={id}
         onClick={() => setPinned((v) => !v)}
@@ -57,9 +56,9 @@ export function PageTitle({ title, children }: { title: ReactNode; children: Rea
       >
         <Info aria-hidden="true" />
       </button>
-      <div id={id} role="tooltip" className={open ? 'info-tip open' : 'info-tip'}>
+      <span id={id} role="tooltip" className={open ? 'info-tip open' : 'info-tip'}>
         {children}
-      </div>
-    </div>
+      </span>
+    </span>
   );
 }

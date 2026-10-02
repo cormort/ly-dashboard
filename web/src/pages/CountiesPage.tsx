@@ -425,16 +425,11 @@ export function CountiesPage({ refreshToken, onOpenId }: CountiesPageProps) {
 
   return (
     <>
-      <div className="page-head">
-        <h1>縣市統計地圖</h1>
-      </div>
-      <p className="page-lead">
-        22 縣市的人口（{data.population_month}）與選舉指標（2024／2020 總統、2022／2018 縣市長）。點地圖上的縣市可看選舉細節與區域立委；
-        「得票趨勢」追蹤歷次得票與轉折（總統、不分區 2012 起，縣市長 2009／10 起），「立委得票」追蹤每位委員歷次參選得票。
-      </p>
+      <h1 className="sr-only">縣市統計地圖</h1>
 
       <div className="stat-controls">
         <MetricSelect label="主要分析指標" options={metrics} value={metric.key} onChange={setMetricKey} />
+        <span className="muted">人口資料：{data.population_month}</span>
       </div>
       <Overview metric={metric} items={items} />
 

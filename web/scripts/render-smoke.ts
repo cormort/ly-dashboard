@@ -25,7 +25,8 @@ import { CommitteeChart } from '../src/components/CommitteeChart';
 import { FacetChips } from '../src/components/FacetChips';
 import { Header } from '../src/components/Header';
 import { MyAgencyPage } from '../src/pages/MyAgencyPage';
-import { PageTitle } from '../src/components/PageTitle';
+import { InfoTip } from '../src/components/InfoTip';
+import { PAGE_HINTS } from '../src/lib/pageHints';
 import { FundsPage } from '../src/pages/FundsPage';
 import { LegislatorGrid } from '../src/components/LegislatorGrid';
 import { SessionSelector } from '../src/components/SessionSelector';
@@ -232,15 +233,6 @@ expectAll('委員查詢頁：屆次、篩選、名錄、委員會、異動骨架
 ]);
 (window as unknown as { location: { pathname: string } }).location.pathname = '/';
 
-console.log('\n— PageTitle（說明提示）—');
-const titleHtml = render(createElement(PageTitle, { title: '總覽' }, '依機關最常需要的順序'));
-expectAll('標題旁有說明按鈕，提示文字在 DOM 裡但預設不顯示', titleHtml, ['<h1>總覽</h1>', 'aria-label="說明"', 'aria-expanded="false"', 'role="tooltip"', '依機關最常需要的順序', 'class="info-tip"']);
-expectNone('預設不是展開狀態', titleHtml, ['info-tip open', 'aria-expanded="true"']);
-check('按鈕用 aria-describedby 指向提示（讀螢幕程式讀得到）', (() => {
-  const describedby = titleHtml.match(/aria-describedby="([^"]+)"/)?.[1];
-  return Boolean(describedby) && titleHtml.includes(`id="${describedby}"`);
-})());
-
 console.log('\n— 我的機關 —');
 check('/my 對應我的機關頁', routeOf('/my') === 'my' && routeOf('/my?agency=%E8%B2%A1%E6%94%BF%E9%83%A8') === 'my');
 const myAgencyHtml = render(createElement(MyAgencyPage, { refreshToken: 0, onOpenId: () => undefined, onNavigate: () => undefined }));
@@ -295,6 +287,30 @@ check(
   routeOf('/dgbas') === 'dgbas' && /aria-current="page"[^>]*>我的機關</.test(render(createElement(Header, { ...headerProps, route: 'dgbas' as const }))),
 );
 
+// 功能說明掛在分頁導覽上：單頁主題（總覽）在頂層導覽、有子頁的主題在次級導覽那一列右端
+console.log('\n— 導覽列上的說明提示 —');
+const hintOf = (html: string, where: 'top' | 'sub') => {
+  const m = where === 'top' ? html.match(/<nav aria-label="主要頁面">([\s\S]*?)<\/nav>/) : html.match(/<div class="subnav-row">([\s\S]*)$/);
+  return m?.[1] ?? '';
+};
+const dashHeader = render(createElement(Header, { ...headerProps, route: 'dashboard' as const }));
+expectAll('總覽（單頁主題）：說明在頂層導覽，預設不展開', hintOf(dashHeader, 'top'), ['role="tooltip"', PAGE_HINTS.dashboard!.slice(0, 12), 'class="info-tip"']);
+expectNone('總覽：沒有次級導覽那一列', dashHeader, ['subnav-row']);
+const billsHeader = render(createElement(Header, { ...headerProps, route: 'bills' as const }));
+expectAll('法案查詢（有子頁的主題）：說明在次級導覽那一列右端', hintOf(billsHeader, 'sub'), ['role="tooltip"', '本屆委員提案', 'info-wrap end']);
+expectNone('法案查詢：頂層導覽裡沒有說明（不重複）', hintOf(billsHeader, 'top'), ['role="tooltip"']);
+expectNone('委員查詢沒有說明條目：不顯示 ⓘ', render(createElement(Header, { ...headerProps, route: 'legislators' as const })), ['role="tooltip"', 'info-button']);
+expectNone('/dgbas 不顯示說明（它不在任何分頁上）', render(createElement(Header, { ...headerProps, route: 'dgbas' as const })), ['role="tooltip"']);
+check('說明條目只對應存在的頁面，且不含 legislators／dgbas', (() => {
+  const keys = Object.keys(PAGE_HINTS);
+  return keys.length >= 14 && !keys.includes('legislators') && !keys.includes('dgbas') && keys.every((k) => (PAGE_HINTS as Record<string, string>)[k].length > 10);
+})());
+const tipHtml = render(createElement(InfoTip, null, '說明文字'));
+expectAll('InfoTip：提示文字在 DOM 裡但預設不展開', tipHtml, ['aria-label="這個頁面的說明"', 'aria-expanded="false"', 'role="tooltip"', '說明文字', 'class="info-tip"']);
+check('InfoTip：aria-describedby 指向提示（讀螢幕程式讀得到）', (() => {
+  const id = tipHtml.match(/aria-describedby="([^"]+)"/)?.[1];
+  return Boolean(id) && tipHtml.includes(`id="${id}"`);
+})());
 expectAll('顯示資料來源與資料截至時間', render(createElement(Header, headerProps)), [
   '立法院開放資料',
   '資料截至 2026/09/30',
@@ -815,9 +831,9 @@ check(
     return order.every((i, k) => i > 0 && (k === 0 || i > order[k - 1]));
   })(),
 );
-// 各頁的介紹文字改放進提示，頁面本身不再有獨立的介紹段落
-expectNone('總覽不再有獨立的介紹段落', dashboardLoading, ['class="page-lead"']);
-expectAll('總覽的介紹在提示裡', dashboardLoading, ['role="tooltip"', '依機關最常需要的順序']);
+// 頁面不再有重複分頁名稱的標題列與介紹段落：標題只留給讀螢幕程式，說明改掛在導覽列（見 Header 的測試）
+expectAll('總覽：標題只給讀螢幕程式', dashboardLoading, ['<h1 class="sr-only">總覽</h1>']);
+expectNone('總覽：沒有標題列、介紹段落或頁內提示', dashboardLoading, ['class="page-head"', 'class="page-lead"', 'role="tooltip"']);
 // 各縣市改成預設收合的 disclosure：25 張卡片不再一次攤開
 check(
   '總覽：各縣市動態是預設收合的 <details>',

@@ -263,11 +263,13 @@ header nav a[aria-current='page'], .subnav a[aria-current='page'] { color: var(-
 main { max-width: 1360px; margin: 0 auto; padding: var(--space-6) 20px 64px; display: grid; gap: var(--space-6); }
 .page-head { display: flex; align-items: baseline; gap: 20px; flex-wrap: wrap; }
 .page-head p { margin: 0; }
-/* 頁面標題旁的說明提示（PageTitle）：移上去／聚焦／點 ⓘ 才顯示 */
-.page-title { position: relative; display: inline-flex; align-items: center; gap: 4px; }
+/* 分頁導覽上的說明提示（InfoTip，見 Header）：移上去／聚焦／點 ⓘ 才顯示，不佔版面 */
+.info-wrap { display: inline-flex; align-items: center; }
 .info-button { color: var(--muted); }
 .info-button:hover:not(:disabled) { color: var(--ink); }
 .info-button svg { width: 18px; height: 18px; }
+/* 提示相對於最近的定位祖先（頂層導覽或次級導覽那一列），放在會捲動的容器之外才不會被裁切 */
+header nav, .subnav-row { position: relative; }
 .info-tip {
   position: absolute; left: 0; top: 100%; z-index: 30; margin-top: 8px;
   width: max-content; max-width: min(34em, calc(100vw - 32px));
@@ -276,7 +278,11 @@ main { max-width: 1360px; margin: 0 auto; padding: var(--space-6) 20px 64px; dis
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.28);
   visibility: hidden; opacity: 0; pointer-events: none; transition: opacity var(--t-fast);
 }
+.info-wrap.end .info-tip { left: auto; right: var(--space-6); } /* 對齊次級導覽那一列的內距，不貼螢幕邊 */
 .info-tip.open { visibility: visible; opacity: 1; pointer-events: auto; }
+.subnav-row { display: flex; align-items: center; gap: var(--space-2); max-width: 1240px; margin: 0 auto; padding: 0 var(--space-6); border-bottom: 1px solid var(--rule); }
+.subnav-row .subnav { flex: 1 1 auto; min-width: 0; max-width: none; margin: 0; padding-left: 0; padding-right: 0; border-bottom: 0; }
+@media (max-width: 760px) { .subnav-row { padding: 0 var(--space-4); } .info-wrap.end .info-tip { right: var(--space-4); } }
 .page-lead { margin: 0; max-width: 760px; color: var(--muted); font-size: var(--fs-base); line-height: 1.65; }
 .panel {
   background: var(--surface);
