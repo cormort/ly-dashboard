@@ -625,6 +625,23 @@ export interface RegionItem {
   /** 該區委員近 7 天新聞則數合計 */
   news_7d: number;
   latest: RegionLatest[];
+  /** 縣市統計摘要；不分區、原住民為 null */
+  stats: RegionStats | null;
+}
+
+export interface RegionWinner {
+  name: string;
+  party: string;
+  pct: number;
+  margin_pct: number | null;
+}
+
+export interface RegionStats {
+  population: number;
+  /** 65 歲以上人口比率（%） */
+  elderly_ratio: number;
+  president_2024: RegionWinner;
+  mayor_2022: RegionWinner;
 }
 
 export interface RegionsResponse {

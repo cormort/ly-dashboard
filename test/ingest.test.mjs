@@ -6,7 +6,7 @@ import { openDb, applyDataset, applyBills, applySocial, upsertNews, pruneLogs, g
 import { buildDataset, normalizeBills, normalizeMeetings, normalizeSocial, newsName, rocDate, DataValidationError } from '../server/normalize.mjs';
 import { CONFIG } from '../server/config.mjs';
 import { runIngest, runBillsIngest, runBudgetIngest, runBudgetReportsIngest, runMeetingsIngest, budgetPageUrl, runNewsIngest, runSocialIngest, runAll } from '../server/ingest.mjs';
-import { getHealth, listBills, listBudget, listBudgetMeetings, listBudgetReports, budgetState, listChanges, listCounties, listLegislatorVotes, listRankings, compareLegislators, listLegislators, listNews, listSyncRuns } from '../server/queries.mjs';
+import { getHealth, listBills, listBudget, listBudgetMeetings, listBudgetReports, budgetState, listChanges, listCounties, listLegislatorVotes, listRankings, compareLegislators, listRegions, listLegislators, listNews, listSyncRuns } from '../server/queries.mjs';
 import { FetchError } from '../server/fetch-ly.mjs';
 import { syncOnce } from '../server/index.mjs';
 
@@ -814,4 +814,13 @@ test('名冊與比較頁：區域與原住民委員帶該屆當選的選舉摘�
   assert.equal(wang.election.votes, 105050);
   const cmp = compareLegislators(db, { ids: wang.id });
   assert.deepEqual(cmp.items[0].election, wang.election);
+});
+
+test('總覽各縣市卡片：縣市帶人口與勝選者，不分區與原住民為 null', () => {
+  const { items } = listRegions(seeded(), { per: 2 });
+  const taipei = items.find((r) => r.region === '臺北市');
+  assert.equal(taipei.stats.population, 2421830);
+  assert.equal(taipei.stats.mayor_2022.name, '蔣萬安');
+  assert.equal(taipei.stats.president_2024.party, '民主進步黨');
+  for (const r of items) assert.equal(r.stats === null, !/^..[縣市]$/.test(r.region), r.region);
 });

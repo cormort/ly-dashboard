@@ -342,6 +342,38 @@ export function DashboardPage({ refreshToken, onOpenId, onNavigate }: DashboardP
                     {r.legislators.length} 位{r.news_7d ? `・近 7 天新聞 ${r.news_7d}` : ''}
                   </span>
                 </div>
+                {r.stats ? (
+                  <div className="region-stats">
+                    <p>
+                      人口 {r.stats.population.toLocaleString('zh-TW')}・65 歲以上 {r.stats.elderly_ratio.toFixed(1)}%
+                    </p>
+                    <p>
+                      {(
+                        [
+                          ['2024 總統', r.stats.president_2024],
+                          ['2022 縣市長', r.stats.mayor_2022],
+                        ] as const
+                      ).map(([label, w]) => (
+                        <span key={label} className="region-winner">
+                          {label}：{w.name}
+                          <span className="party-tag" style={{ '--party': partyStyle(w.party).color } as CSSProperties}>
+                            {partyStyle(w.party).short}
+                          </span>
+                          <span className="muted">{w.pct.toFixed(1)}%</span>
+                        </span>
+                      ))}
+                    </p>
+                    <a
+                      href={link('counties', { county: r.region })}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        onNavigate(link('counties', { county: r.region }));
+                      }}
+                    >
+                      縣市統計 →
+                    </a>
+                  </div>
+                ) : null}
                 <p className="region-people">
                   {r.legislators.map((l) => (
                     <span key={l.id} className="region-person" style={{ '--party': partyStyle(l.party).color } as CSSProperties}>

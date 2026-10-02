@@ -282,6 +282,7 @@ Query 參數（全部可選）：
 每區：`legislators`（在職委員 `{ id, name, party }`）、`news_7d`（該區委員近 7 天新聞合計）、
 `latest`（委員們最近的貼文／新聞／提案合併後取最新 `per` 則，1–10，預設 3；`{ kind, date, text, url, legislator }`）。
 動態來源與 `/activity` 相同。
+縣市另有 `stats`：`{ population, elderly_ratio, president_2024, mayor_2022 }`，後兩者為勝選者 `{ name, party, pct, margin_pct }`；不分區與原住民為 null。
 
 ## GET /api/v1/counties
 

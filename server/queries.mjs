@@ -854,6 +854,19 @@ const REGION_ORDER = [
  * 各區域（縣市）最新動態：該區在職委員，以及委員們最近的貼文／新聞／提案（合併取最新 `per` 則）。
  * 動態來源與 listActivity 相同，只是改依選區分組。
  */
+/** 總覽縣市卡片用：人口、老年人口比率、2024 總統與 2022 縣市長勝選者；不分區、原住民為 null */
+function countySummary(region) {
+  const c = loadCountyStats().counties.find((x) => x.county === region);
+  if (!c) return null;
+  const winner = (e) => ({ name: e.candidates[0].name, party: e.candidates[0].party, pct: e.candidates[0].pct, margin_pct: e.margin_pct });
+  return {
+    population: c.population,
+    elderly_ratio: Math.round((c.elderly / c.population) * 10000) / 100,
+    president_2024: winner(c.elections.president_2024),
+    mayor_2022: winner(c.elections.mayor_2022),
+  };
+}
+
 export function listRegions(db, { per = 3 } = {}) {
   const resolvedPer = Math.max(1, Math.min(Number(per) || 3, 10));
   const activity = new Map(listActivity(db, { limit: 113 }).items.map((a) => [a.legislator.id, a]));
@@ -875,14 +888,19 @@ export function listRegions(db, { per = 3 } = {}) {
   const rank = (name) => (REGION_ORDER.includes(name) ? REGION_ORDER.indexOf(name) : REGION_ORDER.length);
   const items = [...regions.values()]
     .sort((a, b) => rank(a.region) - rank(b.region) || a.region.localeCompare(b.region, 'zh-Hant'))
-    .map((r) => ({ ...r, latest: r.latest.sort((a, b) => String(b.date).localeCompare(String(a.date))).slice(0, resolvedPer) }));
+    .map((r) => ({
+      ...r,
+      latest: r.latest.sort((a, b) => String(b.date).localeCompare(String(a.date))).slice(0, resolvedPer),
+      stats: countySummary(r.region),
+    }));
   return { meta: envelope(db), count: items.length, items };
 }
 
 /** 縣市分頁：靜態的人口／選舉／地圖資料（scripts/build-county-stats.mjs 產生），加上各縣市在職區域立委 */
 let countyStats = null;
+const loadCountyStats = () => (countyStats ??= JSON.parse(readFileSync(new URL('./county-stats.json', import.meta.url), 'utf8')));
 export function listCounties(db) {
-  countyStats ??= JSON.parse(readFileSync(new URL('./county-stats.json', import.meta.url), 'utf8'));
+  loadCountyStats();
   const legislators = new Map();
   for (const l of db.prepare('SELECT id, name, party, area_name FROM legislators WHERE leave_flag = 0 ORDER BY area_name, name').all()) {
     const region = regionOf(l.area_name);
