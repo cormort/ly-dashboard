@@ -433,6 +433,8 @@ export interface NewsArticle {
 export interface NewsArticlesResponse {
   meta: Meta & { news_fetched_at: string | null };
   total: number;
+  /** 符合條件者中，現在起算近 7 天的則數（同一篇只算一次） */
+  recent_7d: number;
   source_total: number;
   /** 前 30 家媒體與報導則數（不受媒體條件影響） */
   sources: { name: string; count: number }[];

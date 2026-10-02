@@ -846,7 +846,8 @@ expectNone('委員會頁：頁首不放委員搜尋', render(createElement(Heade
 const dashboardLoading = render(createElement(DashboardPage, { refreshToken: 0, onOpenId: () => undefined, onNavigate: () => undefined }));
 expectAll('總覽：loading 態有統計列、焦點卡與各區塊骨架', dashboardLoading, [
   '總覽',
-  '在職委員',
+  '首長新聞（近 7 天）',
+  'href="/officials"',
   '最新動態',
   '最新三讀',
   '預算審議最新進度',
