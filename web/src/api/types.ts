@@ -765,6 +765,21 @@ export interface PartyShare {
  * 罷免案（中選會官方清單，`scripts/fetch-cec-recalls.mjs`）。
  * 只有案件層級資訊：中選會的罷免表**沒有**各案同意／不同意票數與投票率。
  */
+/** 官方公告 PDF 裡的投開票數字（`scripts/fetch-recall-results.mjs` 解析） */
+export interface RecallResults {
+  electorate: number;
+  voted: number;
+  turnout_pct: number;
+  agree: number;
+  disagree: number;
+  agree_share_pct: number;
+  /** 無效票＝投票人數 − 同意 − 不同意 */
+  invalid: number;
+  result_text: string;
+  announcement: string;
+  announcement_url: string;
+}
+
 export interface RecallItem {
   term: number;
   vote_date: string | null;
@@ -774,6 +789,8 @@ export interface RecallItem {
   /** true = 罷免通過（中選會 vote_result = Y）；2015 起 35 案只有陳柏惟（2021）通過 */
   passed: boolean;
   title: string;
+  /** 只有 2025 兩波 31 案有（公告 PDF 才有票數；2015–2022 那 4 案的公告格式各異，尚未納入） */
+  results?: RecallResults;
 }
 
 export interface LegislatorVotesResponse {

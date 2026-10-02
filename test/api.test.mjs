@@ -992,3 +992,38 @@ test('靜態資料清單要把罷免案也納入監控', () => {
   assert.equal(health.static_data.recalls.count, 35);
   assert.match(health.static_data.recalls.as_of, /^\d{4}-\d{2}$/, '用 fetched_at 的年月當資料截止');
 });
+
+test('罷免票數：2025 兩波 31 案有官方票數，且數字自身一致', () => {
+  const { db } = seededWithRoster();
+  const res = listRecalls(db);
+
+  assert.equal(res.with_results, 31, '2025-07-26（24）＋ 2025-08-23（7）');
+  assert.equal(res.results_sources.length, 2, '兩份公告各對應一天');
+  assert.match(res.results_sources[0].url, /^https:\/\/(web\.cec\.gov\.tw|gazette\.nat\.gov\.tw)\//);
+
+  // 每一筆有票數的紀錄都要通過內部一致性（這也是解析公告表格時的防線）
+  for (const r of res.items.filter((x) => x.results)) {
+    const v = r.results;
+    assert.equal(v.agree + v.disagree + v.invalid, v.voted, `${r.name}：同意＋不同意＋無效票要等於投票人數`);
+    assert.ok(v.invalid > 0, `${r.name}：無效票應為正`);
+    const share = Math.round((v.agree / v.electorate) * 10000) / 100;
+    assert.equal(v.agree_share_pct, share, `${r.name}：同意票佔比要等於 同意÷投票人總數`);
+    assert.equal(v.result_text, r.passed ? '通過' : '否決', `${r.name}：公告文字要與 vote_result 一致`);
+    assert.match(v.announcement_url, /^https:\/\//);
+  }
+
+  // 2025 兩波都是否決；票數不該讓「同意 > 不同意」出現（31 案全部否決）
+  const withResults = res.items.filter((x) => x.results);
+  assert.ok(withResults.every((r) => r.results.disagree > r.results.agree), '31 案都是不同意多於同意');
+
+  // 抽查：丁學忠（官方公告 114年8月1日）
+  const ding = res.items.find((r) => r.name === '丁學忠').results;
+  assert.deepEqual(
+    { agree: ding.agree, disagree: ding.disagree, voted: ding.voted, invalid: ding.invalid, turnout: ding.turnout_pct },
+    { agree: 57331, disagree: 77164, voted: 135470, invalid: 975, turnout: 49.87 },
+  );
+
+  // 2015–2022 那 4 案還沒有票數（公告格式各異，尚未納入）—— 明寫出來，才不會以為是漏掉
+  const missing = res.items.filter((r) => !r.results).map((r) => r.name).sort();
+  assert.deepEqual(missing, ['林昶佐', '蔡正元', '陳柏惟', '黃國昌']);
+});

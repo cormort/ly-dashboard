@@ -1192,6 +1192,9 @@ export function listLegislatorVotes(db, { id = null } = {}) {
     // 罷免是中選會官方清單（只有清單與結果，沒有同意／不同意票數）
     recalls: recallSource.recalls,
     recalls_source: { ...recallSource.source, fetched_at: recallSource.fetched_at },
+    // 票數來自公告 PDF（只有 2025 兩波有）
+    recalls_results_sources: recallSource.results_sources ?? [],
+    recalls_results_updated_at: recallSource.results_updated_at ?? null,
     count: items.length,
     items,
   };
@@ -1209,6 +1212,10 @@ export function listRecalls(db) {
     source: { ...source.source, fetched_at: source.fetched_at },
     count: recalls.length,
     passed: recalls.filter((r) => r.passed).length,
+    // 有官方票數的案數（2025 兩波 31 案；公告 PDF 才有數字）
+    with_results: recalls.filter((r) => r.results).length,
+    results_sources: source.results_sources ?? [],
+    results_updated_at: source.results_updated_at ?? null,
     terms: [...new Set(recalls.map((r) => r.term))].sort((a, b) => b - a),
     items: recalls,
   };

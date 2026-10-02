@@ -35,11 +35,21 @@ export function LegislatorElectionHistory({ legislatorId, region }: { legislator
                   {r.district ? ` ${r.district}` : ''}
                   <span className={r.passed ? 'recall-passed' : 'muted'}> {r.passed ? '罷免通過' : '罷免未通過'}</span>
                 </div>
+                {r.results ? (
+                  <div className="election-numbers">
+                    同意 {num(r.results.agree)} 票、不同意 {num(r.results.disagree)} 票
+                    <span className="muted">（投票率 {r.results.turnout_pct.toFixed(2)}%）</span>
+                  </div>
+                ) : (
+                  <div className="muted">（此案的票數未收錄）</div>
+                )}
               </li>
             ))}
           </ul>
-          {/* 中選會的罷免表只有清單與結果，沒有票數；講清楚才不會讓人以為漏了 */}
-          <small className="muted">資料來源：{res.data?.recalls_source?.label ?? '中選會'}（該表沒有同意／不同意票數）</small>
+          {/* 案件清單來自中選會選舉資料庫（沒有票數）；票數另外解析自官方公告 PDF */}
+          <small className="muted">
+            案件：{res.data?.recalls_source?.label ?? '中選會'}・票數：中選會公告 PDF（2025 兩波；2015–2022 尚未收錄）
+          </small>
         </div>
       ) : null}
       {history.length ? (

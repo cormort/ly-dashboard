@@ -58,6 +58,7 @@ cron/啟動排程 (24h)                      server/ingest.mjs
 | `server/queries.mjs` | API 視圖（本會期名錄、委員會、異動、健康狀態） |
 | `server/index.mjs` | HTTP API + 靜態檔 + SPA fallback + 每日排程 |
 | `scripts/fetch-cec-recalls.mjs` | 抓中選會官方罷免清單 → `server/recalls.json`（35 案） |
+| `scripts/fetch-recall-results.mjs` | 解析中選會**公告 PDF** 的同意／不同意票數 → 補進 `server/recalls.json`（需要 `pdftotext`；`--check` 只比對不寫檔） |
 | `docs/API.md` | 凍結的 API 契約（前端依此實作） |
 | `test/*.test.mjs` | 用真實 API 回應當 fixture 的回歸測試 |
 | `web/src/api/` | 型別化 API client（唯一出口，前端不碰政府端點） |
