@@ -1,6 +1,7 @@
 import { useState, type CSSProperties } from 'react';
 import { ExternalLink } from 'lucide-react';
 import { buildUrl } from '../api/client';
+import { PageTitle } from '../components/PageTitle';
 import { TopicsPanel } from '../components/TopicsPanel';
 import type { ActivityItem, ActivityResponse, NewsResponse } from '../api/types';
 import { EmptyState, ErrorState, LoadingState } from '../components/DataStates';
@@ -111,8 +112,7 @@ export function HomePage({ refreshToken, onOpenId, onNavigate, tracked }: HomePa
   return (
     <>
       <div className="page-head">
-        <h1>最近動態</h1>
-        <p className="muted">委員最新的臉書貼文、新聞與提案進度，依時間排列。</p>
+        <PageTitle title="最近動態">委員最新的臉書貼文、新聞與提案進度，依時間排列。</PageTitle>
       </div>
 
       <div className="home">

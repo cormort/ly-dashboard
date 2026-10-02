@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { ArrowRight } from 'lucide-react';
 import { buildUrl } from '../api/client';
 import type { AgencyHomeResponse, AgencyItem, FundKind } from '../api/types';
+import { PageTitle } from '../components/PageTitle';
 import { EmptyState, ErrorState, LoadingState } from '../components/DataStates';
 import { useApi } from '../hooks/useApi';
 import { pathFor } from '../hooks/useRoute';
@@ -121,8 +122,7 @@ export function MyAgencyPage({ refreshToken, onOpenId, onNavigate }: MyAgencyPag
     return (
       <>
         <div className="page-head">
-          <h1>我的機關</h1>
-          <p className="page-lead">選定你的機關，這裡會以它為中心彙整：近期會議與書面回覆、預算與法案、哪些委員在關注，以及新聞。選擇會記在這個瀏覽器。</p>
+          <PageTitle title="我的機關">選定你的機關，這裡會以它為中心彙整：近期會議與書面回覆、預算與法案、哪些委員在關注，以及新聞。選擇會記在這個瀏覽器。</PageTitle>
         </div>
         {agency && data && !data.agency ? <p className="muted">找不到「{agency}」，請從清單選擇。</p> : null}
         {selector}

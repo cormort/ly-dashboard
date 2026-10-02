@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { ExternalLink, X } from 'lucide-react';
 import { buildUrl } from '../api/client';
 import type { FundKind, FundsResponse, FundType } from '../api/types';
+import { PageTitle } from '../components/PageTitle';
 import { EmptyState, ErrorState, LoadingState } from '../components/DataStates';
 import { FacetChips } from '../components/FacetChips';
 import { useApi } from '../hooks/useApi';
@@ -65,8 +66,7 @@ export function FundsPage({ type, refreshToken, onOpenId }: FundsPageProps) {
   return (
     <>
       <div className="page-head">
-        <h1>{COPY[type].title}</h1>
-        <p className="muted">新聞、臉書、提案、預算審議與預算中心報告中，{COPY[type].intro}</p>
+        <PageTitle title={COPY[type].title}>新聞、臉書、提案、預算審議與預算中心報告中，{COPY[type].intro}</PageTitle>
       </div>
 
       {data ? (
