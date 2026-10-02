@@ -5,8 +5,8 @@ import { fileURLToPath } from 'node:url';
 import { openDb, applyDataset, applyBills, applySocial, applyCommitteeRecords, applyCommitteeMeets, upsertNews, pruneLogs, getMeta, setMeta } from '../server/db.mjs';
 import { buildDataset, normalizeBills, normalizeCommitteeRecords, normalizeMeetings, normalizeSocial, newsName, rocDate, DataValidationError } from '../server/normalize.mjs';
 import { CONFIG } from '../server/config.mjs';
-import { guardShrink, runIngest, runBillsIngest, runRecordsIngest, runBudgetIngest, runBudgetReportsIngest, runMeetingsIngest, budgetPageUrl, runNewsIngest, runSocialIngest, runAll } from '../server/ingest.mjs';
-import { getHealth, listBills, listBudget, listBudgetMeetings, listBudgetReports, budgetState, listChanges, listCounties, listLegislatorVotes, listRankings, compareLegislators, listRegions, listSplitTicket, listDemographics, listPopulationTrend, getTownMap, listLegislators, listNews, listSyncRuns } from '../server/queries.mjs';
+import { entityFeedUrl, guardShrink, runIngest, runBillsIngest, runRecordsIngest, runBudgetIngest, runBudgetReportsIngest, runMeetingsIngest, budgetPageUrl, runNewsIngest, runSocialIngest, runAll } from '../server/ingest.mjs';
+import { entityNewsTerms, listFunds, getHealth, listBills, listBudget, listBudgetMeetings, listBudgetReports, budgetState, listChanges, listCounties, listLegislatorVotes, listRankings, compareLegislators, listRegions, listSplitTicket, listDemographics, listPopulationTrend, getTownMap, listLegislators, listNews, listSyncRuns } from '../server/queries.mjs';
 import { FetchError } from '../server/fetch-ly.mjs';
 import { syncOnce } from '../server/index.mjs';
 
@@ -977,3 +977,95 @@ test('B10: rocDate 不合法月日要回 null，不能產生 2024-13-45', () => 
   assert.equal(rocDate('113/00/10'), null);
   assert.equal(rocDate('113/12/31'), '2024-12-31');
   assert.equal(rocDate('abc'), null);});
+
+/* ---------------- 基金／機關／行政法人新聞：專屬批次查詢（與機關首長新聞同樣新） ---------------- */
+
+const rssOf = (items) =>
+  `<rss version="2.0"><channel>${items
+    .map((i) => `<item><title>${i.title} - ${i.source ?? '來源'}</title><link>${i.url}</link><pubDate>${i.date}</pubDate><source>${i.source ?? '來源'}</source></item>`)
+    .join('')}</channel></rss>`;
+const rssResponse = (xml) => ({ text: xml, status: 200, headers: {}, bytes: xml.length, sha256: 'x', attempts: 1 });
+const NEWS_NOW = () => new Date('2026-09-30T00:00:00.000Z');
+
+test('基金新聞：搜尋詞不重複、取最短簡稱、全部合併成 OR 批次', () => {
+  const terms = entityNewsTerms();
+  assert.equal(new Set(terms).size, terms.length, '搜尋詞不可重複');
+  assert.ok(terms.includes('台電') && !terms.includes('台灣電力股份有限公司'), '有簡稱就用簡稱');
+  const q = new URL(entityFeedUrl(['台電', '中油'])).searchParams.get('q');
+  assert.match(q, /^\("台電" OR "中油"\) when:\d+d$/);
+});
+
+test('基金新聞：不依賴委員新聞，標題提到具名單位才收，並出現在基金頁', async () => {
+  const db = seeded();
+  const queries = [];
+  const fetchImpl = async (url) => {
+    const q = decodeURIComponent(new URL(url).searchParams.get('q'));
+    queries.push(q);
+    if (!q.includes(' OR ')) return rssResponse(rssOf([])); // 委員／首長查詢：沒有新聞
+    return rssResponse(
+      rssOf([
+        { title: '台電宣布電價調整', url: 'https://news.example/tpc', date: 'Tue, 29 Sep 2026 08:00:00 GMT' },
+        { title: '今天天氣很好', url: 'https://news.example/weather', date: 'Tue, 29 Sep 2026 09:00:00 GMT' },
+        { title: '泛稱的某基金成立', url: 'https://news.example/generic', date: 'Tue, 29 Sep 2026 10:00:00 GMT' },
+      ]),
+    );
+  };
+  const result = await runNewsIngest(db, { logger: silent, fetchImpl, now: NEWS_NOW, delayMs: 0 });
+  assert.equal(result.status, 'success');
+  assert.equal(result.entity.processed, result.entity.total);
+  assert.equal(result.entity.added, 1, '77 組都回同一則，只算新增 1 列');
+  assert.equal(queries.filter((q) => q.includes(' OR ')).length, result.entity.total, '每組一次查詢');
+  assert.ok(result.entity.total >= 50 && result.entity.total < 200, `約 80 組，實際 ${result.entity.total}`);
+
+  const stored = db.prepare("SELECT title FROM topic_news WHERE topic = 'entities'").all().map((r) => r.title);
+  assert.deepEqual(stored, ['台電宣布電價調整'], '無關與泛稱基金的標題不收（同網址跨組只存一次）');
+  const funds = listFunds(db, { type: 'fund', kind: 'news' });
+  const row = funds.items.find((i) => i.url === 'https://news.example/tpc');
+  assert.ok(row, '基金頁要看得到');
+  assert.equal(row.legislator, null, '不掛委員');
+  assert.ok(row.funds.includes('台灣電力股份有限公司'));
+  // 再抓一次：不重複新增
+  const again = await runNewsIngest(db, { logger: silent, fetchImpl, now: NEWS_NOW, delayMs: 0 });
+  assert.equal(again.entity.added, 0);
+});
+
+test('基金新聞：批次失敗只記警告不影響整體；預算用盡會接續上次的組別', async () => {
+  const db = seeded();
+  const first = [];
+  await runNewsIngest(db, {
+    logger: silent,
+    delayMs: 0,
+    entityBudgetMs: 25,
+    now: NEWS_NOW,
+    fetchImpl: async (url) => {
+      const q = decodeURIComponent(new URL(url).searchParams.get('q'));
+      if (!q.includes(' OR ')) return rssResponse(rssOf([]));
+      first.push(q);
+      await new Promise((r) => setTimeout(r, 10));
+      return rssResponse(rssOf([]));
+    },
+  });
+  assert.ok(first.length >= 1 && first.length < entityNewsTerms().length / CONFIG.news.entityBatch, '只跑一部分');
+  assert.ok(Number(getMeta(db, 'news_entity_cursor')) >= 1, '記下接續位置');
+
+  const second = [];
+  const result = await runNewsIngest(db, {
+    logger: silent,
+    delayMs: 0,
+    entityBudgetMs: 25,
+    now: NEWS_NOW,
+    fetchImpl: async (url) => {
+      const q = decodeURIComponent(new URL(url).searchParams.get('q'));
+      if (!q.includes(' OR ')) return rssResponse(rssOf([]));
+      second.push(q);
+      if (second.length === 1) throw new FetchError('HTTP 503', { status: 503, attempts: 2 }); // 第一組失敗
+      await new Promise((r) => setTimeout(r, 10));
+      return rssResponse(rssOf([]));
+    },
+  });
+  assert.notEqual(second[0], first[0], '第二輪不是又從頭開始');
+  assert.equal(result.status, 'success', '基金新聞批次失敗不拖垮新聞同步');
+  assert.equal(result.entity.failures, 1);
+  assert.match(String(db.prepare("SELECT error FROM sync_runs WHERE dataset = 'news' ORDER BY id DESC LIMIT 1").get().error), /基金／機關新聞/);
+});
+
