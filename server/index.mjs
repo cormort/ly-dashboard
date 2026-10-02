@@ -134,7 +134,7 @@ export function createServer(db) {
           case '/api/v1/counties':
             return sendJson(res, 200, listCounties(db));
           case '/api/v1/legislator-votes':
-            return sendJson(res, 200, listLegislatorVotes(db));
+            return sendJson(res, 200, listLegislatorVotes(db, { id: q.id || null }));
           case '/api/v1/committee-activity':
             return sendJson(res, 200, listCommitteeActivity(db, { committee: q.committee, limit: q.limit }));
           case '/api/v1/funds':

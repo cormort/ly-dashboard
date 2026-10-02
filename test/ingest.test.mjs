@@ -6,7 +6,7 @@ import { openDb, applyDataset, applyBills, applySocial, upsertNews, pruneLogs, g
 import { buildDataset, normalizeBills, normalizeMeetings, normalizeSocial, newsName, rocDate, DataValidationError } from '../server/normalize.mjs';
 import { CONFIG } from '../server/config.mjs';
 import { runIngest, runBillsIngest, runBudgetIngest, runBudgetReportsIngest, runMeetingsIngest, budgetPageUrl, runNewsIngest, runSocialIngest, runAll } from '../server/ingest.mjs';
-import { getHealth, listBills, listBudget, listBudgetMeetings, listBudgetReports, budgetState, listChanges, listCounties, listLegislatorVotes, listLegislators, listNews, listSyncRuns } from '../server/queries.mjs';
+import { getHealth, listBills, listBudget, listBudgetMeetings, listBudgetReports, budgetState, listChanges, listCounties, listLegislatorVotes, listRankings, listLegislators, listNews, listSyncRuns } from '../server/queries.mjs';
 import { FetchError } from '../server/fetch-ly.mjs';
 import { syncOnce } from '../server/index.mjs';
 
@@ -764,4 +764,27 @@ test('立委得票追蹤：在職區域與原住民委員都對得到 2024 當�
   }
   const twice = res.items.find((i) => i.history.length > 1);
   assert.equal(twice.history[1].change, twice.history[1].votes - twice.history[0].votes);
+});
+
+test('立委得票追蹤：含補選（2023 王鴻薇）且可用 id 查單一委員', () => {
+  const db = seeded();
+  const all = listLegislatorVotes(db);
+  const wang = all.items.find((i) => i.legislator.name === '王鴻薇');
+  const byElection = wang.history.find((h) => h.by_election);
+  assert.equal(byElection.year, 2023);
+  assert.equal(byElection.votes, 60519);
+  assert.equal(wang.history.at(-1).change, wang.history.at(-1).votes - byElection.votes);
+  const one = listLegislatorVotes(db, { id: wang.legislator.id });
+  assert.equal(one.count, 1);
+  assert.deepEqual(one.items[0].history, wang.history);
+});
+
+test('排行榜：險勝榜依領先幅度由小到大、流失榜依得票減少由多到少', () => {
+  const { boards } = listRankings(seeded(), { type: 'all', limit: 10 });
+  const close = boards.close.items.map((i) => i.value);
+  assert.deepEqual(close, [...close].sort((a, b) => a - b));
+  assert.ok(close[0] >= 0);
+  const drop = boards.drop.items.map((i) => i.value);
+  assert.deepEqual(drop, [...drop].sort((a, b) => b - a));
+  assert.ok(drop.every((v) => v > 0));
 });

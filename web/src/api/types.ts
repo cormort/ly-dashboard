@@ -475,7 +475,7 @@ export interface ActivityResponse {
 
 /* ---------- /rankings ---------- */
 
-export type RankingType = 'news' | 'facebook' | 'bills';
+export type RankingType = 'news' | 'facebook' | 'bills' | 'close' | 'drop';
 
 export interface RankingLegislator {
   id: string;
@@ -684,6 +684,7 @@ export interface LegislatorRace {
   year: number;
   kind: '區域' | '平地原住民' | '山地原住民';
   district: string;
+  by_election: boolean;
   party: string;
   votes: number;
   pct: number;

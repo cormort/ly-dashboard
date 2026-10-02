@@ -90,16 +90,18 @@ function loadCec(dir) {
   const parties = new Map(rows(file('elpaty')).map((r) => [r[0], r[1]]));
   // 號次 → 候選人（只留正手）。全國性選舉以號次對應，地方選舉加上縣市（與選區）代碼
   const cands = new Map();
+  // 號次在部分檔案補零（'001'），一律轉成數字字串
+  const no = (v) => String(Number(v));
   for (const r of rows(file('elcand'))) {
     if (r[15] === 'Y') continue;
     const cand = { name: r[6], party: party(parties.get(r[7])) };
-    if (r[0] === '00') cands.set(`#${r[5]}`, cand);
+    if (r[0] === '00') cands.set(`#${no(r[5])}`, cand);
     else {
-      cands.set(`${r[0]}${r[1]}${r[2]}#${r[5]}`, cand);
-      cands.set(`${r[0]}${r[1]}#${r[5]}`, cand);
+      cands.set(`${r[0]}${r[1]}${r[2]}#${no(r[5])}`, cand);
+      cands.set(`${r[0]}${r[1]}#${no(r[5])}`, cand);
     }
   }
-  const candOf = (r) => cands.get(`${r[0]}${r[1]}${r[2]}#${r[6]}`) ?? cands.get(`${r[0]}${r[1]}#${r[6]}`) ?? cands.get(`#${r[6]}`);
+  const candOf = (r) => cands.get(`${r[0]}${r[1]}${r[2]}#${no(r[6])}`) ?? cands.get(`${r[0]}${r[1]}#${no(r[6])}`) ?? cands.get(`#${no(r[6])}`);
   const countyOf = (r) => fixName(names.get(`${r[0]}${r[1]}000000000`));
   // 選區（或縣市）合計列：鄉鎮、村里、投開票所代碼皆為 0
   // 2018 以前部分檔案的投開票所代碼寫成 '0'，以數值判斷
@@ -140,6 +142,47 @@ function districtRaces(dir, year, kind) {
     const district = kind !== '區域' ? `${kind}選舉區` : perCounty.get(race.county) > 1 ? `${race.county}第${area}選舉區` : `${race.county}選舉區`;
     return { ...race, district, valid, margin, margin_pct, candidates };
   });
+}
+
+/** 含引號欄位的 CSV（補選明細的數字寫成 "1,141"）；UTF-8 解不開時改用 Big5 */
+function readCsv(file) {
+  const buf = readFileSync(file);
+  let text = new TextDecoder('utf-8').decode(buf);
+  if (text.includes('\uFFFD')) text = new TextDecoder('big5').decode(buf);
+  return text
+    .replace(/^\uFEFF/, '')
+    .split(/\r?\n/)
+    .filter((line) => line.trim())
+    .map((line) => [...line.matchAll(/("([^"]*)"|[^,]*)(,|$)/g)].map((m) => (m[2] ?? m[1]).trim()).slice(0, -1));
+}
+
+/**
+ * 立委補選。2015 為 el* 原始檔（資料夾名如「2015台中市6」），2019 起為投開票所明細（cand.csv + prof.csv，
+ * 資料夾名如「2023第10屆立法委員臺北市第3選舉區缺額補選」）。
+ */
+function byElections() {
+  const out = [];
+  const old = cec('立委補選');
+  for (const name of readdirSync(old).filter((n) => /^2015/.test(n))) {
+    const [, county, area] = name.match(/^2015(.{3})(\d*)$/);
+    const district = `${fixName(county)}${area ? `第${area}` : ''}選舉區`;
+    for (const race of districtRaces(join(old, name), 2015, '區域')) out.push({ ...race, district, by_election: true });
+  }
+  const recent = cec('立委補選(2019年後)');
+  for (const name of readdirSync(recent)) {
+    const [, year, district] = name.match(/^(\d{4})第\d+屆立法委員(.+?)缺額補選$/);
+    const cands = readCsv(join(recent, name, 'cand.csv')).slice(1);
+    const stations = readCsv(join(recent, name, 'prof.csv')).filter((r) => /^\d+$/.test(r[2]));
+    const list = cands.map((c, i) => ({
+      name: c[1],
+      party: party(c[2]),
+      votes: stations.reduce((sum, r) => sum + Number(r[3 + i].replace(/,/g, '')), 0),
+    }));
+    const top = Math.max(...list.map((c) => c.votes));
+    const { candidates, valid, margin, margin_pct } = summarize(list.map((c) => ({ ...c, elected: c.votes === top })));
+    out.push({ year: Number(year), kind: '區域', county: fixName(district.slice(0, 3)), district: fixName(district), valid, margin, margin_pct, candidates, by_election: true });
+  }
+  return out;
 }
 
 /** 每個縣市的歷次得票（依政黨加總），給「得票趨勢」用 */
@@ -290,6 +333,6 @@ const races = Object.entries(PRESIDENT).flatMap(([year, dir]) => [
   ...districtRaces(cec(`${dir}/區域立委`), Number(year), '區域'),
   ...districtRaces(cec(`${dir}/平地立委`), Number(year), '平地原住民'),
   ...districtRaces(cec(`${dir}/山地立委`), Number(year), '山地原住民'),
-]);
+]).concat(byElections());
 writeFileSync(args['legislators-out'], `${JSON.stringify({ years: Object.keys(PRESIDENT).map(Number), sources: sources.slice(0, 1), races })}\n`);
 console.log(`wrote ${args['legislators-out']}: ${races.length} 場`);

@@ -7,6 +7,7 @@ import { text } from '../lib/format';
 import { partyStyle } from '../lib/parties';
 import { LegislatorBills } from './LegislatorBills';
 import { LegislatorCosponsors } from './LegislatorCosponsors';
+import { LegislatorElectionHistory } from './LegislatorElectionHistory';
 import { LegislatorNews } from './LegislatorNews';
 
 export interface LegislatorDetailProps {
@@ -135,6 +136,11 @@ export function LegislatorDetail({
           ) : (
             <p className="muted">未提供</p>
           )}
+        </section>
+
+        <section className="detail-section">
+          <h2>歷次得票</h2>
+          <LegislatorElectionHistory legislatorId={legislator.id} region={legislator.region} />
         </section>
 
         <section className="detail-section">

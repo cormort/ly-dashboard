@@ -350,7 +350,7 @@ const withIntensity = (items) => {
 };
 
 /**
- * 排行榜：新聞曝光、臉書發文、法案提案。
+ * 排行榜：新聞曝光、臉書發文、法案提案，以及選舉兩榜（險勝、得票流失）。
  * 只列入在職委員（離職者仍有歷史提案，放在排行榜會誤導）。
  * 每項都回 intensity（0–1，相對第一名的長度），前端不必自己算。
  */
@@ -462,6 +462,61 @@ export function listRankings(db, { type = 'all', days = 30, limit = 10 } = {}) {
       unit: '件',
       items: withIntensity(items),
     };
+  }
+
+  // 選舉兩榜：以在職委員最近一次（含補選）當選的選舉為準
+  if (wanted('close') || wanted('drop')) {
+    const latest = listLegislatorVotes(db)
+      .items.filter((i) => index.has(i.legislator.id))
+      .map((i) => ({ id: i.legislator.id, race: i.history.at(-1), prev: i.history.at(-2) }))
+      .filter((x) => x.race?.elected && x.race.margin_pct !== null);
+    if (wanted('close')) {
+      const rows = [...latest].sort((a, b) => a.race.margin_pct - b.race.margin_pct).slice(0, resolvedLimit);
+      const widest = Math.max(...rows.map((x) => x.race.margin_pct), 0.01);
+      boards.close = {
+        type: 'close',
+        title: '險勝排行',
+        note: '最近一次當選時領先最高票落選者的幅度，越小越前面（原住民選區為最後一席對落選頭）',
+        unit: '個百分點',
+        items: rows.map((x, i) => ({
+          rank: i + 1,
+          // 長條代表「多接近」：差距越小越長
+          intensity: Math.max(0.06, 1 - (x.race.margin_pct / widest) * 0.9),
+          value: x.race.margin_pct,
+          value_display: `${x.race.margin_pct.toFixed(2)} 個百分點`,
+          legislator: index.get(x.id),
+          detail: {
+            label: `${x.race.year}${x.race.by_election ? ' 補選' : ''} ${x.race.district}`,
+            text: `領先 ${x.race.rival.name} ${x.race.margin.toLocaleString('zh-TW')} 票`,
+            url: '',
+          },
+        })),
+      };
+    }
+    if (wanted('drop')) {
+      const rows = latest
+        // 只比同一選區，避免選區重劃（例如 2024 新竹縣拆成兩區）造成的假流失
+        .filter((x) => x.race.change !== null && x.race.change < 0 && x.prev.district === x.race.district)
+        .sort((a, b) => a.race.change - b.race.change)
+        .slice(0, resolvedLimit)
+        .map((x) => ({
+          legislator: index.get(x.id),
+          value: -x.race.change,
+          value_display: `${x.race.change.toLocaleString('zh-TW')} 票`,
+          detail: {
+            label: `${x.prev.year} → ${x.race.year}${x.race.by_election ? ' 補選' : ''}`,
+            text: `${x.prev.votes.toLocaleString('zh-TW')} → ${x.race.votes.toLocaleString('zh-TW')} 票（${x.race.district}）`,
+            url: '',
+          },
+        }));
+      boards.drop = {
+        type: 'drop',
+        title: '得票流失排行',
+        note: '最近一次當選與本人前一次在同一選區參選相比，得票減少最多者（仍當選）',
+        unit: '票',
+        items: withIntensity(rows),
+      };
+    }
   }
 
   return {
@@ -842,12 +897,13 @@ export function listCounties(db) {
 }
 
 /**
- * 立委得票追蹤：在職委員歷次（2012 起）區域／原住民立委選舉的得票（server/legislator-votes.json）。
+ * 立委得票追蹤：在職委員歷次（2012 起，含補選）區域／原住民立委選舉的得票（server/legislator-votes.json）。
+ * `id` 指定單一委員（含已離職）。
  * 以姓名比對（族語名分隔符號一律去掉）；不分區委員若曾參選區域也會列出。
  * `margin`：當選者對最高票落選者的領先票數，落選者對最低票當選者的差距（負值）；`change`：與本人前一次參選的得票差。
  */
 let legislatorVotes = null;
-export function listLegislatorVotes(db) {
+export function listLegislatorVotes(db, { id = null } = {}) {
   legislatorVotes ??= JSON.parse(readFileSync(new URL('./legislator-votes.json', import.meta.url), 'utf8'));
   const key = (name) => String(name).replace(/[\s‧·・．.]/g, '');
   const byName = new Map();
@@ -860,6 +916,7 @@ export function listLegislatorVotes(db) {
         year: race.year,
         kind: race.kind,
         district: race.district,
+        by_election: Boolean(race.by_election),
         party: c.party,
         votes: c.votes,
         pct: c.pct,
@@ -875,8 +932,8 @@ export function listLegislatorVotes(db) {
     });
   }
   const items = db
-    .prepare('SELECT id, name, party, area_name FROM legislators WHERE leave_flag = 0 ORDER BY area_name, name')
-    .all()
+    .prepare(`SELECT id, name, party, area_name FROM legislators WHERE ${id ? 'id = ?' : 'leave_flag = 0'} ORDER BY area_name, name`)
+    .all(...(id ? [id] : []))
     .map((l) => {
       const history = (byName.get(key(l.name)) ?? []).sort((a, b) => a.year - b.year);
       return {

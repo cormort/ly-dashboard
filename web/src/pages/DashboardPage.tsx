@@ -287,7 +287,8 @@ export function DashboardPage({ refreshToken, onOpenId, onNavigate }: DashboardP
         <Card title="排行榜（近 30 天）" href={link('rankings')} onNavigate={onNavigate} resource={rankings} wide>
           {(data) => (
             <div className="dash-boards">
-              {Object.values(data.boards).map((board) =>
+              {/* 總覽只放近期活動三榜；選舉兩榜（險勝、流失）在排行榜頁 */}
+              {[data.boards.news, data.boards.facebook, data.boards.bills].map((board) =>
                 board ? (
                   <div key={board.type}>
                     <h3>{board.title}</h3>

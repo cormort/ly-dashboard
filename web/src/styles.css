@@ -1129,3 +1129,8 @@ a.stat-tile:hover { border-color: #98a2b3; box-shadow: var(--card-base-hover); t
 .legislator-votes-card h3 { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .legislator-votes > * { min-width: 0; }
 .stat-control input { min-width: 0; max-width: 100%; }
+.election-history ol { list-style: none; margin: 0 0 var(--space-3); padding: 0; display: grid; gap: 10px; }
+.election-history li { display: grid; gap: 2px; font-size: var(--fs-sm); padding-bottom: 10px; border-bottom: 1px solid var(--rule-soft); }
+.election-history .pill { margin-left: 6px; }
+.election-won { font-weight: 700; }
+.election-numbers { font-variant-numeric: tabular-nums; }

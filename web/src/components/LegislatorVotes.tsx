@@ -91,8 +91,11 @@ export function LegislatorVotes({ refreshToken, county, onOpenId }: { refreshTok
                     const prev = history[i - 1]?.change ?? null;
                     const turn = h.change !== null && prev !== null && h.change !== 0 && prev !== 0 && Math.sign(h.change) !== Math.sign(prev);
                     return (
-                      <tr key={`${h.year}-${h.district}`}>
-                        <td>{h.year}</td>
+                      <tr key={`${h.year}-${h.district}-${h.by_election}`}>
+                        <td>
+                          {h.year}
+                          {h.by_election ? <small className="pill">補選</small> : null}
+                        </td>
                         <td>{h.district}</td>
                         <td>
                           <PartyTag party={h.party} />
@@ -133,7 +136,7 @@ export function LegislatorVotes({ refreshToken, county, onOpenId }: { refreshTok
         ))}
       </div>
       <p className="muted">
-        對手：當選者對照最高票落選者，落選者對照最低票當選者。資料為歷屆大選（2012、2016、2020、2024），不含補選。來源：
+        對手：當選者對照最高票落選者，落選者對照最低票當選者。資料為 2012 起歷屆大選與補選。來源：
         {res.data.sources.map((s) => (
           <a key={s.url} href={s.url} target="_blank" rel="noreferrer noopener">
             {s.label}

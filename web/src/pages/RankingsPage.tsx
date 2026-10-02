@@ -142,8 +142,8 @@ export function RankingsPage({ refreshToken, onOpenId }: RankingsPageProps) {
       </div>
 
       <p className="page-lead">
-        以本屆在職委員為範圍的三種活躍度排行：媒體曝光、臉書發文、法案提案。
-        新聞榜依所選區間統計，法案榜為本屆累計，臉書榜依整理表記錄的最新貼文時間。
+        以本屆在職委員為範圍的三種活躍度排行：媒體曝光、臉書發文、法案提案；另有兩個選舉榜：險勝（最近一次當選的領先幅度最小）與得票流失（與本人前次相比）。
+        新聞榜依所選區間統計，法案榜為本屆累計，臉書榜依整理表記錄的最新貼文時間，選舉榜不受區間影響。
       </p>
 
       {rankings.phase === 'loading' && !rankings.data ? <LoadingState label="載入排行榜…" /> : null}
