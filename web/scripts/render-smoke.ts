@@ -252,6 +252,12 @@ expectAll('同步中：按鈕停用並顯示進度', render(createElement(Header
   'aria-label="同步更新中…"',
   'disabled',
 ]);
+expectAll('頁首有字體大小調整（縮小／放大／目前百分比）', render(createElement(Header, headerProps)), [
+  'font-size-control',
+  'aria-label="縮小字體"',
+  'aria-label="放大字體"',
+  '100%',
+]);
 expectAll('閒置時按鈕是「更新資料」', render(createElement(Header, headerProps)), ['aria-label="更新資料"']);
 expectAll('同步失敗訊息帶 error 樣式', render(createElement(Header, { ...headerProps, syncMessage: '1 個資料來源同步失敗，保留舊資料', syncTone: 'error' })), [
   'sync-progress error',
