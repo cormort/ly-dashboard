@@ -81,6 +81,16 @@ export interface HealthResponse {
   datasets: Record<'id9' | 'id14' | 'bills' | 'budget' | 'news' | 'social', DatasetStatus>;
   /** 前端會顯示的兩種紀錄：目前筆數與保留上限 */
   retention: Record<'sync_runs' | 'change_log', { kept: number; current: number }>;
+  /**
+   * 不在同步流程內的靜態資料（人口／選舉／鄉鎮圖資，由 scripts/build-county-stats.mjs 產生）。
+   * 它們沒有 `fetched_at`（不是抓來的），只有資料截止 `as_of`；`as_of` 為 null 表示該檔沒有期間標記。
+   * `/health` 的 `ok`／`stale` 只看同步資料，這一份要另外看：人口超過 `LY_STATIC_STALE_MONTHS`
+   * 會出現在 `warnings`（提醒重跑 build 腳本）。
+   */
+  static_data: Record<
+    'counties' | 'demographics' | 'population_trend' | 'town_map' | 'legislator_votes',
+    { as_of: string | null; count: number; label: string }
+  >;
   last_runs: SyncRun[];
   warnings: string[];
 }

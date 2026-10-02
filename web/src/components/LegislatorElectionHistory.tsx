@@ -9,6 +9,9 @@ const num = (n: number) => n.toLocaleString('zh-TW');
 const signed = (n: number) => `${n > 0 ? '+' : ''}${num(n)}`;
 
 /** 委員側欄：歷次參選立委（含補選）的得票、與對手差距、與上次相比；完整表格在縣市頁「立委得票」 */
+/** 不是縣市的三種區域（regionOf() 的輸出；它們沒有縣市頁可連） */
+const NON_COUNTY_REGIONS = new Set(['全國不分區', '平地原住民', '山地原住民']);
+
 export function LegislatorElectionHistory({ legislatorId, region }: { legislatorId: string; region: string | null }) {
   const res = useApi<LegislatorVotesResponse>(buildUrl('/legislator-votes', { id: legislatorId }));
   if (res.phase === 'loading' && !res.data) return <LoadingState label="讀取得票紀錄…" />;
@@ -47,9 +50,14 @@ export function LegislatorElectionHistory({ legislatorId, region }: { legislator
           </li>
         ))}
       </ol>
-      <a className="muted" href={pathFor('counties', { tab: 'legislators', county: region ?? undefined })}>
-        在縣市頁看完整得票表 →
-      </a>
+      {/* 不分區與原住民沒有縣市：region 會是「山地原住民」這種值，
+          連過去會被縣市頁的 `?? items[0]` 靜默換成第一個縣市（基隆市），
+          使用者看到別人的得票表、自己的紀錄一列都沒有。所以不給連結。 */}
+      {region && !NON_COUNTY_REGIONS.has(region) ? (
+        <a className="muted" href={pathFor('counties', { tab: 'legislators', county: region })}>
+          在縣市頁看完整得票表 →
+        </a>
+      ) : null}
     </div>
   );
 }

@@ -22,18 +22,39 @@ const METRICS: Record<MetricKey, { label: string; unit: string; scale: ScaleName
   party: { label: '政黨得票率', unit: '%', scale: 'Blues' },
 };
 
-/** 由 path 字串算外框範圍，供「只看某縣市」時放大 */
-function bbox(paths: string[]): string {
+/**
+ * 由 path 字串算外框範圍，供「只看某縣市」時放大。
+ *
+ * 空陣列要回 undefined：沒有點時 x0/y0 仍是 Infinity，產出的 viewBox 是
+ * `Infinity Infinity -Infinity -Infinity`（無效值，圖會整個消失）。
+ * 匯出供測試使用（這是「縣市縮放壞掉」唯一的回歸防線）。
+ */
+export function bbox(paths: string[]): string | undefined {
   let [x0, y0, x1, y1] = [Infinity, Infinity, -Infinity, -Infinity];
+  let seen = false;
   for (const d of paths) {
     for (const m of d.matchAll(/(-?[\d.]+) (-?[\d.]+)/g)) {
       const x = Number(m[1]);
       const y = Number(m[2]);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+      seen = true;
       [x0, y0, x1, y1] = [Math.min(x0, x), Math.min(y0, y), Math.max(x1, x), Math.max(y1, y)];
     }
   }
+  if (!seen || x1 < x0 || y1 < y0) return undefined;
   const pad = Math.max(x1 - x0, y1 - y0) * 0.06 + 2;
   return `${(x0 - pad).toFixed(1)} ${(y0 - pad).toFixed(1)} ${(x1 - x0 + pad * 2).toFixed(1)} ${(y1 - y0 + pad * 2).toFixed(1)}`;
+}
+
+/**
+ * 「只看某縣市」的縮放框：用**縣市輪廓**路徑算，不是該縣市所有鄉鎮的 bbox。
+ * 有些鄉鎮含離島多邊形（旗津區＝東沙／南沙、頭城鎮＝釣魚台、烈嶼鄉、中正區），
+ * 鄉鎮 bbox 會被撐到畫布外，高雄市／宜蘭縣／基隆市／金門縣就縮成一個小點
+ * （實測放大 3–8 倍）。抽成純函式，回歸測試才真的測到這個選擇。
+ */
+export function countyViewBoxFor(counties: { items: { county: string; path: string }[] }, county: string): string | undefined {
+  const outline = counties.items.find((c) => c.county === county)?.path;
+  return outline ? bbox([outline]) : undefined;
 }
 
 /**
@@ -50,7 +71,7 @@ export function TownMap({ refreshToken, counties, county, onSelectCounty }: { re
   const [scope, setScope] = useState<'all' | 'county'>('county');
   const [selected, setSelected] = useState<string | undefined>(undefined);
 
-  const countyViewBox = useMemo(() => (map.data ? bbox(map.data.towns.filter((t) => t.county === county).map((t) => t.path)) : undefined), [map.data, county]);
+  const countyViewBox = useMemo(() => countyViewBoxFor(counties, county), [counties, county]);
 
   const failed = [map, demo, trend].find((r) => r.phase === 'error');
   if (failed) return <ErrorState title="無法取得鄉鎮資料" error={failed.error} onRetry={failed.reload} />;

@@ -307,7 +307,7 @@ const HEALTH_TABLES = [
   ['social_accounts', 'social_accounts'],
 ];
 
-export function getHealth(db, { now = Date.now() } = {}) {
+export function getHealth(db, { now = Date.now(), staticLoaders = undefined } = {}) {
   const lastRuns = db
     .prepare(
       `SELECT * FROM sync_runs
@@ -329,6 +329,20 @@ export function getHealth(db, { now = Date.now() } = {}) {
   if (stats.social_accounts > 0 && socialCount > 0 && stats.social_accounts < socialCount) {
     notices.push(`社群帳號數（${stats.social_accounts}）少於上次成功同步（${socialCount}）`);
   }
+
+  // 靜態資料（人口／選舉／鄉鎮圖資）不在同步流程內，`stale`／`ok` 看不到它們。
+  // 來源是月報，忘了重跑 build 腳本就會讓畫面上的數字放很久而沒有訊號，所以在這裡提醒。
+  // 逐檔檢查（不是只看 counties）：任一個檔案壞掉、空掉、或過期都要看得見。
+  const staticData = staticDataStatus(staticLoaders ?? {});
+  for (const info of Object.values(staticData)) {
+    if (info.error) notices.push(`靜態資料「${info.label}」讀取失敗：${info.error}`);
+    else if (!info.count) notices.push(`靜態資料「${info.label}」是空的（0 筆）`);
+    const age = monthsSince(info.as_of, now);
+    if (age !== null && age > CONFIG.staticStaleMonths) {
+      notices.push(`人口資料「${info.label}」的資料截止為 ${info.as_of}（已 ${age} 個月未更新），請重跑 scripts/build-county-stats.mjs`);
+    }
+  }
+
   return {
     meta: envelope(db, { now }),
     ok: stats.legislators > 0 && !isStale(db, now),
@@ -338,6 +352,8 @@ export function getHealth(db, { now = Date.now() } = {}) {
       sync_runs: { kept: configRetention.syncRuns, current: stats.sync_runs },
       change_log: { kept: configRetention.changeLog, current: stats.changes },
     },
+    // 不在同步流程內的靜態資料：只有「資料截止」與筆數，沒有 fetched_at（它們不是抓來的）
+    static_data: staticData,
     datasets: {
       id9: { fetched_at: getMeta(db, 'last_success_at'), count: stats.legislators },
       id14: { fetched_at: getMeta(db, 'last_success_at'), count: stats.committee_seats },
@@ -491,13 +507,16 @@ export function listRankings(db, { type = 'all', days = 30, limit = 10 } = {}) {
       .map((i) => ({ id: i.legislator.id, race: i.history.at(-1), prev: i.history.at(-2) }))
       .filter((x) => x.race?.elected && x.race.margin_pct !== null);
     if (wanted('close')) {
-      const rows = [...latest].sort((a, b) => a.race.margin_pct - b.race.margin_pct).slice(0, resolvedLimit);
+      const eligible = [...latest].sort((a, b) => a.race.margin_pct - b.race.margin_pct);
+      const rows = eligible.slice(0, resolvedLimit);
       // 長條以「最接近的那一場」為滿格：與其他四個榜一致（第一名 intensity = 1），
       // 原本以最寬的差距當分母，最接近的一筆只有 0.83，圖上第一條不會滿，且與 test 的
-      // 「每個榜第一名長度為 1」不變量互相矛盾（2026-10-02 修正，見 DECISIONS D57）。
-      const margins = rows.map((x) => x.race.margin_pct);
-      const closest = Math.min(...margins);
-      const span = Math.max(...margins) - closest;
+      // 「每個榜第一名長度為 1」不變量矛盾（2026-10-02 修正，見 DECISIONS D57）。
+      // 基準取**全部合格列**而不是 slice 後的 rows：否則同一人的長條會隨 ?limit= 改變
+      // （實測廖偉翔 2.46 個百分點在 limit=5/10/20/50 下是 0.06/0.28/0.66/0.85）。
+      const margins = eligible.map((x) => x.race.margin_pct);
+      const closest = margins.length ? Math.min(...margins) : 0;
+      const span = margins.length ? Math.max(...margins) - closest : 0;
       boards.close = {
         type: 'close',
         title: '險勝排行',
@@ -891,12 +910,14 @@ const REGION_ORDER = [
 function countySummary(region) {
   const c = loadCountyStats().counties.find((x) => x.county === region);
   if (!c) return null;
-  const winner = (e) => ({ name: e.candidates[0].name, party: e.candidates[0].party, pct: e.candidates[0].pct, margin_pct: e.margin_pct });
+  // 每一個欄位都可能是缺的（未來新增／改制的行政區、或來源少一場選舉）：
+  // 少一個就讓整個 /regions 500 會連總覽頁都打不開，所以一律回 null。
+  const winner = (e) => (e?.candidates?.length ? { name: e.candidates[0].name, party: e.candidates[0].party, pct: e.candidates[0].pct, margin_pct: e.margin_pct ?? null } : null);
   return {
-    population: c.population,
-    elderly_ratio: Math.round((c.elderly / c.population) * 10000) / 100,
-    president_2024: winner(c.elections.president_2024),
-    mayor_2022: winner(c.elections.mayor_2022),
+    population: c.population ?? null,
+    elderly_ratio: c.population ? Math.round((c.elderly / c.population) * 10000) / 100 : null,
+    president_2024: winner(c.elections?.president_2024),
+    mayor_2022: winner(c.elections?.mayor_2022),
   };
 }
 
@@ -932,6 +953,64 @@ export function listRegions(db, { per = 3 } = {}) {
 /** 縣市分頁：靜態的人口／選舉／地圖資料（scripts/build-county-stats.mjs 產生），加上各縣市在職區域立委 */
 let countyStats = null;
 const loadCountyStats = () => (countyStats ??= JSON.parse(readFileSync(new URL('./county-stats.json', import.meta.url), 'utf8')));
+
+/**
+ * 靜態資料的「資料截止」與筆數，給 `/health` 用。
+ *
+ * 為什麼需要：這五個檔案**不在同步流程內**（要手動重跑 build 腳本），所以
+ * `/health` 的 `ok`／`stale` 完全看不到它們 —— 人口月報是每月更新、選舉資料是每幾年一次，
+ * 忘了重跑就能讓畫面上的數字放很久而沒有任何訊號。
+ * 頁面上雖然有寫「人口為 2026-08」，但那是使用者要自己看懂；這裡讓它變成可監控的欄位。
+ */
+/** 延後求值：這張表引用的 loader 都宣告在檔案後半，模組載入時還沒有值 */
+const staticDatasetDefs = () => [
+  { key: 'counties', label: '縣市人口與選舉指標', load: loadCountyStats, count: (d) => d.counties?.length ?? 0, asOf: (d) => d.population_month ?? null },
+  { key: 'demographics', label: '鄉鎮市區人口結構與得票', load: loadDemographics, count: (d) => d.towns?.length ?? 0, asOf: (d) => d.population_month ?? null },
+  // population-trend 的 years 最後一筆是「最新一期」（可能帶月份，例如 2026-08）
+  { key: 'population_trend', label: '每月人口趨勢', load: loadPopulationTrend, count: (d) => d.months?.length ?? 0, asOf: (d) => d.years?.at(-1) ?? null },
+  { key: 'town_map', label: '鄉鎮市區界圖資', load: loadTownMap, count: (d) => d.towns?.length ?? 0, asOf: (d) => d.built_at ?? null },
+  { key: 'legislator_votes', label: '立委歷次得票', load: loadLegislatorVotes, count: (d) => d.races?.length ?? 0, asOf: (d) => (d.years?.length ? String(d.years.at(-1)) : null) },
+];
+
+/**
+ * 靜態資料的「資料截止」與筆數，給 `/health` 用。
+ *
+ * 為什麼需要：這五個檔案**不在同步流程內**（要手動重跑 build 腳本），所以
+ * `/health` 的 `ok`／`stale` 完全看不到它們 —— 人口月報是每月更新、選舉資料是每幾年一次，
+ * 忘了重跑就能讓畫面上的數字放很久而沒有任何訊號。
+ * 頁面上雖然有寫「人口為 2026-08」，但那是使用者要自己看懂；這裡讓它變成可監控的欄位。
+ *
+ * 逐檔 try/catch：靜態檔壞掉時 `/health` **不可以跟著 500** —— 那支端點正是發現檔案壞掉的
+ * 唯一線索（給它 500 等於在需要它的時候壞掉）。壞掉的檔回 `error` 欄位，由呼叫端變成 warning。
+ */
+export function staticDataStatus(overrides = {}) {
+  const out = {};
+  for (const ds of staticDatasetDefs()) {
+    try {
+      // overrides 只有測試會用：用來餵壞掉的 loader，驗證這裡真的逐檔容錯
+      const data = (overrides[ds.key] ?? ds.load)();
+      const count = ds.count(data);
+      // count 0 不設 error：那是「空的」而不是「壞掉的」，兩者在 warnings 要分開講
+      out[ds.key] = { as_of: ds.asOf(data), count, label: ds.label };
+    } catch (error) {
+      // 不要在 /health 的回應裡帶出伺服器絕對路徑（ENOENT 的訊息就含路徑）
+      const reason = error?.code === 'ENOENT' ? '檔案不存在' : String(error?.message || error).slice(0, 200);
+      out[ds.key] = { as_of: null, count: 0, label: ds.label, error: reason };
+    }
+  }
+  return out;
+}
+
+/** `2026-08` 這種「資料截止」字串離現在幾個月（無法解析時回 null） */
+export function monthsSince(asOf, now = Date.now()) {
+  const m = /^(\d{4})-(\d{2})/.exec(String(asOf ?? ''));
+  if (!m) return null;
+  const then = Date.UTC(Number(m[1]), Number(m[2]) - 1, 1);
+  const target = new Date(now);
+  const current = Date.UTC(target.getUTCFullYear(), target.getUTCMonth(), 1);
+  return Math.max(0, Math.round((current - then) / (30 * 86_400_000)));
+}
+
 export function listCounties(db) {
   loadCountyStats();
   const legislators = new Map();
@@ -955,6 +1034,7 @@ export function listCounties(db) {
  * `margin`：當選者對最高票落選者的領先票數，落選者對最低票當選者的差距（負值）；`change`：與本人前一次參選的得票差。
  */
 let legislatorVotes = null;
+const loadLegislatorVotes = () => (legislatorVotes ??= JSON.parse(readFileSync(new URL('./legislator-votes.json', import.meta.url), 'utf8')));
 const round2 = (n) => Math.round(n * 100) / 100;
 /** 同選區同黨的得票與得票率，以及委員個人票與它的差（票數、百分點）；`over` > 0 表示個人票多於政黨票 */
 function partyShare(bucket, c) {
@@ -968,7 +1048,7 @@ let historyByName = null;
 const nameKey = (name) => String(name).replace(/[\s‧·・．.]/g, '');
 function raceHistory(name) {
   if (!historyByName) {
-    legislatorVotes ??= JSON.parse(readFileSync(new URL('./legislator-votes.json', import.meta.url), 'utf8'));
+    loadLegislatorVotes();
     const byName = new Map();
     for (const race of legislatorVotes.races) {
       const elected = race.candidates.filter((c) => c.elected);
@@ -1034,11 +1114,16 @@ export function electionSummary(name, term = 11) {
  * 分裂投票：某年大選各立委選區的區域立委候選人得票，以及同選區的總統票與不分區政黨票（投開票所加總）。
  * 前端依政黨算三種得票率與差距。
  */
-export function listSplitTicket(db, { year = 2024 } = {}) {
-  legislatorVotes ??= JSON.parse(readFileSync(new URL('./legislator-votes.json', import.meta.url), 'utf8'));
-  const years = legislatorVotes.years;
-  const y = years.includes(Number(year)) ? Number(year) : years[years.length - 1];
-  const items = legislatorVotes.races
+export function listSplitTicket(db, { year = null } = {}) {
+  const source = loadLegislatorVotes();
+  const years = source.years;
+  // years 是「有大選的年份」（補選年不在內，因為補選沒有三票對照）。
+  // 使用者若在網址上手打一個不存在的年份，以前會靜默回最後一屆的資料 ——
+  // 現在仍然回最後一屆（不讓畫面變空），但回應會明講 requested_year 與 fell_back。
+  const requested = year === null || year === '' || year === undefined ? null : Number(year);
+  const fellBack = requested !== null && !years.includes(requested);
+  const y = years.includes(requested) ? requested : years[years.length - 1];
+  const items = source.races
     .filter((r) => r.year === y && r.kind === '區域' && !r.by_election && r.party_votes)
     .map((r) => ({
       county: r.county,
@@ -1048,27 +1133,30 @@ export function listSplitTicket(db, { year = 2024 } = {}) {
       president: r.party_votes.president,
       party_list: r.party_votes.party_list,
     }));
-  return { meta: envelope(db), years, year: y, count: items.length, items };
+  return { meta: envelope(db), years, year: y, requested_year: requested, fell_back: fellBack, count: items.length, items };
 }
 
 /** 鄉鎮市區界 SVG path（server/town-map.json，與縣市圖同一座標系） */
 let townMap = null;
+const loadTownMap = () => (townMap ??= JSON.parse(readFileSync(new URL('./town-map.json', import.meta.url), 'utf8')));
 export function getTownMap(db) {
-  townMap ??= JSON.parse(readFileSync(new URL('./town-map.json', import.meta.url), 'utf8'));
+  loadTownMap();
   return { meta: envelope(db), ...townMap, count: townMap.towns.length };
 }
 
 /** 人口趨勢：2016 起每月縣市人口、每年 12 月年齡結構、各鄉鎮每年人口（server/population-trend.json） */
 let populationTrend = null;
+const loadPopulationTrend = () => (populationTrend ??= JSON.parse(readFileSync(new URL('./population-trend.json', import.meta.url), 'utf8')));
 export function listPopulationTrend(db) {
-  populationTrend ??= JSON.parse(readFileSync(new URL('./population-trend.json', import.meta.url), 'utf8'));
+  loadPopulationTrend();
   return { meta: envelope(db), ...populationTrend };
 }
 
 /** 人口結構 × 得票：368 鄉鎮市區的年齡結構與 2020／2024 總統、不分區政黨票（server/demographics.json） */
 let demographics = null;
+const loadDemographics = () => (demographics ??= JSON.parse(readFileSync(new URL('./demographics.json', import.meta.url), 'utf8')));
 export function listDemographics(db) {
-  demographics ??= JSON.parse(readFileSync(new URL('./demographics.json', import.meta.url), 'utf8'));
+  loadDemographics();
   return { meta: envelope(db), ...demographics, count: demographics.towns.length };
 }
 
@@ -1080,7 +1168,11 @@ export function listLegislatorVotes(db, { id = null } = {}) {
       legislator: { id: l.id, name: l.name, party: l.party, area_name: l.area_name, region: regionOf(l.area_name) },
       history: raceHistory(l.name),
     }));
-  return { meta: envelope(db), years: legislatorVotes.years, sources: legislatorVotes.sources, count: items.length, items };
+  // 一定要自己初始化：raceHistory() 只在 items 非空時才會被呼叫，
+  // 空名冊（全新安裝、首次同步還沒跑完）時 legislatorVotes 仍是 null → 這裡 TypeError 500，
+  // 而且會不會爆取決於前端先打哪一支 API。
+  const source = loadLegislatorVotes();
+  return { meta: envelope(db), years: source.years, sources: source.sources, count: items.length, items };
 }
 
 export function listNews(db, { legislator = null, limit = 10 } = {}) {

@@ -37,6 +37,13 @@ import { DashboardPage } from '../src/pages/DashboardPage';
 import { CommitteesPage } from '../src/pages/CommitteesPage';
 import { routeOf } from '../src/hooks/useRoute';
 import { BillStageBar } from '../src/components/BillStage';
+import { CountiesPage } from '../src/pages/CountiesPage';
+import { NewsPage } from '../src/pages/NewsPage';
+import { ChoroplethMap } from '../src/components/ChoroplethMap';
+import { bbox, countyViewBoxFor } from '../src/components/TownMap';
+import { resolveCounty } from '../src/pages/CountiesPage';
+import { colorAt } from '../src/lib/colorScales';
+import { readFileSync } from 'node:fs';
 
 /* ---------------------------- 瀏覽器 API 替身 ---------------------------- */
 const store = new Map<string, string>();
@@ -686,7 +693,7 @@ expectNone('loading 態不該先畫出任何委員', render(createElement(Rankin
 ]);
 
 console.log('\n— 委員比較與立法流程 —');
-expectAll('比較頁：未選委員時提示怎麼選，不先畫比較表', render(createElement(ComparePage, { refreshToken: 0, onOpenId: () => undefined })), [
+expectAll('比較頁：未選委員時提示怎麼選，不先畫比較表', render(createElement(ComparePage, { refreshToken: 0, onOpenId: () => undefined, onNavigate: () => undefined })), [
   '委員比較',
   '還沒選委員',
   '選擇委員…',
@@ -740,6 +747,96 @@ check('三段字級的規則固定（前 1/3 大、中 1/3 中、其餘小）', 
   const tiers = Array.from({ length: 9 }, (_, i) => tagTier(i, 9));
   return tiers.join(',') === 'lg,lg,lg,md,md,md,sm,sm,sm';
 })());
+
+/* ---------------------- 縣市／新聞（新增頁面，先前 0 覆蓋） ---------------------- */
+
+console.log('\n— 縣市與新聞 —');
+expectAll(
+  '縣市頁：loading 態有讀取提示（不先畫任何縣市資料）',
+  render(createElement(CountiesPage, { refreshToken: 0, onOpenId: () => undefined })),
+  ['載入縣市資料'],
+);
+expectAll(
+  '新聞頁：loading 態有讀取提示（不先畫任何新聞）',
+  render(createElement(NewsPage, { refreshToken: 0, onOpenId: () => undefined })),
+  ['讀取中'],
+);
+check('/counties 對應縣市頁', routeOf('/counties') === 'counties');
+check('/news 對應新聞頁', routeOf('/news') === 'news');
+check('/officials 對應機關首長新聞頁', routeOf('/officials') === 'officials');
+
+/* 面量圖的邊界值：values 可能是空的、可能混到 undefined（Map 取值沒有鍵時），
+   這時 Math.min(...[]) 會是 Infinity、Math.max 會是 -Infinity，色階算出來是 NaN。
+   NaN 進到 CSS fill 會被瀏覽器忽略 → 整張圖沒有顏色，而且不會有任何錯誤訊息。 */
+console.log('\n— 面量圖邊界 —');
+const MAP_ITEMS = [
+  { county: '甲縣', path: 'M0 0 L1 1 Z' },
+  { county: '乙縣', path: 'M2 2 L3 3 Z' },
+];
+const mapFormat = (v: number | null) => (v === null ? '—' : String(v));
+const renderMap = (values: Map<string, number | null>) =>
+  render(createElement(ChoroplethMap, { items: MAP_ITEMS, values, scale: 'YlOrRd' as const, title: '測試面量圖', format: mapFormat }));
+
+for (const [label, values] of [
+  ['全部有值', new Map<string, number | null>([['甲縣', 1], ['乙縣', 2]])],
+  ['全部 null', new Map<string, number | null>([['甲縣', null], ['乙縣', null]])],
+  ['空 map', new Map<string, number | null>()],
+  ['含 undefined', new Map<string, number | null>([['甲縣', 1], ['乙縣', undefined as unknown as number]])],
+  ['只有 undefined', new Map<string, number | null>([['甲縣', undefined as unknown as number]])],
+  ['單一值', new Map<string, number | null>([['甲縣', 5]])],
+  ['發散色階＋全 null', new Map<string, number | null>([['甲縣', null]])],
+]) {
+  const html = renderMap(values);
+  check(`面量圖（${label}）不可產生 NaN／Infinity`, !/NaN|Infinity/.test(html));
+}
+check(
+  '面量圖：null 的區塊用「無資料」底色，不硬套色階',
+  renderMap(new Map<string, number | null>([['甲縣', null], ['乙縣', 2]])).includes('var(--seat-off)'),
+);
+
+/* ------------------- 縣市頁／鄉鎮地圖的邊界（第三輪複審抓到） ------------------- */
+
+console.log('\n— 縣市縮放與參數解析 —');
+
+// C1：縣市縮放框要用「縣市輪廓」，不是該縣市所有鄉鎮的 bbox。
+// 旗津區（東沙／南沙）、頭城鎮（釣魚台）、烈嶼鄉、中正區的離島多邊形會把鄉鎮 bbox 撐到畫布外，
+// 高雄市／宜蘭縣／基隆市／金門縣會縮成一個小點（實測放大 3–8 倍）。用真實資料當回歸測試。
+const townMapData = JSON.parse(readFileSync(new URL('../../server/town-map.json', import.meta.url), 'utf8'));
+const countyStatsData = JSON.parse(readFileSync(new URL('../../server/county-stats.json', import.meta.url), 'utf8'));
+// 元件收到的是 API 形狀（items），不是資料檔的原始形狀（counties）
+const countiesAsApi = { items: countyStatsData.counties };
+const boxWidth = (box: string | undefined) => (box ? Number(box.split(' ')[2]) : NaN);
+for (const name of ['高雄市', '宜蘭縣', '基隆市', '金門縣']) {
+  // 測的是元件真正用的那個函式（不是自己重算一次），否則測不到「用輪廓還是用鄉鎮」的選擇
+  const actual = countyViewBoxFor(countiesAsApi, name);
+  const towns = bbox(townMapData.towns.filter((t: { county: string }) => t.county === name).map((t: { path: string }) => t.path));
+  check(
+    `縣市縮放（${name}）：要用縣市輪廓，不可被離島鄉鎮撐壞`,
+    Number.isFinite(boxWidth(actual)) && boxWidth(actual) < 400 && boxWidth(towns) > boxWidth(actual) * 2,
+    `元件用 ${boxWidth(actual)}、離島鄉鎮框 ${boxWidth(towns)}`,
+  );
+}
+check('縣市縮放：找不到該縣市時回 undefined（不是無效的 Infinity viewBox）', countyViewBoxFor(countiesAsApi, '不存在的縣市') === undefined);
+check('bbox([]) 不可回 Infinity（那是無效的 viewBox）', bbox([]) === undefined);
+check('bbox(沒有座標的字串) 回 undefined', bbox(['not a path']) === undefined);
+check('bbox(單一路徑) 回四段數字', /^-?[\d.]+ -?[\d.]+ [\d.]+ [\d.]+$/.test(bbox(['M10 20 L30 40 Z']) ?? ''));
+
+// C2：?county= 查不到要回 null，讓畫面顯示「找不到縣市」，不要靜默用第一筆
+const sampleCounties = [{ county: '基隆市' }, { county: '臺北市' }];
+check('resolveCounty：查得到就回該筆', resolveCounty(sampleCounties, '臺北市')?.county === '臺北市');
+check('resolveCounty：原住民的 region 不是縣市名 → null', resolveCounty(sampleCounties, '山地原住民') === null);
+check('resolveCounty：空字串／null → null', resolveCounty(sampleCounties, '') === null && resolveCounty(sampleCounties, null) === null);
+
+// C4：?scale= 是任意字串，未知色階不可以丟例外（會讓整頁被 ErrorBoundary 蓋掉）
+let scaleThrew = false;
+let fallbackColor = '';
+try {
+  fallbackColor = colorAt('Nope' as never, 0.5);
+} catch {
+  scaleThrew = true;
+}
+check('colorAt：未知色階落回預設，不丟例外', !scaleThrew && /^rgb\(/.test(fallbackColor), fallbackColor);
+check('colorAt：NaN 的 t 也回合法顏色', /^rgb\(/.test(colorAt('Blues', NaN)));
 
 /* 型別上的靜態斷言：確保測試替身符合 API 契約（不改 runtime 行為） */
 const _typecheck: ChangesResponse | null = null;

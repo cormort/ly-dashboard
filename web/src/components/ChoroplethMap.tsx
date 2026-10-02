@@ -34,9 +34,12 @@ export function ChoroplethMap({
   strokeWidth?: number;
 }) {
   const [hover, setHover] = useState<string | null>(null);
-  const nums = [...values.values()].filter((v): v is number => v !== null);
-  let min = Math.min(...nums);
-  let max = Math.max(...nums);
+  // 只採計「有限的數字」：undefined（Map 沒有這個鍵、或資料檔少了欄位）與 NaN（除以 0、
+  // 基期缺值）都會讓 Math.min/Math.max 變成 NaN，色階算出來是 NaN，而 NaN 進到 CSS fill
+  // 會被瀏覽器直接忽略 —— 整張圖沒有顏色，且不會有任何錯誤訊息。
+  const nums = [...values.values()].filter((v): v is number => Number.isFinite(v));
+  let min = nums.length ? Math.min(...nums) : 0;
+  let max = nums.length ? Math.max(...nums) : 0;
   if (diverging) {
     const m = Math.max(Math.abs(min), Math.abs(max)) || 1;
     [min, max] = [-m, m];
@@ -51,7 +54,8 @@ export function ChoroplethMap({
         <rect className="county-inset" x="22" y="4" width="128" height="112" rx="6" />
         <rect className="county-inset" x="3" y="166" width="66" height="54" rx="6" />
         {items.map((c) => {
-          const v = values.get(c.county) ?? null;
+          const raw = values.get(c.county);
+          const v = typeof raw === 'number' && Number.isFinite(raw) ? raw : null;
           const label = `${c.county}：${format(v)}`;
           return (
             <path

@@ -14,7 +14,7 @@
  * 來源：中選會選舉資料庫（kiang/db.cec.gov.tw 轉存）、內政部戶政司村里人口單一年齡（kiang/data.moi.gov.tw 轉存）、
  * ronnywang/twgeojson 縣市界。
  */
-import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { readdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 
@@ -117,7 +117,18 @@ function townVotes(dir) {
 }
 
 /* ---------- 選舉（中選會 el* 原始檔） ---------- */
-const party = (name) => (!name || name === '無' || name.startsWith('無黨籍') ? '無黨籍' : name);
+const UNKNOWN_PARTY_CODES = new Set();
+const party = (name) => {
+  if (!name || name === '無' || name.startsWith('無黨籍')) return '無黨籍';
+  // 查不到代碼時**不可以**回「無黨籍」：那會產生看起來很合理的錯數字
+  // （2012 總統宋楚瑜的 369,588 票就是這樣被標成無黨籍，實際是親民黨）。
+  // 先記錄下來，跑完再一起 fail closed，訊息才看得出要補哪個代碼。
+  if (!name || /^unknown/i.test(String(name))) {
+    UNKNOWN_PARTY_CODES.add(String(name));
+    return `未知(${name})`;
+  }
+  return name;
+};
 
 /** 由候選人得票整理成一場選舉：依票數排序、算出與第二名的差距 */
 function summarize(candidates, { electorate = null, turnout = null } = {}) {
@@ -132,7 +143,9 @@ function summarize(candidates, { electorate = null, turnout = null } = {}) {
     valid,
     candidates: sorted,
     margin: second ? first.votes - second.votes : null,
-    margin_pct: second ? Math.round((first.pct - second.pct) * 100) / 100 : null,
+    // 用原始票數算，不要拿已四捨五入到小數 2 位的 pct 相減（會二次四捨五入，
+    // 實測 88 筆縣市場次有 28 筆、314 場立委有 79 場與真值差 0.01 個百分點）
+    margin_pct: second ? Math.round(((first.votes - second.votes) / valid) * 10000) / 100 : null,
   };
 }
 
@@ -141,7 +154,7 @@ function summarize(candidates, { electorate = null, turnout = null } = {}) {
  * 2012／2014 的欄位還帶前導單引號（rows() 已去除）。
  */
 function loadCec(dir) {
-  const files = readdirSync(dir);
+  const files = readdirSync(dir).sort();
   const file = (...prefixes) => join(dir, files.find((f) => prefixes.some((p) => f.startsWith(p)) && f.endsWith('.csv')));
   const names = new Map(rows(file('elbase', 'elbese')).map((r) => [r.slice(0, 5).join(''), r[5]]));
   const parties = new Map(rows(file('elpaty')).map((r) => [r[0], r[1]]));
@@ -211,7 +224,7 @@ function districtPartyVotes(dir) {
   const station = (r) => [r[0], r[1], r[3], r[4], Number(r[5])].join('-');
   const isStation = (r) => Number(r[5]) !== 0;
   const toDistrict = new Map();
-  for (const r of rows(join(dir, '區域立委', readdirSync(join(dir, '區域立委')).find((f) => f.startsWith('elctks'))))) {
+  for (const r of rows(join(dir, '區域立委', readdirSync(join(dir, '區域立委')).sort().find((f) => f.startsWith('elctks'))))) {
     if (isStation(r)) toDistrict.set(station(r), `${r[0]}${r[1]}${r[2]}`);
   }
   const out = new Map();
@@ -255,13 +268,13 @@ function readCsv(file) {
 function byElections() {
   const out = [];
   const old = cec('立委補選');
-  for (const name of readdirSync(old).filter((n) => /^2015/.test(n))) {
+  for (const name of readdirSync(old).sort().filter((n) => /^2015/.test(n))) {
     const [, county, area] = name.match(/^2015(.{3})(\d*)$/);
     const district = `${fixName(county)}${area ? `第${area}` : ''}選舉區`;
     for (const race of districtRaces(join(old, name), 2015, '區域')) out.push({ ...race, district, by_election: true });
   }
   const recent = cec('立委補選(2019年後)');
-  for (const name of readdirSync(recent)) {
+  for (const name of readdirSync(recent).sort()) {
     const [, year, district] = name.match(/^(\d{4})第\d+屆立法委員(.+?)缺額補選$/);
     const cands = readCsv(join(recent, name, 'cand.csv')).slice(1);
     const stations = readCsv(join(recent, name, 'prof.csv')).filter((r) => /^\d+$/.test(r[2]));
@@ -408,13 +421,22 @@ const counties = COUNTIES.map((county) => {
   };
 });
 
+// 來源首欄預期是民國年+月（例如 11508）。格式一變就會產生 1911-／NaN-NaN，
+// 而 /health 的過期判斷是靠這個字串解析的，壞掉會讓提醒靜默失效 —— 所以在這裡擋。
+if (!/^\d{5,6}$/.test(String(pop.month))) {
+  throw new Error(`人口月報的月份欄位格式不符（拿到「${pop.month}」）：預期像 11508 這樣的民國年+月`);
+}
+/** 五個輸出檔先排隊，跑完所有驗證才一起寫（見檔尾「出檔」） */
+const OUTPUTS = [];
+const out = (file, contents) => OUTPUTS.push([file, contents]);
+
 const month = `${Number(pop.month.slice(0, 3)) + 1911}-${pop.month.slice(3)}`;
 const sources = [
   { label: '中選會選舉資料庫（kiang/db.cec.gov.tw 轉存）', url: 'https://github.com/kiang/db.cec.gov.tw' },
   { label: `內政部戶政司村里人口單一年齡（${month}）`, url: 'https://github.com/kiang/data.moi.gov.tw' },
   { label: '縣市界（ronnywang/twgeojson）', url: 'https://github.com/ronnywang/twgeojson' },
 ];
-writeFileSync(
+out(
   args.out,
   `${JSON.stringify({
     population_month: month,
@@ -441,7 +463,14 @@ const races = Object.entries(PRESIDENT).flatMap(([year, dir]) => [
   ...districtRaces(cec(`${dir}/平地立委`), Number(year), '平地原住民'),
   ...districtRaces(cec(`${dir}/山地立委`), Number(year), '山地原住民'),
 ]).concat(byElections()).map(({ key, ...race }) => race);
-writeFileSync(args['legislators-out'], `${JSON.stringify({ years: Object.keys(PRESIDENT).map(Number), sources: sources.slice(0, 1), races })}\n`);
+// years 原本只取總統選舉年，漏掉補選年（2015／2019／2022／2023）→
+// /api/v1/split-ticket?year=2023 會靜默回 2024 的資料。改成實際出現過的年份。
+out(
+  args['legislators-out'],
+  // years = 「有大選（三票對照）的年份」，補選年不算：/split-ticket 的年份選擇器直接用這個欄位。
+  // 從 races 推導而不是硬編總統選舉年，避免以後少一屆就與資料分岔。
+  `${JSON.stringify({ years: [...new Set(races.filter((r) => !r.by_election).map((r) => r.year))].sort((a, b) => a - b), sources: sources.slice(0, 1), races })}\n`,
+);
 console.log(`wrote ${args['legislators-out']}: ${races.length} 場`);
 
 /* ---------- 鄉鎮市區：人口結構 × 得票（2020、2024 總統與不分區政黨票） ---------- */
@@ -459,7 +488,7 @@ const townItems = [...towns.values()].map((t) => {
   const key = `${t.county}${t.town}`;
   return { ...t, elections: Object.fromEntries(Object.entries(townElections).map(([k, m]) => [k, m.get(key) ?? null])) };
 });
-writeFileSync(
+out(
   args['demographics-out'],
   `${JSON.stringify({
     population_month: month,
@@ -532,7 +561,7 @@ for (const [y, m] of ages) {
   const jsonSum = [...townYear.values()].reduce((s, t) => s + (t.population[y] ?? 0), 0);
   if (sum !== jsonSum) console.warn(`${y} 年齡檔人口 ${sum} 與鄉鎮月報 ${jsonSum} 不一致`);
 }
-writeFileSync(
+out(
   args['trend-out'],
   `${JSON.stringify({
     months,
@@ -554,6 +583,26 @@ if (args['town-geo']) {
   const known = new Set(townItems.map((t) => t.county + t.town));
   const unmatched = shapes.filter((t) => !known.has(t.county + t.town));
   if (unmatched.length || shapes.length !== known.size) throw new Error(`鄉鎮圖資對不上：${unmatched.map((t) => t.county + t.town).join('、')}`);
-  writeFileSync(args['town-map-out'], `${JSON.stringify({ source: { label: '鄉鎮市區界（內政部 2023，kiang/taiwan_basecode 轉存）', url: 'https://github.com/kiang/taiwan_basecode' }, towns: shapes })}\n`);
+  out(args['town-map-out'], `${JSON.stringify({ source: { label: '鄉鎮市區界（內政部 2023，kiang/taiwan_basecode 轉存）', url: 'https://github.com/kiang/taiwan_basecode' }, towns: shapes })}\n`);
   console.log(`wrote ${args['town-map-out']}: ${shapes.length} 鄉鎮`);
 }
+
+/* ---------- 出檔 ---------- */
+// 兩個守門都在寫檔之前：
+// 1) 未知的政黨代碼代表某場選舉的政黨標籤會是錯的（2012 總統宋楚瑜曾被標成無黨籍），
+//    寧可整支 build 失敗，也不要產出看似合理的錯數字。
+if (UNKNOWN_PARTY_CODES.size) {
+  throw new Error(
+    `有 ${UNKNOWN_PARTY_CODES.size} 個政黨代碼對不到政黨表：${[...UNKNOWN_PARTY_CODES].join('、')}；` +
+      '請補上對應（不要讓它變成「無黨籍」）後再重跑',
+  );
+}
+// 2) 五個檔先寫 .tmp 再一次 rename：中途失敗不會留下「人口 2026-09 配選舉舊版」這種混搭，
+//    而這些檔案是進 git 的產物。
+const staged = OUTPUTS.map(([file, contents]) => {
+  const tmp = `${file}.tmp`;
+  writeFileSync(tmp, contents);
+  return [tmp, file];
+});
+for (const [tmp, file] of staged) renameSync(tmp, file);
+console.log(`已寫出 ${staged.length} 個檔案`);

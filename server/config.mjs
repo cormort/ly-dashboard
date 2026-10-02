@@ -83,6 +83,9 @@ export const CONFIG = {
     changeLog: Number(process.env.LY_CHANGE_LOG_KEEP ?? 0),
   },
   staleAfterHours: Number(process.env.LY_STALE_HOURS || 36),
+  // 靜態資料（人口／選舉／鄉鎮圖資，由 scripts/build-county-stats.mjs 產生）不在同步流程內，
+  // 來源是月報與選舉年，不會天天變；超過這個月數就在 /health 的 warnings 提醒重跑 build。
+  staticStaleMonths: Number(process.env.LY_STATIC_STALE_MONTHS ?? 3),
   syncIntervalMs: Number(process.env.LY_SYNC_INTERVAL_MS || 24 * 60 * 60 * 1000),
   fetchTimeoutMs: Number(process.env.LY_FETCH_TIMEOUT_MS || 30_000),
   // 同一個 host 的最小請求間隔：g0v API 連續抓多頁會回 429（實測），溫和一點也保護對方

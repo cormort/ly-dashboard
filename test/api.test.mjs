@@ -5,12 +5,15 @@ import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 import { openDb, applyDataset, applyBills, applySocial, applyCommitteeMeets, upsertNews, saveSnapshot, recordSyncRun, getMeta, migrate } from '../server/db.mjs';
 import { buildDataset, normalizeBills, normalizeSocial, newsName } from '../server/normalize.mjs';
-import { billsCsv, compareLegislators, csvRow, makeTagger, listCommitteeActivity, listCosponsors, listFunds, listRegions, getHealth, getMetaPayload, listActivity, listBills, listTopics, listNews, listNewsArticles, listChanges, listCommittees, listLegislators, listRankings, listSyncRuns } from '../server/queries.mjs';
+import { billsCsv, compareLegislators, csvRow, makeTagger, listCommitteeActivity, listCosponsors, listFunds, listRegions, getHealth, getMetaPayload, listActivity, listBills, listTopics, listNews, listNewsArticles, listChanges, listCommittees, listLegislators, listRankings, listSyncRuns, listCounties, listDemographics, getTownMap, monthsSince, listLegislatorVotes, listSplitTicket } from '../server/queries.mjs';
+import { regionOf } from '../server/normalize.mjs';
 import { authorizeSync } from '../server/index.mjs';
 import { runNewsIngest } from '../server/ingest.mjs';
 import { FetchError } from '../server/fetch-ly.mjs';
 const fixture = (name) => JSON.parse(readFileSync(fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url)), 'utf8'));
 const silent = { log() {}, warn() {}, error() {} };
+/** 讀 server/ 底下的資料檔（路徑相對於 test/fixtures） */
+const dataFile = (rel) => JSON.parse(readFileSync(fileURLToPath(new URL(rel, new URL('./fixtures/', import.meta.url))), 'utf8'));
 
 function seeded() {
   const db = openDb(':memory:');
@@ -754,3 +757,181 @@ test('B4: 新聞全部失敗時 news_status 要寫 failed，不是 complete', as
   // 而且要看得到（以前只有 partial 會變成 health 的 notice，failed 完全沒人顯示）
   const health = getHealth(db, { now: Date.parse('2026-09-30T10:00:00.000Z') });
   assert.ok(health.warnings.some((w) => w.includes('新聞同步失敗')), `warnings 應含新聞失敗，實際：${health.warnings}`);});
+
+/* ---------------- 第三輪 review 第二階段：縣市／人口／選舉靜態資料 ---------------- */
+
+test('靜態資料（人口／選舉／圖資）的資料截止與筆數要看得到，太舊要警告', () => {
+  const { db } = seeded();
+  const now = Date.parse('2026-10-02T00:00:00.000Z');
+  const health = getHealth(db, { now });
+
+  // 這五個檔案不在同步流程內（要手動重跑 build 腳本），所以 fetched_at 不存在，
+  // 只有「資料截止」；以前 /health 完全看不到它們，畫面上的數字放多久都不會有訊號。
+  const s = health.static_data;
+  assert.ok(s, '/health 應該要有 static_data');
+  assert.deepEqual(Object.keys(s).sort(), ['counties', 'demographics', 'legislator_votes', 'population_trend', 'town_map']);
+  assert.equal(s.counties.count, 22);
+  assert.equal(s.demographics.count, 368);
+  assert.equal(s.town_map.count, 368);
+  assert.match(s.counties.as_of, /^\d{4}-\d{2}$/, '人口資料要有 YYYY-MM 的截止月');
+  assert.equal(s.counties.as_of, s.demographics.as_of, '同一份人口月報，兩邊的截止月要一致');
+  assert.equal(health.static_data.population_trend.as_of, s.counties.as_of);
+
+  // 現在（2026-10）人口是 2026-08 → 2 個月，還沒到門檻，不該誤報
+  assert.ok(!health.warnings.some((w) => w.includes('人口資料')), `不該無故警告：${health.warnings}`);
+
+  // 時鐘往後推到隔年 6 月 → 10 個月，應該提醒重跑 build
+  const later = getHealth(db, { now: Date.parse('2027-06-01T00:00:00.000Z') });
+  assert.ok(
+    later.warnings.some((w) => w.includes('人口資料') && w.includes('build-county-stats')),
+    `過期要提醒重跑 build：${later.warnings}`,
+  );
+});
+
+test('monthsSince：只認 YYYY-MM，選舉年（YYYY）不誤判為過期', () => {
+  const now = Date.parse('2026-10-02T00:00:00.000Z');
+  assert.equal(monthsSince('2026-08', now), 2);
+  assert.equal(monthsSince('2026-10', now), 0);
+  assert.equal(monthsSince('2025-10', now), 12);
+  assert.equal(monthsSince('2024', now), null, '只有年份（選舉）不該被當成月資料');
+  assert.equal(monthsSince(null, now), null);
+  assert.equal(monthsSince('', now), null);
+  // 來源若給未來月份，不可以回負數（會讓「已 -3 個月」這種文案出現）
+  assert.equal(monthsSince('2027-01', now), 0);
+});
+
+test('縣市／鄉鎮／委員的對應不變量：同名不會互相污染（現在成立，未來要繼續成立）', () => {
+  const { db } = seeded();
+  // 1) 委員以姓名比對選舉資料；同屆同名會直接對錯人
+  const dupNames = db.prepare('SELECT name, COUNT(*) AS c FROM legislators GROUP BY name HAVING c > 1').all();
+  assert.deepEqual(dupNames, [], `委員不可同名（姓名是選舉資料的 join key）：${JSON.stringify(dupNames)}`);
+
+  // 2) 鄉鎮只能以 (縣市, 鄉鎮) 當 key：跨縣市同名（信義區、大安區…）是常態
+  const demo = listDemographics(db);
+  const townMap = getTownMap(db);
+  const keys = (arr) => arr.map((t) => `${t.county}|${t.town}`);
+  assert.equal(new Set(keys(demo.towns)).size, demo.towns.length, '(縣市,鄉鎮) 不可重複');
+  assert.equal(new Set(keys(townMap.towns)).size, townMap.towns.length);
+  assert.deepEqual([...new Set(keys(demo.towns))].sort(), [...new Set(keys(townMap.towns))].sort(), '兩份檔案的鄉鎮要一對一');
+  const crossCounty = new Set(demo.towns.map((t) => t.town)).size;
+  assert.ok(crossCounty < demo.towns.length, '本來就有跨縣市同名鄉鎮，所以單獨用鄉鎮名當 key 一定會壞');
+
+  // 3) 縣市頁把委員掛到縣市上：只認 regionOf() 產生的縣市名，特殊身分不可被硬塞
+  const counties = listCounties(db);
+  assert.equal(counties.count, 22);
+  const names = new Set(counties.items.map((c) => c.county));
+  const stray = [];
+  for (const l of db.prepare('SELECT name, area_name FROM legislators WHERE leave_flag = 0').all()) {
+    const region = regionOf(l.area_name);
+    if (!names.has(region) && !['全國不分區', '山地原住民', '平地原住民'].includes(region)) stray.push(`${l.name}:${region}`);
+  }
+  assert.deepEqual(stray, [], `不該有委員掛到不存在的縣市：${stray.join('、')}`);
+  // 不分區／原住民不會被掛到任何縣市（22 縣市掛到的總數 + 特殊身分 = 在職人數）
+  const attached = counties.items.reduce((n, c) => n + c.legislators.length, 0);
+  assert.ok(attached > 0 && attached < 113, `只有區域／原住民委員會被掛到縣市（實際 ${attached}）`);
+});
+
+/* -------- 第三輪複審第二階段：靜態資料的失敗路徑與資料檔不變量 -------- */
+
+test('靜態檔壞掉／不見時 /health 不可以 500，而且要看得到是哪一個檔', () => {
+  const { db } = seeded();
+  const now = Date.parse('2026-10-02T00:00:00.000Z');
+
+  // 逐檔容錯：先前只要有任一檔案 ENOENT／JSON 壞掉，整個 /health 就 500 ——
+  // 而那支端點正是發現檔案壞掉的唯一線索（／regions 也會一起被拖垮）。
+  const broken = { counties: () => { throw Object.assign(new Error('boom'), { code: 'ENOENT' }); } };
+  const health = getHealth(db, { now, staticLoaders: broken });
+  assert.equal(health.static_data.counties.count, 0);
+  assert.equal(health.static_data.counties.error, '檔案不存在');
+  assert.ok(!/\/Users\/|\/private\//.test(health.static_data.counties.error), '錯誤訊息不該外洩絕對路徑');
+  assert.ok(health.warnings.some((w) => w.includes('縣市人口與選舉指標') && w.includes('讀取失敗')), `要留下警告：${health.warnings}`);
+  // 其他四個檔仍然正常
+  assert.equal(health.static_data.demographics.count, 368);
+
+  // 空檔案（count 0）也要警告，不能說 ok
+  const empty = { town_map: () => ({ towns: [] }) };
+  const h2 = getHealth(db, { now, staticLoaders: empty });
+  assert.ok(h2.warnings.some((w) => w.includes('鄉鎮市區界圖資') && w.includes('空的')), `${h2.warnings}`);
+});
+
+test('空名冊時 legislator-votes 與排行榜不可以 500（loader 要先初始化）', () => {
+  const db = openDb(':memory:');
+  // 全新安裝、第一次同步還沒跑完：items 為空 → 以前不會呼叫 raceHistory → legislatorVotes 仍是 null
+  const votes = listLegislatorVotes(db, {});
+  assert.equal(votes.count, 0);
+  assert.ok(Array.isArray(votes.years) && votes.years.length > 0, 'years 要有值，不是 null.years');
+  assert.ok(votes.sources.length > 0);
+  // 排行榜的 close／drop 榜也走同一條路徑
+  const boards = listRankings(db, { type: 'all' });
+  assert.ok(boards.boards.close && boards.boards.drop);
+  assert.deepEqual(boards.boards.close.items, []);
+});
+
+test('S3: split-ticket 未知年份不再靜默假裝是最後一屆', () => {
+  const { db } = seeded();
+  const ok = listSplitTicket(db, { year: 2020 });
+  assert.equal(ok.year, 2020);
+  assert.equal(ok.fell_back, false);
+  assert.equal(ok.requested_year, 2020);
+
+  const bogus = listSplitTicket(db, { year: 9999 });
+  assert.equal(bogus.year, 2024, '仍然回最後一屆，不讓畫面變空');
+  assert.equal(bogus.fell_back, true, '但一定要說它退回了');
+  assert.equal(bogus.requested_year, 9999);
+
+  const none = listSplitTicket(db, {});
+  assert.equal(none.fell_back, false, '沒指定年份不算退回');
+  assert.equal(none.requested_year, null);
+});
+
+test('S2: 險勝榜的 intensity 不可以隨 ?limit= 改變', () => {
+  const db = seededFull();
+  const small = listRankings(db, { type: 'close', limit: 5 });
+  const large = listRankings(db, { type: 'close', limit: 50 });
+  const a = small.boards.close.items;
+  const b = large.boards.close.items;
+  assert.ok(a.length > 0, 'close 榜要有資料');
+  assert.equal(a[0].intensity, 1, '第一名長度為 1');
+  for (const item of a) {
+    const same = b.find((x) => x.legislator.id === item.legislator.id);
+    // 以前 span 是取 slice 後的 rows 算的，同一個人在 limit=5 與 50 下長度不一樣
+    assert.equal(same?.intensity, item.intensity, `${item.legislator.name} 的長條不該隨 limit 改變`);
+  }
+});
+
+test('資料檔不變量：margin_pct 與 margin 一致、2012 總統的政黨標籤正確', () => {
+  const cs = dataFile('../../server/county-stats.json');
+  const lv = dataFile('../../server/legislator-votes.json');
+
+  // 二次四捨五入：margin_pct 必須等於用原始票數算出來的差距（否則 0.01pp 的誤差）
+  for (const c of cs.counties) {
+    for (const [key, e] of Object.entries(c.elections ?? {})) {
+      if (e.margin == null) continue;
+      assert.equal(e.margin_pct, Math.round((e.margin / e.valid) * 10000) / 100, `${c.county}/${key}`);
+    }
+  }
+  for (const r of lv.races) {
+    if (r.margin == null) continue;
+    assert.equal(r.margin_pct, Math.round((r.margin / r.valid) * 10000) / 100, `${r.year}/${r.district}`);
+  }
+
+  // 2012 總統是馬英九／蔡英文／宋楚瑜（親民黨）；以前宋楚瑜的 369,588 票被標成「無黨籍」
+  const total = {};
+  for (const c of cs.counties) {
+    for (const t of c.trends.president) {
+      if (t.year !== 2012) continue;
+      for (const [p, v] of Object.entries(t.votes)) total[p] = (total[p] ?? 0) + v;
+    }
+  }
+  assert.deepEqual(total, { 中國國民黨: 6891139, 民主進步黨: 6093578, 親民黨: 369588 });
+  assert.ok(!('無黨籍' in total), '2012 總統不該有無黨籍');
+
+  // years 的語意是「有大選（三票對照）的年份」：補選年（2015／2019／2022／2023）刻意不在內，
+  // 因為 /split-ticket 的年份選擇器直接用這個欄位，放進補選年只會讓那個選項查到空表。
+  // 但它必須是**推導出來**的（不是硬編總統選舉年），否則以後少一屆就會與 races 分岔。
+  const generalYears = [...new Set(lv.races.filter((r) => !r.by_election).map((r) => r.year))].sort((a, b) => a - b);
+  assert.deepEqual(lv.years, generalYears, 'years 要等於有大選的年份');
+  assert.deepEqual(lv.years, [2012, 2016, 2020, 2024]);
+  const byElectionYears = lv.races.filter((r) => r.by_election).map((r) => r.year);
+  assert.ok(byElectionYears.includes(2023), '補選場次仍在 races 裡（只是不在 years）');
+});

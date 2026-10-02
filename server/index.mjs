@@ -237,8 +237,10 @@ export function createServer(db) {
       if (await serveStatic(res, '/index.html')) return; // SPA fallback
       return sendError(res, 404, 'not_found', '前端尚未建置：請在 web/ 執行 npm run build');
     } catch (error) {
+      // F6：不要把錯誤訊息原封不動回給客戶端 —— 靜態檔的 ENOENT／JSON 解析錯誤會讓它
+      // 變成常態路徑，而訊息裡含伺服器的絕對路徑。完整錯誤留在伺服器日誌。
       console.error('[api] 未預期錯誤', error);
-      return sendError(res, 500, 'internal_error', String(error?.message || error));
+      return sendError(res, 500, 'internal_error', '伺服器內部錯誤（詳見伺服器日誌）');
     }
   });
 }

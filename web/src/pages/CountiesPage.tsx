@@ -1,7 +1,7 @@
 import { useMemo, useState, type CSSProperties } from 'react';
 import { buildUrl } from '../api/client';
 import type { CountiesResponse, CountyElection, CountyElectionKey, CountyItem } from '../api/types';
-import { ErrorState, LoadingState } from '../components/DataStates';
+import { EmptyState, ErrorState, LoadingState } from '../components/DataStates';
 import { useApi } from '../hooks/useApi';
 import { ChoroplethMap } from '../components/ChoroplethMap';
 import { LegislatorVotes } from '../components/LegislatorVotes';
@@ -39,7 +39,11 @@ const PREVIOUS: Partial<Record<CountyElectionKey, CountyElectionKey>> = { presid
 const PARTIES = ['民主進步黨', '中國國民黨', '台灣民眾黨'];
 
 const num = (n: number, digits = 0) => n.toLocaleString('zh-TW', { maximumFractionDigits: digits, minimumFractionDigits: digits });
-const ratio = (part: number, whole: number) => (part / whole) * 100;
+/** 比率顯示：缺值（null）一律印破折號，不要印 NaN */
+const numOrDash = (n: number | null, digits = 0) => (n === null || !Number.isFinite(n) ? '—' : num(n, digits));
+// whole 為 0 或缺值時回 null（＝「無資料」），不要讓 NaN／Infinity 流進色階與表格：
+// 這個檔案其他地方都用 `?? null` 表示缺值，比率也該一致。
+const ratio = (part: number, whole: number) => (Number.isFinite(part) && Number.isFinite(whole) && whole !== 0 ? (part / whole) * 100 : null);
 const isRate = (unit: Unit) => unit === '%' || unit === '百分點';
 const fmt = (value: number | null, unit: Unit) =>
   value === null ? '—' : isRate(unit) ? `${num(value, 2)}${unit === '%' ? '%' : ' 個百分點'}` : `${num(value)} ${unit}`;
@@ -134,15 +138,32 @@ const SCALES: { key: ScaleName; label: string }[] = [
 const TOP_N = ['5', '10', '15', '全部'];
 
 /** 狀態存在 ?key=（replaceState，可分享、重整後一致） */
-function useParam<T extends string>(key: string, fallback: T): [T, (value: T) => void] {
-  const [value, setValue] = useState<T>(() => (new URLSearchParams(window.location.search).get(key) as T | null) ?? fallback);
+function useParam<T extends string>(key: string, fallback: T, allowed?: readonly T[]): [T, (value: T) => void] {
+  const read = (): T => {
+    const raw = new URLSearchParams(window.location.search).get(key) as T | null;
+    // 網址參數是使用者可以隨手改的：不合法的值要落回預設，不能帶進 render
+    // （?scale= 未知色階會讓整頁被 ErrorBoundary 蓋掉、?top=abc 會讓排行榜空白）
+    if (raw === null || raw === '') return fallback;
+    if (allowed && !allowed.includes(raw)) return fallback;
+    return raw;
+  };
+  const [value, setValue] = useState<T>(read);
   const update = (next: T) => {
     setValue(next);
     const params = new URLSearchParams(window.location.search);
     params.set(key, next);
-    window.history.replaceState(null, '', `/counties?${params.toString()}`);
+    window.history.replaceState(null, '', `${window.location.pathname}?${params.toString()}`);
   };
   return [value, update];
+}
+
+/**
+ * 把 `?county=` 解析成縣市資料列。抽成純函式：一來可測，二來避免「查不到就靜默用第一筆」
+ * ——以前 `?county=山地原住民`（原住民委員的 region）會顯示基隆市的資料，而且網址還騙人。
+ */
+export function resolveCounty<T extends { county: string }>(items: T[], wanted: string | null): T | null {
+  if (!wanted) return null;
+  return items.find((c) => c.county === wanted) ?? null;
 }
 
 /* ---------- 縣市詳情（選舉表） ---------- */
@@ -228,11 +249,11 @@ function CountyDetail({ county, data, onOpenId }: { county: CountyItem; data: Co
         </div>
         <div className="stat-tile">
           <b className="stat-value">{num(county.voting_age)}</b>
-          <span className="stat-label">選舉年齡人口（20 歲以上，{num(ratio(county.voting_age, county.population), 2)}%）</span>
+          <span className="stat-label">選舉年齡人口（20 歲以上，{numOrDash(ratio(county.voting_age, county.population), 2)}%）</span>
         </div>
         <div className="stat-tile">
           <b className="stat-value">{num(county.elderly)}</b>
-          <span className="stat-label">老年人口（65 歲以上，{num(ratio(county.elderly, county.population), 2)}%）</span>
+          <span className="stat-label">老年人口（65 歲以上，{numOrDash(ratio(county.elderly, county.population), 2)}%）</span>
         </div>
       </div>
       <div className="county-legislators">
@@ -343,20 +364,23 @@ function Ranking({ metric, items, top, onSelect }: { metric: Metric; items: Coun
  */
 export function CountiesPage({ refreshToken, onOpenId }: CountiesPageProps) {
   const res = useApi<CountiesResponse>(buildUrl('/counties'), { refreshToken });
-  const [tab, setTab] = useParam<Tab>('tab', 'map');
   const [metricKey, setMetricKey] = useParam<string>('metric', 'population');
   const [metric2Key, setMetric2Key] = useParam<string>('metric2', 'elderly_ratio');
   const [pairKey, setPairKey] = useParam<string>('pair', 'president_2024.民主進步黨.votes');
-  const [scale, setScale] = useParam<ScaleName>('scale', 'YlOrRd');
-  const [top, setTop] = useParam<string>('top', '10');
+  const [scale, setScale] = useParam<ScaleName>('scale', 'YlOrRd', SCALES.map((x) => x.key));
+  const [top, setTop] = useParam<string>('top', '10', TOP_N);
+  const [tab, setTab] = useParam<Tab>('tab', 'map', TABS.map((x) => x.key));
   const [selected, setSelected] = useParam<string>('county', '臺北市');
 
   const metrics = useMemo(() => (res.data ? buildMetrics(res.data) : []), [res.data]);
   const pairs = useMemo(() => (res.data ? buildPairs(metrics, res.data) : []), [metrics, res.data]);
 
+  if (res.phase === 'error') return <ErrorState title="無法取得縣市資料（/api/v1/counties）" error={res.error} onRetry={res.reload} />;
+  // empty 相位仍然帶著 data（useApi 的四態契約），所以「!res.data」這條永遠攔不到空清單；
+  // 以前 items 為空時會直接讀 items[0].county 而 TypeError → 整個 AppShell 被 ErrorBoundary 蓋掉。
   if (res.phase === 'loading' && !res.data) return <LoadingState label="載入縣市資料…" />;
-  if (!res.data) {
-    return res.phase === 'error' ? <ErrorState title="無法取得縣市資料（/api/v1/counties）" error={res.error} onRetry={res.reload} /> : null;
+  if (!res.data || !res.data.items.length) {
+    return <EmptyState message="目前沒有縣市資料" hint="人口與選舉是靜態檔（scripts/build-county-stats.mjs），請確認伺服器上有產生。" />;
   }
 
   const data = res.data;
@@ -364,7 +388,17 @@ export function CountiesPage({ refreshToken, onOpenId }: CountiesPageProps) {
   const metric = metrics.find((m) => m.key === metricKey) ?? metrics[0];
   const metric2 = metrics.find((m) => m.key === metric2Key) ?? metrics[1];
   const pair = pairs.find((p) => p.key === pairKey) ?? pairs[0];
-  const current = items.find((c) => c.county === selected) ?? items[0];
+  // 查不到就明講，不要靜默換成第一個縣市（原住民／不分區的 region 不是縣市名，會走到這裡）
+  const current = resolveCounty(items, selected);
+  if (!current) {
+    return (
+      <EmptyState message={`找不到縣市「${selected}」`} hint="網址上的 ?county= 可能不是縣市名稱（不分區與原住民沒有縣市頁）。" />
+    );
+  }
+  // 沒有任何可對比的兩場選舉時，後面的 pair.older.value 會 TypeError（不只「時間差異」分頁）
+  if (!pair && (tab === 'dual' || tab === 'compare' || tab === 'trend')) {
+    return <EmptyState message="目前沒有可對比的兩場選舉" hint="需要同一類選舉至少兩屆的資料。" />;
+  }
   const mapValues = (m: Metric) => new Map(items.map((c) => [c.county, m.value(c)]));
   const formatOf = (m: Metric) => (v: number | null) => fmt(v, m.unit);
 

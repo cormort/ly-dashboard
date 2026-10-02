@@ -18,7 +18,9 @@ const rgb = (hex: string) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 
 
 /** t ∈ [0, 1] 對應的顏色 */
 export function colorAt(scale: ScaleName, t: number): string {
-  const stops = STOPS[scale];
+  // ?scale= 是網址參數，可能是任意字串：未知的色階以前會讓 STOPS[scale] 是 undefined →
+  // 讀 .length 直接丟例外 → 整頁被 ErrorBoundary 蓋掉（連導覽都不見）。落回預設色階。
+  const stops = STOPS[scale] ?? STOPS.YlOrRd;
   const x = Math.min(1, Math.max(0, Number.isFinite(t) ? t : 0)) * (stops.length - 1);
   const i = Math.min(stops.length - 2, Math.floor(x));
   const a = rgb(stops[i]);
