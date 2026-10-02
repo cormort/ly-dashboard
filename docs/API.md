@@ -301,6 +301,8 @@ Query 參數（全部可選）：
 `rival` 為當選者對照的最高票落選者、或落選者對照的最低票當選者，`margin` 為與其票數差（落選為負），`change` 為與本人前一次參選的得票差。
 `president`／`party_list`：同一天、同選區同黨的總統票與不分區政黨票（以投開票所對應選區加總；只有大選的區域立委有，無黨籍為 null），`{ votes, pct, over, over_pct }`，`over_pct` 為個人得票率減政黨得票率（百分點）。2020 有 2 個投開票所對不到選區，該年選區加總比縣市少 474 票。
 
+`/api/v1/legislators` 與 `/api/v1/compare` 的每位委員另有 `election`：該屆（含屆內補選）當選選舉的摘要 `{ year, district, by_election, votes, pct, margin, margin_pct, rival, change, party_list_over_pct, president_over_pct }`，不分區為 null。
+
 `/api/v1/rankings` 另有 `close`（險勝：最近一次當選的領先幅度）與 `drop`（得票流失：同選區與本人前次相比）兩榜，不受 `days` 影響。
 
 ## GET /api/v1/committee-activity?committee=&limit=20

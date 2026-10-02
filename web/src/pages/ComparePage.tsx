@@ -45,12 +45,27 @@ export function ComparePage({ refreshToken, onOpenId }: ComparePageProps) {
     { label: '已三讀', value: (i) => i.passed_bills },
     { label: '近 30 天新聞', value: (i) => i.news_30d },
   ];
+  // 選舉列：數值越大越好者標示領先；不分區委員沒有個人得票，顯示「—」
+  const num = (n: number) => n.toLocaleString('zh-TW');
+  const pt = (n: number) => `${n > 0 ? '+' : ''}${n.toFixed(2)} 個百分點`;
+  const electionRows: { label: string; value: (i: (typeof items)[number]) => number | null; show: (i: (typeof items)[number]) => string }[] = [
+    { label: '得票數', value: (i) => i.election?.votes ?? null, show: (i) => num(i.election!.votes) },
+    { label: '得票率', value: (i) => i.election?.pct ?? null, show: (i) => `${i.election!.pct.toFixed(2)}%` },
+    {
+      label: '領先對手',
+      value: (i) => i.election?.margin_pct ?? null,
+      show: (i) => `${pt(i.election!.margin_pct!)}${i.election!.rival ? `（${i.election!.rival.name}，${num(i.election!.margin!)} 票）` : ''}`,
+    },
+    { label: '個人票比同黨政黨票', value: (i) => i.election?.party_list_over_pct ?? null, show: (i) => pt(i.election!.party_list_over_pct!) },
+    { label: '個人票比同黨總統票', value: (i) => i.election?.president_over_pct ?? null, show: (i) => pt(i.election!.president_over_pct!) },
+    { label: '與上次參選相比', value: (i) => i.election?.change ?? null, show: (i) => `${i.election!.change! > 0 ? '+' : ''}${num(i.election!.change!)} 票` },
+  ];
 
   return (
     <>
       <div className="page-head">
         <h1>委員比較</h1>
-        <p className="muted">選兩位委員，並排看提案、新聞與委員會，以及彼此一起提過幾件案。</p>
+        <p className="muted">選兩位委員，並排看提案、新聞、選舉得票與委員會，以及彼此一起提過幾件案。</p>
       </div>
 
       <div className="filters compare-pickers" role="group" aria-label="選擇比較的委員">
@@ -110,6 +125,31 @@ export function ComparePage({ refreshToken, onOpenId }: ComparePageProps) {
                         {row.value(i)}
                       </td>
                     ))}
+                  </tr>
+                );
+              })}
+              <tr>
+                <th scope="row">當選選舉</th>
+                {items.map((i) => (
+                  <td key={i.legislator.id}>
+                    {i.election ? `${i.election.year}${i.election.by_election ? ' 補選' : ''} ${i.election.district}` : <span className="muted">不分區（無個人得票）</span>}
+                  </td>
+                ))}
+              </tr>
+              {electionRows.map((row) => {
+                const values = items.map(row.value).filter((v): v is number => v !== null);
+                const best = values.length > 1 ? Math.max(...values) : null;
+                return (
+                  <tr key={row.label}>
+                    <th scope="row">{row.label}</th>
+                    {items.map((i) => {
+                      const v = row.value(i);
+                      return (
+                        <td key={i.legislator.id} className={v !== null && v === best ? 'lead' : undefined}>
+                          {v === null ? '—' : row.show(i)}
+                        </td>
+                      );
+                    })}
                   </tr>
                 );
               })}

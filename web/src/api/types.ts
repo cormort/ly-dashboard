@@ -186,6 +186,8 @@ export interface Legislator {
   bill_count: number;
   /** 近 180 天新聞則數 */
   news_count: number;
+  /** 該屆當選的選舉摘要（不分區委員為 null） */
+  election: ElectionSummary | null;
   /** 報導最多的媒體（沒有新聞時為 null） */
   top_source: { name: string; count: number } | null;
   photo_url: string | null;
@@ -335,6 +337,23 @@ export interface CosponsorMatrixResponse {
 
 /* ---------- /compare ---------- */
 
+export interface ElectionSummary {
+  year: number;
+  district: string;
+  by_election: boolean;
+  votes: number;
+  pct: number;
+  /** 對最高票落選者的領先票數／百分點 */
+  margin: number | null;
+  margin_pct: number | null;
+  rival: { name: string; party: string; votes: number } | null;
+  /** 與本人前一次參選的得票差 */
+  change: number | null;
+  /** 個人得票率 − 同選區同黨不分區政黨票得票率（百分點） */
+  party_list_over_pct: number | null;
+  president_over_pct: number | null;
+}
+
 export interface CompareItem {
   legislator: { id: string; name: string; party: string; area_name: string | null; region: string | null; photo_url: string | null; former: boolean };
   bills: number;
@@ -345,6 +364,7 @@ export interface CompareItem {
   /** 新聞最多的前 5 家媒體 */
   top_sources: { name: string; count: number }[];
   top_laws: BillLawCount[];
+  election: ElectionSummary | null;
 }
 
 export interface CompareResponse {

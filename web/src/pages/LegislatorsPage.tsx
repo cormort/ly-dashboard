@@ -154,7 +154,7 @@ export function LegislatorsPage({ query, meta, tracked, refreshToken, onOpen }: 
         onDownload={() => {
           const items = (list.data?.items ?? []).filter(visible ?? (() => true));
           downloadCsv(`legislators-${effectiveSession ?? 'all'}.csv`, [
-            ['姓名', '黨籍', '選區', '委員會', '召委', '提案數', '新聞數', '委員識別碼'],
+            ['姓名', '黨籍', '選區', '委員會', '召委', '提案數', '新聞數', '當選年', '得票數', '得票率', '領先票數', '領先百分點', '個人比政黨票（百分點）', '委員識別碼'],
             ...items.map((l) => [
               l.name,
               l.party,
@@ -163,6 +163,12 @@ export function LegislatorsPage({ query, meta, tracked, refreshToken, onOpen }: 
               l.is_convener ? '是' : '',
               l.bill_count,
               l.news_count,
+              l.election ? `${l.election.year}${l.election.by_election ? ' 補選' : ''}` : '',
+              l.election?.votes ?? '',
+              l.election?.pct ?? '',
+              l.election?.margin ?? '',
+              l.election?.margin_pct ?? '',
+              l.election?.party_list_over_pct ?? '',
               l.id,
             ]),
           ]);

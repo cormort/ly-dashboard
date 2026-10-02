@@ -6,7 +6,7 @@ import { openDb, applyDataset, applyBills, applySocial, upsertNews, pruneLogs, g
 import { buildDataset, normalizeBills, normalizeMeetings, normalizeSocial, newsName, rocDate, DataValidationError } from '../server/normalize.mjs';
 import { CONFIG } from '../server/config.mjs';
 import { runIngest, runBillsIngest, runBudgetIngest, runBudgetReportsIngest, runMeetingsIngest, budgetPageUrl, runNewsIngest, runSocialIngest, runAll } from '../server/ingest.mjs';
-import { getHealth, listBills, listBudget, listBudgetMeetings, listBudgetReports, budgetState, listChanges, listCounties, listLegislatorVotes, listRankings, listLegislators, listNews, listSyncRuns } from '../server/queries.mjs';
+import { getHealth, listBills, listBudget, listBudgetMeetings, listBudgetReports, budgetState, listChanges, listCounties, listLegislatorVotes, listRankings, compareLegislators, listLegislators, listNews, listSyncRuns } from '../server/queries.mjs';
 import { FetchError } from '../server/fetch-ly.mjs';
 import { syncOnce } from '../server/index.mjs';
 
@@ -801,4 +801,17 @@ test('個人票對照政黨票：2024 各選區總統票加總等於各縣市加
   const h = listLegislatorVotes(db).items.flatMap((i) => i.history).find((x) => x.year === 2024 && x.party_list);
   assert.ok(Math.abs(h.party_list.over_pct - (h.pct - h.party_list.pct)) < 0.011);
   assert.equal(listLegislatorVotes(db).items.flatMap((i) => i.history).filter((x) => x.by_election && x.party_list).length, 0);
+});
+
+test('名冊與比較頁：區域與原住民委員帶該屆當選的選舉摘要，不分區為 null', () => {
+  const db = seeded();
+  const items = listLegislators(db, {}).items;
+  const district = items.filter((l) => l.election);
+  assert.ok(district.length > 0);
+  for (const l of district) assert.ok(l.election.year >= 2024 && l.election.margin > 0, l.name);
+  assert.ok(items.filter((l) => /不分區/.test(l.area_name ?? '')).every((l) => l.election === null));
+  const wang = items.find((l) => l.name === '王鴻薇');
+  assert.equal(wang.election.votes, 105050);
+  const cmp = compareLegislators(db, { ids: wang.id });
+  assert.deepEqual(cmp.items[0].election, wang.election);
 });

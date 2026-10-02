@@ -161,6 +161,7 @@ export function listLegislators(db, query = {}) {
       social: socialByLegislator.get(id) ?? [],
       bill_count: billCount.get(id) ?? 0,
       news_count: newsCount.get(id) ?? 0,
+      election: l ? electionSummary(l.name, scope.term) : null,
       top_source: topSource.get(id) ?? null,
       term: scope.term,
       sessions,
@@ -911,47 +912,81 @@ function partyShare(bucket, c) {
   const pct = (votes / bucket.valid) * 100;
   return { votes, pct: round2(pct), over: c.votes - votes, over_pct: round2(c.pct - pct) };
 }
-export function listLegislatorVotes(db, { id = null } = {}) {
-  legislatorVotes ??= JSON.parse(readFileSync(new URL('./legislator-votes.json', import.meta.url), 'utf8'));
-  const key = (name) => String(name).replace(/[\s‧·・．.]/g, '');
-  const byName = new Map();
-  for (const race of legislatorVotes.races) {
-    const elected = race.candidates.filter((c) => c.elected);
-    const losers = race.candidates.filter((c) => !c.elected);
-    race.candidates.forEach((c, i) => {
-      const rival = c.elected ? losers[0] : elected[elected.length - 1];
-      const entry = {
-        year: race.year,
-        kind: race.kind,
-        district: race.district,
-        by_election: Boolean(race.by_election),
-        party: c.party,
-        votes: c.votes,
-        pct: c.pct,
-        rank: i + 1,
-        elected: c.elected,
-        seats: elected.length,
-        candidates: race.candidates.length,
-        rival: rival ? { name: rival.name, party: rival.party, votes: rival.votes } : null,
-        margin: rival ? c.votes - rival.votes : null,
-        margin_pct: rival ? Math.round((c.pct - rival.pct) * 100) / 100 : null,
-        // 個人票對照政黨票：同選區同黨的總統得票、不分區政黨票（只有大選的區域立委有；無黨籍不比）
-        president: partyShare(race.party_votes?.president, c),
-        party_list: partyShare(race.party_votes?.party_list, c),
-      };
-      byName.set(key(c.name), [...(byName.get(key(c.name)) ?? []), entry]);
-    });
+/** 姓名 → 歷次參選（依年份排序，含與前次的得票差）；只建一次 */
+let historyByName = null;
+const nameKey = (name) => String(name).replace(/[\s‧·・．.]/g, '');
+function raceHistory(name) {
+  if (!historyByName) {
+    legislatorVotes ??= JSON.parse(readFileSync(new URL('./legislator-votes.json', import.meta.url), 'utf8'));
+    const byName = new Map();
+    for (const race of legislatorVotes.races) {
+      const elected = race.candidates.filter((c) => c.elected);
+      const losers = race.candidates.filter((c) => !c.elected);
+      race.candidates.forEach((c, i) => {
+        const rival = c.elected ? losers[0] : elected[elected.length - 1];
+        const entry = {
+          year: race.year,
+          kind: race.kind,
+          district: race.district,
+          by_election: Boolean(race.by_election),
+          party: c.party,
+          votes: c.votes,
+          pct: c.pct,
+          rank: i + 1,
+          elected: c.elected,
+          seats: elected.length,
+          candidates: race.candidates.length,
+          rival: rival ? { name: rival.name, party: rival.party, votes: rival.votes } : null,
+          margin: rival ? c.votes - rival.votes : null,
+          margin_pct: rival ? Math.round((c.pct - rival.pct) * 100) / 100 : null,
+          // 個人票對照政黨票：同選區同黨的總統得票、不分區政黨票（只有大選的區域立委有；無黨籍不比）
+          president: partyShare(race.party_votes?.president, c),
+          party_list: partyShare(race.party_votes?.party_list, c),
+        };
+        byName.set(nameKey(c.name), [...(byName.get(nameKey(c.name)) ?? []), entry]);
+      });
+    }
+    historyByName = new Map(
+      [...byName].map(([k, list]) => {
+        const sorted = list.sort((a, b) => a.year - b.year);
+        return [k, sorted.map((h, i) => ({ ...h, change: i ? h.votes - sorted[i - 1].votes : null }))];
+      }),
+    );
   }
+  return historyByName.get(nameKey(name)) ?? [];
+}
+
+/**
+ * 名冊與比較頁用的選舉摘要：該屆（第 N 屆＝2024 − (11 − N) × 4 年大選，含屆內補選）最後一次當選的選舉。
+ * 不分區委員、或對不到紀錄者為 null。
+ */
+export function electionSummary(name, term = 11) {
+  const start = 2024 - (11 - Number(term)) * 4;
+  const race = raceHistory(name).filter((h) => h.elected && h.year >= start && h.year < start + 4).at(-1);
+  if (!race) return null;
+  return {
+    year: race.year,
+    district: race.district,
+    by_election: race.by_election,
+    votes: race.votes,
+    pct: race.pct,
+    margin: race.margin,
+    margin_pct: race.margin_pct,
+    rival: race.rival,
+    change: race.change,
+    party_list_over_pct: race.party_list?.over_pct ?? null,
+    president_over_pct: race.president?.over_pct ?? null,
+  };
+}
+
+export function listLegislatorVotes(db, { id = null } = {}) {
   const items = db
     .prepare(`SELECT id, name, party, area_name FROM legislators WHERE ${id ? 'id = ?' : 'leave_flag = 0'} ORDER BY area_name, name`)
     .all(...(id ? [id] : []))
-    .map((l) => {
-      const history = (byName.get(key(l.name)) ?? []).sort((a, b) => a.year - b.year);
-      return {
-        legislator: { id: l.id, name: l.name, party: l.party, area_name: l.area_name, region: regionOf(l.area_name) },
-        history: history.map((h, i) => ({ ...h, change: i ? h.votes - history[i - 1].votes : null })),
-      };
-    });
+    .map((l) => ({
+      legislator: { id: l.id, name: l.name, party: l.party, area_name: l.area_name, region: regionOf(l.area_name) },
+      history: raceHistory(l.name),
+    }));
   return { meta: envelope(db), years: legislatorVotes.years, sources: legislatorVotes.sources, count: items.length, items };
 }
 
@@ -1402,6 +1437,7 @@ export function compareLegislators(db, { ids = '' } = {}) {
         .all(id)
         .map((r) => ({ name: r.name, count: Number(r.count) })),
       top_laws: [...lawCounts].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([name, count]) => ({ name, count })),
+      election: electionSummary(l.name),
     });
   }
   const [first, ...rest] = items;

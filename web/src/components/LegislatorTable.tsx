@@ -4,7 +4,7 @@ import type { Legislator } from '../api/types';
 import { partyStyle } from '../lib/parties';
 import { shortCommittee, text } from '../lib/format';
 
-type SortKey = 'name' | 'party' | 'area' | 'bills' | 'news' | 'post';
+type SortKey = 'name' | 'party' | 'area' | 'bills' | 'news' | 'post' | 'vote_pct' | 'margin' | 'over';
 
 const COLUMNS: { key: SortKey; label: string; numeric?: boolean }[] = [
   { key: 'name', label: '姓名' },
@@ -13,12 +13,24 @@ const COLUMNS: { key: SortKey; label: string; numeric?: boolean }[] = [
   { key: 'bills', label: '提案', numeric: true },
   { key: 'news', label: '新聞', numeric: true },
   { key: 'post', label: '最新貼文' },
+  { key: 'vote_pct', label: '得票率', numeric: true },
+  { key: 'margin', label: '領先', numeric: true },
+  { key: 'over', label: '比政黨票', numeric: true },
 ];
+
+const pt = (n: number | null | undefined) => (n === null || n === undefined ? '—' : `${n > 0 ? '+' : ''}${n.toFixed(2)}`);
 
 const latestPost = (l: Legislator) => l.social.map((s) => s.latest_post_date).filter(Boolean).sort().at(-1) ?? '';
 
-function sortValue(l: Legislator, key: SortKey): string | number {
+/** 選舉欄沒有資料（不分區）時為 null，排序時一律排在最後 */
+function sortValue(l: Legislator, key: SortKey): string | number | null {
   switch (key) {
+    case 'vote_pct':
+      return l.election?.pct ?? null;
+    case 'margin':
+      return l.election?.margin_pct ?? null;
+    case 'over':
+      return l.election?.party_list_over_pct ?? null;
     case 'party':
       return partyStyle(l.party).order;
     case 'area':
@@ -46,13 +58,14 @@ export function LegislatorTable({ items, isTracked, onToggleTrack, onOpen }: Leg
   const [sort, setSort] = useState<{ key: SortKey; desc: boolean }>({ key: 'name', desc: false });
 
   const rows = useMemo(() => {
-    const sorted = [...items].sort((a, b) => {
+    const dir = sort.desc ? -1 : 1;
+    return [...items].sort((a, b) => {
       const x = sortValue(a, sort.key);
       const y = sortValue(b, sort.key);
+      if (x === null || y === null) return x === y ? a.name.localeCompare(b.name, 'zh-Hant') : x === null ? 1 : -1;
       const cmp = typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y), 'zh-Hant');
-      return cmp || a.name.localeCompare(b.name, 'zh-Hant');
+      return dir * cmp || a.name.localeCompare(b.name, 'zh-Hant');
     });
-    return sort.desc ? sorted.reverse() : sorted;
   }, [items, sort]);
 
   const toggleSort = (key: SortKey, numeric?: boolean) =>
@@ -118,6 +131,13 @@ export function LegislatorTable({ items, isTracked, onToggleTrack, onOpen }: Leg
                 <td className="num">{l.bill_count}</td>
                 <td className="num">{l.news_count}</td>
                 <td className="num">{latestPost(l) ? latestPost(l).slice(5).replace('-', '/') : '—'}</td>
+                <td className="num" title={l.election ? `${l.election.year}${l.election.by_election ? ' 補選' : ''} ${l.election.district}：${l.election.votes.toLocaleString('zh-TW')} 票` : undefined}>
+                  {l.election ? `${l.election.pct.toFixed(2)}%` : '—'}
+                </td>
+                <td className="num" title={l.election?.rival ? `領先 ${l.election.rival.name} ${l.election.margin?.toLocaleString('zh-TW')} 票` : undefined}>
+                  {pt(l.election?.margin_pct)}
+                </td>
+                <td className="num" title="個人得票率減同選區同黨不分區政黨票得票率（百分點）">{pt(l.election?.party_list_over_pct)}</td>
                 <td>{l.top_source ? `${l.top_source.name} ${Math.round((l.top_source.count / l.news_count) * 100)}%` : '—'}</td>
                 <td className="committees">
                   {l.committees.length
