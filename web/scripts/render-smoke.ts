@@ -830,6 +830,18 @@ expectAll('預算頁：loading 態有類別、篩選與三個區塊骨架', rend
 
 expectAll('委員會頁：loading 態有標題與讀取提示', render(createElement(CommitteesPage, { refreshToken: 0, onOpenId: () => undefined })), ['委員會', '讀取委員會動態']);
 check('/committees 對應委員會頁', routeOf('/committees') === 'committees');
+// 委員會頁有自己的關鍵字搜尋（我的機關以機關全名＋簡稱連過來），頁首就不再放委員搜尋，免得兩個搜尋框混淆
+{
+  const win = window as unknown as { location: { search: string } };
+  const saved = win.location.search;
+  win.location.search = '?q=' + encodeURIComponent('行政院主計總處 主計總處');
+  expectAll('委員會頁：網址帶 q 時搜尋框帶入關鍵字', render(createElement(CommitteesPage, { refreshToken: 0, onOpenId: () => undefined })), [
+    'aria-label="搜尋會議、機關回覆與會議紀錄"',
+    'value="行政院主計總處 主計總處"',
+  ]);
+  win.location.search = saved;
+}
+expectNone('委員會頁：頁首不放委員搜尋', render(createElement(Header, { ...headerProps, route: 'committees' as const })), ['關鍵字搜尋立法委員']);
 
 const dashboardLoading = render(createElement(DashboardPage, { refreshToken: 0, onOpenId: () => undefined, onNavigate: () => undefined }));
 expectAll('總覽：loading 態有統計列、焦點卡與各區塊骨架', dashboardLoading, [

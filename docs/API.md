@@ -329,7 +329,7 @@ Query 參數（全部可選）：
 分裂投票：某年大選（2012、2016、2020、2024；不合法時用最新一年）73 個區域立委選區的候選人得票（`candidates[{ name, party, votes, pct, elected }]`），
 以及同選區的總統票與不分區政黨票 `president`／`party_list`：`{ valid, votes: { 政黨: 票數 } }`（投開票所加總）。前端依政黨算三種得票率與差距。
 
-## GET /api/v1/committee-activity?committee=&limit=20
+## GET /api/v1/committee-activity?committee=&q=&limit=20
 
 委員會頁與總覽用。`meetings`：委員會會議（官方 ID223，議程與登記發言委員 `{ id, name, party }`，對不到本屆委員者 `id` 為 null）；
 `records`：公報的委員會紀錄（g0v `gazette_agendas` 類別代碼 3，含部會首長答詢全文），連結 `html_url`（處理後全文）、`pdf_url`、`gazette_url`。
@@ -337,6 +337,8 @@ Query 參數（全部可選）：
 `replies`：機關回覆（g0v `meets` 議事網附件中種類為「機關回覆」者：部會對委員質詢的書面答復），`{ date, committees, meeting, title, url, legislators }`，
 `legislators` 由標題中的委員姓名（含「邱委員慧洳」寫法）對出。`meetings` 每場另附 `attachments`（通知單、議事日程、書面報告…）與 `video_url`，依會議名稱對上 g0v 的會議。
 `committee` 為委員會全名。`committees` 為各委員會件數，常設委員會依官網順序在前。
+`q`：空白分隔的關鍵字，**任一**符合即列出（會議比對名稱與議程、`replies` 與 `records` 比對標題；與 `/agency` 的比對一致，
+「我的機關」的「看更多」即以 `agency.terms`（全名＋簡稱）連過來）。`committees` 件數只算符合 `q` 的；`period` 仍是全部資料的起訖。
 
 ## GET /api/v1/funds?type=fund&fund=&kind=&limit=30&offset=0
 

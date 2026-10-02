@@ -142,6 +142,8 @@ export function MyAgencyPage({ refreshToken, onOpenId, onNavigate }: MyAgencyPag
   }
 
   const link = (kind: FundKind) => pathFor('agencies', { fund: agency, kind });
+  // 議程、回覆的「看更多」到委員會頁，用同一組比對詞（全名＋簡稱）搜尋，件數才會一致
+  const committeesLink = pathFor('committees', { q: data?.agency?.terms.join(' ') });
   return (
     <>
       <div className="page-head my-head">
@@ -184,7 +186,7 @@ export function MyAgencyPage({ refreshToken, onOpenId, onNavigate }: MyAgencyPag
             另含「地方主計處」「僅提及主計」等較寬鬆的比對。
           </>
         ) : null}
-        各區塊的「看更多」會到「機關」頁看完整清單；想跨機關瀏覽、看哪些機關最常被提到，請到
+        議程與回覆的「看更多」到委員會頁（已帶入本機關名稱搜尋），其餘到「機關」頁看完整清單；想跨機關瀏覽、看哪些機關最常被提到，請到
         <RouteLink href={pathFor('agencies')} onNavigate={onNavigate}>
           機關頁
         </RouteLink>
@@ -216,7 +218,7 @@ export function MyAgencyPage({ refreshToken, onOpenId, onNavigate }: MyAgencyPag
               <p className="muted">已開過的委員會議程提到本機關者；尚無未來行事曆資料</p>
             </div>
             <div className="dash-grid">
-              <Block title="近期議程" total={data.meetings.total} href={pathFor('committees')} onNavigate={onNavigate}>
+              <Block title="近期議程" total={data.meetings.total} href={committeesLink} onNavigate={onNavigate}>
                 <ul className="dash-list">
                   {data.meetings.items.map((m) => (
                     <li key={`${m.date}-${m.name}`}>
@@ -230,7 +232,7 @@ export function MyAgencyPage({ refreshToken, onOpenId, onNavigate }: MyAgencyPag
                   ))}
                 </ul>
               </Block>
-              <Block title="書面回覆" total={data.replies.total} href={pathFor('committees')} onNavigate={onNavigate} note="部會對委員質詢的書面答復">
+              <Block title="書面回覆" total={data.replies.total} href={committeesLink} onNavigate={onNavigate} note="部會對委員質詢的書面答復">
                 <ul className="dash-list">
                   {data.replies.items.map((r) => (
                     <li key={r.url}>

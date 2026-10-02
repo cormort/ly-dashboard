@@ -1651,9 +1651,13 @@ export function getAgencyHome(db, { name = '', per = 5 } = {}) {
  * 委員會動態：最新會議（官方 ID223：議程、登記發言委員；依名稱對上 g0v 的附件與影片）、
  * 機關回覆（部會對委員質詢的書面答復，g0v meets 附件）與會議紀錄（公報，含官員答詢全文）。
  * `committee` 為委員會全名，聯席會議會出現在每個參與的委員會；委員會清單依常設委員會在前、其餘依件數。
+ * `q` 為空白分隔的關鍵字、任一符合即列出（「我的機關」以機關全名＋簡稱連過來，簡稱不一定是全名的子字串）：
+ * 會議比對名稱與議程、回覆與紀錄比對標題，與 getAgencyHome 的比對一致；委員會件數只算符合的，資料期間仍是全部資料。
  */
-export function listCommitteeActivity(db, { committee = '', limit = 20 } = {}) {
+export function listCommitteeActivity(db, { committee = '', q = '', limit = 20 } = {}) {
   const resolvedLimit = Math.max(1, Math.min(Number(limit) || 20, 200));
+  const terms = String(q ?? '').split(/\s+/).filter(Boolean);
+  const hit = (...texts) => !terms.length || terms.some((t) => texts.some((x) => String(x ?? '').includes(t)));
   const people = new Map(db.prepare('SELECT id, name, party FROM legislators').all().map((l) => [l.id, l]));
   const meets = db.prepare('SELECT * FROM committee_meets ORDER BY date DESC, code DESC').all().map((m) => ({ ...m, committees: JSON.parse(m.committees), attachments: JSON.parse(m.attachments) }));
   // ID223 的會議名稱可能多了「(會議取消)」之類的前綴，比對前去掉
@@ -1696,15 +1700,18 @@ export function listCommitteeActivity(db, { committee = '', limit = 20 } = {}) {
       .map((a) => ({ date: m.date, committees: m.committees, meeting: m.title, title: a.title, url: a.url, legislators: repliedTo(a.title) })),
   );
 
+  const qMeetings = meetings.filter((x) => hit(x.name, x.content));
+  const qRecords = records.filter((x) => hit(x.title));
+  const qReplies = replies.filter((x) => hit(x.title));
   const counts = new Map();
-  for (const x of [...meetings, ...records]) for (const c of x.committees) counts.set(c, (counts.get(c) ?? 0) + 1);
+  for (const x of [...qMeetings, ...qRecords]) for (const c of x.committees) counts.set(c, (counts.get(c) ?? 0) + 1);
   const standing = CONFIG.committeeOrder;
   const rank = (name) => (standing.includes(name) ? standing.indexOf(name) : standing.length);
   const pick = (list) => (committee ? list.filter((x) => x.committees.includes(committee)) : list);
   const period = (list) => (list.length ? { from: list.at(-1).date, to: list[0].date } : null);
-  const m = pick(meetings);
-  const r = pick(records);
-  const rp = pick(replies);
+  const m = pick(qMeetings);
+  const r = pick(qRecords);
+  const rp = pick(qReplies);
   return {
     meta: { ...envelope(db), meetings_fetched_at: getMeta(db, 'meetings_fetched_at'), records_fetched_at: getMeta(db, 'records_fetched_at'), meets_fetched_at: getMeta(db, 'meets_fetched_at') },
     committees: [...counts]

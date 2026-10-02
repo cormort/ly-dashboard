@@ -157,8 +157,8 @@ export function Header({
         })}
       </nav>
 
-      {/* 法案頁有自己的搜尋框，兩個不同目標的搜尋框疊在一起會混淆 */}
-      {route !== 'bills' && route !== 'budget' ? (
+      {/* 法案、預算、委員會頁有自己的搜尋框，兩個不同目標的搜尋框疊在一起會混淆 */}
+      {route !== 'bills' && route !== 'budget' && route !== 'committees' ? (
         <SearchField
           value={query}
           onChange={onQueryChange}

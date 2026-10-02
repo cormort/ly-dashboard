@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { openDb, applyDataset } from '../server/db.mjs';
 import { buildDataset } from '../server/normalize.mjs';
-import { getAgencyHome, listAgencies } from '../server/queries.mjs';
+import { getAgencyHome, listAgencies, listCommitteeActivity } from '../server/queries.mjs';
 
 const fixture = (name) => JSON.parse(readFileSync(fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url)), 'utf8'));
 
@@ -103,4 +103,33 @@ test('行政院主計總處：認得簡稱「主計總處」，並保留主計�
   assert.ok(r.agency.heads.some((h) => h.title === '主計長'), '現任主計長');
   // 其他機關不受影響：主計總處專屬新聞不會跑進財政部
   assert.equal(getAgencyHome(db, { name: '財政部' }).kinds.news.items.some((i) => i.url === 'https://d/1'), false);
+});
+
+test('委員會關鍵字 q：空白分隔、任一符合；會議比對名稱與議程、回覆與紀錄比對標題；委員會件數跟著關鍵字', () => {
+  const { db } = seeded();
+  // 簡稱不是全名的子字串（央行 ≠ 中央銀行），所以要能「任一符合」
+  db.prepare('INSERT INTO committee_meetings(id, date, committee, joint, name, content, speakers) VALUES(?,?,?,?,?,?,?)').run(3, '2026-09-27', '財政委員會', '無', '財政委員會第6次會議', '邀請央行總裁報告', '[]');
+  const all = listCommitteeActivity(db, {});
+  assert.equal(all.meetings.total, 3);
+  const one = listCommitteeActivity(db, { q: '財政部' });
+  assert.deepEqual(one.meetings.items.map((m) => m.name), ['財政委員會第5次會議'], '議程內容提到才算');
+  assert.equal(one.replies.total, 1, '回覆比對標題');
+  const either = listCommitteeActivity(db, { q: ' 財政部  央行 ' });
+  assert.equal(either.meetings.total, 2, '任一關鍵字符合即列出，多餘空白不影響');
+  assert.deepEqual(either.committees, [{ name: '財政委員會', count: 2 }], '委員會件數只算符合關鍵字的');
+  assert.deepEqual(either.meetings.period, all.meetings.period, '資料期間仍是全部資料的起訖');
+  assert.equal(listCommitteeActivity(db, { q: '財政部', committee: '教育及文化委員會' }).meetings.total, 0, '與委員會條件同時成立');
+  assert.equal(listCommitteeActivity(db, { q: '   ' }).meetings.total, 3, '空白關鍵字等於不篩');
+});
+
+test('我的機關的「看更多」：以機關全名＋簡稱查委員會頁，件數與我的機關一致', () => {
+  const { db } = seeded();
+  db.prepare('INSERT INTO committee_meetings(id, date, committee, joint, name, content, speakers) VALUES(?,?,?,?,?,?,?)').run(3, '2026-09-27', '財政委員會', '無', '財政委員會第6次會議', '邀請央行總裁報告', '[]');
+  for (const name of ['財政部', '中央銀行']) {
+    const home = getAgencyHome(db, { name });
+    const more = listCommitteeActivity(db, { q: home.agency.terms.join(' ') });
+    assert.equal(more.meetings.total, home.meetings.total, `${name} 議程件數一致`);
+    assert.equal(more.replies.total, home.replies.total, `${name} 回覆件數一致`);
+  }
+  assert.equal(getAgencyHome(db, { name: '中央銀行' }).meetings.total, 1, '簡稱「央行」也對得到');
 });

@@ -3,6 +3,7 @@ import { ExternalLink } from 'lucide-react';
 import { buildUrl } from '../api/client';
 import type { CommitteeActivityResponse } from '../api/types';
 import { EmptyState, ErrorState, LoadingState } from '../components/DataStates';
+import { SearchField } from '../components/SearchField';
 import { useApi } from '../hooks/useApi';
 import { pathFor } from '../hooks/useRoute';
 import { shortCommittee } from '../lib/format';
@@ -17,32 +18,45 @@ const STEP = 20;
 const SPEAKERS_SHOWN = 8;
 const ATTACHMENTS_SHOWN = 5;
 const slash = (d: string | null | undefined) => (d ? d.replaceAll('-', '/') : '');
-const readCommittee = () => new URLSearchParams(window.location.search).get('committee') ?? '';
+const readParam = (key: string) => new URLSearchParams(window.location.search).get(key) ?? '';
 
 /**
  * 委員會：最新會議（議程、登記發言委員、附件與影片）、機關回覆（部會對委員質詢的書面答復）與會議紀錄（公報，含官員答詢全文），可依委員會篩選。
  */
 export function CommitteesPage({ refreshToken, onOpenId }: CommitteesPageProps) {
-  const [committee, setCommittee] = useState(readCommittee);
+  const [committee, setCommittee] = useState(() => readParam('committee'));
+  // q：空白分隔、任一符合（「我的機關」以機關全名＋簡稱連過來）
+  const [q, setQ] = useState(() => readParam('q'));
   const [limit, setLimit] = useState(STEP);
   useEffect(() => {
-    const onPop = () => setCommittee(readCommittee());
+    const onPop = () => {
+      setCommittee(readParam('committee'));
+      setQ(readParam('q'));
+    };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
   }, []);
-  const choose = (name: string) => {
-    setCommittee(name);
+  const change = (next: { committee?: string; q?: string }) => {
+    const c = next.committee ?? committee;
+    const k = (next.q ?? q).trim();
+    setCommittee(c);
+    setQ(k);
     setLimit(STEP);
-    window.history.replaceState(null, '', pathFor('committees', { committee: name }));
+    window.history.replaceState(null, '', pathFor('committees', { committee: c, q: k }));
   };
+  const choose = (name: string) => change({ committee: name });
 
-  const res = useApi<CommitteeActivityResponse>(buildUrl('/committee-activity', { committee, limit }), { refreshToken });
+  const res = useApi<CommitteeActivityResponse>(buildUrl('/committee-activity', { committee, q, limit }), { refreshToken });
   const data = res.data;
   const more = data && (data.meetings.total > limit || data.replies.total > limit || data.records.total > limit);
 
   return (
     <>
       <h1 className="sr-only">委員會</h1>
+
+      <div className="filters bill-filters" role="search">
+        <SearchField value={q} onChange={(value) => change({ q: value })} ariaLabel="搜尋會議、機關回覆與會議紀錄" placeholder="搜尋機關或議題，例如：主計總處（空白分隔，任一符合）" />
+      </div>
 
       {data ? (
         <dl className="period-list" aria-label="資料期間">
