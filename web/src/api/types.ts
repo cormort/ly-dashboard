@@ -759,6 +759,29 @@ export interface LegislatorVotesResponse {
   items: { legislator: { id: string; name: string; party: string; area_name: string | null; region: string | null }; history: LegislatorRace[] }[];
 }
 
+/* ---------- /split-ticket ---------- */
+
+export interface PartyBucket {
+  valid: number;
+  votes: Record<string, number>;
+}
+
+export interface SplitTicketResponse {
+  meta: Meta;
+  years: number[];
+  year: number;
+  count: number;
+  items: {
+    county: string;
+    district: string;
+    valid: number;
+    candidates: { name: string; party: string; votes: number; pct: number; elected: boolean }[];
+    /** 同選區總統票、不分區政黨票（投開票所加總） */
+    president: PartyBucket;
+    party_list: PartyBucket;
+  }[];
+}
+
 /* ---------- /funds ---------- */
 
 export type FundType = 'fund' | 'agency' | 'foundation' | 'administrative' | 'dgbas';

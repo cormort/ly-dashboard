@@ -997,6 +997,27 @@ export function electionSummary(name, term = 11) {
   };
 }
 
+/**
+ * 分裂投票：某年大選各立委選區的區域立委候選人得票，以及同選區的總統票與不分區政黨票（投開票所加總）。
+ * 前端依政黨算三種得票率與差距。
+ */
+export function listSplitTicket(db, { year = 2024 } = {}) {
+  legislatorVotes ??= JSON.parse(readFileSync(new URL('./legislator-votes.json', import.meta.url), 'utf8'));
+  const years = legislatorVotes.years;
+  const y = years.includes(Number(year)) ? Number(year) : years[years.length - 1];
+  const items = legislatorVotes.races
+    .filter((r) => r.year === y && r.kind === '區域' && !r.by_election && r.party_votes)
+    .map((r) => ({
+      county: r.county,
+      district: r.district,
+      valid: r.valid,
+      candidates: r.candidates.map(({ name, party, votes, pct, elected }) => ({ name, party, votes, pct, elected })),
+      president: r.party_votes.president,
+      party_list: r.party_votes.party_list,
+    }));
+  return { meta: envelope(db), years, year: y, count: items.length, items };
+}
+
 export function listLegislatorVotes(db, { id = null } = {}) {
   const items = db
     .prepare(`SELECT id, name, party, area_name FROM legislators WHERE ${id ? 'id = ?' : 'leave_flag = 0'} ORDER BY area_name, name`)

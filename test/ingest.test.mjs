@@ -6,7 +6,7 @@ import { openDb, applyDataset, applyBills, applySocial, upsertNews, pruneLogs, g
 import { buildDataset, normalizeBills, normalizeMeetings, normalizeSocial, newsName, rocDate, DataValidationError } from '../server/normalize.mjs';
 import { CONFIG } from '../server/config.mjs';
 import { runIngest, runBillsIngest, runBudgetIngest, runBudgetReportsIngest, runMeetingsIngest, budgetPageUrl, runNewsIngest, runSocialIngest, runAll } from '../server/ingest.mjs';
-import { getHealth, listBills, listBudget, listBudgetMeetings, listBudgetReports, budgetState, listChanges, listCounties, listLegislatorVotes, listRankings, compareLegislators, listRegions, listLegislators, listNews, listSyncRuns } from '../server/queries.mjs';
+import { getHealth, listBills, listBudget, listBudgetMeetings, listBudgetReports, budgetState, listChanges, listCounties, listLegislatorVotes, listRankings, compareLegislators, listRegions, listSplitTicket, listLegislators, listNews, listSyncRuns } from '../server/queries.mjs';
 import { FetchError } from '../server/fetch-ly.mjs';
 import { syncOnce } from '../server/index.mjs';
 
@@ -823,4 +823,18 @@ test('總覽各縣市卡片：縣市帶人口與勝選者，不分區與原住�
   assert.equal(taipei.stats.mayor_2022.name, '蔣萬安');
   assert.equal(taipei.stats.president_2024.party, '民主進步黨');
   for (const r of items) assert.equal(r.stats === null, !/^..[縣市]$/.test(r.region), r.region);
+});
+
+test('分裂投票：每年 73 個選區，各選區總統與政黨票的有效票等於各黨加總', () => {
+  for (const year of [2012, 2016, 2020, 2024]) {
+    const res = listSplitTicket(seeded(), { year });
+    assert.equal(res.year, year);
+    assert.equal(res.count, 73);
+    for (const d of res.items) {
+      for (const type of ['president', 'party_list']) {
+        assert.equal(Object.values(d[type].votes).reduce((s, v) => s + v, 0), d[type].valid, `${year} ${d.district} ${type}`);
+      }
+    }
+  }
+  assert.equal(listSplitTicket(seeded(), { year: 1999 }).year, 2024);
 });

@@ -306,6 +306,11 @@ Query 參數（全部可選）：
 
 `/api/v1/rankings` 另有 `close`（險勝：最近一次當選的領先幅度）與 `drop`（得票流失：同選區與本人前次相比）兩榜，不受 `days` 影響。
 
+## GET /api/v1/split-ticket?year=2024
+
+分裂投票：某年大選（2012、2016、2020、2024；不合法時用最新一年）73 個區域立委選區的候選人得票（`candidates[{ name, party, votes, pct, elected }]`），
+以及同選區的總統票與不分區政黨票 `president`／`party_list`：`{ valid, votes: { 政黨: 票數 } }`（投開票所加總）。前端依政黨算三種得票率與差距。
+
 ## GET /api/v1/committee-activity?committee=&limit=20
 
 委員會頁與總覽用。`meetings`：委員會會議（官方 ID223，議程與登記發言委員 `{ id, name, party }`，對不到本屆委員者 `id` 為 null）；
