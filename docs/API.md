@@ -524,7 +524,7 @@ Query 參數（全部可選）：
 | --- | --- |
 | `passed` | `true` = 罷免通過（中選會 `vote_result` = `Y`）；**2015 起只有陳柏惟（2021-10-23）通過** |
 | `area`／`district` | 由 `title` 解析，**不是**用中選會回傳的外層 `area_name`（實測第 8 屆蔡正元那筆被標成雲林縣，是錯的） |
-| `results` | 官方公告 PDF 的投開票數字（`electorate`／`voted`／`turnout_pct`／`agree`／`disagree`／`agree_share_pct`／`invalid`／`result_text`／`announcement`／`announcement_url`）。**只有 2025 兩波 31 案有**；2015–2022 那 4 案沒有這個欄位 |
+| `results` | 官方文件的投開票數字：`electorate`／`voted`／`turnout_pct`／`agree`／`disagree`／`invalid`／`agree_share_pct`（統一＝同意÷選舉人總數）／`printed_agree_share`（文件實際印的佔比與其分母，各文件不同）／`result_text`／`document`／`document_url`；陳柏惟那筆另有 `read_from`（公告結果表是圖片，人工判讀並通過算術驗證）。**35 案全部都有** |
 
 `with_results` 是有票數的案數、`results_sources` 是那兩份公告（7/26 與 8/23）、`results_updated_at` 是最後解析時間。
 票數不是來自選舉資料庫（那個模組沒有票數），而是 `scripts/fetch-recall-results.mjs` 用 `pdftotext` 解析公告 PDF。

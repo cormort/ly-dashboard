@@ -765,19 +765,25 @@ export interface PartyShare {
  * 罷免案（中選會官方清單，`scripts/fetch-cec-recalls.mjs`）。
  * 只有案件層級資訊：中選會的罷免表**沒有**各案同意／不同意票數與投票率。
  */
-/** 官方公告 PDF 裡的投開票數字（`scripts/fetch-recall-results.mjs` 解析） */
+/** 官方文件裡的投開票數字（`scripts/fetch-recall-results.mjs` 解析，每一列的算式都驗過） */
 export interface RecallResults {
   electorate: number;
   voted: number;
   turnout_pct: number;
   agree: number;
   disagree: number;
-  agree_share_pct: number;
   /** 無效票＝投票人數 − 同意 − 不同意 */
   invalid: number;
+  /** 同意 ÷ 選舉人總數（統一用這個，讓 35 案可比） */
+  agree_share_pct: number;
+  /** 文件上實際印的佔比；分母各文件不同（2025 公告是選舉人總數、蔡正元實錄是有效票） */
+  printed_agree_share?: { pct: number; of: 'electorate' | 'valid' };
   result_text: string;
-  announcement: string;
-  announcement_url: string;
+  /** 官方文件名稱與網址 */
+  document: string;
+  document_url: string;
+  /** 只有陳柏惟那筆：公告的結果表是圖片、沒有文字層，由人工判讀並通過算術驗證 */
+  read_from?: string;
 }
 
 export interface RecallItem {
@@ -789,7 +795,7 @@ export interface RecallItem {
   /** true = 罷免通過（中選會 vote_result = Y）；2015 起 35 案只有陳柏惟（2021）通過 */
   passed: boolean;
   title: string;
-  /** 只有 2025 兩波 31 案有（公告 PDF 才有票數；2015–2022 那 4 案的公告格式各異，尚未納入） */
+  /** 35 案全部都有（見 `scripts/fetch-recall-results.mjs`；每筆都有官方文件出處與算術驗證） */
   results?: RecallResults;
 }
 

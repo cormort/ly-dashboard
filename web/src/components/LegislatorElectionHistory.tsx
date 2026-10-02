@@ -43,12 +43,13 @@ export function LegislatorElectionHistory({ legislatorId, region }: { legislator
                 ) : (
                   <div className="muted">（此案的票數未收錄）</div>
                 )}
+                {r.results?.read_from ? <div className="muted"><small>{r.results.read_from}</small></div> : null}
               </li>
             ))}
           </ul>
           {/* 案件清單來自中選會選舉資料庫（沒有票數）；票數另外解析自官方公告 PDF */}
           <small className="muted">
-            案件：{res.data?.recalls_source?.label ?? '中選會'}・票數：中選會公告 PDF（2025 兩波；2015–2022 尚未收錄）
+            案件：{res.data?.recalls_source?.label ?? '中選會'}・票數：中選會官方公告／結果文件（35 案都有）
           </small>
         </div>
       ) : null}

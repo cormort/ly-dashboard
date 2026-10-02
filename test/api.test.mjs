@@ -993,12 +993,12 @@ test('靜態資料清單要把罷免案也納入監控', () => {
   assert.match(health.static_data.recalls.as_of, /^\d{4}-\d{2}$/, '用 fetched_at 的年月當資料截止');
 });
 
-test('罷免票數：2025 兩波 31 案有官方票數，且數字自身一致', () => {
+test('罷免票數：35 案都有官方票數，且數字自身一致', () => {
   const { db } = seededWithRoster();
   const res = listRecalls(db);
 
-  assert.equal(res.with_results, 31, '2025-07-26（24）＋ 2025-08-23（7）');
-  assert.equal(res.results_sources.length, 2, '兩份公告各對應一天');
+  assert.equal(res.with_results, 35, '35 案全部都有官方票數');
+  assert.equal(res.results_sources.length, 6, '2025 兩份公告＋2017／2015／2022／2021 各一份文件');
   assert.match(res.results_sources[0].url, /^https:\/\/(web\.cec\.gov\.tw|gazette\.nat\.gov\.tw)\//);
 
   // 每一筆有票數的紀錄都要通過內部一致性（這也是解析公告表格時的防線）
@@ -1009,12 +1009,30 @@ test('罷免票數：2025 兩波 31 案有官方票數，且數字自身一致',
     const share = Math.round((v.agree / v.electorate) * 10000) / 100;
     assert.equal(v.agree_share_pct, share, `${r.name}：同意票佔比要等於 同意÷投票人總數`);
     assert.equal(v.result_text, r.passed ? '通過' : '否決', `${r.name}：公告文字要與 vote_result 一致`);
-    assert.match(v.announcement_url, /^https:\/\//);
+    assert.match(v.document_url, /^https:\/\//);
+    assert.ok(v.document, '每筆都要有官方文件名稱');
   }
 
-  // 2025 兩波都是否決；票數不該讓「同意 > 不同意」出現（31 案全部否決）
+  // 最強的一道驗證：用公告的票數**重算法定門檻**，結果要與中選會記載的結果一致。
+  // 這證明抽出來的是真數字，而不是「欄位對了但來源錯」。
+  //   2016 年底修法前：投票人數須達選舉人總數 1/2，且同意 > 不同意
+  //   修法後：同意 > 不同意，且同意票須達選舉人總數 1/4（俗稱「四分之一門檻」）
+  // 我們的案子只有 2015 蔡正元落在舊制，所以用 2017-01-01 當分界即可。
   const withResults = res.items.filter((x) => x.results);
-  assert.ok(withResults.every((r) => r.results.disagree > r.results.agree), '31 案都是不同意多於同意');
+  assert.equal(withResults.length, 35);
+  for (const r of withResults) {
+    const v = r.results;
+    const agreeWins = v.agree > v.disagree;
+    const oldRule = String(r.vote_date) < '2017-01-01';
+    const thresholdOk = oldRule ? v.voted / v.electorate >= 0.5 : v.agree / v.electorate > 0.25;
+    assert.equal(agreeWins && thresholdOk, r.passed, `${r.name}（${r.vote_date}）：用票數重算的結果應為 ${r.passed ? '通過' : '否決'}`);
+  }
+  // 因此「同意 > 不同意」不等於通過：蔡正元 97% 同意、黃國昌與林昶佐也都同意多於不同意，但都沒過門檻
+  assert.deepEqual(
+    withResults.filter((r) => r.results.agree > r.results.disagree).map((r) => r.name).sort(),
+    ['林昶佐', '蔡正元', '陳柏惟', '黃國昌'],
+  );
+  assert.deepEqual(res.items.filter((r) => r.results && r.passed).map((r) => r.name), ['陳柏惟']);
 
   // 抽查：丁學忠（官方公告 114年8月1日）
   const ding = res.items.find((r) => r.name === '丁學忠').results;
@@ -1023,7 +1041,17 @@ test('罷免票數：2025 兩波 31 案有官方票數，且數字自身一致',
     { agree: 57331, disagree: 77164, voted: 135470, invalid: 975, turnout: 49.87 },
   );
 
-  // 2015–2022 那 4 案還沒有票數（公告格式各異，尚未納入）—— 明寫出來，才不會以為是漏掉
-  const missing = res.items.filter((r) => !r.results).map((r) => r.name).sort();
-  assert.deepEqual(missing, ['林昶佐', '蔡正元', '陳柏惟', '黃國昌']);
+  // 三筆歷史案也補上了，而且各自對應不同格式的官方文件
+  const byName = Object.fromEntries(res.items.map((r) => [r.name, r.results]));
+  assert.equal(byName['黃國昌'].agree, 48693); // 投開票結果表的總計列
+  assert.equal(byName['黃國昌'].disagree, 21748);
+  assert.equal(byName['蔡正元'].agree, 76737); // 罷免實錄的內文
+  assert.equal(byName['蔡正元'].disagree, 2196);
+  assert.deepEqual(byName['蔡正元'].printed_agree_share, { pct: 97.22, of: 'valid' }, '實錄印的佔比分母是有效票，要記下來');
+  assert.equal(byName['林昶佐'].agree, 54813); // 各投開票所得票數一覽表（ODS）的總計列
+  assert.equal(byName['林昶佐'].disagree, 43340);
+  assert.equal(byName['陳柏惟'].agree, 77899); // 公告的結果表是圖片 → 人工判讀
+  assert.equal(byName['陳柏惟'].disagree, 73433);
+  assert.equal(byName['陳柏惟'].invalid, 1235);
+  assert.match(byName['陳柏惟'].read_from ?? '', /人工判讀/, '唯一一筆非機器解析的必須標示');
 });

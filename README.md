@@ -58,7 +58,7 @@ cron/啟動排程 (24h)                      server/ingest.mjs
 | `server/queries.mjs` | API 視圖（本會期名錄、委員會、異動、健康狀態） |
 | `server/index.mjs` | HTTP API + 靜態檔 + SPA fallback + 每日排程 |
 | `scripts/fetch-cec-recalls.mjs` | 抓中選會官方罷免清單 → `server/recalls.json`（35 案） |
-| `scripts/fetch-recall-results.mjs` | 解析中選會**公告 PDF** 的同意／不同意票數 → 補進 `server/recalls.json`（需要 `pdftotext`；`--check` 只比對不寫檔） |
+| `scripts/fetch-recall-results.mjs` | 解析 6 份官方文件的同意／不同意票數（PDF／ODS，5 種格式）→ 補進 `server/recalls.json`（需要 `pdftotext` 與 `unzip`；`--check` 只比對不寫檔） |
 | `docs/API.md` | 凍結的 API 契約（前端依此實作） |
 | `test/*.test.mjs` | 用真實 API 回應當 fixture 的回歸測試 |
 | `web/src/api/` | 型別化 API client（唯一出口，前端不碰政府端點） |
@@ -319,7 +319,10 @@ curl -s localhost:8787/api/v1/health | jq .retention                   # 目前�
 ### 尚未做的功能
 - **鄉鎮層級的得票趨勢與轉折**：鄉鎮地圖已有（2020／2024 得票），尚未納入 2012／2016 與縣市長的鄉鎮得票，轉折分析仍在縣市層級。
 - **2026 地方選舉（11 月）**：kiang/db.cec.gov.tw 已有 `data/elections/2026`，尚未確認內容；可做候選人一覽並以 2022 與歷次趨勢為基準。
-- **罷免案的票數**：中選會的罷免表不提供同意／不同意票數與投票率（只有清單與結果）。若要票數，得另找該站的下載附件（`{taskName}/data/attachments/RCL/{themeId}/{themeId}.zip`，實測需額外驗證）或中選會選舉資料庫的其他端點。
+- ~~**罷免案的票數**：中選會的罷免表不提供票數…~~
+  → 已由公告／結果文件補齊（35 案）。
+- **陳柏惟那筆的票數是人工判讀的**：官方公告的結果表是圖片、沒有文字層，環境也沒有 OCR；數字已通過四道算術驗證（含門檻重算），但仍不是機器解析，所以在資料裡標了 `read_from`。
+- **`clarify.cec.gov.tw` 從這台機器連不上**（DNS 失敗），`web.cec.gov.tw/upload/file/*` 會被 WAF 回 HTML 而不是檔案；可用的路徑是 `web.cec.gov.tw/api/file/*` 與行政院公報 `gazette.nat.gov.tw`。
 - **data.gov.tw 資料集 13119**：環境網路政策擋住 data.gov.tw，尚未讀取內容、也未決定用途。
 - **tw_statistic_map 未移植的功能**：檔案上傳、手動填寫、GIF 動畫、多時間點趨勢分析（以「時間差異」與「得票趨勢」取代）。地圖用 SVG 自繪，未用 Plotly。
 
@@ -328,8 +331,18 @@ curl -s localhost:8787/api/v1/health | jq .retention                   # 目前�
   → **2026-10-02 已補上**：改用中選會官方選舉資料庫（`https://db.cec.gov.tw/ElecTable/Recall?type=Legislator`），
   由 `scripts/fetch-cec-recalls.mjs` 抓成 `server/recalls.json`（35 案：第 8–11 屆，含 2025 兩波 31 案）。
   「中選會被網路政策擋住」的說法**不成立**（實測 HTTP 200；被擋的是 data.gov.tw）。
-  **但中選會的罷免表只有案件清單與結果（Y／N），沒有各案同意／不同意票數與投票率** ——
-  這件事寫在 `recalls.json` 的 `source.note` 與畫面上，不只寫在這裡。
+  「中選會的罷免表」只有案件清單與結果（Y／N），**沒有**票數 —— 這件事寫在 `recalls.json` 的 `source.note` 與畫面上。
+  **票數改由 6 份官方文件取得**（`scripts/fetch-recall-results.mjs`，用 `pdftotext`／`unzip` 解析）：
+  **35 案全部都有**同意／不同意票數、投票率、無效票與官方文件出處，每一筆都通過算術驗證。
+  文件格式各異，所以腳本裡有 5 種解析器：2025 兩波用公告的固定欄位表（2 份）、
+  黃國昌用「投開票結果表」的總計列、蔡正元用「罷免實錄」的內文、林昶佐用「各投開票所得票數一覽表」ODS 的總計列；
+  **陳柏惟是唯一例外** —— 他的公告結果表在 PDF 裡是**圖片**（實測 `pdfimages`：747×221 JPEG，沒有文字層）、
+  環境也沒有 OCR，因此由人工判讀填入，並以 `read_from` 標示（同樣通過算術驗證）。
+
+  **為什麼「同意票比較多」不等於通過**：2016 年底修法前的門檻是「投票人數須達選舉人總數 1/2」，
+  修法後改成「同意票須達選舉人總數 1/4」（且同意 > 不同意）。所以蔡正元 2015 拿到 **97% 同意卻沒過**
+  （投票率只有 24.98%）、黃國昌與林昶佐也都是同意多於不同意但沒過四分之一門檻；
+  35 案裡只有陳柏惟（2021）通過。測試會用票數**重算門檻**並要求與中選會記載的結果一致。
 - **人口與選舉為靜態檔**（`server/county-stats.json`、`server/legislator-votes.json`），不在同步流程內，需手動重跑 build 腳本；人口目前為 2026-08。
   它們**不在 `/health` 的 `datasets`**（沒有 `fetched_at`，不是抓來的），改列在 `static_data`：只有「資料截止 `as_of`」與筆數。人口月報超過 `LY_STATIC_STALE_MONTHS`（預設 3）個月沒更新、或任一個檔讀不到／是空的，都會出現在 `/health` 的 `warnings`。
 - **人口與選舉資料取自 GitHub 轉存**（kiang/data.moi.gov.tw、kiang/db.cec.gov.tw），非直接取自政府網站；縣市界為 ronnywang/twgeojson（2010 版，以縣市名對應）。
