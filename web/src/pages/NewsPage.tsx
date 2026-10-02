@@ -102,26 +102,8 @@ export function NewsPage({ refreshToken, onOpenId, scope = 'legislators' }: News
         ) : null}
       </form>
 
-      {data ? (
-        <section className="panel" aria-label="媒體分布">
-          <div className="sectionhead">
-            <h2>{picked ? `${picked.name}的媒體分布` : '媒體分布'}</h2>
-            <span className="muted">共 {data.source_total} 家，點媒體可篩選</span>
-          </div>
-          <ul className="source-bars">
-            {data.sources.slice(0, 15).map((s) => (
-              <li key={s.name}>
-                <button type="button" className="link-button source-name" aria-pressed={filters.source === s.name} onClick={() => change({ source: filters.source === s.name ? '' : s.name })}>
-                  {s.name}
-                </button>
-                <span className="source-bar mono" style={{ width: `${(s.count / max) * 100}%` }} />
-                <span className="source-count">{s.count}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-
+      {/* 報導清單是主角（每天看輿情）；媒體分布是分析，放右欄 */}
+      <div className="home">
       <section className="panel" aria-label="新聞列表" id="news-results">
         <div className="sectionhead">
           <h2>報導</h2>
@@ -176,6 +158,26 @@ export function NewsPage({ refreshToken, onOpenId, scope = 'legislators' }: News
           </>
         ) : null}
       </section>
+      {data ? (
+        <section className="panel" aria-label="媒體分布">
+          <div className="sectionhead">
+            <h2>{picked ? `${picked.name}的媒體分布` : '媒體分布'}</h2>
+            <span className="muted">共 {data.source_total} 家，點媒體可篩選</span>
+          </div>
+          <ul className="source-bars">
+            {data.sources.slice(0, 15).map((s) => (
+              <li key={s.name}>
+                <button type="button" className="link-button source-name" aria-pressed={filters.source === s.name} onClick={() => change({ source: filters.source === s.name ? '' : s.name })}>
+                  {s.name}
+                </button>
+                <span className="source-bar mono" style={{ width: `${(s.count / max) * 100}%` }} />
+                <span className="source-count">{s.count}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+      </div>
     </>
   );
 }

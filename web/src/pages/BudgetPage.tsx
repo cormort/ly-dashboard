@@ -205,6 +205,9 @@ export function BudgetPage({ refreshToken, onOpenId }: BudgetPageProps) {
           ) : null}
         </section>
 
+        {/* 右欄：預算中心報告是備詢時最常翻的，放最上面；原本這兩塊排在 30 筆清單之後，要捲很久才看得到 */}
+        <div className="home-side">
+        <BudgetReports refreshToken={refreshToken} />
         <section className="panel" aria-label="提案單位">
           <h2>提案單位</h2>
           <p className="muted topic-note">點機關只看它送的項目</p>
@@ -225,11 +228,8 @@ export function BudgetPage({ refreshToken, onOpenId }: BudgetPageProps) {
             </ol>
           ) : null}
         </section>
-      </div>
-
-      <div className="home">
         <BudgetMeetings refreshToken={refreshToken} onOpenId={onOpenId} />
-        <BudgetReports refreshToken={refreshToken} />
+        </div>
       </div>
     </>
   );

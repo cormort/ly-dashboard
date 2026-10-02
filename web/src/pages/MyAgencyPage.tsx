@@ -16,13 +16,14 @@ export interface MyAgencyPageProps {
   onNavigate: (href: string) => void;
 }
 
-const PREF_KEY = 'my-agency';
+/** 選定的機關存在這個瀏覽器（總覽頂端的「我的機關」摘要也讀它） */
+export const MY_AGENCY_KEY = 'my-agency';
 /** 沒選過時預設載入的機關 */
 export const DEFAULT_AGENCY = '行政院主計總處';
 const shortDate = (value: string | null | undefined) => (value ? value.slice(5, 10).replace('-', '/') : '');
 
 /** 網址 ?agency= 優先（可分享），其次是上次選的（存在這個瀏覽器），都沒有就用預設機關 */
-const initialAgency = (): string => new URLSearchParams(window.location.search).get('agency') || readPreference(PREF_KEY) || DEFAULT_AGENCY;
+const initialAgency = (): string => new URLSearchParams(window.location.search).get('agency') || readPreference(MY_AGENCY_KEY) || DEFAULT_AGENCY;
 
 /** 一個區塊：標題＋件數＋「看更多」；沒資料時明說，不留空白 */
 function Block({ title, total, href, onNavigate, note, children }: { title: string; total: number; href?: string; onNavigate: (href: string) => void; note?: string; children: ReactNode }) {
@@ -87,7 +88,7 @@ export function MyAgencyPage({ refreshToken, onOpenId, onNavigate }: MyAgencyPag
   const choose = (name: string) => {
     setAgency(name);
     setDraft('');
-    writePreference(PREF_KEY, name);
+    writePreference(MY_AGENCY_KEY, name);
     window.history.replaceState(null, '', pathFor('my', { agency: name }));
   };
   const selector = (
@@ -143,7 +144,7 @@ export function MyAgencyPage({ refreshToken, onOpenId, onNavigate }: MyAgencyPag
   const link = (kind: FundKind) => pathFor('agencies', { fund: agency, kind });
   return (
     <>
-      <div className="page-head">
+      <div className="page-head my-head">
         <h1>{agency}</h1>
         {data?.agency?.heads.length ? (
           <p className="page-lead">
@@ -164,39 +165,31 @@ export function MyAgencyPage({ refreshToken, onOpenId, onNavigate }: MyAgencyPag
             ))}
           </p>
         ) : null}
+        <div className="agency-picker-row">
+          {selector}
+          {agency !== DEFAULT_AGENCY ? (
+            <button type="button" onClick={() => choose(DEFAULT_AGENCY)}>
+              回到{DEFAULT_AGENCY}
+            </button>
+          ) : null}
+        </div>
       </div>
 
-      {agency === DEFAULT_AGENCY ? (
-        <p className="muted">
-          <a
-            href={pathFor('dgbas')}
-            onClick={(event) => {
-              event.preventDefault();
-              onNavigate(pathFor('dgbas'));
-            }}
-          >
-            主計總處專頁
-          </a>
-          ：另含「地方主計處」「僅提及主計」等較寬鬆的比對
-        </p>
-      ) : null}
-
       <p className="muted cross-link">
+        {agency === DEFAULT_AGENCY ? (
+          <>
+            <RouteLink href={pathFor('dgbas')} onNavigate={onNavigate}>
+              主計總處專頁
+            </RouteLink>
+            另含「地方主計處」「僅提及主計」等較寬鬆的比對。
+          </>
+        ) : null}
         各區塊的「看更多」會到「機關」頁看完整清單；想跨機關瀏覽、看哪些機關最常被提到，請到
         <RouteLink href={pathFor('agencies')} onNavigate={onNavigate}>
           機關頁
         </RouteLink>
         。
       </p>
-
-      <div className="agency-picker-row">
-        {selector}
-        {agency !== DEFAULT_AGENCY ? (
-          <button type="button" onClick={() => choose(DEFAULT_AGENCY)}>
-            回到{DEFAULT_AGENCY}
-          </button>
-        ) : null}
-      </div>
 
       {res.phase === 'loading' && !data ? <LoadingState label={`讀取「${agency}」…`} /> : null}
       {res.phase === 'error' ? <ErrorState title="無法取得機關資料（/api/v1/agency）" error={res.error} onRetry={res.reload} /> : null}
@@ -205,15 +198,15 @@ export function MyAgencyPage({ refreshToken, onOpenId, onNavigate }: MyAgencyPag
         <>
           <div className="stat-row">
             {[
-              { label: '近期議程提到', value: data.meetings.total },
-              { label: '預算審議', value: data.kinds.budget.total },
-              { label: '法案', value: data.kinds.bill.total },
-              { label: '新聞', value: data.kinds.news.total + data.official_news.total },
+              { label: '近期議程提到', value: data.meetings.total, id: 'my-meetings' },
+              { label: '新聞', value: data.kinds.news.total + data.official_news.total, id: 'my-news' },
+              { label: '預算審議', value: data.kinds.budget.total, id: 'my-budget' },
+              { label: '法案', value: data.kinds.bill.total, id: 'my-budget' },
             ].map((t) => (
-              <div key={t.label} className="stat-tile">
+              <a key={t.label} className="stat-tile" href={`#${t.id}`}>
                 <b className="stat-value">{t.value.toLocaleString()}</b>
                 <span className="stat-label">{t.label}</span>
-              </div>
+              </a>
             ))}
           </div>
 
@@ -252,24 +245,6 @@ export function MyAgencyPage({ refreshToken, onOpenId, onNavigate }: MyAgencyPag
             </div>
           </section>
 
-          <section className="dash-section" aria-labelledby="my-budget">
-            <div className="dash-section-head">
-              <h2 id="my-budget">預算與法案</h2>
-              <p className="muted">提案單位或標題提到本機關者</p>
-            </div>
-            <div className="dash-grid">
-              <Block title="預算審議" total={data.kinds.budget.total} href={link('budget')} onNavigate={onNavigate}>
-                <ItemList items={data.kinds.budget.items} tag={(i) => i.status} />
-              </Block>
-              <Block title="預算中心報告" total={data.kinds.report.total} href={link('report')} onNavigate={onNavigate}>
-                <ItemList items={data.kinds.report.items} tag={(i) => i.source?.replace('評估', '')} />
-              </Block>
-              <Block title="法案" total={data.kinds.bill.total} href={link('bill')} onNavigate={onNavigate}>
-                <ItemList items={data.kinds.bill.items} tag={(i) => i.status} />
-              </Block>
-            </div>
-          </section>
-
           <section className="dash-section" aria-labelledby="my-watchers">
             <div className="dash-section-head">
               <h2 id="my-watchers">誰在關注</h2>
@@ -304,6 +279,24 @@ export function MyAgencyPage({ refreshToken, onOpenId, onNavigate }: MyAgencyPag
               </Block>
               <Block title="機關新聞" total={data.kinds.news.total} href={link('news')} onNavigate={onNavigate}>
                 <ItemList items={data.kinds.news.items} tag={(i) => i.source || undefined} />
+              </Block>
+            </div>
+          </section>
+
+          <section className="dash-section" aria-labelledby="my-budget">
+            <div className="dash-section-head">
+              <h2 id="my-budget">預算與法案</h2>
+              <p className="muted">提案單位或標題提到本機關者</p>
+            </div>
+            <div className="dash-grid">
+              <Block title="預算審議" total={data.kinds.budget.total} href={link('budget')} onNavigate={onNavigate}>
+                <ItemList items={data.kinds.budget.items} tag={(i) => i.status} />
+              </Block>
+              <Block title="預算中心報告" total={data.kinds.report.total} href={link('report')} onNavigate={onNavigate}>
+                <ItemList items={data.kinds.report.items} tag={(i) => i.source?.replace('評估', '')} />
+              </Block>
+              <Block title="法案" total={data.kinds.bill.total} href={link('bill')} onNavigate={onNavigate}>
+                <ItemList items={data.kinds.bill.items} tag={(i) => i.status} />
               </Block>
             </div>
           </section>

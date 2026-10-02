@@ -296,7 +296,7 @@ header nav, .subnav-row { position: relative; }
 .period-list dd { margin: 0; font-variant-numeric: tabular-nums; }
 .fund-kind { border-radius: var(--radius-pill); padding: 1px 8px; font-size: var(--fs-xs); font-weight: 600; color: var(--accent-ink); background: var(--accent-soft); }
 .period-list b { font-weight: 500; color: var(--ink-2); }
-.sectionhead { display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); margin-bottom: var(--space-3); }
+.sectionhead { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: var(--space-2) var(--space-3); margin-bottom: var(--space-3); }
 .sectionhead h2 { margin: 0; }
 .sectionhead > div { display: flex; align-items: center; gap: var(--space-3); }
 .overview { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: var(--space-6); align-items: start; }
@@ -380,7 +380,8 @@ header nav, .subnav-row { position: relative; }
   padding: 20px 28px 16px;
   box-shadow: var(--shadow-sm);
 }
-.hemicycle svg { width: 100%; max-height: 330px; display: block; }
+/* 240px：名錄才是幕僚最常用的部分，席次圖縮小讓第一排委員卡進到首屏 */
+.hemicycle svg { width: 100%; max-height: 240px; display: block; }
 .hemicycle-plot { position: relative; }
 .seat-tip {
   position: absolute;
@@ -1219,3 +1220,17 @@ a.stat-tile:hover { border-color: #98a2b3; box-shadow: var(--card-base-hover); t
 .watchers li { display: inline-flex; align-items: baseline; gap: 6px; }
 .cross-link { margin: 0; font-size: var(--fs-sm); }
 .cross-link a { margin-left: 4px; }
+/* 分區錨點（我的機關統計卡）跳過去時不要被固定頁首蓋住 */
+.dash-section-head h2 { scroll-margin-top: 96px; }
+/* 總覽頂端的「我的機關」摘要：一列，機關名＋各項件數＋前往 */
+.my-strip { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-6); padding: var(--space-3) var(--space-4); }
+.my-strip h2 { margin: 0; font-size: var(--fs-lg); display: flex; align-items: baseline; gap: var(--space-2); }
+.my-strip h2 .muted { font-size: var(--fs-sm); font-weight: 500; }
+.my-strip ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-4); font-size: var(--fs-md); color: var(--ink-2); }
+.my-strip b { color: var(--ink); font-variant-numeric: tabular-nums; }
+.my-strip .more-link { margin-left: auto; }
+/* 我的機關頁首：機關名、首長、更換機關同一列 */
+.my-head { align-items: center; row-gap: var(--space-2); }
+.my-head .agency-picker-row { margin-left: auto; }
+.my-head .agency-picker label { display: flex; align-items: center; gap: var(--space-2); white-space: nowrap; }
+.my-head .agency-picker input { flex: 1; min-width: 15em; }
