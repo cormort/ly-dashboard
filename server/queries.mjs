@@ -823,6 +823,24 @@ export function listRegions(db, { per = 3 } = {}) {
   return { meta: envelope(db), count: items.length, items };
 }
 
+/** 縣市分頁：靜態的人口／選舉／地圖資料（scripts/build-county-stats.mjs 產生），加上各縣市在職區域立委 */
+let countyStats = null;
+export function listCounties(db) {
+  countyStats ??= JSON.parse(readFileSync(new URL('./county-stats.json', import.meta.url), 'utf8'));
+  const legislators = new Map();
+  for (const l of db.prepare('SELECT id, name, party, area_name FROM legislators WHERE leave_flag = 0 ORDER BY area_name, name').all()) {
+    const region = regionOf(l.area_name);
+    legislators.set(region, [...(legislators.get(region) ?? []), { id: l.id, name: l.name, party: l.party, area_name: l.area_name }]);
+  }
+  const { counties, ...rest } = countyStats;
+  return {
+    meta: envelope(db),
+    ...rest,
+    count: counties.length,
+    items: counties.map((c) => ({ ...c, legislators: legislators.get(c.county) ?? [] })),
+  };
+}
+
 export function listNews(db, { legislator = null, limit = 10 } = {}) {
   const resolvedLimit = Math.max(1, Math.min(Number(limit) || 10, 100));
   const total = legislator

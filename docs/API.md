@@ -283,6 +283,14 @@ Query 參數（全部可選）：
 `latest`（委員們最近的貼文／新聞／提案合併後取最新 `per` 則，1–10，預設 3；`{ kind, date, text, url, legislator }`）。
 動態來源與 `/activity` 相同。
 
+## GET /api/v1/counties
+
+縣市分頁用。22 縣市（北到南、離島）的靜態人口與選舉資料（`server/county-stats.json`，由 `scripts/build-county-stats.mjs` 產生，更新方式見該檔開頭），加上該縣市在職區域立委。
+回應：`population_month`（人口統計年月）、`elections`（各場選舉的 `{ label, date }`）、`sources`、`items[]`：
+`{ county, households, population, voting_age（20 歲以上）, elderly（65 歲以上）, elections, path（地圖 SVG path）, legislators[] }`。
+`elections` 有 `president_2024`、`president_2020`、`mayor_2022`、`mayor_2018`，各為 `{ electorate, turnout, valid, candidates[{ name, party, votes, pct }], margin, margin_pct }`，
+候選人依票數排序，`margin`／`margin_pct` 為第一名與第二名的票數差與得票率差（百分點）。2018 縣市長沒有選舉人數與投票率（null）；嘉義市 2022 為 12/18 延期選舉。
+
 ## GET /api/v1/committee-activity?committee=&limit=20
 
 委員會頁與總覽用。`meetings`：委員會會議（官方 ID223，議程與登記發言委員 `{ id, name, party }`，對不到本屆委員者 `id` 為 null）；

@@ -37,6 +37,7 @@ interface NavGroup {
 
 const NAV: NavGroup[] = [
   { id: 'overview', label: '總覽', home: 'dashboard', routes: [{ route: 'dashboard', label: '總覽' }] },
+  { id: 'counties', label: '縣市', home: 'counties', routes: [{ route: 'counties', label: '縣市' }] },
   { id: 'activity', label: '最近動態', home: 'home', routes: [{ route: 'home', label: '最近動態' }] },
   { id: 'news', label: '新聞', home: 'news', routes: [{ route: 'news', label: '新聞' }] },
   { id: 'officials', label: '機關首長新聞', home: 'officials', routes: [{ route: 'officials', label: '機關首長新聞' }] },

@@ -6,7 +6,7 @@ import { openDb, applyDataset, applyBills, applySocial, upsertNews, pruneLogs, g
 import { buildDataset, normalizeBills, normalizeMeetings, normalizeSocial, newsName, rocDate, DataValidationError } from '../server/normalize.mjs';
 import { CONFIG } from '../server/config.mjs';
 import { runIngest, runBillsIngest, runBudgetIngest, runBudgetReportsIngest, runMeetingsIngest, budgetPageUrl, runNewsIngest, runSocialIngest, runAll } from '../server/ingest.mjs';
-import { getHealth, listBills, listBudget, listBudgetMeetings, listBudgetReports, budgetState, listChanges, listLegislators, listNews, listSyncRuns } from '../server/queries.mjs';
+import { getHealth, listBills, listBudget, listBudgetMeetings, listBudgetReports, budgetState, listChanges, listCounties, listLegislators, listNews, listSyncRuns } from '../server/queries.mjs';
 import { FetchError } from '../server/fetch-ly.mjs';
 import { syncOnce } from '../server/index.mjs';
 
@@ -721,4 +721,24 @@ test('紀錄保留：預設不刪（要落地），health 回報目前筆數與�
   const before = Number(db.prepare('SELECT COUNT(*) AS n FROM sync_runs').get().n);
   assert.deepEqual(pruneLogs(db, CONFIG.retention), { sync_runs: 0, change_log: 0 });
   assert.equal(Number(db.prepare('SELECT COUNT(*) AS n FROM sync_runs').get().n), before, '預設不該刪掉任何紀錄');
+});
+
+test('縣市：22 縣市都有人口、四場選舉與地圖，並附上該縣市區域立委', () => {
+  const db = seeded();
+  const res = listCounties(db);
+  assert.equal(res.count, 22);
+  for (const c of res.items) {
+    assert.ok(c.population > c.voting_age && c.voting_age > c.elderly, c.county);
+    assert.ok(c.path.startsWith('M'), c.county);
+    for (const key of ['president_2024', 'president_2020', 'mayor_2022', 'mayor_2018']) {
+      const e = c.elections[key];
+      assert.equal(e.margin, e.candidates[0].votes - e.candidates[1].votes, `${c.county} ${key}`);
+    }
+  }
+  // 2024 總統全國得票與中選會公告一致
+  const lai = res.items.reduce((s, c) => s + c.elections.president_2024.candidates.find((x) => x.name === '賴清德').votes, 0);
+  assert.equal(lai, 5586019);
+  const withLegislators = res.items.filter((c) => c.legislators.length > 0);
+  assert.ok(withLegislators.length > 0);
+  for (const c of withLegislators) for (const l of c.legislators) assert.ok(l.area_name.startsWith(c.county.slice(0, 2)), l.area_name);
 });

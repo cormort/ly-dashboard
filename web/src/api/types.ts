@@ -613,6 +613,56 @@ export interface RegionsResponse {
   items: RegionItem[];
 }
 
+/* ---------- /counties ---------- */
+
+export type CountyElectionKey = 'president_2024' | 'president_2020' | 'mayor_2022' | 'mayor_2018';
+
+export interface CountyCandidate {
+  name: string;
+  party: string;
+  votes: number;
+  /** 得票率（%，佔有效票） */
+  pct: number;
+}
+
+export interface CountyElection {
+  /** 選舉人數；2018 縣市長來源沒有，為 null */
+  electorate: number | null;
+  /** 投票率（%） */
+  turnout: number | null;
+  valid: number;
+  /** 依得票數由高到低 */
+  candidates: CountyCandidate[];
+  /** 第一名與第二名的票數差 */
+  margin: number | null;
+  /** 第一名與第二名的得票率差（百分點） */
+  margin_pct: number | null;
+}
+
+export interface CountyItem {
+  county: string;
+  households: number;
+  population: number;
+  /** 20 歲以上（選舉年齡）人口 */
+  voting_age: number;
+  /** 65 歲以上人口 */
+  elderly: number;
+  elections: Record<CountyElectionKey, CountyElection>;
+  /** 地圖輪廓（SVG path，座標約在 0–530 × 0–735；金門、連江已平移成插圖） */
+  path: string;
+  legislators: { id: string; name: string; party: string; area_name: string }[];
+}
+
+export interface CountiesResponse {
+  meta: Meta;
+  /** 人口統計年月（YYYY-MM） */
+  population_month: string;
+  elections: Record<CountyElectionKey, { label: string; date: string }>;
+  sources: { label: string; url: string }[];
+  count: number;
+  items: CountyItem[];
+}
+
 /* ---------- /funds ---------- */
 
 export type FundType = 'fund' | 'agency' | 'foundation' | 'administrative' | 'dgbas';
