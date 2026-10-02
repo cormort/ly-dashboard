@@ -759,6 +759,16 @@ export interface LegislatorVotesResponse {
   items: { legislator: { id: string; name: string; party: string; area_name: string | null; region: string | null }; history: LegislatorRace[] }[];
 }
 
+/* ---------- /town-map ---------- */
+
+export interface TownMapResponse {
+  meta: Meta;
+  source: { label: string; url: string };
+  count: number;
+  /** 與縣市圖同一座標系的 SVG path */
+  towns: { county: string; town: string; path: string }[];
+}
+
 /* ---------- /population-trend ---------- */
 
 export interface AgeSnapshot {

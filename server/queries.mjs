@@ -1018,6 +1018,13 @@ export function listSplitTicket(db, { year = 2024 } = {}) {
   return { meta: envelope(db), years, year: y, count: items.length, items };
 }
 
+/** 鄉鎮市區界 SVG path（server/town-map.json，與縣市圖同一座標系） */
+let townMap = null;
+export function getTownMap(db) {
+  townMap ??= JSON.parse(readFileSync(new URL('./town-map.json', import.meta.url), 'utf8'));
+  return { meta: envelope(db), ...townMap, count: townMap.towns.length };
+}
+
 /** 人口趨勢：2016 起每月縣市人口、每年 12 月年齡結構、各鄉鎮每年人口（server/population-trend.json） */
 let populationTrend = null;
 export function listPopulationTrend(db) {

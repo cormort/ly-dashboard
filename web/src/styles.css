@@ -1155,3 +1155,12 @@ a.stat-tile:hover { border-color: #98a2b3; box-shadow: var(--card-base-hover); t
 .corr-strong { font-weight: 700; background: var(--accent-soft); }
 .town-change li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 8px; padding: 4px 0; border-bottom: 1px solid var(--rule-soft); font-variant-numeric: tabular-nums; }
 .town-change small { grid-column: 1 / -1; }
+.stat-map svg .county-shape { stroke-width: var(--map-stroke, 0.8); }
+.map-outline { fill: none; stroke: var(--ink); stroke-width: 1; opacity: 0.55; pointer-events: none; }
+.stat-map svg .county-shape[aria-current='true'] { stroke-width: calc(var(--map-stroke, 0.8) * 3); }
+.stat-map svg .county-shape:focus-visible { stroke-width: calc(var(--map-stroke, 0.8) * 3); }
+.town-ranking { max-height: 640px; overflow-y: auto; }
+.town-ranking li { grid-template-columns: 28px minmax(0, 1fr) auto; }
+.town-ranking li[aria-current='true'] { background: var(--accent-soft); }
+.town-layout { grid-template-columns: minmax(300px, 560px) minmax(0, 1fr); }
+@media (max-width: 860px) { .town-layout { grid-template-columns: 1fr; } }

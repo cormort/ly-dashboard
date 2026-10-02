@@ -7,6 +7,8 @@
  *   git clone --depth 1 --filter=blob:none https://github.com/kiang/data.moi.gov.tw.git moi
  *   curl -o twcounty2010.json https://raw.githubusercontent.com/ronnywang/twgeojson/master/twcounty2010.json
  *   （人口趨勢另需：cd moi && git checkout HEAD -- docs/json/population/city raw/population/20{16..25}/12/data.csv）
+ *   （鄉鎮地圖另需：git clone --depth 1 --filter=blob:none https://github.com/kiang/taiwan_basecode.git basecode，
+ *     加上 --town-geo basecode/city/geo/20230317.json）
  *   node scripts/build-county-stats.mjs --cec cec --moi moi/raw/population/2026/08/data.csv --geo twcounty2010.json
  *
  * 來源：中選會選舉資料庫（kiang/db.cec.gov.tw 轉存）、內政部戶政司村里人口單一年齡（kiang/data.moi.gov.tw 轉存）、
@@ -25,6 +27,8 @@ const { values: args } = parseArgs({
     'legislators-out': { type: 'string', default: 'server/legislator-votes.json' },
     'demographics-out': { type: 'string', default: 'server/demographics.json' },
     'trend-out': { type: 'string', default: 'server/population-trend.json' },
+    'town-geo': { type: 'string' },
+    'town-map-out': { type: 'string', default: 'server/town-map.json' },
   },
 });
 if (!args.cec || !args.moi || !args.geo) throw new Error('需要 --cec <dir> --moi <data.csv> --geo <geojson>');
@@ -326,27 +330,38 @@ function simplify(points, tolerance) {
   return [...simplify(points.slice(0, index + 1), tolerance).slice(0, -1), ...simplify(points.slice(index), tolerance)];
 }
 
+/** 一個圖徵的 SVG path：投影、略過太小的小島（至少保留最大一塊）、簡化 */
+function featurePath(geometry, county, { minSize, tolerance }) {
+  const [dx, dy] = SHIFT[county] ?? [0, 0];
+  const polygons = geometry.type === 'Polygon' ? [geometry.coordinates] : geometry.coordinates;
+  const rings = polygons
+    .map((polygon) => polygon[0].map(([lon, lat]) => [(lon + dx - 119.2) * COS * SCALE, (25.5 - lat - dy) * SCALE]))
+    .map((ring) => {
+      const xs = ring.map((pt) => pt[0]);
+      const ys = ring.map((pt) => pt[1]);
+      return { ring, size: Math.max(...xs) - Math.min(...xs) + Math.max(...ys) - Math.min(...ys) };
+    })
+    .sort((x, y) => y.size - x.size);
+  return rings
+    .filter((r, i) => i === 0 || r.size > minSize)
+    .map((r) => simplify(r.ring, tolerance))
+    .filter((ring) => ring.length >= 3)
+    .map((ring) => `M${ring.map(([x, y]) => `${x.toFixed(1)} ${y.toFixed(1)}`).join('L')}Z`)
+    .join('');
+}
+
 function mapPaths(file) {
   const geo = JSON.parse(readFileSync(file, 'utf8'));
-  const paths = {};
-  for (const feature of geo.features) {
-    const county = fixName(feature.properties.county);
-    const [dx, dy] = SHIFT[county] ?? [0, 0];
-    const rings = feature.geometry.coordinates.flatMap((polygon) => polygon.slice(0, 1));
-    paths[county] = rings
-      .map((ring) => ring.map(([lon, lat]) => [(lon + dx - 119.2) * COS * SCALE, (25.5 - lat - dy) * SCALE]))
-      .filter((ring) => {
-        // 太小的小島略過，避免 path 過大
-        const xs = ring.map((p) => p[0]);
-        const ys = ring.map((p) => p[1]);
-        return Math.max(...xs) - Math.min(...xs) + Math.max(...ys) - Math.min(...ys) > 1.2;
-      })
-      .map((ring) => simplify(ring, 0.35))
-      .filter((ring) => ring.length >= 4)
-      .map((ring) => `M${ring.map(([x, y]) => `${x.toFixed(1)} ${y.toFixed(1)}`).join('L')}Z`)
-      .join('');
-  }
-  return paths;
+  return Object.fromEntries(geo.features.map((f) => [fixName(f.properties.county), featurePath(f.geometry, fixName(f.properties.county), { minSize: 1.2, tolerance: 0.35 })]));
+}
+
+/** 鄉鎮市區界（kiang/taiwan_basecode 的內政部 2023 圖資），與縣市圖同一座標系 */
+function townPaths(file) {
+  const geo = JSON.parse(readFileSync(file, 'utf8'));
+  return geo.features.map((f) => {
+    const county = fixName(f.properties.COUNTYNAME);
+    return { county, town: f.properties.TOWNNAME, path: featurePath(f.geometry, county, { minSize: 0.8, tolerance: 0.25 }) };
+  });
 }
 
 /* ---------- 組合 ---------- */
@@ -532,3 +547,13 @@ writeFileSync(
   })}\n`,
 );
 console.log(`wrote ${args['trend-out']}: ${months[0]}–${latestMonth}，${townYear.size} 鄉鎮`);
+
+/* ---------- 鄉鎮地圖（選用：--town-geo taiwan_basecode/city/geo/20230317.json） ---------- */
+if (args['town-geo']) {
+  const shapes = townPaths(args['town-geo']);
+  const known = new Set(townItems.map((t) => t.county + t.town));
+  const unmatched = shapes.filter((t) => !known.has(t.county + t.town));
+  if (unmatched.length || shapes.length !== known.size) throw new Error(`鄉鎮圖資對不上：${unmatched.map((t) => t.county + t.town).join('、')}`);
+  writeFileSync(args['town-map-out'], `${JSON.stringify({ source: { label: '鄉鎮市區界（內政部 2023，kiang/taiwan_basecode 轉存）', url: 'https://github.com/kiang/taiwan_basecode' }, towns: shapes })}\n`);
+  console.log(`wrote ${args['town-map-out']}: ${shapes.length} 鄉鎮`);
+}

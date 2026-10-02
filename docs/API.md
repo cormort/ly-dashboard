@@ -306,6 +306,11 @@ Query 參數（全部可選）：
 
 `/api/v1/rankings` 另有 `close`（險勝：最近一次當選的領先幅度）與 `drop`（得票流失：同選區與本人前次相比）兩榜，不受 `days` 影響。
 
+## GET /api/v1/town-map
+
+鄉鎮市區界（`server/town-map.json`，build 腳本加 `--town-geo` 由 kiang/taiwan_basecode 的內政部 2023 圖資產生）：
+`towns[{ county, town, path }]`，368 筆，與縣市圖同一座標系（金門、連江平移為插圖），與 `/demographics` 一一對應。
+
 ## GET /api/v1/population-trend
 
 人口趨勢（`server/population-trend.json`）：`months`（2016-01 起的「YYYY-MM」）、`years`（各年 12 月與最新月）、

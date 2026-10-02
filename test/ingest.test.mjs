@@ -6,7 +6,7 @@ import { openDb, applyDataset, applyBills, applySocial, upsertNews, pruneLogs, g
 import { buildDataset, normalizeBills, normalizeMeetings, normalizeSocial, newsName, rocDate, DataValidationError } from '../server/normalize.mjs';
 import { CONFIG } from '../server/config.mjs';
 import { runIngest, runBillsIngest, runBudgetIngest, runBudgetReportsIngest, runMeetingsIngest, budgetPageUrl, runNewsIngest, runSocialIngest, runAll } from '../server/ingest.mjs';
-import { getHealth, listBills, listBudget, listBudgetMeetings, listBudgetReports, budgetState, listChanges, listCounties, listLegislatorVotes, listRankings, compareLegislators, listRegions, listSplitTicket, listDemographics, listPopulationTrend, listLegislators, listNews, listSyncRuns } from '../server/queries.mjs';
+import { getHealth, listBills, listBudget, listBudgetMeetings, listBudgetReports, budgetState, listChanges, listCounties, listLegislatorVotes, listRankings, compareLegislators, listRegions, listSplitTicket, listDemographics, listPopulationTrend, getTownMap, listLegislators, listNews, listSyncRuns } from '../server/queries.mjs';
 import { FetchError } from '../server/fetch-ly.mjs';
 import { syncOnce } from '../server/index.mjs';
 
@@ -867,5 +867,16 @@ test('人口趨勢：2016-01 起每月，最新一月等於縣市人口；各年
     const fromAges = res.counties.reduce((s, c) => s + c.ages[i].population, 0);
     const fromTowns = res.towns.reduce((s, t) => s + t.population[year], 0);
     assert.equal(fromAges, fromTowns, year);
+  }
+});
+
+test('鄉鎮地圖：368 個鄉鎮都有 path，且與人口結構資料一一對應', () => {
+  const db = seeded();
+  const map = getTownMap(db);
+  assert.equal(map.count, 368);
+  const keys = new Set(listDemographics(db).towns.map((t) => t.county + t.town));
+  for (const t of map.towns) {
+    assert.ok(keys.has(t.county + t.town), t.county + t.town);
+    assert.match(t.path, /^M[\d.\- L]+Z/);
   }
 });

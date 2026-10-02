@@ -1,8 +1,10 @@
-import { useState } from 'react';
-import type { CountyItem } from '../api/types';
+import { useState, type CSSProperties } from 'react';
 import { colorAt, gradient, type ScaleName } from '../lib/colorScales';
 
-/** 縣市面量圖：顏色代表數值（連續色階），滑過或點選顯示數值；金門、連江在左上插圖框 */
+/**
+ * 面量圖：顏色代表數值（連續色階），滑過或點選顯示數值；金門、連江在左上插圖框。
+ * items 的 county 是區塊的鍵與顯示名稱（縣市圖為縣市名，鄉鎮圖為「縣市＋鄉鎮」）。
+ */
 export function ChoroplethMap({
   items,
   values,
@@ -12,8 +14,11 @@ export function ChoroplethMap({
   diverging = false,
   selected,
   onSelect,
+  viewBox = '0 0 530 735',
+  outlines = [],
+  strokeWidth = 0.8,
 }: {
-  items: CountyItem[];
+  items: { county: string; path: string }[];
   values: Map<string, number | null>;
   scale: ScaleName;
   title: string;
@@ -22,6 +27,11 @@ export function ChoroplethMap({
   diverging?: boolean;
   selected?: string;
   onSelect?: (county: string) => void;
+  /** 只看某縣市時放大到該範圍 */
+  viewBox?: string;
+  /** 疊在上方、不上色的外框（例如鄉鎮圖上的縣市界） */
+  outlines?: string[];
+  strokeWidth?: number;
 }) {
   const [hover, setHover] = useState<string | null>(null);
   const nums = [...values.values()].filter((v): v is number => v !== null);
@@ -36,7 +46,7 @@ export function ChoroplethMap({
   return (
     <figure className="stat-map">
       <figcaption>{title}</figcaption>
-      <svg viewBox="0 0 530 735" role="group" aria-label={title}>
+      <svg viewBox={viewBox} role="group" aria-label={title} style={{ '--map-stroke': strokeWidth } as CSSProperties}>
         {/* 金門、連江的插圖框 */}
         <rect className="county-inset" x="22" y="4" width="128" height="112" rx="6" />
         <rect className="county-inset" x="3" y="166" width="66" height="54" rx="6" />
@@ -69,6 +79,9 @@ export function ChoroplethMap({
             </path>
           );
         })}
+        {outlines.map((d, i) => (
+          <path key={i} d={d} className="map-outline" />
+        ))}
         <text x="26" y="134" className="county-inset-label">連江縣</text>
         <text x="6" y="238" className="county-inset-label">金門縣</text>
       </svg>
@@ -78,7 +91,7 @@ export function ChoroplethMap({
             <b>{focus}</b>　{format(values.get(focus) ?? null)}
           </>
         ) : (
-          <span className="muted">滑過或點選縣市看數值</span>
+          <span className="muted">滑過或點選地圖看數值</span>
         )}
       </p>
       {nums.length ? (
