@@ -3,6 +3,7 @@ import { ExternalLink, X } from 'lucide-react';
 import { buildUrl } from '../api/client';
 import type { FundKind, FundsResponse, FundType } from '../api/types';
 import { EmptyState, ErrorState, LoadingState } from '../components/DataStates';
+import { FacetChips } from '../components/FacetChips';
 import { useApi } from '../hooks/useApi';
 import { pathFor } from '../hooks/useRoute';
 import { partyStyle } from '../lib/parties';
@@ -100,14 +101,8 @@ export function FundsPage({ type, refreshToken, onOpenId }: FundsPageProps) {
         ) : null}
       </div>
 
-      {data && data.funds.length > 0 && !filters.fund ? (
-        <div className="law-facets" aria-label={`最常出現的${COPY[type].title}`}>
-          {data.funds.map((f) => (
-            <button key={f.name} type="button" className="chip" onClick={() => change({ fund: f.name })}>
-              {f.name} <span className="muted">{f.count}</span>
-            </button>
-          ))}
-        </div>
+      {data && !filters.fund ? (
+        <FacetChips items={data.funds} label={`最常出現的${COPY[type].title}`} onPick={(fund) => change({ fund })} />
       ) : null}
 
       <section className="panel" aria-label="相關項目" id="fund-results">

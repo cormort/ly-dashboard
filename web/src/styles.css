@@ -934,13 +934,15 @@ a.stat-tile { text-decoration: none; color: inherit; transition: border-color va
 a.stat-tile:hover { border-color: #98a2b3; box-shadow: var(--card-base-hover); transform: translateY(-2px); }
 /* 固定兩欄（寬螢幕）：第一張卡橫跨兩欄當作「主要焦點」，其餘是等重的次要卡。
    原本 auto-fill 會讓 8 張卡擠成 3-4 欄，每張都一樣大 → 看不出重點。 */
+.dash-section { display: grid; gap: var(--space-3); }
+.dash-section-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px var(--space-3); padding-bottom: var(--space-1); border-bottom: 1px solid var(--rule); }
+.dash-section-head h2 { margin: 0; font-size: var(--fs-xl); }
+.dash-section-head p { margin: 0; font-size: var(--fs-sm); }
 .dash-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4); align-items: stretch; }
 .dash-card { padding: var(--space-4) var(--space-4); }
 .dash-card h2 { font-size: var(--fs-base); }
 /* 焦點卡：標題大一級、內文大一級，讓視線先落在這裡 */
-.dash-card.wide { grid-column: 1 / -1; border-color: var(--accent-line); }
-.dash-card.wide h2 { font-size: var(--fs-xl); }
-.dash-card.wide .dash-list li { font-size: var(--fs-base); padding: 2px 0; }
+.dash-card.wide { grid-column: 1 / -1; } /* 只跨欄；重點由分區標題表達，不再另外加強調色 */
 .more-link { display: inline-flex; align-items: center; gap: 2px; font-size: var(--fs-sm); text-decoration: none; color: var(--accent-ink); white-space: nowrap; }
 .more-link svg { width: 14px; height: 14px; }
 .dash-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
@@ -1057,6 +1059,7 @@ a.stat-tile:hover { border-color: #98a2b3; box-shadow: var(--card-base-hover); t
 }
 .law-facets { gap: var(--space-1, 4px); }
 .law-facets .chip { font-size: var(--fs-xs); }
+.law-facets .facet-toggle { background: transparent; border-style: dashed; color: var(--accent-ink); font-weight: 600; }
 .pager { display: flex; align-items: center; justify-content: center; gap: var(--space-3); margin-top: var(--space-4); font-size: var(--fs-sm); }
 .pager .link-button { border: 1px solid var(--rule); border-radius: var(--radius-md); padding: 4px 12px; background: var(--surface); }
 .pager .link-button:disabled { opacity: 0.45; }
