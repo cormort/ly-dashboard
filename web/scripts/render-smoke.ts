@@ -22,6 +22,7 @@ import type { ChangesResponse, CommitteesResponse, LegislatorsResponse, MetaResp
 import { AppShell } from '../src/components/AppShell';
 import { ChangesPanel } from '../src/components/ChangesPanel';
 import { CommitteeChart } from '../src/components/CommitteeChart';
+import { FacetChips } from '../src/components/FacetChips';
 import { Header } from '../src/components/Header';
 import { LegislatorGrid } from '../src/components/LegislatorGrid';
 import { SessionSelector } from '../src/components/SessionSelector';
@@ -225,6 +226,14 @@ expectAll('委員查詢頁：屆次、篩選、名錄、委員會、異動骨架
   '列表',
 ]);
 (window as unknown as { location: { pathname: string } }).location.pathname = '/';
+
+console.log('\n— FacetChips —');
+const facets = Array.from({ length: 30 }, (_, i) => ({ name: `單位${i + 1}`, count: 100 - i }));
+const facetHtml = render(createElement(FacetChips, { items: facets, label: '最常出現的機關', onPick: () => undefined }));
+expectAll('預設只顯示前 12 個，其餘收在「更多 18」', facetHtml, ['單位1 ', '單位12 ', '更多 18', 'aria-expanded="false"']);
+expectNone('收合時不顯示第 13 個之後', facetHtml, ['單位13 ', '單位30 ']);
+expectNone('標籤不多於上限時不出現「更多」', render(createElement(FacetChips, { items: facets.slice(0, 10), label: 'x', onPick: () => undefined })), ['更多', 'facet-toggle']);
+expectNone('沒有項目時整塊不畫', render(createElement(FacetChips, { items: [], label: 'x', onPick: () => undefined })), ['law-facets']);
 
 console.log('\n— Header —');
 const headerProps = {
