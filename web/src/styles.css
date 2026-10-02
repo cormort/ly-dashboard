@@ -27,16 +27,18 @@
   --sans: 'PingFang TC', 'Noto Sans TC', 'Microsoft JhengHei', system-ui, -apple-system,
     'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
   --radius: 10px;
+  /* 字體大小倍率：由頁首「A−／A＋」調整（useFontScale），預設 1 */
+  --fs-scale: 1;
   /* 型級（type scale）：整站只用這 9 級，避免 11/11.67/12.5/13/17/19 這種近似值互相干擾 */
-  --fs-2xs: 11px;
-  --fs-xs: 12px;
-  --fs-sm: 13px;
-  --fs-md: 14px;
-  --fs-base: 15px;
-  --fs-lg: 16px;
-  --fs-xl: 18px;
-  --fs-2xl: 22px;
-  --fs-3xl: 27px;
+  --fs-2xs: calc(11px * var(--fs-scale));
+  --fs-xs: calc(12px * var(--fs-scale));
+  --fs-sm: calc(13px * var(--fs-scale));
+  --fs-md: calc(14px * var(--fs-scale));
+  --fs-base: calc(15px * var(--fs-scale));
+  --fs-lg: calc(16px * var(--fs-scale));
+  --fs-xl: calc(18px * var(--fs-scale));
+  --fs-2xl: calc(22px * var(--fs-scale));
+  --fs-3xl: calc(27px * var(--fs-scale));
   /* 行高：標題緊、正文鬆 */
   --lh-tight: 1.25;
   --lh-snug: 1.45;
@@ -99,7 +101,7 @@ body {
   margin: 0;
   background: var(--canvas);
   color: var(--ink);
-  font: 15px/1.6 var(--sans);
+  font: var(--fs-base)/1.6 var(--sans);
   font-variant-numeric: tabular-nums;
   -webkit-font-smoothing: antialiased;
 }
@@ -246,6 +248,8 @@ header nav a[aria-current='page'], .subnav a[aria-current='page'] { color: var(-
 .sync-pill.warning .dot { background: var(--warn); }
 .sync-pill.error { color: var(--error); background: var(--error-bg); }
 .sync-pill.error .dot { background: var(--error); }
+.font-size-control { display: inline-flex; align-items: center; gap: 2px; }
+.font-size-control button { padding: 2px 8px; min-width: 32px; font-size: var(--fs-sm); font-weight: 700; }
 .sync-progress { font-size: var(--fs-sm); color: var(--muted); }
 .sync-progress:empty { display: none; }
 .sync-progress.error { color: var(--error); }

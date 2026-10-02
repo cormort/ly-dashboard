@@ -30,6 +30,7 @@ import {
 import { legislatorDetailUrl } from '../src/lib/legislators.ts';
 import { billStage } from '../src/lib/billStage.ts';
 import { toCsv } from '../src/lib/csv.ts';
+import { DEFAULT_FONT_SCALE_INDEX, FONT_SCALES, loadFontScaleIndex } from '../src/lib/fontScale.ts';
 import { latestSessionId, sessionLabelIndex, sessionScopeLabel } from '../src/lib/sessions.ts';
 import {
   ALL_SESSIONS,
@@ -346,6 +347,11 @@ async function main(): Promise<void> {
     seenMethods.length = 0;
     await fetchSyncRuns(1);
     assert.equal(seenMethods[0], 'GET');
+  });
+  await check('字體倍率：沒有儲存值時回標準 100%，且倍率遞增', () => {
+    assert.equal(FONT_SCALES[DEFAULT_FONT_SCALE_INDEX], 1);
+    assert.equal(loadFontScaleIndex(), DEFAULT_FONT_SCALE_INDEX);
+    assert.ok(FONT_SCALES.every((value, i) => i === 0 || value > FONT_SCALES[i - 1]));
   });
   await check('meta 的 current.session 可為 null 而不炸', async () => {
     const result = await fetchMeta();

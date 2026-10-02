@@ -56,6 +56,10 @@ export const CONFIG = {
     delayMs: Number(process.env.LY_NEWS_DELAY_MS ?? 1000),
     // M5：整體時間預算。用完就停止剩餘委員並標記 partial，不讓單一階段拖垮整個同步。
     budgetMs: Number(process.env.LY_NEWS_BUDGET_MS ?? 5 * 60 * 1000),
+    // 基金／機關／行政法人新聞：名稱每 entityBatch 個合成一次 OR 查詢（約 600 個名稱 → 約 80 次），
+    // 有自己的時間預算（不被委員新聞用光）；用不完就從上次停下的組別接著抓。
+    entityBatch: Number(process.env.LY_NEWS_ENTITY_BATCH ?? 8),
+    entityBudgetMs: Number(process.env.LY_NEWS_ENTITY_BUDGET_MS ?? 4 * 60 * 1000),
   },
   // 社群帳號：人工整理的 Google 試算表（知道連結者可檢視），以 CSV 匯出網址抓取。
   social: {

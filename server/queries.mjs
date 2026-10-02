@@ -1461,6 +1461,25 @@ export function makeTagger(texts) {
   };
 }
 
+/**
+ * 新聞同步用的搜尋詞：基金／機關／行政法人各一個（有簡稱取最短的簡稱，如「台電」），順序固定。
+ * 簡稱已在 fund-config 挑過不會誤判的；標題比對仍交給 makeTagger，所以全名與簡稱都認得。
+ */
+export function entityNewsTerms() {
+  const shortest = new Map();
+  for (const n of [...FUND_CONFIG.names, ...FUND_CONFIG.agencies, ...FUND_CONFIG.administrative]) shortest.set(n, n);
+  for (const [alias, canonical] of Object.entries(FUND_CONFIG.aliases)) {
+    if (shortest.has(canonical) && alias.length < shortest.get(canonical).length) shortest.set(canonical, alias);
+  }
+  return [...new Set(shortest.values())];
+}
+
+/** 標題是否提到具名的基金／機關／行政法人（不算泛稱的「其他基金／其他基金會」） */
+export function mentionsKnownEntity(tagger, title) {
+  const t = tagger(title);
+  return [...t.fund, ...t.agency, ...t.administrative].some((n) => n !== OTHER_FUND);
+}
+
 const FUND_KINDS = ['news', 'post', 'bill', 'budget', 'report'];
 
 /**
@@ -1491,6 +1510,8 @@ export function listFunds(db, { type = 'fund', fund = '', kind = '', limit = 30,
     ...(resolvedType === 'dgbas'
       ? db.prepare("SELECT * FROM topic_news WHERE topic = 'dgbas'").all().map((r) => ({ kind: 'news', date: r.published_at.slice(0, 10), title: r.title, url: r.url, source: r.source }))
       : []),
+    // 基金／機關／行政法人自己的新聞（ingest 的 topic_news 'entities'，不限委員）：與機關首長新聞同樣是專屬查詢，新舊才一致
+    ...db.prepare("SELECT * FROM topic_news WHERE topic = 'entities'").all().map((r) => ({ kind: 'news', date: r.published_at.slice(0, 10), title: r.title, url: r.url, source: r.source })),
     ...db
       .prepare("SELECT * FROM social_accounts WHERE latest_post_summary <> ''")
       .all()

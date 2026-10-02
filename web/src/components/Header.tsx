@@ -3,6 +3,7 @@ import type { SourceInfo } from '../api/types';
 import type { Route } from '../hooks/useRoute';
 import { pathFor } from '../hooks/useRoute';
 import { formatDateTime } from '../lib/format';
+import { FontSizeControl } from './FontSizeControl';
 import { SearchField } from './SearchField';
 
 export interface HeaderProps {
@@ -160,6 +161,7 @@ export function Header({
           <span className="dot" aria-hidden="true" />
           {statusText} {formatDateTime(fetchedAt, '尚無成功同步紀錄')}
         </button>
+        <FontSizeControl />
         <span className={`sync-progress ${syncTone}`} role="status" aria-live="polite">
           {syncMessage}
         </span>
