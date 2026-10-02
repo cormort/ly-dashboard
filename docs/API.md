@@ -289,7 +289,7 @@ Query 參數（全部可選）：
 回應：`population_month`（人口統計年月）、`elections`（各場選舉的 `{ label, date }`）、`sources`、`items[]`：
 `{ county, households, population, voting_age（20 歲以上）, elderly（65 歲以上）, elections, path（地圖 SVG path）, legislators[] }`。
 `elections` 有 `president_2024`、`president_2020`、`mayor_2022`、`mayor_2018`，各為 `{ electorate, turnout, valid, candidates[{ name, party, votes, pct }], margin, margin_pct }`，
-候選人依票數排序，`margin`／`margin_pct` 為第一名與第二名的票數差與得票率差（百分點）。2018 縣市長沒有選舉人數與投票率（null）；嘉義市 2022 為 12/18 延期選舉。
+候選人依票數排序，`margin`／`margin_pct` 為第一名與第二名的票數差與得票率差（百分點）。2018 起改用中選會原始檔，四場皆有選舉人數與投票率；嘉義市 2022 為 12/18 延期選舉。
 
 每縣市另有 `trends`：`{ president（2012–2024）, mayor（2009 縣市長與 2010 五都合為一輪記 2010、`label` 為「2009／10」，至 2022）, party_list（不分區政黨票 2012–2024） }`，各為依年份排序的 `[{ year, label, valid, turnout, votes: { 政黨: 票數 } }]`（無黨籍候選人合併為「無黨籍」）；`trend_types` 為各類型名稱。
 

@@ -626,7 +626,7 @@ export interface CountyCandidate {
 }
 
 export interface CountyElection {
-  /** 選舉人數；2018 縣市長來源沒有，為 null */
+  /** 選舉人數（中選會原始檔；理論上不會是 null） */
   electorate: number | null;
   /** 投票率（%） */
   turnout: number | null;
