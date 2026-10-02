@@ -49,7 +49,7 @@ export function LegislatorElectionHistory({ legislatorId, region }: { legislator
           </ul>
           {/* 案件清單來自中選會選舉資料庫（沒有票數）；票數另外解析自官方公告 PDF */}
           <small className="muted">
-            案件：{res.data?.recalls_source?.label ?? '中選會'}・票數：中選會官方公告／結果文件（{res.data?.recalls?.filter((x) => x.results).length ?? 0}／{res.data?.recalls?.length ?? 0} 案有）
+            案件：{res.data?.recalls_source?.label ?? '中選會'}・票數：中選會官方公告／結果文件（本人 {recalls.filter((x) => x.results).length}／{recalls.length} 案有）
           </small>
         </div>
       ) : null}
