@@ -106,7 +106,8 @@ export function DashboardPage({ refreshToken, onOpenId, onNavigate }: DashboardP
     { label: '預算審議中', value: budget.data?.states.pending, href: link('budget', { category: 'all', state: 'pending' }) },
     { label: '本屆委員提案', value: bills.data?.total, href: link('bills') },
     { label: '已三讀', value: passedCount, href: link('bills', { status: '三讀' }) },
-    { label: '在職委員', value: regions.data?.items.reduce((sum, r) => sum + r.legislators.length, 0), href: link('legislators') },
+    // 原本是「在職委員 113」，數字幾乎不變；換成首長每天會看的輿情量
+    { label: '首長新聞（近 7 天）', value: officialsNews.data?.recent_7d, href: link('officials') },
   ];
 
   return (

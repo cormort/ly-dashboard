@@ -366,6 +366,14 @@ test('最近動態：取貼文／新聞／議案中最新者排序，只列在�
   assert.equal(officialNews.items[0].legislators[0].name, '卓榮泰', '首長新聞列出被提到的首長');
   assert.equal(officialNews.people.find((p) => p.id === '卓榮泰').count, 1, '首長名單附則數');
   assert.equal(listNewsArticles(db, { scope: 'officials', legislator: '劉世芳' }).total, 0);
+  // 近 7 天則數（總覽統計卡）：以現在時間起算、同一篇只算一次；8 天前的不算
+  const ago = (days) => new Date(Date.now() - days * 86400000).toISOString();
+  const before = listNewsArticles(db, { scope: 'officials' }).recent_7d; // 上面固定日期的那則落不落在近 7 天，取決於跑測試的日子
+  const official = db.prepare('INSERT INTO topic_news(topic, url, title, source, published_at, fetched_at) VALUES(?, ?, ?, ?, ?, ?)');
+  official.run('official:卓榮泰', 'https://example.com/o2', '卓榮泰與劉世芳視察', 'UDN', ago(1), ago(0));
+  official.run('official:劉世芳', 'https://example.com/o2', '卓榮泰與劉世芳視察', 'UDN', ago(1), ago(0));
+  official.run('official:卓榮泰', 'https://example.com/o3', '卓榮泰上週行程', 'UDN', ago(8), ago(0));
+  assert.equal(listNewsArticles(db, { scope: 'officials' }).recent_7d, before + 1, '兩位首長同一篇只算一則，8 天前不算');
   const { sources, source_total: sourceTotal } = listNews(db, {});
   assert.ok(sources.length > 0 && sources.length <= Math.min(12, sourceTotal), '新聞來源最多 12 家');
   assert.ok(sources.every((s, i, a) => i === 0 || a[i - 1].count >= s.count), '依則數排序');

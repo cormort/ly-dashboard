@@ -1276,6 +1276,7 @@ export function listNews(db, { legislator = null, limit = 10 } = {}) {
  * 新聞頁：同一篇報導（網址相同）合併成一列，附上提到的委員；可依關鍵字（標題）、媒體、委員篩選。
  * `scope=officials` 改看機關首長（server/officials.json）的新聞，`legislator` 此時是首長姓名，另回傳 `people`（依則數排序）。
  * 媒體統計在套用媒體條件「之前」算（同 listBills），選了某家後其他家的數字不會消失。
+ * `recent_7d`：符合條件者中，現在起算近 7 天的則數（總覽統計卡用；同步停了就會往下掉，與頁首「資料截至」一起看）。
  */
 export function listNewsArticles(db, { q = '', source = '', legislator = '', scope = 'legislators', limit = 30, offset = 0 } = {}) {
   const resolvedLimit = Math.max(1, Math.min(Number(limit) || 30, 100));
@@ -1304,6 +1305,7 @@ export function listNewsArticles(db, { q = '', source = '', legislator = '', sco
   return {
     meta: { ...envelope(db), news_fetched_at: getMeta(db, 'news_fetched_at') },
     total: matching.length,
+    recent_7d: matching.filter((a) => a.published_at >= new Date(Date.now() - 7 * 86400000).toISOString()).length,
     source_total: counts.size,
     people: officials ? [...people.values()].map((p) => ({ ...p, count: perPerson.get(p.id) ?? 0 })).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'zh-Hant')) : undefined,
     sources: [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 30).map(([name, count]) => ({ name, count })),
