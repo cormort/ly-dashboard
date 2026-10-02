@@ -83,12 +83,13 @@ const NAV: NavGroup[] = [
       { route: 'agencies', label: '機關' },
       { route: 'foundations', label: '財團法人' },
       { route: 'administrative', label: '行政法人' },
-      { route: 'dgbas', label: '行政院主計總處' },
     ],
   },
 ];
 
-const groupOf = (route: Route): NavGroup => NAV.find((group) => group.routes.some((item) => item.route === route)) ?? NAV[0];
+// /dgbas（主計總處專頁）不在任何頁籤上：它的內容已併入「我的機關」（預設機關），網址保留，高亮歸「我的機關」
+const groupOf = (route: Route): NavGroup =>
+  NAV.find((group) => group.routes.some((item) => item.route === (route === 'dgbas' ? 'my' : route))) ?? NAV[0];
 
 /** 頁首：站名、三頁導覽、委員搜尋、資料狀態（有問題才用警示色）。 */
 export function Header({

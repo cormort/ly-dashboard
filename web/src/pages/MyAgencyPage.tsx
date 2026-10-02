@@ -17,10 +17,12 @@ export interface MyAgencyPageProps {
 }
 
 const PREF_KEY = 'my-agency';
+/** 沒選過時預設載入的機關 */
+export const DEFAULT_AGENCY = '行政院主計總處';
 const shortDate = (value: string | null | undefined) => (value ? value.slice(5, 10).replace('-', '/') : '');
 
-/** 網址 ?agency= 優先（可分享），其次是上次選的（存在這個瀏覽器） */
-const initialAgency = (): string => new URLSearchParams(window.location.search).get('agency') ?? readPreference(PREF_KEY) ?? '';
+/** 網址 ?agency= 優先（可分享），其次是上次選的（存在這個瀏覽器），都沒有就用預設機關 */
+const initialAgency = (): string => new URLSearchParams(window.location.search).get('agency') || readPreference(PREF_KEY) || DEFAULT_AGENCY;
 
 /** 一個區塊：標題＋件數＋「看更多」；沒資料時明說，不留空白 */
 function Block({ title, total, href, onNavigate, note, children }: { title: string; total: number; href?: string; onNavigate: (href: string) => void; note?: string; children: ReactNode }) {
@@ -88,12 +90,6 @@ export function MyAgencyPage({ refreshToken, onOpenId, onNavigate }: MyAgencyPag
     writePreference(PREF_KEY, name);
     window.history.replaceState(null, '', pathFor('my', { agency: name }));
   };
-  const clear = () => {
-    setAgency('');
-    writePreference(PREF_KEY, '');
-    window.history.replaceState(null, '', pathFor('my'));
-  };
-
   const selector = (
     <div className="agency-picker">
       <label>
@@ -172,11 +168,28 @@ export function MyAgencyPage({ refreshToken, onOpenId, onNavigate }: MyAgencyPag
         ) : null}
       </div>
 
+      {agency === DEFAULT_AGENCY ? (
+        <p className="muted">
+          <a
+            href={pathFor('dgbas')}
+            onClick={(event) => {
+              event.preventDefault();
+              onNavigate(pathFor('dgbas'));
+            }}
+          >
+            主計總處專頁
+          </a>
+          ：另含「地方主計處」「僅提及主計」等較寬鬆的比對
+        </p>
+      ) : null}
+
       <div className="agency-picker-row">
         {selector}
-        <button type="button" onClick={clear}>
-          取消選擇
-        </button>
+        {agency !== DEFAULT_AGENCY ? (
+          <button type="button" onClick={() => choose(DEFAULT_AGENCY)}>
+            回到{DEFAULT_AGENCY}
+          </button>
+        ) : null}
       </div>
 
       {res.phase === 'loading' && !data ? <LoadingState label={`讀取「${agency}」…`} /> : null}

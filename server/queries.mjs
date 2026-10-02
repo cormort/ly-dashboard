@@ -1570,6 +1570,7 @@ export function listAgencies() {
 }
 
 const AGENCY_KINDS = ['news', 'bill', 'budget', 'report', 'post'];
+const DGBAS_AGENCY = '行政院主計總處';
 
 /**
  * 「我的機關」首頁：以單一機關為中心彙整各來源。
@@ -1591,7 +1592,8 @@ export function getAgencyHome(db, { name = '', per = 5 } = {}) {
   const byDate = (a, b) => String(b.date ?? '').localeCompare(String(a.date ?? '')) || String(a.title ?? '').localeCompare(String(b.title ?? ''));
 
   // 「誰在關注」要算到每位被掛名的委員，所以先留著去重前的列；顯示用的 matched 才把同一則新聞合併成一則
-  const hits = collectFundRows(db, 'agency').filter((r) => hit(r.title) || (r.kind === 'budget' && hit(r.source)));
+  // 主計總處另有專屬的主計新聞來源（topic_news 'dgbas'），沿用主計總處專頁的資料列，才不會因移到這裡而變少
+  const hits = collectFundRows(db, known.name === DGBAS_AGENCY ? 'dgbas' : 'agency').filter((r) => hit(r.title) || (r.kind === 'budget' && hit(r.source)));
   const matched = hits
     .filter((r, i, all) => r.kind !== 'news' || all.findIndex((x) => x.kind === 'news' && x.url === r.url) === i)
     .sort(byDate);
