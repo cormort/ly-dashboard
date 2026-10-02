@@ -6,6 +6,7 @@
  *   git clone --depth 1 --filter=blob:none https://github.com/kiang/db.cec.gov.tw.git cec
  *   git clone --depth 1 --filter=blob:none https://github.com/kiang/data.moi.gov.tw.git moi
  *   curl -o twcounty2010.json https://raw.githubusercontent.com/ronnywang/twgeojson/master/twcounty2010.json
+ *   （人口趨勢另需：cd moi && git checkout HEAD -- docs/json/population/city raw/population/20{16..25}/12/data.csv）
  *   node scripts/build-county-stats.mjs --cec cec --moi moi/raw/population/2026/08/data.csv --geo twcounty2010.json
  *
  * 來源：中選會選舉資料庫（kiang/db.cec.gov.tw 轉存）、內政部戶政司村里人口單一年齡（kiang/data.moi.gov.tw 轉存）、
@@ -23,6 +24,7 @@ const { values: args } = parseArgs({
     out: { type: 'string', default: 'server/county-stats.json' },
     'legislators-out': { type: 'string', default: 'server/legislator-votes.json' },
     'demographics-out': { type: 'string', default: 'server/demographics.json' },
+    'trend-out': { type: 'string', default: 'server/population-trend.json' },
   },
 });
 if (!args.cec || !args.moi || !args.geo) throw new Error('需要 --cec <dir> --moi <data.csv> --geo <geojson>');
@@ -452,3 +454,81 @@ writeFileSync(
   })}\n`,
 );
 console.log(`wrote ${args['demographics-out']}: ${townItems.length} 鄉鎮市區`);
+
+/* ---------- 人口趨勢：2016 起每月鄉鎮人口（docs/json），每年 12 月的年齡結構（raw 村里單一年齡） ---------- */
+// --moi 指向 moi/raw/population/年/月/data.csv，往上五層是 repo 根目錄
+const moiRoot = join(args.moi, '../../../../..');
+const cityDir = join(moiRoot, 'docs/json/population/city');
+const months = readdirSync(cityDir)
+  .sort()
+  .flatMap((y) => readdirSync(join(cityDir, y)).sort().map((m) => `${y}-${m.replace('.json', '')}`));
+const monthly = new Map(); // 縣市 → [人口...]（對齊 months）
+const townYear = new Map(); // 鄉鎮 → { county, town, size, population: { 年: 人口 } }
+const latestMonth = months[months.length - 1];
+const missingMonths = [];
+months.forEach((ym, i) => {
+  const [y, m] = ym.split('-');
+  const list = Object.values(JSON.parse(readFileSync(join(cityDir, y, `${m}.json`), 'utf8')));
+  // 來源有缺月（2023-09 的 JSON 為空、原始檔是下載錯誤訊息）：記為 null，圖上斷線
+  if (list.length === 0) missingMonths.push(i);
+  for (const t of list) {
+    const county = fixName(t.area.slice(0, 3));
+    const list = monthly.get(county) ?? new Array(months.length).fill(0);
+    list[i] += t.population;
+    monthly.set(county, list);
+    if (m === '12' || ym === latestMonth) {
+      const key = fixName(t.area.slice(0, 3)) + t.area.slice(3);
+      const town = townYear.get(key) ?? { county, town: t.area.slice(3), size: t.size, population: {} };
+      town.population[ym === latestMonth ? ym : y] = t.population;
+      townYear.set(key, town);
+    }
+  }
+});
+
+/** 年齡結構：表頭各年不同（英文＋中文兩列、區域別欄位位置不同），以欄名找欄位 */
+function ageStructure(file) {
+  const all = rows(file);
+  const header = all[0];
+  const nameCol = header.findIndex((h) => h === 'site_id' || h === '區域別');
+  const age0 = header.findIndex((h) => h === 'people_age_000_m' || h === '0歲-男');
+  const totalCol = header.findIndex((h) => h === 'people_total' || h === '人口數');
+  const out = new Map();
+  for (const r of all.slice(1).filter((x) => /^\d+$/.test(x[0]))) {
+    const county = fixName(r[nameCol].slice(0, 3));
+    const c = out.get(county) ?? { population: 0, child: 0, voting_age: 0, elderly: 0 };
+    c.population += Number(r[totalCol]);
+    for (let age = 0; age <= 100; age += 1) {
+      const n = Number(r[age0 + age * 2]) + Number(r[age0 + age * 2 + 1]);
+      if (age <= 14) c.child += n;
+      if (age >= 20) c.voting_age += n;
+      if (age >= 65) c.elderly += n;
+    }
+    out.set(county, c);
+  }
+  return out;
+}
+for (const i of missingMonths) for (const list of monthly.values()) list[i] = null;
+if (missingMonths.length) console.warn(`人口月報缺：${missingMonths.map((i) => months[i]).join('、')}`);
+if ([...monthly.values()].some((list) => list.some((v) => v === 0))) throw new Error('有縣市某月人口為 0');
+const ageYears = [...Array.from({ length: 10 }, (_, i) => String(2016 + i)), latestMonth];
+const ages = new Map(ageYears.map((y) => [y, ageStructure(y === latestMonth ? args.moi : join(moiRoot, `raw/population/${y}/12/data.csv`))]));
+for (const [y, m] of ages) {
+  const sum = [...m.values()].reduce((s, c) => s + c.population, 0);
+  const jsonSum = [...townYear.values()].reduce((s, t) => s + (t.population[y] ?? 0), 0);
+  if (sum !== jsonSum) console.warn(`${y} 年齡檔人口 ${sum} 與鄉鎮月報 ${jsonSum} 不一致`);
+}
+writeFileSync(
+  args['trend-out'],
+  `${JSON.stringify({
+    months,
+    years: ageYears,
+    sources: [{ label: '內政部戶政司人口統計（kiang/data.moi.gov.tw 轉存）', url: 'https://github.com/kiang/data.moi.gov.tw' }],
+    counties: COUNTIES.map((county) => ({
+      county,
+      monthly: monthly.get(county),
+      ages: ageYears.map((y) => ({ year: y, ...ages.get(y).get(county) })),
+    })),
+    towns: [...townYear.values()],
+  })}\n`,
+);
+console.log(`wrote ${args['trend-out']}: ${months[0]}–${latestMonth}，${townYear.size} 鄉鎮`);

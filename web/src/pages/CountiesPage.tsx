@@ -7,6 +7,7 @@ import { ChoroplethMap } from '../components/ChoroplethMap';
 import { LegislatorVotes } from '../components/LegislatorVotes';
 import { SplitTicket } from '../components/SplitTicket';
 import { Demographics } from '../components/Demographics';
+import { PopulationTrend } from '../components/PopulationTrend';
 import { VoteTrends } from '../components/VoteTrends';
 import { colorAt, type ScaleName } from '../lib/colorScales';
 import { downloadCsv } from '../lib/csv';
@@ -109,13 +110,14 @@ function buildPairs(metrics: Metric[], data: CountiesResponse): ComparePair[] {
 
 /* ---------- 網址狀態 ---------- */
 
-type Tab = 'map' | 'trend' | 'legislators' | 'split' | 'demographics' | 'dual' | 'compare' | 'ranking' | 'data';
+type Tab = 'map' | 'trend' | 'legislators' | 'split' | 'demographics' | 'population' | 'dual' | 'compare' | 'ranking' | 'data';
 const TABS: { key: Tab; label: string }[] = [
   { key: 'map', label: '互動地圖' },
   { key: 'trend', label: '得票趨勢' },
   { key: 'legislators', label: '立委得票' },
   { key: 'split', label: '分裂投票' },
   { key: 'demographics', label: '人口與得票' },
+  { key: 'population', label: '人口趨勢' },
   { key: 'dual', label: '雙指標對比' },
   { key: 'compare', label: '時間差異' },
   { key: 'ranking', label: '排行榜' },
@@ -427,6 +429,8 @@ export function CountiesPage({ refreshToken, onOpenId }: CountiesPageProps) {
       {tab === 'trend' ? <VoteTrends data={data} selected={current.county} onSelect={setSelected} /> : null}
 
       {tab === 'legislators' ? <LegislatorVotes refreshToken={refreshToken} county={current.county} onOpenId={onOpenId} /> : null}
+
+      {tab === 'population' ? <PopulationTrend refreshToken={refreshToken} counties={data} selected={current.county} onSelect={setSelected} /> : null}
 
       {tab === 'demographics' ? <Demographics refreshToken={refreshToken} county={current.county} /> : null}
 

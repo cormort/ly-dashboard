@@ -6,7 +6,7 @@ import { openDb, applyDataset, applyBills, applySocial, upsertNews, pruneLogs, g
 import { buildDataset, normalizeBills, normalizeMeetings, normalizeSocial, newsName, rocDate, DataValidationError } from '../server/normalize.mjs';
 import { CONFIG } from '../server/config.mjs';
 import { runIngest, runBillsIngest, runBudgetIngest, runBudgetReportsIngest, runMeetingsIngest, budgetPageUrl, runNewsIngest, runSocialIngest, runAll } from '../server/ingest.mjs';
-import { getHealth, listBills, listBudget, listBudgetMeetings, listBudgetReports, budgetState, listChanges, listCounties, listLegislatorVotes, listRankings, compareLegislators, listRegions, listSplitTicket, listDemographics, listLegislators, listNews, listSyncRuns } from '../server/queries.mjs';
+import { getHealth, listBills, listBudget, listBudgetMeetings, listBudgetReports, budgetState, listChanges, listCounties, listLegislatorVotes, listRankings, compareLegislators, listRegions, listSplitTicket, listDemographics, listPopulationTrend, listLegislators, listNews, listSyncRuns } from '../server/queries.mjs';
 import { FetchError } from '../server/fetch-ly.mjs';
 import { syncOnce } from '../server/index.mjs';
 
@@ -849,4 +849,23 @@ test('人口結構 × 得票：368 鄉鎮市區，人口與各黨得票加總等
   const byCounty = counties.reduce((s, c) => s + c.trends.party_list.find((e) => e.year === 2024).votes['台灣民眾黨'], 0);
   assert.equal(byTown, byCounty);
   for (const t of res.towns) assert.ok(t.elderly_ratio > 0 && t.elderly_ratio < 60 && t.median_age > 20, t.town);
+});
+
+test('人口趨勢：2016-01 起每月，最新一月等於縣市人口；各年年齡結構加總等於鄉鎮人口', () => {
+  const db = seeded();
+  const res = listPopulationTrend(db);
+  assert.equal(res.months[0], '2016-01');
+  const last = res.months.length - 1;
+  const counties = listCounties(db).items;
+  for (const c of res.counties) {
+    assert.equal(c.monthly.length, res.months.length);
+    // 來源缺 2023-09，其他月份都有值
+    assert.deepEqual(c.monthly.flatMap((v, i) => (v === null ? [res.months[i]] : [])), ['2023-09']);
+    assert.equal(c.monthly[last], counties.find((x) => x.county === c.county).population, c.county);
+  }
+  for (const [i, year] of res.years.entries()) {
+    const fromAges = res.counties.reduce((s, c) => s + c.ages[i].population, 0);
+    const fromTowns = res.towns.reduce((s, t) => s + t.population[year], 0);
+    assert.equal(fromAges, fromTowns, year);
+  }
 });

@@ -1153,3 +1153,5 @@ a.stat-tile:hover { border-color: #98a2b3; box-shadow: var(--card-base-hover); t
 .split-table thead th { position: sticky; top: 0; background: var(--surface); }
 .split-table tr[aria-current='true'] td { background: var(--accent-soft); }
 .corr-strong { font-weight: 700; background: var(--accent-soft); }
+.town-change li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 8px; padding: 4px 0; border-bottom: 1px solid var(--rule-soft); font-variant-numeric: tabular-nums; }
+.town-change small { grid-column: 1 / -1; }

@@ -1018,6 +1018,13 @@ export function listSplitTicket(db, { year = 2024 } = {}) {
   return { meta: envelope(db), years, year: y, count: items.length, items };
 }
 
+/** 人口趨勢：2016 起每月縣市人口、每年 12 月年齡結構、各鄉鎮每年人口（server/population-trend.json） */
+let populationTrend = null;
+export function listPopulationTrend(db) {
+  populationTrend ??= JSON.parse(readFileSync(new URL('./population-trend.json', import.meta.url), 'utf8'));
+  return { meta: envelope(db), ...populationTrend };
+}
+
 /** 人口結構 × 得票：368 鄉鎮市區的年齡結構與 2020／2024 總統、不分區政黨票（server/demographics.json） */
 let demographics = null;
 export function listDemographics(db) {

@@ -306,6 +306,12 @@ Query 參數（全部可選）：
 
 `/api/v1/rankings` 另有 `close`（險勝：最近一次當選的領先幅度）與 `drop`（得票流失：同選區與本人前次相比）兩榜，不受 `days` 影響。
 
+## GET /api/v1/population-trend
+
+人口趨勢（`server/population-trend.json`）：`months`（2016-01 起的「YYYY-MM」）、`years`（各年 12 月與最新月）、
+`counties[]`：`{ county, monthly（對齊 months；來源缺月 2023-09 為 null）, ages[{ year, population, child（0–14）, voting_age（20+）, elderly（65+） }] }`、
+`towns[]`：`{ county, town, size（平方公里）, population: { 年: 人口 } }`。各年年齡結構加總等於當年鄉鎮人口。
+
 ## GET /api/v1/demographics
 
 人口結構 × 得票：368 鄉鎮市區（`server/demographics.json`，同一支 build 腳本產生）。`towns[]`：

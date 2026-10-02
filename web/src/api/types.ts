@@ -759,6 +759,29 @@ export interface LegislatorVotesResponse {
   items: { legislator: { id: string; name: string; party: string; area_name: string | null; region: string | null }; history: LegislatorRace[] }[];
 }
 
+/* ---------- /population-trend ---------- */
+
+export interface AgeSnapshot {
+  /** 年份（該年 12 月），最新一筆為「YYYY-MM」 */
+  year: string;
+  population: number;
+  child: number;
+  voting_age: number;
+  elderly: number;
+}
+
+export interface PopulationTrendResponse {
+  meta: Meta;
+  /** 「YYYY-MM」，2016-01 起 */
+  months: string[];
+  years: string[];
+  sources: { label: string; url: string }[];
+  /** 每月人口；來源缺月（2023-09）為 null */
+  counties: { county: string; monthly: (number | null)[]; ages: AgeSnapshot[] }[];
+  /** 鄉鎮市區：面積（平方公里）與各年 12 月（及最新月）人口 */
+  towns: { county: string; town: string; size: number; population: Record<string, number> }[];
+}
+
 /* ---------- /demographics ---------- */
 
 export interface DemographicTown {
