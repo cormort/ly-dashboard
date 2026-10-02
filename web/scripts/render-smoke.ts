@@ -25,6 +25,7 @@ import { CommitteeChart } from '../src/components/CommitteeChart';
 import { FacetChips } from '../src/components/FacetChips';
 import { Header } from '../src/components/Header';
 import { MyAgencyPage } from '../src/pages/MyAgencyPage';
+import { PageTitle } from '../src/components/PageTitle';
 import { LegislatorGrid } from '../src/components/LegislatorGrid';
 import { SessionSelector } from '../src/components/SessionSelector';
 import { Hemicycle, seatLayout } from '../src/components/Hemicycle';
@@ -229,6 +230,15 @@ expectAll('委員查詢頁：屆次、篩選、名錄、委員會、異動骨架
   '列表',
 ]);
 (window as unknown as { location: { pathname: string } }).location.pathname = '/';
+
+console.log('\n— PageTitle（說明提示）—');
+const titleHtml = render(createElement(PageTitle, { title: '總覽' }, '依機關最常需要的順序'));
+expectAll('標題旁有說明按鈕，提示文字在 DOM 裡但預設不顯示', titleHtml, ['<h1>總覽</h1>', 'aria-label="說明"', 'aria-expanded="false"', 'role="tooltip"', '依機關最常需要的順序', 'class="info-tip"']);
+expectNone('預設不是展開狀態', titleHtml, ['info-tip open', 'aria-expanded="true"']);
+check('按鈕用 aria-describedby 指向提示（讀螢幕程式讀得到）', (() => {
+  const describedby = titleHtml.match(/aria-describedby="([^"]+)"/)?.[1];
+  return Boolean(describedby) && titleHtml.includes(`id="${describedby}"`);
+})());
 
 console.log('\n— 我的機關 —');
 check('/my 對應我的機關頁', routeOf('/my') === 'my' && routeOf('/my?agency=%E8%B2%A1%E6%94%BF%E9%83%A8') === 'my');
@@ -779,6 +789,9 @@ check(
     return order.every((i, k) => i > 0 && (k === 0 || i > order[k - 1]));
   })(),
 );
+// 各頁的介紹文字改放進提示，頁面本身不再有獨立的介紹段落
+expectNone('總覽不再有獨立的介紹段落', dashboardLoading, ['class="page-lead"']);
+expectAll('總覽的介紹在提示裡', dashboardLoading, ['role="tooltip"', '依機關最常需要的順序']);
 // 各縣市改成預設收合的 disclosure：25 張卡片不再一次攤開
 check(
   '總覽：各縣市動態是預設收合的 <details>',

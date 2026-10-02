@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Download, ExternalLink, FileText, X } from 'lucide-react';
 import { buildUrl } from '../api/client';
 import type { BudgetMeetingsResponse, BudgetReportsResponse, BudgetResponse, BudgetState, BudgetType } from '../api/types';
+import { PageTitle } from '../components/PageTitle';
 import { EmptyState, ErrorState, LoadingState } from '../components/DataStates';
 import { SearchField } from '../components/SearchField';
 import { useApi } from '../hooks/useApi';
@@ -79,8 +80,7 @@ export function BudgetPage({ refreshToken, onOpenId }: BudgetPageProps) {
   return (
     <>
       <div className="page-head">
-        <h1>預算審議</h1>
-        <p className="muted">本屆總預算、法人預算與預算決議報告的審議進度，以及預算會議上發言的委員。</p>
+        <PageTitle title="預算審議">本屆總預算、法人預算與預算決議報告的審議進度，以及預算會議上發言的委員。</PageTitle>
       </div>
 
       <div className="category-tiles" role="group" aria-label="預算類別">
