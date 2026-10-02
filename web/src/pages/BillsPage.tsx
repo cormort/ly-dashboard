@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { Download, ExternalLink, X } from 'lucide-react';
 import { buildUrl } from '../api/client';
 import type { BillsResponse } from '../api/types';
-import { PageTitle } from '../components/PageTitle';
 import { BillStageBar } from '../components/BillStage';
 import { PASSED_STATUSES } from '../lib/billStage';
 import { EmptyState, ErrorState, LoadingState } from '../components/DataStates';
@@ -67,9 +66,7 @@ export function BillsPage({ refreshToken, onOpenId }: BillsPageProps) {
 
   return (
     <>
-      <div className="page-head">
-        <PageTitle title="法案查詢">{data?.term ? `第 ${data.term} 屆` : '本屆'}委員提案{data?.meta.bills_source ? `，資料來源：${data.meta.bills_source.name}` : ''}</PageTitle>
-      </div>
+      <h1 className="sr-only">法案查詢</h1>
 
       <div className="filters bill-filters" role="group" aria-label="法案篩選條件">
         <SearchField

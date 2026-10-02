@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { ExternalLink, X } from 'lucide-react';
 import { buildUrl } from '../api/client';
 import type { LegislatorsResponse, NewsArticlesResponse } from '../api/types';
-import { PageTitle } from '../components/PageTitle';
 import { EmptyState, ErrorState, LoadingState } from '../components/DataStates';
 import { useApi } from '../hooks/useApi';
 import { pathFor } from '../hooks/useRoute';
@@ -69,9 +68,7 @@ export function NewsPage({ refreshToken, onOpenId, scope = 'legislators' }: News
 
   return (
     <>
-      <div className="page-head">
-        <PageTitle title={officials ? '機關首長新聞' : '新聞'}>{officials ? '標題提到行政院院長、副院長與各部會首長的報導（名單見 server/officials.json）' : '標題提到委員的報導'}（Google 新聞，近 180 天），同一篇只列一次。</PageTitle>
-      </div>
+      <h1 className="sr-only">{officials ? '機關首長新聞' : '新聞'}</h1>
 
       <form
         className="filters"

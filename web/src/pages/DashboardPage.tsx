@@ -12,7 +12,6 @@ import type {
   RankingsResponse,
   RegionsResponse,
 } from '../api/types';
-import { PageTitle } from '../components/PageTitle';
 import { EmptyState, ErrorState, LoadingState } from '../components/DataStates';
 import { useApi, type ApiResource } from '../hooks/useApi';
 import { pathFor, type Route } from '../hooks/useRoute';
@@ -106,12 +105,7 @@ export function DashboardPage({ refreshToken, onOpenId, onNavigate }: DashboardP
 
   return (
     <>
-      <div className="page-head">
-        <PageTitle title="總覽">
-          依機關最常需要的順序：先看議事（預算、法案、委員會），再看哪些委員在動，最後是新聞輿情。
-          每個區塊右上角都能進入完整頁面；各縣市動態收在頁面最下方（預設收合）。
-        </PageTitle>
-      </div>
+      <h1 className="sr-only">總覽</h1>
 
       <div className="stat-row">
         {tiles.map((t) => (

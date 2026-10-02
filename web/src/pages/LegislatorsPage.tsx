@@ -109,7 +109,7 @@ export function LegislatorsPage({ query, meta, tracked, refreshToken, onOpen }: 
   return (
     <>
       <div className="page-head">
-        <h1>委員查詢</h1>
+        <h1 className="sr-only">委員查詢</h1>
         <SessionSelector
           meta={meta}
           term={effectiveTerm}

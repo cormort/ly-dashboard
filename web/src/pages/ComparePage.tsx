@@ -1,7 +1,6 @@
 import { useEffect, useState, type CSSProperties } from 'react';
 import { buildUrl } from '../api/client';
 import type { CompareResponse, LegislatorsResponse } from '../api/types';
-import { PageTitle } from '../components/PageTitle';
 import { EmptyState, ErrorState, LoadingState } from '../components/DataStates';
 import { Portrait } from '../components/Portrait';
 import { useApi } from '../hooks/useApi';
@@ -66,9 +65,7 @@ export function ComparePage({ refreshToken, onOpenId, onNavigate }: ComparePageP
 
   return (
     <>
-      <div className="page-head">
-        <PageTitle title="委員比較">選兩位委員，並排看提案、新聞、選舉得票與委員會，以及彼此一起提過幾件案。</PageTitle>
-      </div>
+      <h1 className="sr-only">委員比較</h1>
 
       <div className="filters compare-pickers" role="group" aria-label="選擇比較的委員">
         {[0, 1].map((slot) => (

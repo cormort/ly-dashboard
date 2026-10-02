@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { ExternalLink } from 'lucide-react';
 import { buildUrl } from '../api/client';
 import type { CommitteeActivityResponse } from '../api/types';
-import { PageTitle } from '../components/PageTitle';
 import { EmptyState, ErrorState, LoadingState } from '../components/DataStates';
 import { useApi } from '../hooks/useApi';
 import { pathFor } from '../hooks/useRoute';
@@ -43,9 +42,7 @@ export function CommitteesPage({ refreshToken, onOpenId }: CommitteesPageProps) 
 
   return (
     <>
-      <div className="page-head">
-        <PageTitle title="委員會">各委員會的最新會議、機關回覆（部會對委員質詢的書面答復）與公報會議紀錄（含部會首長答詢全文）。</PageTitle>
-      </div>
+      <h1 className="sr-only">委員會</h1>
 
       {data ? (
         <dl className="period-list" aria-label="資料期間">

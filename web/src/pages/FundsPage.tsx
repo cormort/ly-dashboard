@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { ExternalLink, X } from 'lucide-react';
 import { buildUrl } from '../api/client';
 import type { FundKind, FundsResponse, FundType } from '../api/types';
-import { PageTitle } from '../components/PageTitle';
 import { EmptyState, ErrorState, LoadingState } from '../components/DataStates';
 import { FacetChips } from '../components/FacetChips';
 import { RouteLink } from '../components/RouteLink';
@@ -33,11 +32,11 @@ const readFilters = (): Filters => {
 };
 
 const COPY = {
-  fund: { title: '基金', route: 'funds', intro: '提到特種基金或國營事業的項目（清單外含「基金」者歸「其他基金」）。' },
-  agency: { title: '機關', route: 'agencies', intro: '提到中央機關（行政院所屬機關代碼表）的項目。' },
-  foundation: { title: '財團法人', route: 'foundations', intro: '提到財團法人的項目（名稱取自「財團法人○○」；清單外的基金會歸「其他基金會」）。' },
-  administrative: { title: '行政法人', route: 'administrative', intro: '提到行政法人的項目。' },
-  dgbas: { title: '行政院主計總處', route: 'dgbas', intro: '主計總處提送的預算類議案，以及提到主計總處的項目。' },
+  fund: { title: '基金', route: 'funds' },
+  agency: { title: '機關', route: 'agencies' },
+  foundation: { title: '財團法人', route: 'foundations' },
+  administrative: { title: '行政法人', route: 'administrative' },
+  dgbas: { title: '行政院主計總處', route: 'dgbas' },
 } as const;
 
 /** 基金、機關、財團法人、行政法人四頁共用：總覽各來源中提到該類的項目（關鍵字見 server/fund-config.json） */
@@ -68,9 +67,7 @@ export function FundsPage({ type, refreshToken, onOpenId, onNavigate }: FundsPag
 
   return (
     <>
-      <div className="page-head">
-        <PageTitle title={COPY[type].title}>新聞、臉書、提案、預算審議與預算中心報告中，{COPY[type].intro}</PageTitle>
-      </div>
+      <h1 className="sr-only">{COPY[type].title}</h1>
 
       {data ? (
         <dl className="period-list" aria-label="各來源資料期間">
