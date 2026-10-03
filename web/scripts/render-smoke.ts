@@ -299,7 +299,7 @@ check(
 
 // 子頁也依首長與幕僚的使用頻率排，主題的預設頁就是第一個子頁
 check(
-  '子頁順序：議事 預算→委員會→法案、新聞 首長→委員、機關／基金 機關在前，主題連結指向第一個子頁',
+  '子頁順序：議事 預算→委員會→法案、新聞 首長→委員、機關／基金 機關在前，委員含縣市與議員，主題連結指向第一個子頁',
   (() => {
     const subOf = (route: Route) => {
       const sub = render(createElement(Header, { ...headerProps, route })).match(/<nav class="subnav"[^>]*>([\s\S]*?)<\/nav>/)?.[1] ?? '';
@@ -310,7 +310,7 @@ check(
       subOf('budget') === '預算審議→委員會→法案查詢' &&
       subOf('officials') === '機關首長新聞→委員新聞' &&
       subOf('agencies') === '機關→基金→財團法人→行政法人' &&
-      subOf('legislators') === '委員查詢→最近動態→排行榜→委員比較→縣市' &&
+      subOf('legislators') === '委員查詢→最近動態→排行榜→委員比較→縣市→議員' &&
       ['href="/budget"', 'href="/officials"', 'href="/agencies"'].every((h) => top.includes(h))
     );
   })(),

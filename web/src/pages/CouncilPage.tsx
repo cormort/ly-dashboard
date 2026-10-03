@@ -300,10 +300,9 @@ export function CouncilPage({ refreshToken }: CouncilPageProps) {
   return (
     <div className="council">
       <div className="page-head">
+        {/* 標題是縣市名（內容），不是重複分頁名稱；功能的通用說明掛在導覽的 ⓘ（lib/pageHints.ts） */}
         <h1>{res.data.county}議員</h1>
-        <p className="page-lead">
-          直轄市議員選舉結果。跨屆比較以「席次」與「政黨」為準，不直接比選舉區編號{shape}。
-        </p>
+        {shape ? <p className="muted">跨屆比較以「席次」與「政黨」為準，不直接比選舉區編號。{shape.replace(/^ —— /, '')}</p> : null}
       </div>
 
       <div className="council-controls">
