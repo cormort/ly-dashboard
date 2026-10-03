@@ -29,13 +29,23 @@ jobs:
 
       - name: 取出資料分支（news-data，第一次執行時建立）
         run: |
-          if git ls-remote --exit-code --heads "https://github.com/${GITHUB_REPOSITORY}.git" news-data >/dev/null; then
-            git clone --depth 1 --branch news-data "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" data
-          else
+          # repo 是私人的：檢查分支也要帶憑證。--exit-code：0＝分支存在、2＝不存在、其他＝出錯（要讓這一輪失敗，
+          # 不能當成「不存在」去建新分支——那樣會推一個沒有共同歷史的分支上去，被拒絕或蓋掉資料）
+          REMOTE="https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          set +e
+          git ls-remote --exit-code --heads "$REMOTE" news-data >/dev/null
+          rc=$?
+          set -e
+          if [ "$rc" -eq 0 ]; then
+            git clone --depth 1 --branch news-data "$REMOTE" data
+          elif [ "$rc" -eq 2 ]; then
             mkdir data && cd data
             git init -b news-data
             git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
             printf '# news-data\n\n媒體 RSS 收集結果（GitHub Actions 每小時更新），由 main 的 scripts/collect-news-rss.mjs 產生。格式見 server/news-feed.mjs。\n' > README.md
+          else
+            echo "::error::檢查 news-data 分支失敗（git ls-remote exit $rc）"
+            exit 1
           fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

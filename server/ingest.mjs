@@ -536,7 +536,8 @@ export async function runNewsFeedImport(db, { logger = console, fetchImpl = fetc
     const date = feedDate(new Date(now().getTime() - d * 86_400_000).toISOString());
     let text;
     try {
-      ({ text } = await fetchImpl(feedFileUrl(CONFIG.news.feedUrl, date), { ua: CONFIG.userAgent, text: true, retries: 1 }));
+      const headers = CONFIG.news.feedToken ? { authorization: `Bearer ${CONFIG.news.feedToken}` } : {};
+      ({ text } = await fetchImpl(feedFileUrl(CONFIG.news.feedUrl, date), { ua: CONFIG.userAgent, text: true, retries: 1, headers }));
     } catch (error) {
       if (error?.status === 404) continue;
       result.failures += 1;
@@ -559,7 +560,8 @@ export async function runNewsFeedImport(db, { logger = console, fetchImpl = fetc
 function feedStaleNote(db, now) {
   if (!CONFIG.news.feedUrl) return null;
   const latest = getMeta(db, 'news_feed_latest_collected_at');
-  if (!latest) return 'RSS 收集端（GitHub Actions）還沒有資料';
+  // 私人 repo 沒帶 token 時 GitHub 一律回 404，看起來跟「還沒收集」一樣，所以提示要查 token
+  if (!latest) return `RSS 收集檔讀不到任何資料${CONFIG.news.feedToken ? '' : '（repo 是私人的話要設 LY_GITHUB_TOKEN）'}`;
   const hours = Math.floor((now().getTime() - Date.parse(latest)) / 3_600_000);
   return hours > CONFIG.news.feedStaleHours ? `RSS 收集端（GitHub Actions）最後一次收集是 ${hours} 小時前，可能停了` : null;
 }

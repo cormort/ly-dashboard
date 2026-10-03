@@ -63,14 +63,14 @@ async function pace(url) {
   if (wait > 0) await sleep(wait);
 }
 
-function once(url, { timeoutMs, ua, accept = 'application/json' }) {
+function once(url, { timeoutMs, ua, accept = 'application/json', headers: extra = {} }) {
   return new Promise((resolve, reject) => {
     const req = https.request(
       url,
       {
         method: 'GET',
         agent: legacyAgent,
-        headers: { 'user-agent': ua, accept },
+        headers: { 'user-agent': ua, accept, ...extra },
       },
       (res) => {
         const chunks = [];
@@ -98,6 +98,8 @@ export async function fetchJson(url, options = {}) {
     retries = CONFIG.fetchRetries,
     ua = CONFIG.userAgent,
     text: asText = false,
+    // 額外的 request header（例如讀私人 repo 的 Authorization）；轉址到別的網域時不帶，避免把憑證送出去
+    headers: extraHeaders = {},
     // Retry-After 的等待上限；測試會注入小值，不必真的等
     retryAfterCapMs = CONFIG.retryAfterCapMs,
     // 測試注入點：讓單元測試能模擬 429 → 200 的重試序列，不必真的打網路
@@ -114,13 +116,15 @@ export async function fetchJson(url, options = {}) {
     try {
       let target = url;
       await pace(target);
-      let res = await request(target, { timeoutMs, ua, accept: asText ? '*/*' : 'application/json' });
+      const origin = new URL(url).host;
+      const headersFor = (href) => (new URL(href).host === origin ? extraHeaders : {});
+      let res = await request(target, { timeoutMs, ua, accept: asText ? '*/*' : 'application/json', headers: headersFor(target) });
       // 跟隨轉址（Google 試算表匯出會 307 到 googleusercontent）；上限 5 次防迴圈
       for (let hops = 0; [301, 302, 303, 307, 308].includes(res.status) && res.headers.location; hops++) {
         if (hops === 5) throw Object.assign(new FetchError('轉址過多', { status: res.status, attempts: attempt }), { retryable: false });
         target = new URL(res.headers.location, target).href;
         await pace(target);
-        res = await request(target, { timeoutMs, ua, accept: asText ? '*/*' : 'application/json' });
+        res = await request(target, { timeoutMs, ua, accept: asText ? '*/*' : 'application/json', headers: headersFor(target) });
       }
       const { status, body, headers } = res;
       if (status !== 200) {

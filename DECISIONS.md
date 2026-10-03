@@ -318,9 +318,10 @@
 
 | # | 岔路 | 選擇 | 理由 |
 | --- | --- | --- | --- |
-| D113 | 收集端放哪 | GitHub Actions 每小時跑 `scripts/collect-news-rss.mjs`，結果 commit 到**同一個 repo 的 `news-data` 分支** | 不受手機開關影響、網路沒限制；放獨立分支，每小時的 commit 不會洗版 main 的歷史。使用者選同 repo（不另開 repo），repo 公開，匯入不需要 token |
+| D113 | 收集端放哪 | GitHub Actions 每小時跑 `scripts/collect-news-rss.mjs`，結果 commit 到**同一個 repo 的 `news-data` 分支** | 不受手機開關影響、網路沒限制；放獨立分支，每小時的 commit 不會洗版 main 的歷史。使用者選同 repo（不另開 repo）。repo 其實是**私人**的（第一次執行時才發現，見 D118），匯入要帶 token |
 | D114 | 只搬媒體 RSS，不搬 Google 新聞 | Google 的每日查詢與回補腳本留在伺服器 | Actions 是共用的資料中心 IP，大量查 Google 容易被擋；媒體 RSS 每小時只有 4 個請求 |
 | D115 | 收集檔格式 | 每天一個 `news/YYYY-MM-DD.ndjson`（臺灣時間的發布日），一行一則，同網址合併、依時間排序（`server/news-feed.mjs`，收集與匯入共用） | 內容沒變時檔案一字不差，git 只 commit 真的有新新聞的時候；一天一檔，匯入時只讀需要的那幾天 |
 | D116 | 伺服器怎麼匯入 | 每小時輪詢與每日同步都讀：距離上次成功匯入幾天就讀幾天（至少 2 天，第一次讀滿 180 天）；寫進新聞庫並照原規則分派 | 伺服器關了 5 天，開機後一次補齊；讀失敗不推進進度，下次多讀。本機直接抓 RSS 仍保留，兩邊依網址去重，任一邊停了另一邊還在 |
+| D118 | 私人 repo | workflow 檢查分支改用帶憑證的網址，並分清「分支不存在（exit 2）」與「出錯」——出錯就讓這一輪失敗；匯入端支援 `LY_GITHUB_TOKEN`（只需 Contents 唯讀），`fetchJson` 的額外 header 轉址到別的網域時不帶 | 第一次手動觸發時，沒帶憑證的 `git ls-remote` 在私人 repo 出錯，被當成「分支不存在」而建了新分支——第一次剛好對，但之後每一輪都會建一個沒有共同歷史的分支、推送被拒。匯入端沒帶 token 時 GitHub 一律回 404，看起來跟「那天沒資料」一樣，所以停擺提示會特別說要查 token |
 | D117 | 收集端停了怎麼發現 | 收集檔最新一則的收集時間超過 6 小時（`LY_NEWS_FEED_STALE_HOURS`），就寫進新聞同步的備註；Actions 四家全失敗時 exit 1（紅燈） | 跟 D96、D102 同樣的教訓：只多一行 warning 的失敗沒人會看到 |
 

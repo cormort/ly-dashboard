@@ -1498,3 +1498,45 @@ test('匯入收集檔：讀失敗不推進進度（下次多讀）；收集端�
     CONFIG.news.feedUrl = feedUrl;
   }
 });
+
+test('fetchJson：額外 header 只送給原本的網域，轉址到別的網域時不帶（不外洩 token）', async () => {
+  const seen = [];
+  const once = async (url, { headers }) => {
+    seen.push([new URL(url).host, headers.authorization ?? null]);
+    if (url.startsWith('https://raw.example/')) return { status: 302, body: Buffer.from(''), headers: { location: 'https://cdn.example/file' } };
+    return { status: 200, body: Buffer.from('ok'), headers: {} };
+  };
+  const { text } = await fetchJson('https://raw.example/news/a.ndjson', { text: true, retries: 1, once, headers: { authorization: 'Bearer secret' } });
+  assert.equal(text, 'ok');
+  assert.deepEqual(seen, [['raw.example', 'Bearer secret'], ['cdn.example', null]]);
+});
+
+test('匯入收集檔：設了 LY_GITHUB_TOKEN 就帶 Authorization（私人 repo 才讀得到）；沒設時讀不到要提示 token', async () => {
+  const db = seeded();
+  const { feedUrl, feedToken } = CONFIG.news;
+  CONFIG.news.feedUrl = 'https://raw.example/feed';
+  const auth = [];
+  const fetchImpl = async (url, options) => {
+    auth.push(options.headers?.authorization ?? null);
+    throw new FetchError('HTTP 404', { status: 404 });
+  };
+  try {
+    CONFIG.news.feedToken = 'ghp_test';
+    await runNewsFeedImport(db, { logger: silent, fetchImpl, now: NEWS_NOW });
+    assert.ok(auth.length > 0 && auth.every((a) => a === 'Bearer ghp_test'));
+    CONFIG.news.feedToken = '';
+    auth.length = 0;
+    await runNewsFeedImport(db, { logger: silent, fetchImpl, now: NEWS_NOW });
+    assert.ok(auth.every((a) => a === null), '沒設 token 就不帶');
+    const outlets = CONFIG.news.outlets;
+    CONFIG.news.outlets = [];
+    try {
+      await runNewsIngest(db, { logger: silent, now: NEWS_NOW, delayMs: 0, entityBudgetMs: 0, fetchImpl: async (url) => (url.startsWith(CONFIG.news.feedUrl) ? fetchImpl(url, {}) : rssResponse(rssOf([]))) });
+    } finally {
+      CONFIG.news.outlets = outlets;
+    }
+    assert.match(String(db.prepare("SELECT error FROM sync_runs WHERE dataset = 'news' ORDER BY id DESC LIMIT 1").get().error), /LY_GITHUB_TOKEN/);
+  } finally {
+    Object.assign(CONFIG.news, { feedUrl, feedToken });
+  }
+});
