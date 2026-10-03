@@ -186,9 +186,12 @@ test('parseNewsRss：真實 Google News RSS，去掉來源尾綴、只留標題�
 test('parseNewsRss：媒體自己的 RSS 沒有 <source>，用呼叫端給的媒體名；CDATA 標題要解開', () => {
   const xml = '<rss version="2.0"><channel><item><title><![CDATA[丁學忠質詢 &amp; 追問]]></title><link>https://cna.example/1</link><pubDate>Tue, 29 Sep 2026 08:00:00 GMT</pubDate></item></channel></rss>';
   assert.deepEqual(parseNewsRss(xml, { name: '丁學忠', source: '中央社' }), [
-    { title: '丁學忠質詢 & 追問', source: '中央社', url: 'https://cna.example/1', published_at: '2026-09-29T08:00:00.000Z' },
+    { title: '丁學忠質詢 & 追問', source: '中央社', url: 'https://cna.example/1', published_at: '2026-09-29T08:00:00.000Z', summary: '' },
   ]);
   assert.equal(parseNewsRss(xml, { name: '丁學忠' })[0].source, '', '沒給媒體名時維持空字串（Google 新聞的行為不變）');
+  // 摘要（全部新聞的關鍵字搜尋用）：RSS 的 description 常是 HTML，要去標籤、解實體、壓成一行
+  const withSummary = '<rss version="2.0"><channel><item><title>丁學忠質詢</title><link>https://cna.example/2</link><pubDate>Tue, 29 Sep 2026 08:00:00 GMT</pubDate><description><![CDATA[<p>立法院今天\n  審查<b>國防預算</b>&nbsp;。</p>]]></description></item></channel></rss>';
+  assert.equal(parseNewsRss(withSummary, { name: '丁學忠' })[0].summary, '立法院今天 審查 國防預算 。');
 });
 
 test('parseNewsRss：Atom（公視只有這種格式）—— <entry>／link href／<updated> 都要收', () => {
@@ -214,11 +217,11 @@ test('parseNewsRss：Atom（公視只有這種格式）—— <entry>／link hre
   </entry>
 </feed>`;
   assert.deepEqual(parseNewsRss(xml, { name: '丁學忠', source: '公視新聞' }), [
-    { title: '丁學忠質詢國防預算 & 追問', source: '公視新聞', url: 'https://news.pts.org.tw/article/829822', published_at: '2026-10-03T12:20:57.000Z' },
+    { title: '丁學忠質詢國防預算 & 追問', source: '公視新聞', url: 'https://news.pts.org.tw/article/829822', published_at: '2026-10-03T12:20:57.000Z', summary: '內文不是標題，不該被當成項目' },
   ]);
   // 沒有 rel 的 link 也收；<published> 優先於 <updated>
   assert.deepEqual(parseNewsRss(xml, { name: '黃捷', source: '公視新聞' }), [
-    { title: '黃捷提案修法', source: '公視新聞', url: 'https://news.pts.org.tw/article/829821', published_at: '2026-10-03T11:47:29.000Z' },
+    { title: '黃捷提案修法', source: '公視新聞', url: 'https://news.pts.org.tw/article/829821', published_at: '2026-10-03T11:47:29.000Z', summary: '' },
   ]);
   // 空的 Atom 是合法來源（只是這輪沒新聞），不可以當成「不是 RSS」丟錯
   assert.deepEqual(parseNewsRss('<feed xmlns="http://www.w3.org/2005/Atom"><title>x</title></feed>', { name: '丁學忠' }), []);

@@ -1,7 +1,7 @@
 import { pathToFileURL } from 'node:url';
 import { readFileSync } from 'node:fs';
 import { CONFIG } from './config.mjs';
-import { openDb, recordSyncRun, saveSnapshot, applyDataset, applyBills, applyBudget, applyBudgetReports, applyCommitteeMeets, applyCommitteeRecords, applyMeetings, applySocial, upsertNews, upsertTopicNews, pruneNews, pruneLogs, getMeta, setMeta } from './db.mjs';
+import { openDb, recordSyncRun, saveSnapshot, applyDataset, applyBills, applyBudget, applyBudgetReports, applyCommitteeMeets, applyCommitteeRecords, applyMeetings, applySocial, upsertNews, upsertTopicNews, upsertArticles, pruneNews, pruneLogs, getMeta, setMeta } from './db.mjs';
 import { buildDataset, normalizeBills, normalizeBudget, normalizeBudgetReports, normalizeCommitteeMeets, normalizeCommitteeRecords, normalizeMeetings, normalizeSocial, newsName, parseNewsRss, DataValidationError, NORMALIZER_VERSION } from './normalize.mjs';
 import { fetchJson, FetchError, sha256 } from './fetch-ly.mjs';
 import { entityNewsTerms, makeTagger, mentionsKnownEntity } from './queries.mjs';
@@ -365,6 +365,11 @@ export function entityFeedUrl(terms) {
   return newsFeedUrl('', `(${terms.map((t) => `"${t}"`).join(' OR ')})`);
 }
 
+/** Google 新聞的結果也存進原始新聞庫。它的 description 只是「標題＋媒體」的 HTML，沒有搜尋價值，不存摘要 */
+function saveGoogleArticles(db, items, now) {
+  if (items.length) upsertArticles(db, items.map((i) => ({ ...i, summary: '' })), { origin: 'google', fetchedAt: now().toISOString() });
+}
+
 const pause = (ms) => (ms > 0 ? new Promise((r) => setTimeout(r, ms)) : Promise.resolve());
 
 /**
@@ -436,6 +441,7 @@ export async function runEntityNews(db, { logger = console, fetchImpl = fetchJso
       const { text } = await fetchImpl(entityFeedUrl(batches[(start + n) % batches.length]), { ua: CONFIG.userAgent, text: true, retries: 2 });
       const items = parseNewsRss(text, { match: (title) => mentionsKnownEntity(tagger, title) }).filter((i) => i.published_at >= cutoff);
       upsertTopicNews(db, 'entities', items, { fetchedAt: now().toISOString() });
+      saveGoogleArticles(db, items, now);
     } catch (error) {
       result.failures += 1;
       logger.warn(`[news] 基金／機關新聞第 ${(start + n) % batches.length + 1} 組抓取失敗：${error?.message || error}`);
@@ -453,9 +459,8 @@ export async function runEntityNews(db, { logger = console, fetchImpl = fetchJso
  * 同一則報導從 Google 再抓到一次時，由 upsertNews／upsertTopicNews 的標題去重擋掉。
  */
 export async function runOutletNews(db, { logger = console, fetchImpl = fetchJson, now = () => new Date(), cutoff, outlets = CONFIG.news.outlets }) {
-  const result = { processed: 0, total: outlets.length, failures: 0, items: 0, added: 0 };
-  const legislators = db.prepare('SELECT id, name FROM legislators WHERE leave_flag = 0').all().map((l) => ({ id: l.id, name: newsName(l.name) }));
-  const tagger = makeTagger([]);
+  const result = { processed: 0, total: outlets.length, failures: 0, items: 0, stored: 0, added: 0 };
+  const targets = outletTargets(db);
   const fetchedAt = now().toISOString();
   for (const outlet of outlets) {
     result.processed += 1;
@@ -463,21 +468,61 @@ export async function runOutletNews(db, { logger = console, fetchImpl = fetchJso
       const { text } = await fetchImpl(outlet.url, { ua: CONFIG.userAgent, text: true, retries: 2 });
       const items = parseNewsRss(text, { match: () => true, source: outlet.name }).filter((i) => i.published_at >= cutoff);
       result.items += items.length;
-      for (const l of legislators) {
-        const mine = items.filter((i) => i.title.includes(l.name) && (l.name.length > 2 || i.title.includes('立委') || i.title.includes('委員')));
-        if (mine.length) result.added += upsertNews(db, l.id, mine, { fetchedAt });
-      }
-      for (const o of OFFICIALS) {
-        const mine = items.filter((i) => i.title.includes(o.name) && (!o.hint || o.hint.some((h) => i.title.includes(h))));
-        if (mine.length) upsertTopicNews(db, `official:${o.name}`, mine, { fetchedAt });
-      }
-      upsertTopicNews(db, 'dgbas', items.filter((i) => i.title.includes('主計')), { fetchedAt });
-      upsertTopicNews(db, 'entities', items.filter((i) => mentionsKnownEntity(tagger, i.title)), { fetchedAt });
+      // 先整批存進原始新聞庫（全部新聞頁的關鍵字搜尋靠它），再分派給委員／首長／主計／基金機關
+      result.stored += upsertArticles(db, items, { origin: 'outlet', fetchedAt });
+      result.added += dispatchOutletItems(db, items, targets, { fetchedAt });
     } catch (error) {
       result.failures += 1;
       logger.warn(`[news] ${outlet.name} RSS 抓取失敗：${error?.message || error}`);
     }
   }
+  return result;
+}
+
+/** 分派對象：在職委員（漢名）＋標記基金機關用的 tagger；首長名單是模組常數 OFFICIALS */
+function outletTargets(db) {
+  return {
+    legislators: db.prepare('SELECT id, name FROM legislators WHERE leave_flag = 0').all().map((l) => ({ id: l.id, name: newsName(l.name) })),
+    tagger: makeTagger([]),
+  };
+}
+
+/** 依標題把媒體新聞分派到 news／topic_news（規則見 runOutletNews 上方說明）；回傳新增的委員新聞則數 */
+function dispatchOutletItems(db, items, { legislators, tagger }, { fetchedAt }) {
+  let added = 0;
+  for (const l of legislators) {
+    const mine = items.filter((i) => i.title.includes(l.name) && (l.name.length > 2 || i.title.includes('立委') || i.title.includes('委員')));
+    if (mine.length) added += upsertNews(db, l.id, mine, { fetchedAt });
+  }
+  for (const o of OFFICIALS) {
+    const mine = items.filter((i) => i.title.includes(o.name) && (!o.hint || o.hint.some((h) => i.title.includes(h))));
+    if (mine.length) upsertTopicNews(db, `official:${o.name}`, mine, { fetchedAt });
+  }
+  upsertTopicNews(db, 'dgbas', items.filter((i) => i.title.includes('主計')), { fetchedAt });
+  upsertTopicNews(db, 'entities', items.filter((i) => mentionsKnownEntity(tagger, i.title)), { fetchedAt });
+  return added;
+}
+
+/**
+ * 原始新聞庫裡的媒體新聞重新分派一次（每日新聞同步時跑）。換了首長（officials.json）、
+ * 委員名錄或基金機關清單之後，舊新聞也會標到新的人／機關；已分派過的由 upsert 去重，不會重複。
+ * 只會「補標」不會「拿掉」：換下來的首長，舊新聞仍留在他名下（那時他確實是首長）。
+ */
+export function retagOutletArticles(db, { cutoff, now = () => new Date() }) {
+  const items = db.prepare("SELECT url, title, source, published_at FROM articles WHERE origin = 'outlet' AND published_at >= ?").all(cutoff);
+  return { items: items.length, added: dispatchOutletItems(db, items, outletTargets(db), { fetchedAt: now().toISOString() }) };
+}
+
+/**
+ * 媒體 RSS 的獨立輪詢（排程每 CONFIG.news.outletIntervalMs 一次，見 index.mjs startScheduler）。
+ * 為什麼要比每日同步頻繁：feed 只留最新幾十則（實測中央社 20、自由 40、公視 25），
+ * 一天抓一次的話，中間被擠出 feed 的報導就永遠收不到了。
+ */
+export async function runOutletPoll(db, { logger = console, fetchImpl = fetchJson, now = () => new Date() } = {}) {
+  const cutoff = new Date(now().getTime() - CONFIG.news.keepDays * 86_400_000).toISOString();
+  const result = await runOutletNews(db, { logger, fetchImpl, now, cutoff });
+  if (result.failures < result.total) setMeta(db, 'news_outlets_fetched_at', now().toISOString());
+  logger.log(`[news] 媒體 RSS 輪詢：${result.items} 則（新增 ${result.stored} 則進新聞庫、${result.added} 則委員新聞）${result.failures ? `，${result.failures}/${result.total} 家失敗` : ''}`);
   return result;
 }
 
@@ -521,6 +566,7 @@ export async function runNewsIngest(
       // 先濾掉超過保存期限的，否則會「寫入 → 被 prune → 下次又寫入」反覆循環
       const fresh = parseNewsRss(text, { name }).filter((n) => n.published_at >= cutoff);
       added += upsertNews(db, l.id, fresh, { fetchedAt: now().toISOString() });
+      saveGoogleArticles(db, fresh, now);
     } catch (error) {
       failures.push(`${l.name}：${error?.message || error}`);
     }
@@ -528,7 +574,9 @@ export async function runNewsIngest(
   // 主計總處專頁：不限委員，標題提到「主計」的新聞都收（地方主計處等在頁面上另外標示）
   try {
     const { text } = await fetchImpl(newsFeedUrl('主計', '"主計"'), { ua: CONFIG.userAgent, text: true, retries: 2 });
-    upsertTopicNews(db, 'dgbas', parseNewsRss(text, { name: '主計' }).filter((n) => n.published_at >= cutoff), { fetchedAt: now().toISOString() });
+    const items = parseNewsRss(text, { name: '主計' }).filter((n) => n.published_at >= cutoff);
+    upsertTopicNews(db, 'dgbas', items, { fetchedAt: now().toISOString() });
+    saveGoogleArticles(db, items, now);
   } catch (error) {
     logger.warn(`[news] 主計總處新聞抓取失敗：${error?.message || error}`);
   }
@@ -540,6 +588,7 @@ export async function runNewsIngest(
       const { text } = await fetchImpl(newsFeedUrl(o.name, `"${o.name}" ${o.agency}`), { ua: CONFIG.userAgent, text: true, retries: 2 });
       const items = parseNewsRss(text, { name: o.name }).filter((n) => n.published_at >= cutoff && (!o.hint || o.hint.some((h) => n.title.includes(h))));
       upsertTopicNews(db, `official:${o.name}`, items, { fetchedAt: now().toISOString() });
+      saveGoogleArticles(db, items, now);
     } catch (error) {
       logger.warn(`[news] ${o.agency}${o.title}${o.name} 新聞抓取失敗：${error?.message || error}`);
     }
@@ -549,6 +598,10 @@ export async function runNewsIngest(
   // 媒體官方 RSS：只是補充來源，失敗不影響整體成敗，只記在 notes
   const outlet = await runOutletNews(db, { logger, fetchImpl, now, cutoff });
   added += outlet.added;
+  if (outlet.failures < outlet.total) setMeta(db, 'news_outlets_fetched_at', now().toISOString());
+  // 每日一次對整個原始新聞庫重新分派：名單換過之後，舊新聞也標得到新的人／機關
+  const retag = retagOutletArticles(db, { cutoff, now });
+  added += retag.added;
   const pruned = pruneNews(db, { keepDays: CONFIG.news.keepDays, now: now() });
 
   const failed = legislators.length === 0 || failures.length > processed / 2;

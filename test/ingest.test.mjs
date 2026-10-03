@@ -2,13 +2,13 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { openDb, applyDataset, applyBills, applySocial, applyCommitteeRecords, applyCommitteeMeets, upsertNews, pruneLogs, getMeta, setMeta } from '../server/db.mjs';
+import { openDb, applyDataset, applyBills, applySocial, applyCommitteeRecords, applyCommitteeMeets, upsertNews, upsertArticles, pruneNews, pruneLogs, getMeta, setMeta, migrate } from '../server/db.mjs';
 import { buildDataset, normalizeBills, normalizeCommitteeRecords, normalizeMeetings, normalizeSocial, newsName, rocDate, DataValidationError } from '../server/normalize.mjs';
 import { CONFIG } from '../server/config.mjs';
-import { entityFeedUrl, guardShrink, runIngest, runBillsIngest, runRecordsIngest, runBudgetIngest, runBudgetReportsIngest, runMeetingsIngest, budgetPageUrl, runNewsIngest, runOutletNews, runSocialIngest, runAll } from '../server/ingest.mjs';
-import { entityNewsTerms, listFunds, getHealth, listBills, listBudget, listBudgetMeetings, listBudgetReports, budgetState, listChanges, listCounties, listLegislatorVotes, listRankings, compareLegislators, listRegions, listSplitTicket, listDemographics, listPopulationTrend, getTownMap, listLegislators, listNews, listSyncRuns } from '../server/queries.mjs';
+import { entityFeedUrl, guardShrink, runIngest, runBillsIngest, runRecordsIngest, runBudgetIngest, runBudgetReportsIngest, runMeetingsIngest, budgetPageUrl, runNewsIngest, runOutletNews, runOutletPoll, retagOutletArticles, runSocialIngest, runAll } from '../server/ingest.mjs';
+import { entityNewsTerms, listFunds, getHealth, listBills, listBudget, listBudgetMeetings, listBudgetReports, budgetState, listChanges, listCounties, listLegislatorVotes, listRankings, compareLegislators, listRegions, listSplitTicket, listDemographics, listPopulationTrend, getTownMap, listLegislators, listNews, listNewsArticles, listSyncRuns } from '../server/queries.mjs';
 import { FetchError } from '../server/fetch-ly.mjs';
-import { syncOnce } from '../server/index.mjs';
+import { syncOnce, pollOutletsOnce } from '../server/index.mjs';
 
 const fixture = (name) => JSON.parse(readFileSync(fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url)), 'utf8'));
 const silent = { log() {}, warn() {}, error() {} };
@@ -1191,4 +1191,130 @@ ${items
     db.prepare("SELECT title FROM topic_news WHERE topic = 'official:卓榮泰'").all().map((r) => r.title),
     ['卓榮泰赴立法院施政報告'],
   );
+});
+
+/* ---------------- 原始新聞庫（全部新聞）：全存、重新分派、每小時輪詢 ---------------- */
+
+const outletRssWithSummary = (items) =>
+  `<rss version="2.0"><channel>${items
+    .map((i) => `<item><title>${i.title}</title><link>${i.url}</link><pubDate>${i.date}</pubDate><description><![CDATA[<p>${i.summary ?? ''}</p>]]></description></item>`)
+    .join('')}</channel></rss>`;
+
+test('原始新聞庫：媒體 RSS 每一則都存（含沒提到任何人的）、帶摘要；Google 結果也存但不存摘要', async () => {
+  const db = seeded();
+  const fetchImpl = async (url) => {
+    if (url.endsWith('/cna')) {
+      return rssResponse(
+        outletRssWithSummary([
+          { title: '丁學忠質詢國防預算', url: 'https://cna.example/1', date: 'Tue, 29 Sep 2026 08:00:00 GMT', summary: '立法院今天審查' },
+          { title: '颱風明天登陸', url: 'https://cna.example/2', date: 'Tue, 29 Sep 2026 09:00:00 GMT', summary: '氣象署發布海上警報' },
+        ]),
+      );
+    }
+    if (url.endsWith('/ltn')) return rssResponse(outletRss([]));
+    const q = decodeURIComponent(new URL(url).searchParams.get('q') ?? '');
+    if (q.includes('丁學忠')) return rssResponse(rssOf([{ title: '丁學忠出席記者會', source: '民視', url: 'https://news.google.com/rss/articles/g1', date: 'Tue, 29 Sep 2026 10:00:00 GMT' }]));
+    return rssResponse(rssOf([]));
+  };
+  const original = CONFIG.news.outlets;
+  CONFIG.news.outlets = OUTLETS;
+  try {
+    const result = await runNewsIngest(db, { logger: silent, fetchImpl, now: NEWS_NOW, delayMs: 0, entityBudgetMs: 0 });
+    assert.equal(result.outlet.stored, 2, '兩則都進新聞庫，包含颱風那則');
+  } finally {
+    CONFIG.news.outlets = original;
+  }
+  const rows = db.prepare('SELECT url, title, summary, origin FROM articles ORDER BY url').all();
+  assert.deepEqual(
+    rows.map((r) => [r.url, r.origin, r.summary]),
+    [
+      ['https://cna.example/1', 'outlet', '立法院今天審查'],
+      ['https://cna.example/2', 'outlet', '氣象署發布海上警報'],
+      ['https://news.google.com/rss/articles/g1', 'google', null],
+    ],
+  );
+  assert.ok(getMeta(db, 'news_outlets_fetched_at'), '記下媒體 RSS 的抓取時間');
+  // 過期刪除也要刪到新聞庫
+  upsertArticles(db, [{ url: 'https://old.example/1', title: '舊聞', source: 'x', published_at: '2025-01-01T00:00:00.000Z' }], { origin: 'outlet', fetchedAt: 'x' });
+  pruneNews(db, { keepDays: CONFIG.news.keepDays, now: NEWS_NOW() });
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM articles WHERE url = 'https://old.example/1'").get().n, 0);
+});
+
+test('重新分派：新聞庫裡的舊媒體新聞，換了名單之後也會標到人；重跑不重複', () => {
+  const db = seeded();
+  const ting = listLegislators(db, { q: '丁學忠' }).items[0].id;
+  // 模擬「抓的時候還沒分派到」的狀態：只在新聞庫裡、news 沒有
+  upsertArticles(db, [{ url: 'https://cna.example/9', title: '丁學忠談預算', source: '中央社', published_at: '2026-09-29T08:00:00.000Z' }], { origin: 'outlet', fetchedAt: 'x' });
+  upsertArticles(db, [{ url: 'https://news.google.com/rss/articles/g9', title: '丁學忠另一則', source: '民視', published_at: '2026-09-29T08:00:00.000Z' }], { origin: 'google', fetchedAt: 'x' });
+  assert.equal(listNews(db, { legislator: ting }).total, 0);
+  const cutoff = new Date(NEWS_NOW().getTime() - CONFIG.news.keepDays * 86_400_000).toISOString();
+  const first = retagOutletArticles(db, { cutoff, now: NEWS_NOW });
+  assert.equal(first.items, 1, '只重新分派媒體 RSS 的（Google 那一路本來就是依對象查的）');
+  assert.deepEqual(listNews(db, { legislator: ting }).items.map((n) => n.title), ['丁學忠談預算']);
+  assert.equal(retagOutletArticles(db, { cutoff, now: NEWS_NOW }).added, 0, '重跑不重複新增');
+});
+
+test('媒體 RSS 每小時輪詢：只抓媒體、記下時間；完整同步進行中或停用新聞時跳過', async () => {
+  const db = seeded();
+  const calls = [];
+  const fetchImpl = async (url) => (calls.push(url), rssResponse(outletRssWithSummary([{ title: '颱風明天登陸', url: 'https://cna.example/2', date: 'Tue, 29 Sep 2026 09:00:00 GMT' }])));
+  const original = CONFIG.news.outlets;
+  CONFIG.news.outlets = OUTLETS;
+  try {
+    const result = await runOutletPoll(db, { logger: silent, fetchImpl, now: NEWS_NOW });
+    assert.deepEqual(calls, OUTLETS.map((o) => o.url), '不打 Google');
+    assert.equal(result.stored, 1, '兩家回同一則，網址相同只存一次');
+    assert.equal(getMeta(db, 'news_outlets_fetched_at'), NEWS_NOW().toISOString());
+
+    const skip = CONFIG.skip.news;
+    CONFIG.skip.news = true;
+    try {
+      assert.equal((await pollOutletsOnce(db, { logger: silent, fetchImpl })).status, 'skipped', 'LY_SKIP_NEWS 時不輪詢');
+    } finally {
+      CONFIG.skip.news = skip;
+    }
+  } finally {
+    CONFIG.news.outlets = original;
+  }
+});
+
+test('全部新聞：搜得到沒提到任何人的新聞、關鍵字也比對摘要（但不回傳摘要）、可依類別篩選', async () => {
+  const db = seeded();
+  const ting = listLegislators(db, { q: '丁學忠' }).items[0].id;
+  const at = '2026-09-29T08:00:00.000Z';
+  upsertArticles(
+    db,
+    [
+      { url: 'https://cna.example/1', title: '丁學忠質詢國防預算', summary: '', source: '中央社', published_at: at },
+      { url: 'https://cna.example/2', title: '颱風明天登陸', summary: '氣象署發布海上警報，預算追加防災', source: '中央社', published_at: '2026-09-28T08:00:00.000Z' },
+    ],
+    { origin: 'outlet', fetchedAt: 'x' },
+  );
+  upsertNews(db, ting, [{ url: 'https://cna.example/1', title: '丁學忠質詢國防預算', source: '中央社', published_at: at }], { fetchedAt: 'x' });
+
+  const all = listNewsArticles(db, { scope: 'all' });
+  assert.equal(all.total, 2, '颱風那則沒提到任何人也在');
+  assert.deepEqual(all.kind_counts, { all: 2, other: 1, legislator: 1, official: 0, entity: 0, dgbas: 0 });
+  assert.ok(all.items.every((a) => !('summary' in a) && !('text' in a)), '摘要只拿來搜尋，不回傳');
+
+  const budget = listNewsArticles(db, { scope: 'all', q: '預算' });
+  assert.deepEqual(budget.items.map((a) => a.title), ['丁學忠質詢國防預算', '颱風明天登陸'], '「預算」在颱風那則的摘要裡');
+  assert.deepEqual(listNewsArticles(db, { scope: 'all', kind: 'legislator' }).items.map((a) => [a.title, a.kinds]), [['丁學忠質詢國防預算', ['legislator']]]);
+  assert.deepEqual(listNewsArticles(db, { scope: 'all', kind: 'other' }).items.map((a) => a.title), ['颱風明天登陸']);
+  assert.equal(listNewsArticles(db, { scope: 'all', kind: '亂打' }).total, 2, '未知類別當成全部');
+
+  // 快取：寫入新資料後要看得到
+  upsertArticles(db, [{ url: 'https://ltn.example/3', title: '股市大漲', source: '自由時報', published_at: '2026-09-30T08:00:00.000Z' }], { origin: 'outlet', fetchedAt: 'y' });
+  assert.equal(listNewsArticles(db, { scope: 'all' }).items[0].title, '股市大漲', '資料變了快取要失效');
+});
+
+test('舊資料庫遷移：news／topic_news 補 title_key 並回填，同標題去重照常', () => {
+  const db = openDb(':memory:');
+  // 做出「舊版」的表：沒有 title_key
+  db.exec('DROP INDEX idx_news_title_key; DROP INDEX idx_topic_news_title_key; ALTER TABLE news DROP COLUMN title_key; ALTER TABLE topic_news DROP COLUMN title_key;');
+  db.prepare("INSERT INTO news(legislator_id, url, title, source, published_at, fetched_at) VALUES('L1', 'https://a/1', '標題 一', 's', '2026-09-01T00:00:00Z', 'x')").run();
+  migrate(db);
+  assert.equal(db.prepare('SELECT title_key FROM news').get().title_key, '標題一', '回填去掉空白的標題');
+  assert.equal(upsertNews(db, 'L1', [{ url: 'https://b/2', title: '標題一', source: 's', published_at: '2026-09-01T00:00:00Z' }], { fetchedAt: 'y' }), 0, '回填後同標題去重照常');
+  migrate(db); // 重跑不出錯
 });

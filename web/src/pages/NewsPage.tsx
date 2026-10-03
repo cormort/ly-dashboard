@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ExternalLink, X } from 'lucide-react';
 import { buildUrl } from '../api/client';
-import type { LegislatorsResponse, NewsArticlesResponse } from '../api/types';
+import type { LegislatorsResponse, NewsArticlesResponse, NewsKind } from '../api/types';
 import { EmptyState, ErrorState, LoadingState } from '../components/DataStates';
 import { useApi } from '../hooks/useApi';
 import { pathFor } from '../hooks/useRoute';
@@ -21,12 +21,26 @@ interface Filters {
   q: string;
   source: string;
   legislator: string;
+  /** 只有全部新聞用：類別（空＝全部） */
+  kind: string;
 }
 
 const readFilters = (): Filters => {
   const p = new URLSearchParams(window.location.search);
-  return { q: p.get('q') ?? '', source: p.get('source') ?? '', legislator: p.get('legislator') ?? '' };
+  return { q: p.get('q') ?? '', source: p.get('source') ?? '', legislator: p.get('legislator') ?? '', kind: p.get('kind') ?? '' };
 };
+
+/** 全部新聞的類別切換；「其他」＝媒體 RSS 抓到、但沒提到任何委員／首長／機關的新聞 */
+const KINDS: { key: NewsKind | 'all' | 'other'; label: string }[] = [
+  { key: 'all', label: '全部' },
+  { key: 'legislator', label: '委員' },
+  { key: 'official', label: '首長' },
+  { key: 'entity', label: '機關／基金' },
+  { key: 'dgbas', label: '主計' },
+  { key: 'other', label: '其他' },
+];
+/** 每則新聞旁的類別標示：委員與首長已經列出人名，只標沒有人名的兩類 */
+const KIND_TAG: Partial<Record<NewsKind, string>> = { entity: '機關／基金', dgbas: '主計' };
 
 /** 新聞：所有委員的新聞合併成一份（同一篇只列一次），可依關鍵字與媒體篩選，並看各媒體的報導量。 */
 export function NewsPage({ refreshToken, onOpenId, scope = 'legislators' }: NewsPageProps) {
@@ -112,6 +126,19 @@ export function NewsPage({ refreshToken, onOpenId, scope = 'legislators' }: News
         ) : null}
       </form>
 
+      {everything && data?.kind_counts ? (
+        <div className="segmented" role="group" aria-label="新聞類別">
+          {KINDS.map(({ key, label }) => {
+            const value = key === 'all' ? '' : key;
+            return (
+              <button key={key} type="button" aria-pressed={filters.kind === value} onClick={() => change({ kind: value, source: '' })}>
+                {label} {data.kind_counts?.[key].toLocaleString()}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+
       {/* 報導清單是主角（每天看輿情）；媒體分布是分析，放右欄 */}
       <div className="home">
       <section className="panel" aria-label="新聞列表" id="news-results">
@@ -138,6 +165,7 @@ export function NewsPage({ refreshToken, onOpenId, scope = 'legislators' }: News
                   </a>
                   <p className="bill-meta">
                     <span>{formatDateTime(a.published_at)}</span>
+                    {(a.kinds ?? []).map((k) => (KIND_TAG[k] ? <span key={k} className="muted">{KIND_TAG[k]}</span> : null))}
                     <button type="button" className="link-button" onClick={() => change({ source: a.source })}>
                       {a.source}
                     </button>

@@ -128,6 +128,19 @@ CREATE TABLE IF NOT EXISTS topic_news (
   fetched_at TEXT NOT NULL,
   PRIMARY KEY (topic, url)
 );
+-- 原始新聞庫（全部新聞頁用）：媒體 RSS 的**每一則**都存（不只提到委員／首長／機關的），Google 新聞的結果也存。
+-- 「這則提到誰」不存在這裡，由 news／topic_news 推出（見 queries.mjs listAllNewsArticles）。
+-- summary 只拿來做關鍵字搜尋，不回傳給前端、不轉載；origin = 'outlet'（媒體 RSS）| 'google'。
+CREATE TABLE IF NOT EXISTS articles (
+  url TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  summary TEXT,
+  source TEXT,
+  origin TEXT NOT NULL,
+  published_at TEXT NOT NULL,
+  fetched_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_articles_date ON articles(published_at DESC);
 CREATE TABLE IF NOT EXISTS social_accounts (
   legislator_id TEXT NOT NULL,
   platform TEXT NOT NULL,
@@ -200,6 +213,14 @@ export function openDb(path) {
   return db;
 }
 
+/**
+ * 同一則報導的標題鍵：去掉空白。Google 新聞給的是 news.google.com 轉址、媒體 RSS 給的是原址，
+ * 同一則報導兩個網址不同，只能靠標題認；轉載（例如 Yahoo 轉中央社）也一併算同一則。
+ * 存在 news／topic_news 的 title_key 欄（有索引）；TITLE_KEY_SQL 只用來回填舊資料，兩者去掉的字元要一致。
+ */
+const titleKey = (title) => String(title ?? '').replace(/[ \u3000\t]/g, '');
+const TITLE_KEY_SQL = "REPLACE(REPLACE(REPLACE(title, ' ', ''), '　', ''), char(9), '')";
+
 export function migrate(db) {
   db.exec(SCHEMA);
   // ponytail: 手寫 ADD COLUMN，欄位變多時再引入遷移框架
@@ -214,6 +235,15 @@ export function migrate(db) {
     db.exec('ALTER TABLE social_accounts ADD COLUMN source TEXT');
     db.prepare("DELETE FROM meta WHERE key = 'social_applied_sha'").run();
   }
+  // 新聞的標題鍵（去掉空白的標題）：同標題去重要靠索引查，不能每寫一筆就 REPLACE() 掃一次全表
+  // （實測 10 萬則媒體新聞重新分派一次要 199 秒）。舊資料庫補欄位並回填，之後由 upsert 寫入。
+  for (const table of ['news', 'topic_news']) {
+    const columns = new Set(db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name));
+    if (!columns.has('title_key')) db.exec(`ALTER TABLE ${table} ADD COLUMN title_key TEXT`);
+    db.exec(`UPDATE ${table} SET title_key = ${TITLE_KEY_SQL} WHERE title_key IS NULL`);
+  }
+  db.exec('CREATE INDEX IF NOT EXISTS idx_news_title_key ON news(legislator_id, title_key)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_topic_news_title_key ON topic_news(topic, title_key)');
 }
 
 export function getMeta(db, key, fallback = null) {
@@ -525,26 +555,20 @@ export function applyCommitteeMeets(db, meets, { fetchedAt }) {
 }
 
 /**
- * 同一則報導的標題鍵：去掉空白。Google 新聞給的是 news.google.com 轉址、媒體 RSS 給的是原址，
- * 同一則報導兩個網址不同，只能靠標題認；轉載（例如 Yahoo 轉中央社）也一併算同一則。
- */
-const titleKey = (title) => String(title ?? '').replace(/[ \u3000\t]/g, ''); // 與 SAME_TITLE_SQL 去掉的字元一致
-const SAME_TITLE_SQL = "REPLACE(REPLACE(REPLACE(title, ' ', ''), '　', ''), char(9), '') = ?";
-
-/**
  * 新聞是**累積**的（不像名錄整批覆寫）：RSS 只給近期，覆寫會把歷史洗掉。
  * 同一連結只存一次、同一位委員的同一個標題也只存一次（見 titleKey）；超過 keepDays 的刪除。
  */
 export function upsertNews(db, legislatorId, items, { fetchedAt }) {
   const insert = db.prepare(
-    'INSERT OR IGNORE INTO news(legislator_id, url, title, source, published_at, fetched_at) VALUES(?, ?, ?, ?, ?, ?)',
+    'INSERT OR IGNORE INTO news(legislator_id, url, title, source, published_at, fetched_at, title_key) VALUES(?, ?, ?, ?, ?, ?, ?)',
   );
-  const refresh = db.prepare('UPDATE news SET title = ?, source = ? WHERE legislator_id = ? AND url = ?');
-  const sameTitle = db.prepare(`SELECT 1 FROM news WHERE legislator_id = ? AND url <> ? AND ${SAME_TITLE_SQL} LIMIT 1`);
+  const refresh = db.prepare('UPDATE news SET title = ?, source = ?, title_key = ? WHERE legislator_id = ? AND url = ?');
+  const sameTitle = db.prepare('SELECT 1 FROM news WHERE legislator_id = ? AND title_key = ? AND url <> ? LIMIT 1');
   const insertItem = (item) => {
-    if (sameTitle.get(legislatorId, item.url, titleKey(item.title))) return 0;
-    const result = insert.run(legislatorId, item.url, item.title, item.source, item.published_at, fetchedAt);
-    if (Number(result.changes) === 0) refresh.run(item.title, item.source, legislatorId, item.url);
+    const key = titleKey(item.title);
+    if (sameTitle.get(legislatorId, key, item.url)) return 0;
+    const result = insert.run(legislatorId, item.url, item.title, item.source, item.published_at, fetchedAt, key);
+    if (Number(result.changes) === 0) refresh.run(item.title, item.source, key, legislatorId, item.url);
     return Number(result.changes);
   };
   let added = 0;
@@ -561,16 +585,43 @@ export function upsertNews(db, legislatorId, items, { fetchedAt }) {
   return added;
 }
 
+/**
+ * 原始新聞庫：同一網址只存一次（再抓到時更新標題、媒體；新的摘要是空的就保留舊的）。
+ * 不做標題去重 —— 這是原始資料，合併是查詢時的事（listAllNewsArticles）。
+ */
+export function upsertArticles(db, items, { origin, fetchedAt }) {
+  const stmt = db.prepare(
+    `INSERT INTO articles(url, title, summary, source, origin, published_at, fetched_at) VALUES(?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(url) DO UPDATE SET title = excluded.title, source = excluded.source, summary = COALESCE(NULLIF(excluded.summary, ''), articles.summary)`,
+  );
+  // upsert 的 changes 會把「已存在、只是更新」也算 1，回傳值要的是真的新增幾則，所以比前後筆數
+  const count = () => Number(db.prepare('SELECT COUNT(*) AS n FROM articles').get().n);
+  db.exec('BEGIN');
+  try {
+    const before = count();
+    for (const i of items) stmt.run(i.url, i.title, i.summary || null, i.source || null, origin, i.published_at, fetchedAt);
+    const added = count() - before;
+    db.exec('COMMIT');
+    return added;
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
+}
+
 export function upsertTopicNews(db, topic, items, { fetchedAt }) {
   const stmt = db.prepare(
-    'INSERT INTO topic_news(topic, url, title, source, published_at, fetched_at) VALUES(?, ?, ?, ?, ?, ?) ON CONFLICT(topic, url) DO UPDATE SET title = excluded.title, source = excluded.source',
+    'INSERT INTO topic_news(topic, url, title, source, published_at, fetched_at, title_key) VALUES(?, ?, ?, ?, ?, ?, ?) ON CONFLICT(topic, url) DO UPDATE SET title = excluded.title, source = excluded.source, title_key = excluded.title_key',
   );
-  const sameTitle = db.prepare(`SELECT 1 FROM topic_news WHERE topic = ? AND url <> ? AND ${SAME_TITLE_SQL} LIMIT 1`);
+  const sameTitle = db.prepare('SELECT 1 FROM topic_news WHERE topic = ? AND title_key = ? AND url <> ? LIMIT 1');
   // 交易包起來，與本檔其他整批寫入一致：中途失敗就整批回滾，不留半套。
   db.exec('BEGIN');
   try {
     const added = items.reduce(
-      (n, i) => (sameTitle.get(topic, i.url, titleKey(i.title)) ? n : n + Number(stmt.run(topic, i.url, i.title, i.source, i.published_at, fetchedAt).changes)),
+      (n, i) => {
+        const key = titleKey(i.title);
+        return sameTitle.get(topic, key, i.url) ? n : n + Number(stmt.run(topic, i.url, i.title, i.source, i.published_at, fetchedAt, key).changes);
+      },
       0,
     );
     db.exec('COMMIT');
@@ -614,6 +665,7 @@ export function pruneNews(db, { keepDays, now = new Date() }) {
   db.exec('BEGIN');
   try {
     db.prepare('DELETE FROM topic_news WHERE published_at < ?').run(cutoff);
+    db.prepare('DELETE FROM articles WHERE published_at < ?').run(cutoff);
     const removed = Number(db.prepare('DELETE FROM news WHERE published_at < ?').run(cutoff).changes);
     db.exec('COMMIT');
     return removed;

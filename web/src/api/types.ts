@@ -427,12 +427,17 @@ export interface NewsArticle {
   title: string;
   source: string;
   published_at: string;
+  /** 只有 scope=all 才有：這則被分派到哪些類別（都沒有＝只在原始新聞庫裡的「其他」新聞） */
+  kinds?: NewsKind[];
   /** scope=all 時另有 kind：legislator＝委員（party 為黨籍）、official＝機關首長（party 為機關＋職稱） */
   legislators: { id: string; name: string; party: string; kind?: 'legislator' | 'official' }[];
 }
 
+/** 全部新聞的類別：委員、機關首長、基金／機關、主計 */
+export type NewsKind = 'legislator' | 'official' | 'entity' | 'dgbas';
+
 export interface NewsArticlesResponse {
-  meta: Meta & { news_fetched_at: string | null };
+  meta: Meta & { news_fetched_at: string | null; news_outlets_fetched_at?: string | null };
   total: number;
   /** 符合條件者中，現在起算近 7 天的則數（同一篇只算一次） */
   recent_7d: number;
@@ -442,6 +447,8 @@ export interface NewsArticlesResponse {
   /** 只有 scope=all 才有：資料庫裡最早／最新一則的發布時間（「所有期間」實際涵蓋的範圍） */
   first_date?: string | null;
   last_date?: string | null;
+  /** 只有 scope=all 才有：套用關鍵字後、類別與媒體之前的各類則數（all＝全部、other＝沒分派到任何類別） */
+  kind_counts?: Record<NewsKind | 'all' | 'other', number>;
   /** 只有 scope=officials 才有：首長名單（依則數排序），party 欄放「機關＋職稱」 */
   people?: { id: string; name: string; party: string; count: number }[];
   items: NewsArticle[];

@@ -9,7 +9,7 @@ import {
   billsCsv, budgetCsv, compareLegislators, listBudget, listCounties, listLegislatorVotes, listSplitTicket, listDemographics, listPopulationTrend, getTownMap, listRegions, listFunds, getAgencyHome, listCommitteeActivity, listBudgetMeetings, listBudgetReports, getHealth, getMetaPayload, listActivity, listBills, listCosponsors, listNews, listNewsArticles, listTopics, listChanges,
   listCommittees, listLegislators, listRankings, listSyncRuns, listRecalls, listCouncil, councilCounties,
 } from './queries.mjs';
-import { runAll, runIngest } from './ingest.mjs';
+import { runAll, runIngest, runOutletPoll } from './ingest.mjs';
 
 let inflight = null;
 let inflightScope = null;
@@ -211,7 +211,7 @@ export function createServer(db) {
           case '/api/v1/news':
             return sendJson(res, 200, listNews(db, { legislator: q.legislator || null, limit: q.limit }));
           case '/api/v1/news/articles':
-            return sendJson(res, 200, listNewsArticles(db, { q: q.q, source: q.source, legislator: q.legislator, scope: q.scope, limit: q.limit, offset: q.offset }));
+            return sendJson(res, 200, listNewsArticles(db, { q: q.q, source: q.source, legislator: q.legislator, scope: q.scope, kind: q.kind, limit: q.limit, offset: q.offset }));
           case '/api/v1/recalls':
             return sendJson(res, 200, listRecalls(db));
           case '/api/v1/rankings':
@@ -259,6 +259,19 @@ export function createServer(db) {
   });
 }
 
+/**
+ * 媒體 RSS 的每小時輪詢（feed 只留最新幾十則，一天抓一次會漏）。
+ * 完整同步正在跑時跳過：完整同步本身就會抓媒體 RSS，兩邊同時寫只是重工。
+ */
+let outletInflight = null;
+export function pollOutletsOnce(db, options = {}) {
+  if (CONFIG.skip.news || inflight || outletInflight) return Promise.resolve({ status: 'skipped' });
+  outletInflight = runOutletPoll(db, options).finally(() => {
+    outletInflight = null;
+  });
+  return outletInflight;
+}
+
 export function startScheduler(db, { logger = console } = {}) {
   const last = getMeta(db, 'last_success_at');
   const fresh = last && Date.now() - new Date(last).getTime() < CONFIG.syncIntervalMs;
@@ -270,6 +283,12 @@ export function startScheduler(db, { logger = console } = {}) {
     syncOnce(db, { logger }).catch((error) => logger.error('[scheduler] 排程同步失敗', error));
   }, CONFIG.syncIntervalMs);
   timer.unref();
+  if (CONFIG.news.outletIntervalMs > 0) {
+    const outletTimer = setInterval(() => {
+      pollOutletsOnce(db, { logger }).catch((error) => logger.error('[scheduler] 媒體 RSS 輪詢失敗', error));
+    }, CONFIG.news.outletIntervalMs);
+    outletTimer.unref();
+  }
   return timer;
 }
 

@@ -634,6 +634,9 @@ function atomLink(body) {
  * 沒有 RSS 2.0 版本可換，所以在這裡一併支援：抓不到時整家媒體會每輪都失敗，
  * 而且只記一則 warning（實測 2026-10-03：公視 25 則全部被判「新聞回應不是 RSS」丟掉）。
  */
+/** RSS 摘要常是一段 HTML（解碼後才看得到標籤）：去標籤、再解一次實體（&nbsp; 等）、壓成一行 */
+const plainText = (value) => decodeXml(String(value ?? '').replace(/<[^>]*>/g, ' ')).replace(/\s+/g, ' ').trim();
+
 export function parseNewsRss(xml, { name, match, source: defaultSource = '' } = {}) {
   const raw = String(xml);
   const isAtom = !/<rss[\s>]/.test(raw);
@@ -649,7 +652,9 @@ export function parseNewsRss(xml, { name, match, source: defaultSource = '' } = 
     const published = new Date(isAtom ? tag(body, 'published') || tag(body, 'updated') : tag(body, 'pubDate'));
     // match：批次查詢（一次查多個名稱）時由呼叫端決定標題要不要收；否則標題必須含 name
     if (!(match ? match(title) : title.includes(name)) || !url || Number.isNaN(published.getTime())) continue;
-    items.push({ title, source, url, published_at: published.toISOString() });
+    // 摘要：只拿來做關鍵字搜尋（全部新聞），不顯示也不轉載；去掉 HTML、壓空白、截 500 字
+    const summary = plainText(isAtom ? tag(body, 'summary') || tag(body, 'content') : tag(body, 'description')).slice(0, 500);
+    items.push({ title, source, url, published_at: published.toISOString(), summary });
   }
   return items;
 }

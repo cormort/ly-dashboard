@@ -426,7 +426,7 @@ Query 參數（全部可選）：
 - 登記名含族語名時只用漢名搜尋（`伍麗華Saidhai‧Tahovecahe` → `伍麗華`），異體字換成媒體常用字（`寳` → `寶`）。
 - 單一委員抓取失敗不影響其他人；超過半數失敗才把該次同步標為 `failed`，既有新聞保留。
 
-## GET /api/v1/news/articles?scope=&legislator=&q=&source=&limit=30&offset=0
+## GET /api/v1/news/articles?scope=&legislator=&q=&source=&kind=&limit=30&offset=0
 
 新聞頁（委員新聞 `/news`、機關首長新聞 `/officials`）與總覽用。同一篇報導（網址相同）合併成一列，附上標題提到的人；依發布時間新→舊。
 
@@ -456,9 +456,13 @@ Query 參數（全部可選）：
 - `total`：套用全部條件後的篇數；`recent_7d`：其中從**現在**起算近 7 天的篇數（總覽「首長新聞（近 7 天）」統計卡用；同步停了就會往下掉）。
 - `sources`（前 30 家，依篇數排序）與 `source_total`：套用 `legislator`、`q` 之後、`source` **之前**統計，選了某家媒體後其他家的數字不會消失。
 - `people`：只有 `scope=officials` 才有，列出全部首長與各自則數（不受篩選條件影響），`id` 即姓名，`party` 欄放「機關＋職稱」。
-- `scope=all`（新聞頁「全部新聞」`/news/all`）：委員、機關首長、主計、基金機關四類合併，不限期間（資料庫保存的都在內），
-  同一則以**標題去掉空白**合併（不同類別可能是不同網址）；`q` 以空白分隔、**全部**符合才列出；不支援 `legislator`。
-  另回 `first_date`／`last_date`：資料庫裡最早／最新一則的發布時間（不受篩選影響）。`items[].legislators` 每人多一個 `kind: 'legislator'|'official'`。
+- `scope=all`（新聞頁「全部新聞」`/news/all`）：原始新聞庫 `articles`——中央社／自由／聯合／公視 RSS 的**每一則**（不只提到委員、首長、機關的），
+  加上 Google 新聞的結果與四類分派表（`news`、`topic_news`）。不限期間（資料庫保存的都在內）；同一則以**標題去掉空白**合併（不同來源可能是不同網址）。
+  - `q`：比對標題**與摘要**（媒體 RSS 的 description／summary；摘要只拿來搜尋，**不回傳**），空白分隔、**全部**符合才列出。不支援 `legislator`。
+  - `kind`：`legislator`（委員）、`official`（首長）、`entity`（基金／機關）、`dgbas`（主計）、`other`（沒分派到任何類別），省略或未知值＝全部。
+  - 另回 `first_date`／`last_date`（資料庫裡最早／最新一則，不受篩選影響）、`kind_counts`（`{ all, other, legislator, official, entity, dgbas }`，套用 `q` 之後、`kind` 與 `source` 之前），
+    `meta.news_outlets_fetched_at`（媒體 RSS 最近一次抓到的時間，每小時輪詢）。`items[].kinds` 是這則的類別，`items[].legislators` 每人多一個 `kind: 'legislator'|'official'`。
+  - `sources` 在 `kind` 之後、`source` 之前統計。
 - `items[].legislators`：委員新聞為 `{ id, name, party }`；首長新聞為 `{ id: 姓名, name, party: 機關＋職稱 }`。指定 `legislator` 時只列該人。媒體不明時 `source` 為 `未知`。
 
 ## GET /api/v1/rankings

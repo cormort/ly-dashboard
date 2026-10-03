@@ -187,6 +187,7 @@ curl -X POST -H "x-sync-token: <隨機字串>" localhost:8787/api/v1/sync?scope=
 | 委員名錄／席次／委員會／聯絡方式 | **SQLite**（`legislators`、`memberships`、`committee_seats`） | 每次同步整批覆寫（只保留最新一版） |
 | 議案、預算案、預算報告、委員會會議與紀錄 | **SQLite** | 每次同步整批覆寫 |
 | 新聞標題與連結（`news`） | **SQLite** | **累積**保存 180 天（`LY_NEWS_*`），過期自動刪 |
+| 原始新聞庫（`articles`：媒體 RSS 每一則＋摘要、Google 新聞結果） | **SQLite** | **累積**保存 180 天；媒體 RSS 每小時輪詢（`LY_NEWS_OUTLET_INTERVAL_MS`，預設 1 小時，0＝停用），每日同步時對全庫重新分派 |
 | 臉書專頁與最新貼文摘要（`social_accounts`） | **SQLite** | 每次同步整批覆寫；人工更正過的帳號會清空貼文摘要 |
 | 「最近異動」面板（`change_log`） | **SQLite** | **預設全部保留**；可設 `LY_CHANGE_LOG_KEEP=500` 只留最近 500 筆 |
 | 「同步紀錄」面板（`sync_runs`） | **SQLite** | **預設全部保留**；可設 `LY_SYNC_RUNS_KEEP=200` 只留最近 200 筆 |
