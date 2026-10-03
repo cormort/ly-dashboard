@@ -23,12 +23,45 @@ import { ELECTIONS } from './fetch-cec-council.mjs';
 const { values: args } = parseArgs({
   options: {
     cache: { type: 'string', default: '.cache/cec-council' },
-    county: { type: 'string', default: '新北市' },
+    county: { type: 'string', multiple: true },
     out: { type: 'string', default: 'server/council-stats.json' },
   },
 });
 
 const KIND_LABEL = { area: '區域', plain: '平地原住民', mountain: '山地原住民' };
+
+/**
+ * 各縣市的屆次編號與席次期望值。
+ *
+ * 屆次編號各縣市不同：新北市 2010 才升格，那一年是第 1 屆；臺北市 2010 是第 11 屆。
+ * 席次期望值是**驗證用的**（fail closed）：來源檔案解析錯了、或某屆的選區被重劃，
+ * 寧可整支 build 停下來，也不要讓錯的席次結構出貨。
+ *
+ * 來源與佐證：
+ * - 新北市：四屆皆 66 席（區域 62、平地原住民 3、山地原住民 1）。
+ * - 臺北市：第 11 屆（2010）62 席、第 12／13 屆（2014／2018）63 席、
+ *   第 14 屆（2022）起 61 席（人口跌破 250 萬，士林北投與松山信義各減 1 席）。
+ */
+export const COUNTY_META = {
+  新北市: {
+    terms: { 2010: 1, 2014: 2, 2018: 3, 2022: 4 },
+    seats: {
+      2010: { area: 62, plain: 3, mountain: 1 },
+      2014: { area: 62, plain: 3, mountain: 1 },
+      2018: { area: 62, plain: 3, mountain: 1 },
+      2022: { area: 62, plain: 3, mountain: 1 },
+    },
+  },
+  臺北市: {
+    terms: { 2010: 11, 2014: 12, 2018: 13, 2022: 14 },
+    seats: {
+      2010: { area: 60, plain: 1, mountain: 1 },
+      2014: { area: 61, plain: 1, mountain: 1 },
+      2018: { area: 61, plain: 1, mountain: 1 },
+      2022: { area: 59, plain: 1, mountain: 1 },
+    },
+  },
+};
 /** 中選會檔名各年不一，欄位也曾調換（見 build()）；一律用前綴找檔 */
 const FILES = ['elbase', 'elcand', 'elctks', 'elpaty', 'elprof'];
 
@@ -114,7 +147,7 @@ const profStats = (r) => ({
  * 注意：`elctks` 的選區合計列帶著候選人的選區別，2010–2018 的原住民選舉區編在 11／12，
  * 2022 因為新北市區域選區由 10 個分成 11 個而變成 12／13 —— 一律以檔內的號碼為準，不寫死。
  */
-function buildKind(data, countyCode, kind, districtNumbers) {
+function buildKind(data, countyCode, countyName, kind, districtNumbers) {
   const { names, cands, totals, prof } = data;
   // 這幾個檔包含所有直轄市，key 一定要帶縣市代碼：只用「選區#號次」會讓不同縣市的同號候選人互相蓋掉
   const mine = (r) => r[0] === countyCode;
@@ -128,10 +161,10 @@ function buildKind(data, countyCode, kind, districtNumbers) {
       .filter((c) => c[2] === no)
       .map((c) => {
         const ticket = byNo.get(`${no}#${Number(c[5])}`);
-        if (!ticket) throw new Error(`新北市 ${kind} 選區 ${no} 號次 ${c[5]}（${c[6]}）查不到得票`);
+        if (!ticket) throw new Error(`${countyName} ${kind} 選舉區 ${no} 號次 ${c[5]}（${c[6]}）查不到得票`);
         // 兩個檔都要說同一個人當選，對不上就是解析錯了，不要猜
         if ((c[14] === '*') !== ticket.elected) {
-          throw new Error(`新北市 ${kind} 選區 ${no} 號次 ${c[5]}（${c[6]}）的當選註記在 elcand 與 elctks 不一致`);
+          throw new Error(`${countyName} ${kind} 選舉區 ${no} 號次 ${c[5]}（${c[6]}）的當選註記在 elcand 與 elctks 不一致`);
         }
         return {
           no: Number(c[5]),
@@ -147,10 +180,10 @@ function buildKind(data, countyCode, kind, districtNumbers) {
       })
       .sort((a, b) => b.votes - a.votes || a.no - b.no);
     const total = cityProf.find((r) => (kind === 'area' ? r[2] === no : Number(r[2]) === 0 || r[2] === no));
-    if (!total) throw new Error(`新北市 ${kind} 選區 ${no} 查不到選舉人數`);
+    if (!total) throw new Error(`${countyName} ${kind} 選舉區 ${no} 查不到選舉人數`);
     const stats = profStats(total);
     const valid = list.reduce((s, c) => s + c.votes, 0);
-    if (valid !== stats.valid) throw new Error(`新北市 ${kind} 選區 ${no} 得票合計 ${valid} 與 elprof 有效票 ${stats.valid} 不符`);
+    if (valid !== stats.valid) throw new Error(`${countyName} ${kind} 選舉區 ${no} 得票合計 ${valid} 與 elprof 有效票 ${stats.valid} 不符`);
     const area = kind !== 'area' ? [] : [...new Set(data.base.filter((r) => mine(r) && r[2] === no && Number(r[3]) !== 0 && Number(r[4]) === 0).map((r) => fixName(r[5])))];
     const winners = list.filter((c) => c.elected);
     const losers = list.filter((c) => !c.elected);
@@ -173,7 +206,7 @@ function buildKind(data, countyCode, kind, districtNumbers) {
   return { kind, label: KIND_LABEL[kind], seats, districts, ...(whole ? profStats(whole) : {}), candidate_count: candidates.length };
 }
 
-function build(yearDir, election, countyName) {
+function build(yearDir, election, countyName, termNo) {
   const kinds = {};
   for (const [kind, dir] of Object.entries(election.dirs)) {
     const data = loadElection(join(yearDir, kind));
@@ -182,7 +215,7 @@ function build(yearDir, election, countyName) {
     data.partyOf = makePartyLookup(data.parties, build.missingParties);
     // 候選人的選區別就是這份檔案的選舉區；不要自己假設 01..N
     const numbers = new Set(data.cands.filter((r) => r[0] === countyCode).map((r) => r[2]));
-    kinds[kind] = buildKind(data, countyCode, kind, numbers);
+    kinds[kind] = buildKind(data, countyCode, countyName, kind, numbers);
   }
   const districts = Object.values(kinds).flatMap((k) => k.districts);
   const all = districts.flatMap((d) => d.list);
@@ -203,9 +236,9 @@ function build(yearDir, election, countyName) {
   const losers = all.filter((c) => !c.elected).sort((a, b) => b.votes - a.votes);
   return {
     year: election.year,
-    term: election.term,
+    term: termNo,
     date: election.date,
-    label: `第${election.term}屆`,
+    label: `第${termNo}屆`,
     seats,
     kinds: Object.values(kinds).map(({ districts: _d, ...rest }) => rest),
     districts,
@@ -296,47 +329,61 @@ function compare(term, prev) {
   };
 }
 
-function main() {
-  const countyName = fixName(args.county);
+/** 一個縣市的完整資料：四屆的結果與跨屆比較 */
+function buildCounty(countyName) {
+  const meta = COUNTY_META[countyName];
+  if (!meta) throw new Error(`沒有「${countyName}」的屆次與席次設定，請先在 COUNTY_META 補上再重跑`);
   const terms = [];
   for (const election of [...ELECTIONS].sort((a, b) => b.year - a.year)) {
-    terms.push(build(join(args.cache, String(election.year)), election, countyName));
-  }
-  if (build.missingParties.size) {
-    throw new Error(`有查不到的政黨代號，請補上對照後再重跑：${[...build.missingParties].join(', ')}`);
+    const termNo = meta.terms[election.year];
+    if (!termNo) throw new Error(`${countyName} 沒有 ${election.year} 的屆次編號`);
+    terms.push(build(join(args.cache, String(election.year)), election, countyName, termNo));
   }
   // 席次是這個功能的骨幹，錯了整個分析都會歪 —— 直接擋下來
-  const expected = { area: 62, plain: 3, mountain: 1 };
   for (const t of terms) {
+    const expected = meta.seats[t.year];
+    if (!expected) throw new Error(`${countyName} 沒有 ${t.year} 的席次期望值`);
     for (const k of t.kinds) {
       if (k.seats !== expected[k.kind]) throw new Error(`${countyName} ${t.year} ${k.label} 席次 ${k.seats}，預期 ${expected[k.kind]}`);
     }
-    if (t.seats !== 66) throw new Error(`${countyName} ${t.year} 總席次 ${t.seats}，預期 66`);
+    const total = Object.values(expected).reduce((a, b) => a + b, 0);
+    if (t.seats !== total) throw new Error(`${countyName} ${t.year} 總席次 ${t.seats}，預期 ${total}`);
   }
-  const duplicates = duplicateNames(terms);
   const withCompare = terms.map((t) => ({ ...t, compare: compare(t, terms.find((p) => p.year === t.year - 4) ?? null) }));
+  return { county: countyName, terms: withCompare, duplicates: duplicateNames(terms) };
+}
+
+function main() {
+  const counties = (args.county?.length ? args.county : Object.keys(COUNTY_META)).map(fixName);
+  const built = counties.map(buildCounty);
+  if (build.missingParties.size) {
+    throw new Error(`有查不到的政黨代號，請補上對照後再重跑：${[...build.missingParties].join(', ')}`);
+  }
   const payload = {
     built_at: new Date().toISOString(),
     source: { label: '中選會選舉資料庫（kiang/db.cec.gov.tw 轉存）', url: 'https://github.com/kiang/db.cec.gov.tw' },
-    note: '直轄市議員選舉；2010 為新北市升格後第 1 屆。區域議員選舉人數不含原住民選舉人（原住民另有選舉區）。',
-    county: countyName,
-    terms: withCompare,
-    warnings: duplicates.map((d) => `同屆同名不同選區：${d}`),
+    note: '直轄市議員選舉。屆次編號各縣市不同（新北市 2010 升格後為第 1 屆，臺北市同一年是第 11 屆）。區域議員選舉人數不含原住民選舉人（原住民另有選舉區）。',
+    counties: built.map(({ county, terms }) => ({ county, terms })),
+    warnings: built.flatMap(({ county, duplicates }) => duplicates.map((d) => `${county} 同屆同名不同選區：${d}`)),
   };
   const tmp = `${args.out}.tmp`;
   writeFileSync(tmp, `${JSON.stringify(payload, null, 1)}\n`);
   renameSync(tmp, args.out);
-  for (const t of withCompare) {
-    console.log(`${t.year} ${t.label}：${t.seats} 席（${t.kinds.map((k) => `${k.label} ${k.seats}`).join('／')}）、候選 ${t.stats.candidates} 人、政黨 ${t.parties.length} 個`);
-  }
-  for (const w of payload.warnings) console.log(`警告：${w}`);
-  // 疑似字形差異只是「請人工確認」的清單（實測三筆都是不同人），所以不進 warnings、也不顯示在頁面上
-  for (const t of withCompare) {
-    if (t.compare?.name_variant_suspects.length) {
-      console.log(`待確認（${t.year} 與 ${t.compare.year} 的姓名只差一個字，可能只是同名類似）：${t.compare.name_variant_suspects.join('、')}`);
+  for (const { county, terms } of built) {
+    for (const t of terms) {
+      console.log(`${county} ${t.year} ${t.label}：${t.seats} 席（${t.kinds.map((k) => `${k.label} ${k.seats}`).join('／')}）、候選 ${t.stats.candidates} 人、政黨 ${t.parties.length} 個`);
     }
   }
-  console.log(`寫入 ${args.out}（${countyName}，${withCompare.length} 屆）`);
+  for (const w of payload.warnings) console.log(`警告：${w}`);
+  // 疑似字形差異只是「請人工確認」的清單（實測都是不同人），所以不進 warnings、也不顯示在頁面上
+  for (const { county, terms } of built) {
+    for (const t of terms) {
+      if (t.compare?.name_variant_suspects.length) {
+        console.log(`待確認（${county} ${t.year} 與 ${t.compare.year} 的姓名只差一個字，可能只是不同人）：${t.compare.name_variant_suspects.join('、')}`);
+      }
+    }
+  }
+  console.log(`寫入 ${args.out}（${built.map((b) => b.county).join('、')}）`);
 }
 
 main();

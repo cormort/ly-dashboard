@@ -844,6 +844,8 @@ export interface CouncilResponse {
   source: { label: string; url: string };
   note: string;
   county: string;
+  /** 這份資料有建置的縣市（給縣市切換用） */
+  counties: string[];
   terms: CouncilTerm[];
   warnings: string[];
 }

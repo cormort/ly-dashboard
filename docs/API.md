@@ -297,9 +297,12 @@ Query 參數（全部可選）：
 ## GET /api/v1/council?county=新北市
 
 議員分頁用。直轄市議員選舉結果（`server/council-stats.json`，由 `scripts/fetch-cec-council.mjs` + `scripts/build-council-stats.mjs` 產生，四年一次、需手動重跑），資料來源為中選會選舉資料庫。
-`county` 省略時用資料檔裡的縣市；**目前只建置新北市**，其他縣市回 `404 county_not_found`（不是空殼，前端才分得出「沒這個縣市」與「這個縣市沒有議員」）。臺／台視為同一個字。
+`county` 省略時用資料檔裡的第一個縣市；**目前建置新北市與臺北市**，其他縣市回 `404 county_not_found`
+（不是空殼，前端才分得出「沒這個縣市」與「這個縣市沒有議員」），訊息會列出實際有建置的縣市。臺／台視為同一個字。
 
-回應：`{ meta, source: { label, url }, note, county, terms[], warnings[] }`，`terms` 由新到舊（新北市目前 2022／2018／2014／2010）。
+回應：`{ meta, source: { label, url }, note, county, counties[], terms[], warnings[] }`。
+`counties` 是有建置的縣市清單（前端拿它做縣市切換），`terms` 由新到舊（兩市目前都是 2022／2018／2014／2010）。
+**屆次編號各縣市不同**：新北市 2010 是第 1 屆、臺北市同一年是第 11 屆，`term`／`label` 直接取自資料檔。
 
 每個 term：`{ year, term, date, label, seats, kinds[], districts[], parties[], valid, stats, compare }`
 - `kinds[]`：三種選舉種類的合計，`{ kind: 'area'|'plain'|'mountain', label, seats, electorate, population, valid, invalid, ballots, turnout, candidate_count }`。

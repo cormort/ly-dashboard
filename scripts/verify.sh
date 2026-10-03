@@ -103,9 +103,11 @@ for p in "bills?limit=3" "topics" "activity?limit=3" "news?limit=3" "changes?lim
   curl -s "http://127.0.0.1:${PORT}/api/v1/$p" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d.get("total", d.get("count")), "筆")'
 done
 printf "  /api/v1/council%s → " ""
-curl -s "http://127.0.0.1:${PORT}/api/v1/council" | python3 -c 'import sys,json;d=json.load(sys.stdin);t=d["terms"];print(d["county"], len(t), "屆｜", t[0]["year"], t[0]["seats"], "席｜", sum(p["seats"] for p in t[0]["parties"]), "席（政黨加總）")'
+curl -s "http://127.0.0.1:${PORT}/api/v1/council" | python3 -c 'import sys,json;d=json.load(sys.stdin);t=d["terms"];print("／".join(d["counties"]), "｜", d["county"], len(t), "屆｜", t[0]["year"], t[0]["seats"], "席｜政黨加總", sum(p["seats"] for p in t[0]["parties"]), "席")'
 printf "  /api/v1/council?county=臺北市 → "
-curl -s -o /dev/null -w "HTTP %{http_code}\n" "http://127.0.0.1:${PORT}/api/v1/council?county=%E8%87%BA%E5%8C%97%E5%B8%82"
+curl -s "http://127.0.0.1:${PORT}/api/v1/council?county=%E8%87%BA%E5%8C%97%E5%B8%82" | python3 -c 'import sys,json;d=json.load(sys.stdin);t=d["terms"][0];print(d["county"], t["label"], t["seats"], "席")'
+printf "  /api/v1/council?county=高雄市 → "
+curl -s -o /dev/null -w "HTTP %{http_code}（預期 404）\n" "http://127.0.0.1:${PORT}/api/v1/council?county=%E9%AB%98%E9%9B%84%E5%B8%82"
 printf "  POST /api/v1/sync?scope=roster → "
 curl -s -o /tmp/verify-sync.json -w "HTTP %{http_code} " -X POST "http://127.0.0.1:${PORT}/api/v1/sync?scope=roster"
 python3 -c 'import json;d=json.load(open("/tmp/verify-sync.json"));print(d["message"],"| scope:",d["scope"])'

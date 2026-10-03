@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 import { openDb, applyDataset, applyBills, applySocial, applyCommitteeMeets, upsertNews, saveSnapshot, recordSyncRun, getMeta, migrate } from '../server/db.mjs';
 import { buildDataset, normalizeBills, normalizeSocial, newsName } from '../server/normalize.mjs';
-import { billsCsv, compareLegislators, csvRow, makeTagger, listCommitteeActivity, listCosponsors, listFunds, listRegions, getHealth, getMetaPayload, listActivity, listBills, listTopics, listNews, listNewsArticles, listChanges, listCommittees, listLegislators, listRankings, listSyncRuns, listCounties, listDemographics, getTownMap, monthsSince, listLegislatorVotes, listSplitTicket, listRecalls, listCouncil } from '../server/queries.mjs';
+import { billsCsv, compareLegislators, csvRow, makeTagger, listCommitteeActivity, listCosponsors, listFunds, listRegions, getHealth, getMetaPayload, listActivity, listBills, listTopics, listNews, listNewsArticles, listChanges, listCommittees, listLegislators, listRankings, listSyncRuns, listCounties, listDemographics, getTownMap, monthsSince, listLegislatorVotes, listSplitTicket, listRecalls, listCouncil, councilCounties } from '../server/queries.mjs';
 import { regionOf } from '../server/normalize.mjs';
 import { authorizeSync } from '../server/index.mjs';
 import { runNewsIngest } from '../server/ingest.mjs';
@@ -782,7 +782,8 @@ test('靜態資料（人口／選舉／圖資）的資料截止與筆數要看�
   assert.deepEqual(Object.keys(s).sort(), ['council', 'counties', 'demographics', 'legislator_votes', 'population_trend', 'recalls', 'town_map']);
   // 議員選舉四年一次，「超過 3 個月沒更新」對它沒有意義（當選日隔天就超過了）→ 只監控讀不到／是空的
   assert.equal(s.council.stale_check, false);
-  assert.equal(s.council.count, 4, '四屆議員選舉結果');
+  assert.equal(s.council.count, 8, '兩個直轄市 × 四屆議員選舉結果');
+  assert.equal(s.council.as_of, '2022-11-26', '資料截止取最新一屆的投票日');
   assert.equal(s.counties.stale_check, true);
   assert.equal(s.counties.count, 22);
   assert.equal(s.demographics.count, 368);
@@ -1070,43 +1071,62 @@ test('罷免票數：35 案都有官方票數，且數字自身一致', () => {
 
 /* ---------------- 議員（直轄市議員選舉，scripts/build-council-stats.mjs） ---------------- */
 
-test('議員資料：四屆都是 66 席，當選人數與政黨席次加總一致', () => {
+test('議員資料：各縣市每屆的席次結構與政黨加總一致', () => {
   const { db } = seeded();
-  const res = listCouncil(db, {});
-  assert.equal(res.county, '新北市');
-  assert.deepEqual(
-    res.terms.map((t) => t.year),
-    [2022, 2018, 2014, 2010],
-    '由新到舊',
-  );
-  for (const t of res.terms) {
-    assert.equal(t.seats, 66, `${t.year} 新北市議員固定 66 席`);
+  assert.deepEqual(listCouncil(db, {}).counties, ['新北市', '臺北市'], '兩個直轄市都建置了');
+  // 席次結構是這個功能的骨幹：來源檔解析錯、或選區重劃沒跟上，這裡就會紅
+  const EXPECTED = {
+    新北市: {
+      2010: [62, 3, 1],
+      2014: [62, 3, 1],
+      2018: [62, 3, 1],
+      2022: [62, 3, 1],
+    },
+    臺北市: {
+      2010: [60, 1, 1],
+      2014: [61, 1, 1],
+      2018: [61, 1, 1],
+      2022: [59, 1, 1],
+    },
+  };
+  for (const county of ['新北市', '臺北市']) {
+    const res = listCouncil(db, { county });
+    assert.equal(res.county, county);
     assert.deepEqual(
-      t.kinds.map((k) => [k.kind, k.seats]),
-      [
-        ['area', 62],
-        ['plain', 3],
-        ['mountain', 1],
-      ],
-      `${t.year} 的席次結構`,
+      res.terms.map((t) => t.year),
+      [2022, 2018, 2014, 2010],
+      '由新到舊',
     );
-    assert.equal(
-      t.districts.reduce((s, d) => s + d.seats, 0),
-      66,
-    );
-    assert.equal(
-      t.parties.reduce((s, p) => s + p.seats, 0),
-      66,
-      '政黨席次加總要等於總席次',
-    );
-    // 每一列當選人都是當選註記為真，且每個選區的當選人數等於應選名額
-    for (const d of t.districts) {
-      assert.equal(d.list.filter((c) => c.elected).length, d.seats, `${t.year} ${d.name}`);
-      assert.equal(d.list.reduce((s, c) => s + c.votes, 0), d.valid, `${t.year} ${d.name} 得票合計等於有效票`);
-      // 依得票由高到低排序；當選的一定排在落選前面
-      const sorted = [...d.list].sort((a, b) => b.votes - a.votes);
-      assert.deepEqual(d.list.map((c) => c.name), sorted.map((c) => c.name));
-      assert.ok(d.list.findIndex((c) => !c.elected) === -1 || d.list.findIndex((c) => !c.elected) === d.seats);
+    for (const t of res.terms) {
+      const [area, plain, mountain] = EXPECTED[county][t.year];
+      assert.equal(t.seats, area + plain + mountain, `${county} ${t.year} 總席次`);
+      assert.deepEqual(
+        t.kinds.map((k) => [k.kind, k.seats]),
+        [
+          ['area', area],
+          ['plain', plain],
+          ['mountain', mountain],
+        ],
+        `${county} ${t.year} 的席次結構`,
+      );
+      assert.equal(
+        t.districts.reduce((s, d) => s + d.seats, 0),
+        t.seats,
+      );
+      assert.equal(
+        t.parties.reduce((s, p) => s + p.seats, 0),
+        t.seats,
+        '政黨席次加總要等於總席次',
+      );
+      // 每個選舉區的當選人數等於應選名額，且得票合計等於有效票
+      for (const d of t.districts) {
+        assert.equal(d.list.filter((c) => c.elected).length, d.seats, `${county} ${t.year} ${d.name}`);
+        assert.equal(d.list.reduce((s, c) => s + c.votes, 0), d.valid, `${county} ${t.year} ${d.name} 得票合計等於有效票`);
+        // 依得票由高到低排序；當選的一定排在落選前面
+        const sorted = [...d.list].sort((a, b) => b.votes - a.votes);
+        assert.deepEqual(d.list.map((c) => c.name), sorted.map((c) => c.name));
+        assert.ok(d.list.findIndex((c) => !c.elected) === -1 || d.list.findIndex((c) => !c.elected) === d.seats);
+      }
     }
   }
 });
@@ -1153,11 +1173,41 @@ test('議員資料：連任／新任採中選會現任欄位，戴瑋姗的字�
   assert.equal(term.compare.not_running.length, 12);
 });
 
-test('議員資料：沒指定縣市時用資料檔的縣市，沒有建置的縣市回 null', () => {
+test('議員資料：臺北市的席次、屆次與政黨對得上中選會公佈的結果', () => {
   const { db } = seeded();
-  assert.equal(listCouncil(db, {}).county, '新北市', '沒指定時用資料檔的縣市');
+  const res = listCouncil(db, { county: '臺北市' });
+  // 臺北市的屆次編號和新北市不一樣：2010 是第 11 屆（新北市那一年是第 1 屆）
+  assert.deepEqual(
+    res.terms.map((t) => `${t.year} ${t.label}`),
+    ['2022 第14屆', '2018 第13屆', '2014 第12屆', '2010 第11屆'],
+  );
+  const seats = (year) => {
+    const term = res.terms.find((t) => t.year === year);
+    return Object.fromEntries(term.parties.filter((p) => p.seats > 0).map((p) => [p.party, p.seats]));
+  };
+  // 對照維基百科「臺北市議員列表」的政黨席次變化（各屆最初）
+  assert.deepEqual(seats(2022), { 中國國民黨: 30, 民主進步黨: 21, 無黨籍: 4, 台灣民眾黨: 4, 社會民主黨: 1, 新黨: 1 });
+  assert.deepEqual(seats(2018), { 中國國民黨: 29, 民主進步黨: 19, 無黨籍: 7, 時代力量: 3, 新黨: 2, 親民黨: 2, 社會民主黨: 1 });
+  assert.deepEqual(seats(2014), { 中國國民黨: 28, 民主進步黨: 27, 無黨籍: 3, 新黨: 2, 親民黨: 2, 台灣團結聯盟: 1 });
+  assert.deepEqual(seats(2010), { 中國國民黨: 31, 民主進步黨: 23, 新黨: 3, 無黨籍: 2, 親民黨: 2, 台灣團結聯盟: 1 });
+
+  const latest = res.terms[0];
+  assert.equal(latest.districts.filter((d) => d.kind === 'area').length, 6, '臺北市 6 個區域選舉區 + 2 個原住民選舉區');
+  const d1 = latest.districts.find((d) => d.no === '01');
+  assert.equal(d1.seats, 12, '士林、北投 12 席');
+  assert.deepEqual([...d1.area].sort(), ['北投區', '士林區'].sort());
+  // 臺北市的兩個原住民選舉區都只有 1 席（新北市的平地原住民有 3 席）
+  assert.equal(latest.districts.filter((d) => d.kind === 'mountain')[0].seats, 1);
+  assert.equal(latest.districts.filter((d) => d.kind === 'plain')[0].seats, 1);
+});
+
+test('議員資料：縣市名支援臺／台，沒有建置的縣市回 null', () => {
+  const { db } = seeded();
+  assert.equal(listCouncil(db, {}).county, '新北市', '沒指定時用資料檔裡的第一個縣市');
   assert.equal(listCouncil(db, { county: '新北市' }).county, '新北市');
+  assert.equal(listCouncil(db, { county: '台北市' }).county, '臺北市', '台／臺視為同一個字');
+  assert.equal(listCouncil(db, { county: '臺北市' }).county, '臺北市');
   // 回 null 而不是空殼：API 層才分得出「沒建置這個縣市」（404）與「有建置但沒有議員」（空陣列）
-  assert.equal(listCouncil(db, { county: '臺北市' }), null);
-  assert.equal(listCouncil(db, { county: '台北市' }), null, '台／臺視為同一個字，但臺北市還沒建置');
+  assert.equal(listCouncil(db, { county: '高雄市' }), null);
+  assert.deepEqual(councilCounties(), ['新北市', '臺北市'], '404 的訊息要列出真的有哪些縣市');
 });

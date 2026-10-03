@@ -4,6 +4,7 @@ import type { CouncilDistrict, CouncilResponse, CouncilTerm } from '../api/types
 import { EmptyState, ErrorState, LoadingState } from '../components/DataStates';
 import { PartyTag } from '../components/PartyTag';
 import { useApi } from '../hooks/useApi';
+import { useQueryState } from '../hooks/useQueryState';
 import { partyStyle } from '../lib/parties';
 
 export interface CouncilPageProps {
@@ -260,7 +261,10 @@ function DistrictRow({ d }: { d: CouncilDistrict }) {
 /* ---------- 頁面 ---------- */
 
 export function CouncilPage({ refreshToken }: CouncilPageProps) {
-  const res = useApi<CouncilResponse>(buildUrl('/council'), { refreshToken });
+  // 縣市放在網址上（沿用全站的篩選條件序列化），所以切換縣市可以分享、也可以按上一頁
+  const query = useQueryState();
+  const county = query.filters.county;
+  const res = useApi<CouncilResponse>(buildUrl('/council', { county }), { refreshToken });
   const [year, setYear] = useState<number | null>(null);
 
   const terms = res.data?.terms ?? [];
@@ -274,24 +278,45 @@ export function CouncilPage({ refreshToken }: CouncilPageProps) {
   const kindText = term.kinds.map((k) => `${k.label} ${k.seats}`).join('／');
   const top = term.stats.top;
   const lowest = term.stats.lowest_winner;
+  // 選舉區會隨人口重劃（新北市 2022 由 10 個分為 11 個、臺北市 2022 由 63 席減為 61 席），
+  // 所以跨屆比較用席次與政黨，並把「選舉區有變」直接講出來
+  const areaCounts = terms.map((t) => ({ year: t.year, n: t.districts.filter((d) => d.kind === 'area').length, seats: t.seats }));
+  const oldest = areaCounts.at(-1);
+  const newest = areaCounts[0];
+  const redrawn = Boolean(oldest && newest && oldest.n !== newest.n);
+  // 席次或選舉區有變才多寫這句；兩者都沒變（例如新北市四屆都是 66 席、11 個區域選舉區）就不囉嗦
+  const shape =
+    oldest && newest && (redrawn || oldest.seats !== newest.seats)
+      ? ` —— 席次與選舉區會隨人口變動重劃（${res.data.county}：${oldest.year} 年 ${oldest.seats} 席${redrawn ? `、區域選舉區 ${oldest.n} 個` : ''} → ${newest.year} 年 ${newest.seats} 席${redrawn ? `、${newest.n} 個` : ''}）`
+      : '';
 
   return (
     <div className="council">
       <div className="page-head">
         <h1>{res.data.county}議員</h1>
         <p className="page-lead">
-          直轄市議員選舉結果。第 4 屆（2022）起新北市區域選舉區由 10 個分為 11 個，原住民選舉區的編號也往後移，
-          因此跨屆比較以「席次」與「政黨」為準，不直接比選區編號。
+          直轄市議員選舉結果。跨屆比較以「席次」與「政黨」為準，不直接比選舉區編號{shape}。
         </p>
       </div>
 
-      <div className="sectionhead">
-        <div className="segmented" role="group" aria-label="選擇屆次">
-          {terms.map((t) => (
-            <button key={t.year} type="button" aria-pressed={t.year === term.year} onClick={() => setYear(t.year)}>
-              {t.label}（{t.year}）
-            </button>
-          ))}
+      <div className="council-controls">
+        <div className="council-switches">
+          {res.data.counties.length > 1 ? (
+            <div className="segmented" role="group" aria-label="選擇縣市">
+              {res.data.counties.map((name) => (
+                <button key={name} type="button" aria-pressed={name === res.data?.county} onClick={() => query.update({ county: name })}>
+                  {name}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          <div className="segmented" role="group" aria-label="選擇屆次">
+            {terms.map((t) => (
+              <button key={t.year} type="button" aria-pressed={t.year === term.year} onClick={() => setYear(t.year)}>
+                {t.label}（{t.year}）
+              </button>
+            ))}
+          </div>
         </div>
         <span className="muted">
           投票日 {term.date}・資料來源{' '}

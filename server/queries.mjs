@@ -967,14 +967,34 @@ function fixCountyName(county) {
 /**
  * 議員分頁：直轄市議員選舉結果（四年一次，不在每日同步流程內）。
  *
- * `county` 省略時用資料檔裡的縣市；目前只建了新北市，其他縣市回 null（由 API 層轉成 404），
+ * `county` 省略時用資料檔裡的第一個縣市；沒有建置的縣市回 null（由 API 層轉成 404），
  * 不要回一個空殼讓前端以為「這個縣市沒有議員」。
  */
 export function listCouncil(db, { county } = {}) {
   const data = loadCouncilStats();
-  const wanted = fixCountyName(county) ?? data.county;
-  if (wanted !== data.county) return null;
-  return { meta: envelope(db), source: data.source, note: data.note, county: data.county, terms: data.terms, warnings: data.warnings ?? [] };
+  const available = data.counties.map((c) => c.county);
+  const wanted = fixCountyName(county) ?? available[0];
+  const found = data.counties.find((c) => c.county === wanted);
+  if (!found) return null;
+  return {
+    meta: envelope(db),
+    source: data.source,
+    note: data.note,
+    county: found.county,
+    // 前端要拿它做縣市切換，所以連「有哪些縣市」一起回
+    counties: available,
+    terms: found.terms,
+    warnings: data.warnings ?? [],
+  };
+}
+
+/** 議員資料有建置哪些縣市（給 404 的訊息用，不必先解析成功） */
+export function councilCounties() {
+  try {
+    return loadCouncilStats().counties.map((c) => c.county);
+  } catch {
+    return [];
+  }
 }
 
 /**
@@ -996,7 +1016,15 @@ const staticDatasetDefs = () => [
   { key: 'legislator_votes', label: '立委歷次得票', load: loadLegislatorVotes, count: (d) => d.races?.length ?? 0, asOf: (d) => (d.years?.length ? String(d.years.at(-1)) : null) },
   // 議員選舉四年一次，用「超過 3 個月沒更新」來判斷它過期沒有意義（當選日隔天就超過了）；
   // 只監控「讀不到／是空的」，資料截止日期照樣回報給畫面看。
-  { key: 'council', label: '議員選舉結果', load: loadCouncilStats, count: (d) => d.terms?.length ?? 0, asOf: (d) => d.terms?.[0]?.date ?? null, stale: false },
+  {
+    key: 'council',
+    label: '議員選舉結果',
+    load: loadCouncilStats,
+    // 筆數＝縣市 × 屆次（目前 2 個直轄市 × 4 屆）；資料截止取最新一屆的投票日
+    count: (d) => d.counties?.reduce((sum, c) => sum + c.terms.length, 0) ?? 0,
+    asOf: (d) => d.counties?.[0]?.terms?.[0]?.date ?? null,
+    stale: false,
+  },
 ];
 
 /**

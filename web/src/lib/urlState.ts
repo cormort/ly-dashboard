@@ -18,6 +18,8 @@ export interface FilterState {
   convener: boolean;
   /** 只看本瀏覽器追蹤中的委員（前端過濾） */
   tracked: boolean;
+  /** 議員頁的縣市（其他頁面不使用） */
+  county: string | null;
 }
 
 export const EMPTY_FILTERS: FilterState = {
@@ -29,6 +31,7 @@ export const EMPTY_FILTERS: FilterState = {
   committee: null,
   convener: false,
   tracked: false,
+  county: null,
 };
 
 function first(params: URLSearchParams, key: string): string | null {
@@ -51,6 +54,7 @@ export function parseFilters(search: string): FilterState {
     committee: first(params, 'committee'),
     convener: first(params, 'convener') === '1',
     tracked: first(params, 'tracked') === '1',
+    county: first(params, 'county'),
   };
 }
 
@@ -65,6 +69,7 @@ export function serializeFilters(state: FilterState): string {
   if (state.committee) params.set('committee', state.committee);
   if (state.convener) params.set('convener', '1');
   if (state.tracked) params.set('tracked', '1');
+  if (state.county) params.set('county', state.county);
   const qs = params.toString();
   return qs ? `?${qs}` : '';
 }
@@ -78,7 +83,8 @@ export function filtersEqual(a: FilterState, b: FilterState): boolean {
     a.region === b.region &&
     a.committee === b.committee &&
     a.convener === b.convener &&
-    a.tracked === b.tracked
+    a.tracked === b.tracked &&
+    a.county === b.county
   );
 }
 

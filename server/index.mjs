@@ -175,9 +175,13 @@ export function createServer(db) {
           case '/api/v1/counties':
             return sendJson(res, 200, listCounties(db));
           case '/api/v1/council': {
-            // 目前只建了新北市；其他縣市回 404 而不是空殼，前端才分得出「沒這個縣市」與「沒資料」
+            // 沒有建置的縣市回 404 而不是空殼，前端才分得出「沒這個縣市」與「沒資料」；
+            // 訊息要列出真的有哪些，否則使用者只知道錯、不知道能查什麼
             const council = listCouncil(db, { county: q.county });
-            if (!council) return sendError(res, 404, 'county_not_found', `沒有「${q.county ?? ''}」的議員選舉資料（目前建置：新北市）`);
+            if (!council) {
+              const available = councilCounties();
+              return sendError(res, 404, 'county_not_found', `沒有「${q.county ?? ''}」的議員選舉資料（目前建置：${available.join('、') || '無'}）`);
+            }
             return sendJson(res, 200, council);
           }
           case '/api/v1/town-map':

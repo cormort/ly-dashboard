@@ -1237,6 +1237,10 @@ a.stat-tile:hover { border-color: #98a2b3; box-shadow: var(--card-base-hover); t
 /* 議員分頁（/council）：靜態的中選會選舉結果 */
 .council { display: grid; gap: var(--space-4); }
 .council .stat-row { margin: 0; }
+/* 縣市與屆次是兩個獨立的切換器，中間要留白，不然看起來像同一組；
+   資料來源那一行放到切換器下面自成一行，不要跟切換器搶寬度 */
+.council-controls { display: grid; gap: var(--space-2); }
+.council-switches { display: flex; align-items: center; gap: var(--space-4); flex-wrap: wrap; }
 .council-columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: var(--space-4); margin-top: var(--space-4); }
 .council-columns h3 { margin: 0 0 var(--space-2); font-size: var(--fs-md); }
 .council-person { display: inline-flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
