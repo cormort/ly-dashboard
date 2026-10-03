@@ -294,6 +294,25 @@ Query 參數（全部可選）：
 
 每縣市另有 `trends`：`{ president（2012–2024）, mayor（2009 縣市長與 2010 五都合為一輪記 2010、`label` 為「2009／10」，至 2022）, party_list（不分區政黨票 2012–2024） }`，各為依年份排序的 `[{ year, label, valid, turnout, votes: { 政黨: 票數 } }]`（無黨籍候選人合併為「無黨籍」）；`trend_types` 為各類型名稱。
 
+## GET /api/v1/council?county=新北市
+
+議員分頁用。直轄市議員選舉結果（`server/council-stats.json`，由 `scripts/fetch-cec-council.mjs` + `scripts/build-council-stats.mjs` 產生，四年一次、需手動重跑），資料來源為中選會選舉資料庫。
+`county` 省略時用資料檔裡的縣市；**目前只建置新北市**，其他縣市回 `404 county_not_found`（不是空殼，前端才分得出「沒這個縣市」與「這個縣市沒有議員」）。臺／台視為同一個字。
+
+回應：`{ meta, source: { label, url }, note, county, terms[], warnings[] }`，`terms` 由新到舊（新北市目前 2022／2018／2014／2010）。
+
+每個 term：`{ year, term, date, label, seats, kinds[], districts[], parties[], valid, stats, compare }`
+- `kinds[]`：三種選舉種類的合計，`{ kind: 'area'|'plain'|'mountain', label, seats, electorate, population, valid, invalid, ballots, turnout, candidate_count }`。
+  **區域議員的選舉人數不含原住民選舉人**（原住民另有選舉區），不要相加當全市選舉人數。
+- `districts[]`：`{ no, kind, name, area[], electorate, population, valid, invalid, ballots, turnout, seats, candidate_count, list[], last_winner, first_loser }`。
+  `list[]` 依得票由高到低：`{ no（號次）, name, party, gender, age, education, elected, incumbent, votes, pct }`；
+  `incumbent` 是中選會的「現任」欄位，**2010 那一屆整欄都是 N**，所以只當參考（見 `compare.incumbent_source`）。
+- `parties[]`：`{ party, seats, votes, candidates, pct, seat_pct }`，`seat_pct - pct` 就是「超額代表」。
+- `stats`：`{ candidates, top, lowest_winner, highest_loser, area_electorate, area_turnout }`。
+- `compare`（沒有上一屆時為 `null`）：`{ year, label, parties[]（含 prev_seats 與 delta）, re_elected, freshmen, defeated_incumbents[], not_running[], incumbent_source: 'cec'|'name_match', incumbent_mismatch[], name_variant_suspects[] }`。
+  連任／新任優先採中選會「現任」欄位；2010 那一屆沒有這個欄位，只能以上一屆當選名單比對。
+  `not_running` 是上一屆當選、這一屆未列名候選人者（含轉任、辭職、逝世）。
+
 ## GET /api/v1/legislator-votes
 
 立委得票追蹤：在職委員 2012、2016、2020、2024 歷次參選區域／平地原住民／山地原住民立委的得票，含 2015 與 2019 起的補選（`server/legislator-votes.json`，與縣市資料同一支腳本產生）。`id` 參數查單一委員（含已離職）。

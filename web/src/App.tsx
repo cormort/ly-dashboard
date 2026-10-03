@@ -17,6 +17,7 @@ import { BillsPage } from './pages/BillsPage';
 import { BudgetPage } from './pages/BudgetPage';
 import { CommitteesPage } from './pages/CommitteesPage';
 import { CountiesPage } from './pages/CountiesPage';
+import { CouncilPage } from './pages/CouncilPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { FundsPage } from './pages/FundsPage';
 
@@ -162,6 +163,7 @@ export default function App() {
         ) : null}
         {route === 'counties' ? <CountiesPage refreshToken={refreshToken} onOpenId={setPendingId} /> : null}
         {route === 'my' ? <MyAgencyPage refreshToken={refreshToken} onOpenId={setPendingId} onNavigate={navigate} /> : null}
+        {route === 'council' ? <CouncilPage refreshToken={refreshToken} /> : null}
         {route === 'committees' ? <CommitteesPage refreshToken={refreshToken} onOpenId={setPendingId} /> : null}
         {route === 'news' ? <NewsPage refreshToken={refreshToken} onOpenId={setPendingId} /> : null}
         {route === 'officials' ? <NewsPage scope="officials" refreshToken={refreshToken} onOpenId={setPendingId} /> : null}

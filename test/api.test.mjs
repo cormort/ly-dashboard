@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 import { openDb, applyDataset, applyBills, applySocial, applyCommitteeMeets, upsertNews, saveSnapshot, recordSyncRun, getMeta, migrate } from '../server/db.mjs';
 import { buildDataset, normalizeBills, normalizeSocial, newsName } from '../server/normalize.mjs';
-import { billsCsv, compareLegislators, csvRow, makeTagger, listCommitteeActivity, listCosponsors, listFunds, listRegions, getHealth, getMetaPayload, listActivity, listBills, listTopics, listNews, listNewsArticles, listChanges, listCommittees, listLegislators, listRankings, listSyncRuns, listCounties, listDemographics, getTownMap, monthsSince, listLegislatorVotes, listSplitTicket, listRecalls } from '../server/queries.mjs';
+import { billsCsv, compareLegislators, csvRow, makeTagger, listCommitteeActivity, listCosponsors, listFunds, listRegions, getHealth, getMetaPayload, listActivity, listBills, listTopics, listNews, listNewsArticles, listChanges, listCommittees, listLegislators, listRankings, listSyncRuns, listCounties, listDemographics, getTownMap, monthsSince, listLegislatorVotes, listSplitTicket, listRecalls, listCouncil } from '../server/queries.mjs';
 import { regionOf } from '../server/normalize.mjs';
 import { authorizeSync } from '../server/index.mjs';
 import { runNewsIngest } from '../server/ingest.mjs';
@@ -779,7 +779,11 @@ test('靜態資料（人口／選舉／圖資）的資料截止與筆數要看�
   // 只有「資料截止」；以前 /health 完全看不到它們，畫面上的數字放多久都不會有訊號。
   const s = health.static_data;
   assert.ok(s, '/health 應該要有 static_data');
-  assert.deepEqual(Object.keys(s).sort(), ['counties', 'demographics', 'legislator_votes', 'population_trend', 'recalls', 'town_map']);
+  assert.deepEqual(Object.keys(s).sort(), ['council', 'counties', 'demographics', 'legislator_votes', 'population_trend', 'recalls', 'town_map']);
+  // 議員選舉四年一次，「超過 3 個月沒更新」對它沒有意義（當選日隔天就超過了）→ 只監控讀不到／是空的
+  assert.equal(s.council.stale_check, false);
+  assert.equal(s.council.count, 4, '四屆議員選舉結果');
+  assert.equal(s.counties.stale_check, true);
   assert.equal(s.counties.count, 22);
   assert.equal(s.demographics.count, 368);
   assert.equal(s.town_map.count, 368);
@@ -1062,4 +1066,98 @@ test('罷免票數：35 案都有官方票數，且數字自身一致', () => {
   assert.equal(byName['陳柏惟'].disagree, 73433);
   assert.equal(byName['陳柏惟'].invalid, 1235);
   assert.match(byName['陳柏惟'].read_from ?? '', /人工判讀/, '唯一一筆非機器解析的必須標示');
+});
+
+/* ---------------- 議員（直轄市議員選舉，scripts/build-council-stats.mjs） ---------------- */
+
+test('議員資料：四屆都是 66 席，當選人數與政黨席次加總一致', () => {
+  const { db } = seeded();
+  const res = listCouncil(db, {});
+  assert.equal(res.county, '新北市');
+  assert.deepEqual(
+    res.terms.map((t) => t.year),
+    [2022, 2018, 2014, 2010],
+    '由新到舊',
+  );
+  for (const t of res.terms) {
+    assert.equal(t.seats, 66, `${t.year} 新北市議員固定 66 席`);
+    assert.deepEqual(
+      t.kinds.map((k) => [k.kind, k.seats]),
+      [
+        ['area', 62],
+        ['plain', 3],
+        ['mountain', 1],
+      ],
+      `${t.year} 的席次結構`,
+    );
+    assert.equal(
+      t.districts.reduce((s, d) => s + d.seats, 0),
+      66,
+    );
+    assert.equal(
+      t.parties.reduce((s, p) => s + p.seats, 0),
+      66,
+      '政黨席次加總要等於總席次',
+    );
+    // 每一列當選人都是當選註記為真，且每個選區的當選人數等於應選名額
+    for (const d of t.districts) {
+      assert.equal(d.list.filter((c) => c.elected).length, d.seats, `${t.year} ${d.name}`);
+      assert.equal(d.list.reduce((s, c) => s + c.votes, 0), d.valid, `${t.year} ${d.name} 得票合計等於有效票`);
+      // 依得票由高到低排序；當選的一定排在落選前面
+      const sorted = [...d.list].sort((a, b) => b.votes - a.votes);
+      assert.deepEqual(d.list.map((c) => c.name), sorted.map((c) => c.name));
+      assert.ok(d.list.findIndex((c) => !c.elected) === -1 || d.list.findIndex((c) => !c.elected) === d.seats);
+    }
+  }
+});
+
+test('議員資料：2022 新北市的席次與得票對得上中選會公佈的結果', () => {
+  const { db } = seeded();
+  const term = listCouncil(db, {}).terms[0];
+  const seats = Object.fromEntries(term.parties.filter((p) => p.seats > 0).map((p) => [p.party, p.seats]));
+  // 對照維基百科「新北市議會第四屆議員列表」的政黨席次表
+  assert.deepEqual(seats, { 中國國民黨: 32, 民主進步黨: 28, 無黨籍: 3, 無黨團結聯盟: 2, 台灣民眾黨: 1 });
+
+  const d1 = term.districts.find((d) => d.no === '01');
+  assert.equal(d1.seats, 4);
+  assert.equal(d1.electorate, 215770);
+  assert.deepEqual(d1.area, ['淡水區', '三芝區', '石門區', '八里區']);
+  assert.equal(d1.list[0].name, '陳偉杰', '最高票');
+  assert.equal(d1.list[0].votes, 28272);
+  assert.equal(d1.list.at(-1).name, '陳靜儀', '最低票');
+  assert.equal(d1.first_loser.name, '彭莉惠');
+
+  // 2022 的區域選舉區由 10 個分為 11 個，原住民選舉區的號碼也往後移
+  assert.equal(term.districts.filter((d) => d.kind === 'area').length, 11);
+  assert.deepEqual(
+    term.districts.filter((d) => d.kind !== 'area').map((d) => d.no),
+    ['12', '13'],
+  );
+  const prev = listCouncil(db, {}).terms[1];
+  assert.equal(prev.districts.filter((d) => d.kind === 'area').length, 10);
+  assert.deepEqual(
+    prev.districts.filter((d) => d.kind !== 'area').map((d) => d.no),
+    ['11', '12'],
+  );
+});
+
+test('議員資料：連任／新任採中選會現任欄位，戴瑋姗的字形差異不會被誤判為未參選', () => {
+  const { db } = seeded();
+  const term = listCouncil(db, {}).terms[0];
+  assert.equal(term.compare.year, 2018);
+  assert.equal(term.compare.incumbent_source, 'cec');
+  assert.equal(term.compare.re_elected + term.compare.freshmen, 66, '連任＋新任＝全部當選人');
+  assert.equal(term.compare.re_elected, 49);
+  // 2018 寫「戴瑋姍」、2022 寫「戴瑋姗」：她在 2022 是當選人，不可以同時出現在「上一屆當選但未參選」
+  assert.ok(term.compare.not_running.every((p) => p.name !== '戴瑋姍' && p.name !== '戴瑋姗'));
+  assert.equal(term.compare.not_running.length, 12);
+});
+
+test('議員資料：沒指定縣市時用資料檔的縣市，沒有建置的縣市回 null', () => {
+  const { db } = seeded();
+  assert.equal(listCouncil(db, {}).county, '新北市', '沒指定時用資料檔的縣市');
+  assert.equal(listCouncil(db, { county: '新北市' }).county, '新北市');
+  // 回 null 而不是空殼：API 層才分得出「沒建置這個縣市」（404）與「有建置但沒有議員」（空陣列）
+  assert.equal(listCouncil(db, { county: '臺北市' }), null);
+  assert.equal(listCouncil(db, { county: '台北市' }), null, '台／臺視為同一個字，但臺北市還沒建置');
 });

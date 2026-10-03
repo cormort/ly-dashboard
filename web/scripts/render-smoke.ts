@@ -43,6 +43,7 @@ import { CommitteesPage } from '../src/pages/CommitteesPage';
 import { routeOf, type Route } from '../src/hooks/useRoute';
 import { BillStageBar } from '../src/components/BillStage';
 import { CountiesPage } from '../src/pages/CountiesPage';
+import { CouncilPage } from '../src/pages/CouncilPage';
 import { NewsPage } from '../src/pages/NewsPage';
 import { ChoroplethMap } from '../src/components/ChoroplethMap';
 import { bbox, countyViewBoxFor } from '../src/components/TownMap';
@@ -916,6 +917,8 @@ expectAll(
   ['讀取中'],
 );
 check('/counties 對應縣市頁', routeOf('/counties') === 'counties');
+expectAll('議員頁：loading 態有讀取提示（不先畫任何議員資料）', render(createElement(CouncilPage, { refreshToken: 0 })), ['載入議員選舉資料']);
+check('/council 對應議員頁', routeOf('/council') === 'council');
 check('/news 對應新聞頁', routeOf('/news') === 'news');
 check('/officials 對應機關首長新聞頁', routeOf('/officials') === 'officials');
 

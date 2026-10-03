@@ -57,6 +57,8 @@ cron/啟動排程 (24h)                      server/ingest.mjs
 | `server/ingest.mjs` | 管線：FETCH → VALIDATE → NORMALIZE → PERSIST → sync_runs |
 | `server/queries.mjs` | API 視圖（本會期名錄、委員會、異動、健康狀態） |
 | `server/index.mjs` | HTTP API + 靜態檔 + SPA fallback + 每日排程 |
+| `scripts/fetch-cec-council.mjs` | 抓中選會「直轄市議員選舉」原始檔（60 個 CSV）到 `.cache/cec-council`，不做整庫 clone |
+| `scripts/build-council-stats.mjs` | 解析上述原始檔 → `server/council-stats.json`（議員選舉結果，四年一次，手動重跑） |
 | `scripts/fetch-cec-recalls.mjs` | 抓中選會官方罷免清單 → `server/recalls.json`（35 案） |
 | `scripts/fetch-recall-results.mjs` | 解析 6 份官方文件的同意／不同意票數（PDF／ODS，5 種格式）→ 補進 `server/recalls.json`（需要 `pdftotext` 與 `unzip`；`--check` 只比對不寫檔） |
 | `docs/API.md` | 凍結的 API 契約（前端依此實作） |
@@ -64,7 +66,7 @@ cron/啟動排程 (24h)                      server/ingest.mjs
 | `web/src/api/` | 型別化 API client（唯一出口，前端不碰政府端點） |
 | `web/src/lib/urlState.ts` | 篩選條件的 URL 序列化（可分享、可上一頁） |
 | `web/src/hooks/useApi.ts` | `loading / ready / empty / error` 四態資源 hook |
-| `web/src/pages/` | `DashboardPage`（總覽，預設首頁 `/`）、`HomePage`（最近動態 `/activity`）、`RankingsPage`、`LegislatorsPage`（議場席次圖＋名錄）、`BillsPage`（法案查詢）、`BudgetPage`（預算審議）、`FundsPage`（基金 `/funds`、機關 `/agencies`、財團法人 `/foundations`、行政法人 `/administrative`、主計總處 `/dgbas`）、`ComparePage`（委員比較）、`CommitteesPage`（委員會 `/committees`：最新會議附件與影片、機關回覆、公報會議紀錄） |
+| `web/src/pages/` | `DashboardPage`（總覽，預設首頁 `/`）、`HomePage`（最近動態 `/activity`）、`RankingsPage`、`LegislatorsPage`（議場席次圖＋名錄）、`BillsPage`（法案查詢）、`BudgetPage`（預算審議）、`FundsPage`（基金 `/funds`、機關 `/agencies`、財團法人 `/foundations`、行政法人 `/administrative`、主計總處 `/dgbas`）、`ComparePage`（委員比較）、`CommitteesPage`（委員會 `/committees`：最新會議附件與影片、機關回覆、公報會議紀錄）、`CouncilPage`（議員 `/council`：直轄市議員選舉結果） |
 | `web/src/components/` | Header（導覽＋同步狀態）、Hemicycle（議場席次圖）、LegislatorGrid／LegislatorTable、LegislatorDetail、CommitteeChart（委員會黨籍組成）、SyncStatusBanner、FilterBar、ChangesPanel |
 | `web/src/lib/parties.ts` | 黨籍顏色與順序：介面中「顏色只代表黨籍」的唯一定義處 |
 | `web/scripts/smoke.ts`、`render-smoke.ts` | 前端煙霧測試（26 + 35 項），**只存在於 dev，不進 bundle** |
@@ -335,6 +337,46 @@ curl -s localhost:8787/api/v1/health | jq .retention                   # 目前�
 已完成：「縣市」分頁（依 tw_statistic_map 重做：互動地圖、雙指標對比、時間差異、排行榜、原始資料）、
 得票趨勢與轉折（總統、不分區 2012 起，縣市長 2009／10 起）、立委得票追蹤（含補選）、委員側欄歷次得票、
 排行榜險勝／得票流失兩榜、個人票對照政黨票、委員名冊與比較頁的選舉欄位（得票率、領先、比政黨票，可排序、含 CSV）、總覽各縣市卡片的人口與勝選者、分裂投票分析（各立委選區同黨區域立委／總統／政黨票得票率與差距，2012–2024）、人口結構與得票關聯（368 鄉鎮市區：年齡結構對 2020／2024 總統、政黨票得票率的散佈圖、相關係數與迴歸）、人口趨勢（2016 起每月縣市人口、每年年齡結構、超高齡年份、鄉鎮增減）、鄉鎮地圖（368 鄉鎮市區面量圖：人口、密度、增減、年齡結構、各黨得票率，可放大到單一縣市）。資料由 `scripts/build-county-stats.mjs` 產生（用法見檔頭）。
+
+## 議員分頁（直轄市議員選舉，2026-10-03）
+
+「議員」分頁（`/council`，`GET /api/v1/council`）目前建置**新北市**，涵蓋 2010（第 1 屆）、2014（第 2 屆）、
+2018（第 3 屆）、2022（第 4 屆）四屆直轄市議員選舉。資料來源是**中選會選舉資料庫**（`kiang/db.cec.gov.tw` 轉存），
+也就是縣市分頁本來就在用的同一份資料。
+
+第一次建立資料（會下載 60 個 CSV、約 40 MB 到 `.cache/cec-council`，已 gitignore）：
+
+```bash
+node scripts/fetch-cec-council.mjs          # 抓 2010／2014／2018／2022 的區域、平地原住民、山地原住民議員
+node scripts/build-council-stats.mjs         # → server/council-stats.json
+node scripts/build-council-stats.mjs --county 臺北市   # 換縣市（需先確認該縣市的席次期望值）
+```
+
+頁面內容：各屆席次結構（新北市固定 66 席：區域 62、平地原住民 3、山地原住民 1）、
+政黨席次與得票率（含「超額代表＝席次率−得票率」）、與上一屆的政黨席次消長、
+連任／新任／現任落選／上屆當選但本屆未列名候選人、13 個選舉區的完整得票表
+（應選名額、選舉人數、投票率、當選與落選、最低當選票、落選頭）。
+
+`elprof.csv` 的欄位是這個功能的骨幹，四屆都一致：`6` 有效票、`7` 無效票、`8` 投票數、
+`9` 選舉人數、`10` 人口數、`18` 投票率。**區域議員的選舉人數不含原住民選舉人**（原住民另有選舉區），
+所以畫面上不把三個選舉種類的選舉人數加起來當「全市選舉人數」。
+
+### 議員資料的已知限制
+- **只涵蓋直轄市**：縣市議員在 `db.cec.gov.tw` 的另一組目錄（`縣市區域議員`／`縣市平原議員`／`縣市山原議員`），
+  尚未納入；`build-council-stats.mjs` 的席次期望值目前寫死新北市的 62／3／1，換縣市要先補上該縣市的期望值。
+- **2010 那一屆的「現任」欄位整欄都是 N**，所以 build 腳本對 2014 起改用中選會的現任欄位，
+  2010 只能退回「上一屆當選名單」比對（`compare.incumbent_source` 會標示用了哪一種）。
+  兩者不一致時一律採用中選會欄位，並把不一致的人數記在 `compare.incumbent_mismatch`
+  （實測 2022 有 1 人：遞補或換選區造成）。
+- **姓名有字形差異**：2018 的檔案寫「戴瑋姍」、2022 寫「戴瑋姗」，字串相等比對會把連任者誤判成
+  「這一屆沒參選」。build 腳本用一張只放**已實際觀察到**差異的 `NAME_ALIASES` 對照表處理，
+  並對「與上屆當選者只差一個字」的姓名發出 `name_variant_suspects` 清單（只印在 build 輸出，供人工確認；
+  實測三筆都是不同人）。
+- **2022 起新北市的區域選舉區由 10 個分為 11 個**（第 10 選舉區拆為瑞芳等 4 區 1 席與汐止等 3 區 4 席），
+  原住民選舉區的編號也由 11／12 變成 12／13；跨屆比較以席次與政黨為準，不直接比選舉區編號。
+- **這裡只有選舉結果，沒有議員的議事資料**。立法院有開放 API（議案、表決、委員會），
+  直轄市議會沒有對應的開放資料，所以「議員」分頁做的是選舉分析（誰選上、票從哪裡來、政黨消長），
+  不是立委頁那種質詢／提案追蹤。
 
 ### 尚未做的功能
 - **鄉鎮層級的得票趨勢與轉折**：鄉鎮地圖已有（2020／2024 得票），尚未納入 2012／2016 與縣市長的鄉鎮得票，轉折分析仍在縣市層級。

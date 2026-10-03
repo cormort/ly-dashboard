@@ -7,7 +7,7 @@ import { CONFIG } from './config.mjs';
 import { openDb, getMeta } from './db.mjs';
 import {
   billsCsv, budgetCsv, compareLegislators, listBudget, listCounties, listLegislatorVotes, listSplitTicket, listDemographics, listPopulationTrend, getTownMap, listRegions, listFunds, getAgencyHome, listCommitteeActivity, listBudgetMeetings, listBudgetReports, getHealth, getMetaPayload, listActivity, listBills, listCosponsors, listNews, listNewsArticles, listTopics, listChanges,
-  listCommittees, listLegislators, listRankings, listSyncRuns, listRecalls,
+  listCommittees, listLegislators, listRankings, listSyncRuns, listRecalls, listCouncil, councilCounties,
 } from './queries.mjs';
 import { runAll, runIngest } from './ingest.mjs';
 
@@ -174,6 +174,12 @@ export function createServer(db) {
             return sendJson(res, 200, listRegions(db, { per: q.per }));
           case '/api/v1/counties':
             return sendJson(res, 200, listCounties(db));
+          case '/api/v1/council': {
+            // 目前只建了新北市；其他縣市回 404 而不是空殼，前端才分得出「沒這個縣市」與「沒資料」
+            const council = listCouncil(db, { county: q.county });
+            if (!council) return sendError(res, 404, 'county_not_found', `沒有「${q.county ?? ''}」的議員選舉資料（目前建置：新北市）`);
+            return sendJson(res, 200, council);
+          }
           case '/api/v1/town-map':
             return sendJson(res, 200, getTownMap(db));
           case '/api/v1/population-trend':

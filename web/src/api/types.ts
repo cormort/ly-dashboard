@@ -739,6 +739,115 @@ export interface CountiesResponse {
   items: CountyItem[];
 }
 
+/* ---------- /council ---------- */
+
+export type CouncilKind = 'area' | 'plain' | 'mountain';
+
+export interface CouncilCandidate {
+  /** 選舉公報上的號次 */
+  no: number;
+  name: string;
+  party: string;
+  gender: '男' | '女';
+  age: number | null;
+  education: string | null;
+  elected: boolean;
+  /** 中選會「現任」欄位；2010 那一屆檔案整欄都是 N，因此只當參考 */
+  incumbent: boolean | null;
+  votes: number;
+  /** 得票率（%，佔該選區有效票） */
+  pct: number;
+}
+
+export interface CouncilDistrict {
+  no: string;
+  kind: CouncilKind;
+  name: string;
+  /** 區域選舉區包含的行政區；原住民選舉區為空陣列 */
+  area: string[];
+  electorate: number;
+  population: number;
+  valid: number;
+  invalid: number;
+  ballots: number;
+  /** 投票率（%） */
+  turnout: number;
+  seats: number;
+  candidate_count: number;
+  /** 依得票數由高到低 */
+  list: CouncilCandidate[];
+  last_winner: { name: string; party: string; votes: number; pct: number } | null;
+  first_loser: { name: string; party: string; votes: number; pct: number; margin: number | null } | null;
+}
+
+export interface CouncilKindSummary {
+  kind: CouncilKind;
+  label: string;
+  seats: number;
+  electorate: number;
+  population: number;
+  valid: number;
+  invalid: number;
+  ballots: number;
+  turnout: number;
+  candidate_count: number;
+}
+
+export interface CouncilParty {
+  party: string;
+  seats: number;
+  votes: number;
+  candidates: number;
+  pct: number;
+  seat_pct: number;
+}
+
+export interface CouncilCompare {
+  year: number;
+  label: string;
+  parties: { party: string; seats: number; prev_seats: number; delta: number; votes: number; pct: number }[];
+  re_elected: number;
+  freshmen: number;
+  defeated_incumbents: { name: string; party: string; district: string; votes: number; pct: number }[];
+  not_running: { name: string; party: string; district: string }[];
+  /** 'cec'＝用中選會的「現任」欄位；'name_match'＝該屆沒有這個欄位，只能用上屆當選名單比對 */
+  incumbent_source: 'cec' | 'name_match';
+  /** 中選會現任欄位與「上屆當選名單」不一致的人數（遞補、補選、換選區都會造成） */
+  incumbent_mismatch: string[];
+  /** 上屆當選者與本屆候選人姓名只差一個字（可能只是不同人，供人工確認） */
+  name_variant_suspects: string[];
+}
+
+export interface CouncilTerm {
+  year: number;
+  term: number;
+  date: string;
+  label: string;
+  seats: number;
+  kinds: CouncilKindSummary[];
+  districts: CouncilDistrict[];
+  parties: CouncilParty[];
+  valid: number;
+  stats: {
+    candidates: number;
+    top: (CouncilCandidate & { district: string }) | null;
+    lowest_winner: CouncilCandidate | null;
+    highest_loser: CouncilCandidate | null;
+    area_electorate: number | null;
+    area_turnout: number | null;
+  };
+  compare: CouncilCompare | null;
+}
+
+export interface CouncilResponse {
+  meta: Meta;
+  source: { label: string; url: string };
+  note: string;
+  county: string;
+  terms: CouncilTerm[];
+  warnings: string[];
+}
+
 /* ---------- /legislator-votes ---------- */
 
 export interface LegislatorRace {

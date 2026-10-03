@@ -338,7 +338,7 @@ export function getHealth(db, { now = Date.now(), staticLoaders = undefined } = 
     if (info.error) notices.push(`靜態資料「${info.label}」讀取失敗：${info.error}`);
     else if (!info.count) notices.push(`靜態資料「${info.label}」是空的（0 筆）`);
     const age = monthsSince(info.as_of, now);
-    if (age !== null && age > CONFIG.staticStaleMonths) {
+    if (info.stale_check !== false && age !== null && age > CONFIG.staticStaleMonths) {
       notices.push(`人口資料「${info.label}」的資料截止為 ${info.as_of}（已 ${age} 個月未更新），請重跑 scripts/build-county-stats.mjs`);
     }
   }
@@ -954,6 +954,29 @@ export function listRegions(db, { per = 3 } = {}) {
 let countyStats = null;
 const loadCountyStats = () => (countyStats ??= JSON.parse(readFileSync(new URL('./county-stats.json', import.meta.url), 'utf8')));
 
+/** 議員分頁：直轄市議員選舉結果（scripts/build-council-stats.mjs 產生） */
+let councilStats = null;
+const loadCouncilStats = () => (councilStats ??= JSON.parse(readFileSync(new URL('./council-stats.json', import.meta.url), 'utf8')));
+
+/** 網址上的縣市名：去空白、臺／台統一；空字串視為沒指定 */
+function fixCountyName(county) {
+  const name = String(county ?? '').trim().replace(/^台/, '臺');
+  return name || null;
+}
+
+/**
+ * 議員分頁：直轄市議員選舉結果（四年一次，不在每日同步流程內）。
+ *
+ * `county` 省略時用資料檔裡的縣市；目前只建了新北市，其他縣市回 null（由 API 層轉成 404），
+ * 不要回一個空殼讓前端以為「這個縣市沒有議員」。
+ */
+export function listCouncil(db, { county } = {}) {
+  const data = loadCouncilStats();
+  const wanted = fixCountyName(county) ?? data.county;
+  if (wanted !== data.county) return null;
+  return { meta: envelope(db), source: data.source, note: data.note, county: data.county, terms: data.terms, warnings: data.warnings ?? [] };
+}
+
 /**
  * 靜態資料的「資料截止」與筆數，給 `/health` 用。
  *
@@ -971,6 +994,9 @@ const staticDatasetDefs = () => [
   { key: 'town_map', label: '鄉鎮市區界圖資', load: loadTownMap, count: (d) => d.towns?.length ?? 0, asOf: (d) => d.built_at ?? null },
   { key: 'recalls', label: '立委罷免案', load: loadRecalls, count: (d) => d.recalls?.length ?? 0, asOf: (d) => (d.fetched_at ? String(d.fetched_at).slice(0, 7) : null) },
   { key: 'legislator_votes', label: '立委歷次得票', load: loadLegislatorVotes, count: (d) => d.races?.length ?? 0, asOf: (d) => (d.years?.length ? String(d.years.at(-1)) : null) },
+  // 議員選舉四年一次，用「超過 3 個月沒更新」來判斷它過期沒有意義（當選日隔天就超過了）；
+  // 只監控「讀不到／是空的」，資料截止日期照樣回報給畫面看。
+  { key: 'council', label: '議員選舉結果', load: loadCouncilStats, count: (d) => d.terms?.length ?? 0, asOf: (d) => d.terms?.[0]?.date ?? null, stale: false },
 ];
 
 /**
@@ -992,11 +1018,11 @@ export function staticDataStatus(overrides = {}) {
       const data = (overrides[ds.key] ?? ds.load)();
       const count = ds.count(data);
       // count 0 不設 error：那是「空的」而不是「壞掉的」，兩者在 warnings 要分開講
-      out[ds.key] = { as_of: ds.asOf(data), count, label: ds.label };
+      out[ds.key] = { as_of: ds.asOf(data), count, label: ds.label, stale_check: ds.stale !== false };
     } catch (error) {
       // 不要在 /health 的回應裡帶出伺服器絕對路徑（ENOENT 的訊息就含路徑）
       const reason = error?.code === 'ENOENT' ? '檔案不存在' : String(error?.message || error).slice(0, 200);
-      out[ds.key] = { as_of: null, count: 0, label: ds.label, error: reason };
+      out[ds.key] = { as_of: null, count: 0, label: ds.label, error: reason, stale_check: ds.stale !== false };
     }
   }
   return out;

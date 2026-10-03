@@ -1,9 +1,9 @@
-import { useState, type CSSProperties } from 'react';
+import { useState } from 'react';
 import { buildUrl } from '../api/client';
 import type { LegislatorVotesResponse, PartyShare } from '../api/types';
 import { useApi } from '../hooks/useApi';
-import { partyStyle } from '../lib/parties';
 import { ErrorState, LoadingState } from './DataStates';
+import { PartyTag } from './PartyTag';
 
 const num = (n: number) => n.toLocaleString('zh-TW');
 const signed = (n: number) => `${n > 0 ? '+' : ''}${num(n)}`;
@@ -79,15 +79,6 @@ function PersonalVsParty({ items, year, onOpenId }: { items: LegislatorVotesResp
         })}
       </ol>
     </section>
-  );
-}
-
-function PartyTag({ party }: { party: string }) {
-  const style = partyStyle(party);
-  return (
-    <span className="party-tag" style={{ '--party': style.color } as CSSProperties}>
-      {style.short}
-    </span>
   );
 }
 

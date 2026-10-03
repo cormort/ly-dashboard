@@ -1234,3 +1234,20 @@ a.stat-tile:hover { border-color: #98a2b3; box-shadow: var(--card-base-hover); t
 .my-head .agency-picker-row { margin-left: auto; }
 .my-head .agency-picker label { display: flex; align-items: center; gap: var(--space-2); white-space: nowrap; }
 .my-head .agency-picker input { flex: 1; min-width: 15em; }
+/* 議員分頁（/council）：靜態的中選會選舉結果 */
+.council { display: grid; gap: var(--space-4); }
+.council .stat-row { margin: 0; }
+.council-columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: var(--space-4); margin-top: var(--space-4); }
+.council-columns h3 { margin: 0 0 var(--space-2); font-size: var(--fs-md); }
+.council-person { display: inline-flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.council-person small { font-variant-numeric: tabular-nums; }
+.council-districts { display: grid; gap: var(--space-2); }
+.council-district { border: 1px solid var(--card-line); border-radius: var(--radius-lg); background: var(--surface); padding: 10px var(--space-4); }
+.council-district > summary { cursor: pointer; display: grid; gap: 4px; }
+.council-district > summary::marker { color: var(--muted); }
+.council-district[open] > summary { margin-bottom: var(--space-3); }
+.council-seats { color: var(--muted); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
+.council-winners { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: var(--fs-sm); }
+.council-winner { display: inline-flex; align-items: baseline; gap: 5px; }
+.roster tr.council-elected { background: var(--accent-soft); }
+.council .stat-value-long { font-size: var(--fs-lg); line-height: 1.35; overflow-wrap: anywhere; }
