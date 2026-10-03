@@ -6,7 +6,7 @@ import { openDb, applyDataset, applyBills, applySocial, applyCommitteeRecords, a
 import { buildDataset, normalizeBills, normalizeCommitteeRecords, normalizeMeetings, normalizeSocial, newsName, rocDate, DataValidationError } from '../server/normalize.mjs';
 import { CONFIG } from '../server/config.mjs';
 import { entityFeedUrl, guardShrink, runIngest, runBillsIngest, runRecordsIngest, runBudgetIngest, runBudgetReportsIngest, runMeetingsIngest, budgetPageUrl, runNewsIngest, runOutletNews, runOutletPoll, retagOutletArticles, runNewsBackfill, backfillTargets, rangeFeedUrl, BACKFILL_CAP, runNewsFeedImport, runSocialIngest, runAll } from '../server/ingest.mjs';
-import { entityNewsTerms, listFunds, getHealth, listBills, listBudget, listBudgetMeetings, listBudgetReports, budgetState, listChanges, listCounties, listLegislatorVotes, listRankings, compareLegislators, listRegions, listSplitTicket, listDemographics, listPopulationTrend, getTownMap, listLegislators, listNews, listNewsArticles, listSyncRuns } from '../server/queries.mjs';
+import { entityNewsTerms, listFunds, getHealth, listBills, listBudget, listBudgetMeetings, listBudgetReports, budgetState, listChanges, listCounties, listLegislatorVotes, listRankings, compareLegislators, listRegions, listSplitTicket, listDemographics, listPopulationTrend, getTownMap, listLegislators, listNews, listNewsArticles, newsCsv, listSyncRuns } from '../server/queries.mjs';
 import { FetchError } from '../server/fetch-ly.mjs';
 import { feedDate, feedFileUrl, mergeFeedFile, parseFeedFile } from '../server/news-feed.mjs';
 import { syncOnce, pollOutletsOnce } from '../server/index.mjs';
@@ -1539,4 +1539,26 @@ test('匯入收集檔：設了 LY_GITHUB_TOKEN 就帶 Authorization（私人 rep
   } finally {
     Object.assign(CONFIG.news, { feedUrl, feedToken });
   }
+});
+
+test('新聞 CSV：全部符合的都匯出（不分頁）、臺灣時間、類別與提到的人、不含摘要', () => {
+  const db = seeded();
+  const ting = listLegislators(db, { q: '丁學忠' }).items[0].id;
+  const items = Array.from({ length: 35 }, (_, i) => ({ url: `https://cna.example/${i}`, title: `颱風第${i}報`, summary: '機密摘要', source: '中央社', published_at: `2026-09-${String(10 + (i % 18)).padStart(2, '0')}T16:30:00.000Z` }));
+  items.push({ url: 'https://cna.example/t', title: '丁學忠質詢, "國防"預算', summary: '', source: '中央社', published_at: '2026-09-29T16:30:00.000Z' });
+  upsertArticles(db, items, { origin: 'outlet', fetchedAt: 'x' });
+  upsertNews(db, ting, [items.at(-1)], { fetchedAt: 'x' });
+
+  const all = listNewsArticles(db, { scope: 'all', all: true });
+  assert.equal(all.items.length, 36, 'all：不受每頁 100 筆上限影響');
+  const rows = newsCsv(all.items, 'all').split('\r\n');
+  assert.equal(rows[0], '發布時間,媒體,標題,類別,提到的委員／首長,連結');
+  assert.equal(rows.length, 37);
+  const name = listLegislators(db, { q: '丁學忠' }).items[0].name;
+  assert.equal(rows[1], `2026-09-30 00:30,中央社,"丁學忠質詢, ""國防""預算",委員,${name},https://cna.example/t`, '臺灣時間、逗號與引號要跳脫');
+  assert.ok(rows.slice(2).every((r) => r.includes(',其他,')), '沒提到人的類別是「其他」');
+  assert.ok(!rows.join('').includes('機密摘要'), '摘要不匯出');
+  const filtered = listNewsArticles(db, { scope: 'all', kind: 'legislator', all: true }).items;
+  assert.equal(newsCsv(filtered, 'all').split('\r\n').length, 2, '照篩選條件匯出');
+  assert.equal(newsCsv(listNewsArticles(db, { all: true }).items, 'legislators').split('\r\n')[1].split(',').at(-3), '委員', '委員新聞頁的類別就是委員');
 });

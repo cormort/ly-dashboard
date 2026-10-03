@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ExternalLink, X } from 'lucide-react';
+import { Download, ExternalLink, X } from 'lucide-react';
 import { buildUrl } from '../api/client';
 import type { LegislatorsResponse, NewsArticlesResponse, NewsKind } from '../api/types';
 import { EmptyState, ErrorState, LoadingState } from '../components/DataStates';
@@ -144,12 +144,21 @@ export function NewsPage({ refreshToken, onOpenId, scope = 'legislators' }: News
       <section className="panel" aria-label="新聞列表" id="news-results">
         <div className="sectionhead">
           <h2>報導</h2>
-          {data ? (
-            <span className="muted">
-              {data.total.toLocaleString()} 則
-              {everything && data.first_date && data.last_date ? `・資料涵蓋 ${data.first_date.slice(0, 10)} 至 ${data.last_date.slice(0, 10)}` : ''}
-            </span>
-          ) : null}
+          <div>
+            {data ? (
+              <span className="muted">
+                {data.total.toLocaleString()} 則
+                {everything && data.first_date && data.last_date ? `・資料涵蓋 ${data.first_date.slice(0, 10)} 至 ${data.last_date.slice(0, 10)}` : ''}
+              </span>
+            ) : null}
+            {/* 下載的是目前篩選條件下「全部符合」的新聞，不只這一頁 */}
+            {data && data.total > 0 ? (
+              <a className="button" href={buildUrl('/news/articles', { ...filters, scope, format: 'csv' })} download={`news-${scope}.csv`}>
+                <Download aria-hidden="true" />
+                下載 CSV
+              </a>
+            ) : null}
+          </div>
         </div>
         {res.phase === 'loading' && !data ? <LoadingState label="讀取中…" /> : null}
         {res.phase === 'error' ? <ErrorState title="無法取得新聞（/api/v1/news/articles）" error={res.error} onRetry={res.reload} /> : null}

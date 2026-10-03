@@ -1332,9 +1332,10 @@ export function listNews(db, { legislator = null, limit = 10 } = {}) {
  * 媒體統計在套用媒體條件「之前」算（同 listBills），選了某家後其他家的數字不會消失。
  * `recent_7d`：符合條件者中，現在起算近 7 天的則數（總覽統計卡用；同步停了就會往下掉，與頁首「資料截至」一起看）。
  */
-export function listNewsArticles(db, { q = '', source = '', legislator = '', scope = 'legislators', kind = '', limit = 30, offset = 0 } = {}) {
-  const resolvedLimit = Math.max(1, Math.min(Number(limit) || 30, 100));
-  const resolvedOffset = Math.max(0, Math.trunc(Number(offset) || 0));
+export function listNewsArticles(db, { q = '', source = '', legislator = '', scope = 'legislators', kind = '', limit = 30, offset = 0, all: exportAll = false } = {}) {
+  // all：CSV 匯出用，回傳全部符合的（不分頁）
+  const resolvedLimit = exportAll ? Number.MAX_SAFE_INTEGER : Math.max(1, Math.min(Number(limit) || 30, 100));
+  const resolvedOffset = exportAll ? 0 : Math.max(0, Math.trunc(Number(offset) || 0));
   const keyword = String(q).trim();
   if (scope === 'all') {
     // 未知的類別當成「全部」，不要回空清單讓人以為沒有新聞
@@ -1975,6 +1976,22 @@ export function compareLegislators(db, { ids = '' } = {}) {
 
 /** RFC 4180：含逗號、引號、換行的欄位加引號，引號重複 */
 export const csvRow = (cells) => cells.map((c) => (/[",\n\r]/.test(String(c ?? '')) ? `"${String(c).replace(/"/g, '""')}"` : String(c ?? ''))).join(',');
+
+const NEWS_KIND_LABEL = { legislator: '委員', official: '首長', entity: '機關／基金', dgbas: '主計' };
+const SCOPE_KIND_LABEL = { legislators: '委員', officials: '首長' };
+
+/**
+ * 新聞 CSV（新聞頁「下載 CSV」）：listNewsArticles 的 items，欄位與畫面一致。
+ * 發布時間轉成臺灣時間的「YYYY-MM-DD HH:mm」（Excel 直接看得懂）；摘要只拿來搜尋，不匯出。
+ * 類別：全部新聞用每則的 kinds（沒有＝其他），委員／首長新聞頁就是該頁的類別。
+ */
+export function newsCsv(items, scope = 'legislators') {
+  const header = ['發布時間', '媒體', '標題', '類別', '提到的委員／首長', '連結'];
+  const taipei = (iso) => new Date(Date.parse(iso) + 8 * 3_600_000).toISOString().slice(0, 16).replace('T', ' ');
+  const kindOf = (a) => (scope === 'all' ? (a.kinds?.length ? a.kinds.map((k) => NEWS_KIND_LABEL[k]).join('、') : '其他') : SCOPE_KIND_LABEL[scope] ?? '');
+  const lines = items.map((a) => csvRow([taipei(a.published_at), a.source, a.title, kindOf(a), a.legislators.map((p) => p.name).join('、'), a.url]));
+  return [csvRow(header), ...lines].join('\r\n');
+}
 
 export function billsCsv(items) {
   const header = ['議案編號', '屆', '會期', '議案名稱', '狀態', '最新進度日期', '涉及法律', '主提案人', '連署人', '連結'];

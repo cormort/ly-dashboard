@@ -6,7 +6,7 @@ import { pathToFileURL } from 'node:url';
 import { CONFIG } from './config.mjs';
 import { openDb, getMeta } from './db.mjs';
 import {
-  billsCsv, budgetCsv, compareLegislators, listBudget, listCounties, listLegislatorVotes, listSplitTicket, listDemographics, listPopulationTrend, getTownMap, listRegions, listFunds, getAgencyHome, listCommitteeActivity, listBudgetMeetings, listBudgetReports, getHealth, getMetaPayload, listActivity, listBills, listCosponsors, listNews, listNewsArticles, listTopics, listChanges,
+  billsCsv, budgetCsv, newsCsv, compareLegislators, listBudget, listCounties, listLegislatorVotes, listSplitTicket, listDemographics, listPopulationTrend, getTownMap, listRegions, listFunds, getAgencyHome, listCommitteeActivity, listBudgetMeetings, listBudgetReports, getHealth, getMetaPayload, listActivity, listBills, listCosponsors, listNews, listNewsArticles, listTopics, listChanges,
   listCommittees, listLegislators, listRankings, listSyncRuns, listRecalls, listCouncil, councilCounties,
 } from './queries.mjs';
 import { runAll, runIngest, runOutletPoll } from './ingest.mjs';
@@ -210,8 +210,14 @@ export function createServer(db) {
             return sendJson(res, 200, listActivity(db, { limit: q.limit, ids: q.ids || null }));
           case '/api/v1/news':
             return sendJson(res, 200, listNews(db, { legislator: q.legislator || null, limit: q.limit }));
-          case '/api/v1/news/articles':
-            return sendJson(res, 200, listNewsArticles(db, { q: q.q, source: q.source, legislator: q.legislator, scope: q.scope, kind: q.kind, limit: q.limit, offset: q.offset }));
+          case '/api/v1/news/articles': {
+            const filters = { q: q.q, source: q.source, legislator: q.legislator, scope: q.scope, kind: q.kind };
+            if (q.format === 'csv') {
+              const scope = ['all', 'officials'].includes(q.scope) ? q.scope : 'legislators';
+              return sendCsv(res, `news-${scope}.csv`, newsCsv(listNewsArticles(db, { ...filters, all: true }).items, scope));
+            }
+            return sendJson(res, 200, listNewsArticles(db, { ...filters, limit: q.limit, offset: q.offset }));
+          }
           case '/api/v1/recalls':
             return sendJson(res, 200, listRecalls(db));
           case '/api/v1/rankings':

@@ -426,7 +426,7 @@ Query 參數（全部可選）：
 - 登記名含族語名時只用漢名搜尋（`伍麗華Saidhai‧Tahovecahe` → `伍麗華`），異體字換成媒體常用字（`寳` → `寶`）。
 - 單一委員抓取失敗不影響其他人；超過半數失敗才把該次同步標為 `failed`，既有新聞保留。
 
-## GET /api/v1/news/articles?scope=&legislator=&q=&source=&kind=&limit=30&offset=0
+## GET /api/v1/news/articles?scope=&legislator=&q=&source=&kind=&limit=30&offset=0[&format=csv]
 
 新聞頁（委員新聞 `/news`、機關首長新聞 `/officials`）與總覽用。同一篇報導（網址相同）合併成一列，附上標題提到的人；依發布時間新→舊。
 
@@ -463,6 +463,8 @@ Query 參數（全部可選）：
   - 另回 `first_date`／`last_date`（資料庫裡最早／最新一則，不受篩選影響）、`kind_counts`（`{ all, other, legislator, official, entity, dgbas }`，套用 `q` 之後、`kind` 與 `source` 之前），
     `meta.news_outlets_fetched_at`（媒體 RSS 最近一次抓到的時間，每小時輪詢）。`items[].kinds` 是這則的類別，`items[].legislators` 每人多一個 `kind: 'legislator'|'official'`。
   - `sources` 在 `kind` 之後、`source` 之前統計。
+- `format=csv`（新聞頁「下載 CSV」）：同樣的篩選條件，回傳**全部符合**的新聞（不分頁），檔名 `news-<scope>.csv`，含 BOM（Excel 直接開不會亂碼）。
+  欄位：發布時間（臺灣時間 `YYYY-MM-DD HH:mm`）、媒體、標題、類別（委員／首長／機關／基金／主計／其他）、提到的委員／首長、連結；摘要不匯出。
 - `items[].legislators`：委員新聞為 `{ id, name, party }`；首長新聞為 `{ id: 姓名, name, party: 機關＋職稱 }`。指定 `legislator` 時只列該人。媒體不明時 `source` 為 `未知`。
 
 ## GET /api/v1/rankings
