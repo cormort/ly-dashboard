@@ -67,7 +67,7 @@ export const CONFIG = {
     // 2026-10-03 實測 398 則寫入委員新聞 0 筆，故改用 6638 要聞（496 則 → 210 筆）。
     // GitHub Actions 收集的媒體 RSS（news-data 分支，見 .github/workflows/collect-news.yml）；空字串＝不匯入
     feedUrl: process.env.LY_NEWS_FEED_URL ?? 'https://raw.githubusercontent.com/cormort/ly-dashboard/news-data',
-    // repo 是私人的：讀收集檔要帶 GitHub token（只需要這個 repo 的 Contents 唯讀權限）。沒設時私人 repo 一律回 404
+    // repo 若是私人的，讀收集檔要帶 GitHub token（只需要這個 repo 的 Contents 唯讀權限）；目前公開，不用設。私人 repo 沒帶 token 一律回 404
     feedToken: process.env.LY_GITHUB_TOKEN || '',
     // 收集檔最新一則的收集時間超過這麼久，就在新聞同步的備註提醒「收集端可能停了」
     feedStaleHours: Number(process.env.LY_NEWS_FEED_STALE_HOURS ?? 6),

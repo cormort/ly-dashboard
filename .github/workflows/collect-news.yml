@@ -29,7 +29,7 @@ jobs:
 
       - name: 取出資料分支（news-data，第一次執行時建立）
         run: |
-          # repo 是私人的：檢查分支也要帶憑證。--exit-code：0＝分支存在、2＝不存在、其他＝出錯（要讓這一輪失敗，
+          # 檢查分支也帶憑證（repo 若是私人的，沒帶會出錯）。--exit-code：0＝分支存在、2＝不存在、其他＝出錯（要讓這一輪失敗，
           # 不能當成「不存在」去建新分支——那樣會推一個沒有共同歷史的分支上去，被拒絕或蓋掉資料）
           REMOTE="https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           set +e
