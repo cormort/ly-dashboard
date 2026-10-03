@@ -65,6 +65,10 @@ export const CONFIG = {
     // join：中央社與自由是政治類、聯合 6638 是要聞類（政治為主）、公視只有一個綜合 feed（Atom）。
     // 聯合的 id 是分類代碼，換 id 就是換分類；`/news/rssfeed/7225` 是「全球」（國際），
     // 2026-10-03 實測 398 則寫入委員新聞 0 筆，故改用 6638 要聞（496 則 → 210 筆）。
+    // GitHub Actions 收集的媒體 RSS（news-data 分支，見 .github/workflows/collect-news.yml）；空字串＝不匯入
+    feedUrl: process.env.LY_NEWS_FEED_URL ?? 'https://raw.githubusercontent.com/cormort/ly-dashboard/news-data',
+    // 收集檔最新一則的收集時間超過這麼久，就在新聞同步的備註提醒「收集端可能停了」
+    feedStaleHours: Number(process.env.LY_NEWS_FEED_STALE_HOURS ?? 6),
     // 媒體 RSS 另外每小時抓一次（feed 只留最新幾十則，一天抓一次會漏）；0＝停用，只隨每日同步抓
     outletIntervalMs: Number(process.env.LY_NEWS_OUTLET_INTERVAL_MS ?? 60 * 60 * 1000),
     outlets: [

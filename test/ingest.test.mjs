@@ -5,9 +5,10 @@ import { fileURLToPath } from 'node:url';
 import { openDb, applyDataset, applyBills, applySocial, applyCommitteeRecords, applyCommitteeMeets, upsertNews, upsertArticles, pruneNews, pruneLogs, getMeta, setMeta, migrate } from '../server/db.mjs';
 import { buildDataset, normalizeBills, normalizeCommitteeRecords, normalizeMeetings, normalizeSocial, newsName, rocDate, DataValidationError } from '../server/normalize.mjs';
 import { CONFIG } from '../server/config.mjs';
-import { entityFeedUrl, guardShrink, runIngest, runBillsIngest, runRecordsIngest, runBudgetIngest, runBudgetReportsIngest, runMeetingsIngest, budgetPageUrl, runNewsIngest, runOutletNews, runOutletPoll, retagOutletArticles, runNewsBackfill, backfillTargets, rangeFeedUrl, BACKFILL_CAP, runSocialIngest, runAll } from '../server/ingest.mjs';
+import { entityFeedUrl, guardShrink, runIngest, runBillsIngest, runRecordsIngest, runBudgetIngest, runBudgetReportsIngest, runMeetingsIngest, budgetPageUrl, runNewsIngest, runOutletNews, runOutletPoll, retagOutletArticles, runNewsBackfill, backfillTargets, rangeFeedUrl, BACKFILL_CAP, runNewsFeedImport, runSocialIngest, runAll } from '../server/ingest.mjs';
 import { entityNewsTerms, listFunds, getHealth, listBills, listBudget, listBudgetMeetings, listBudgetReports, budgetState, listChanges, listCounties, listLegislatorVotes, listRankings, compareLegislators, listRegions, listSplitTicket, listDemographics, listPopulationTrend, getTownMap, listLegislators, listNews, listNewsArticles, listSyncRuns } from '../server/queries.mjs';
 import { FetchError } from '../server/fetch-ly.mjs';
+import { feedDate, feedFileUrl, mergeFeedFile, parseFeedFile } from '../server/news-feed.mjs';
 import { syncOnce, pollOutletsOnce } from '../server/index.mjs';
 
 const fixture = (name) => JSON.parse(readFileSync(fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url)), 'utf8'));
@@ -198,7 +199,10 @@ test('新聞同步：只存標題含姓名的項目、可累積去重、在職�
   assert.equal(first.status, 'success');
   assert.equal(urls.filter((u) => u.includes('%E7%AB%8B%E5%A7%94')).length, listLegislators(db, { session: 'all' }).items.filter((x) => !x.former).length, '只抓在職委員');
   const outletUrls = CONFIG.news.outlets.map((o) => o.url);
-  assert.ok(urls.every((u) => u.includes('news.google.com') || outletUrls.includes(u)), 'Google 新聞以外只抓設定的媒體 RSS');
+  assert.ok(
+    urls.every((u) => u.includes('news.google.com') || outletUrls.includes(u) || u.startsWith(CONFIG.news.feedUrl)),
+    'Google 新聞以外只抓設定的媒體 RSS 與收集檔',
+  );
   assert.deepEqual(urls.filter((u) => outletUrls.includes(u)), outletUrls, '每家媒體 RSS 每輪只抓一次');
   const ting = listLegislators(db, { q: '丁學忠' }).items[0].id;
   const news = listNews(db, { legislator: ting, limit: 100 });
@@ -1259,7 +1263,9 @@ test('媒體 RSS 每小時輪詢：只抓媒體、記下時間；完整同步進
   const calls = [];
   const fetchImpl = async (url) => (calls.push(url), rssResponse(outletRssWithSummary([{ title: '颱風明天登陸', url: 'https://cna.example/2', date: 'Tue, 29 Sep 2026 09:00:00 GMT' }])));
   const original = CONFIG.news.outlets;
+  const feedUrl = CONFIG.news.feedUrl;
   CONFIG.news.outlets = OUTLETS;
+  CONFIG.news.feedUrl = ''; // 收集檔另有測試
   try {
     const result = await runOutletPoll(db, { logger: silent, fetchImpl, now: NEWS_NOW });
     assert.deepEqual(calls, OUTLETS.map((o) => o.url), '不打 Google');
@@ -1275,6 +1281,7 @@ test('媒體 RSS 每小時輪詢：只抓媒體、記下時間；完整同步進
     }
   } finally {
     CONFIG.news.outlets = original;
+    CONFIG.news.feedUrl = feedUrl;
   }
 });
 
@@ -1410,4 +1417,84 @@ test('回補：時間預算用完就停下（不算失敗）', async () => {
   assert.equal(result.stopped, 'budget');
   assert.ok(result.requests >= 1 && result.failures === 0);
   assert.ok(JSON.parse(getMeta(db, 'news_backfill')).current, '記住做到哪');
+});
+
+/* ---------------- GitHub Actions 收集的媒體 RSS（news-data 分支） ---------------- */
+
+test('收集檔格式：依臺灣時間分日、同網址合併（保留第一次收集時間與舊摘要）、排序穩定、壞行略過', () => {
+  assert.equal(feedDate('2026-10-02T17:30:00.000Z'), '2026-10-03', '臺灣時間凌晨 1:30 算 10/3');
+  assert.equal(feedFileUrl('https://raw.example/repo/news-data/', '2026-10-03'), 'https://raw.example/repo/news-data/news/2026-10-03.ndjson');
+  const a = { url: 'https://cna.example/1', title: '颱風', summary: '海上警報', source: '中央社', published_at: '2026-10-03T01:00:00.000Z' };
+  const b = { url: 'https://ltn.example/2', title: '股市', summary: '', source: '自由時報', published_at: '2026-10-03T00:30:00.000Z' };
+  const first = mergeFeedFile('', [a, b], 'T1');
+  assert.deepEqual(parseFeedFile(first).map((i) => i.url), [b.url, a.url], '依發布時間排序');
+  const second = mergeFeedFile(first, [{ ...a, title: '颱風更新', summary: '' }], 'T2');
+  const merged = parseFeedFile(second).find((i) => i.url === a.url);
+  assert.deepEqual([merged.title, merged.summary, merged.collected_at], ['颱風更新', '海上警報', 'T1']);
+  assert.equal(mergeFeedFile(second, [{ ...a, title: '颱風更新', summary: '' }], 'T3'), second, '內容沒變就一字不差（git 不會多 commit）');
+  assert.equal(parseFeedFile(`${second}{壞掉的行\n`).length, 2);
+});
+
+test('匯入收集檔：第一次讀滿保存期限、之後只讀上次以來的天數；404 不算失敗；寫進新聞庫並分派', async () => {
+  const db = seeded();
+  const ting = listLegislators(db, { q: '丁學忠' }).items[0].id;
+  const feedUrl = CONFIG.news.feedUrl;
+  CONFIG.news.feedUrl = 'https://raw.example/feed';
+  const day = '2026-09-29';
+  const file = mergeFeedFile(
+    '',
+    [
+      { url: 'https://cna.example/1', title: '丁學忠質詢國防預算', summary: '立法院', source: '中央社', published_at: `${day}T02:00:00.000Z` },
+      { url: 'https://pts.example/2', title: '颱風明天登陸', summary: '', source: '公視新聞', published_at: `${day}T03:00:00.000Z` },
+    ],
+    '2026-09-29T04:00:00.000Z',
+  );
+  const asked = [];
+  const fetchImpl = async (url) => {
+    asked.push(url);
+    if (url === feedFileUrl(CONFIG.news.feedUrl, day)) return { text: file, status: 200 };
+    throw new FetchError('HTTP 404', { status: 404, attempts: 1 });
+  };
+  try {
+    const first = await runNewsFeedImport(db, { logger: silent, fetchImpl, now: NEWS_NOW });
+    assert.equal(asked.length, CONFIG.news.keepDays, '第一次讀滿保存期限');
+    assert.deepEqual([first.files, first.stored, first.failures, first.latest_collected_at], [1, 2, 0, '2026-09-29T04:00:00.000Z']);
+    assert.deepEqual(listNews(db, { legislator: ting }).items.map((n) => n.title), ['丁學忠質詢國防預算'], '照規則分派');
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM articles WHERE origin = 'outlet'").get().n, 2, '沒提到人的也進新聞庫');
+
+    asked.length = 0;
+    const later = () => new Date(NEWS_NOW().getTime() + 5 * 86_400_000);
+    const second = await runNewsFeedImport(db, { logger: silent, fetchImpl, now: later });
+    assert.equal(asked.length, 6, '隔 5 天：讀 5＋1 天');
+    assert.equal(second.stored, 0, '已匯入的不重複');
+  } finally {
+    CONFIG.news.feedUrl = feedUrl;
+  }
+});
+
+test('匯入收集檔：讀失敗不推進進度（下次多讀）；收集端停了會寫進新聞同步備註；feedUrl 空字串就不匯入', async () => {
+  const db = seeded();
+  const feedUrl = CONFIG.news.feedUrl;
+  CONFIG.news.feedUrl = 'https://raw.example/feed';
+  try {
+    const broken = await runNewsFeedImport(db, { logger: silent, now: NEWS_NOW, fetchImpl: async () => { throw new FetchError('HTTP 500', { status: 500, attempts: 2 }); } });
+    assert.equal(broken.failures, CONFIG.news.keepDays);
+    assert.equal(getMeta(db, 'news_feed_imported_at'), null, '失敗時不推進');
+
+    // 收集端最後一次收集是 10 小時前 → 新聞同步備註要提醒
+    setMeta(db, 'news_feed_latest_collected_at', new Date(NEWS_NOW().getTime() - 10 * 3_600_000).toISOString());
+    const outlets = CONFIG.news.outlets;
+    CONFIG.news.outlets = [];
+    try {
+      await runNewsIngest(db, { logger: silent, now: NEWS_NOW, delayMs: 0, entityBudgetMs: 0, fetchImpl: async (url) => (url.startsWith(CONFIG.news.feedUrl) ? Promise.reject(new FetchError('HTTP 404', { status: 404 })) : rssResponse(rssOf([]))) });
+    } finally {
+      CONFIG.news.outlets = outlets;
+    }
+    assert.match(String(db.prepare("SELECT error FROM sync_runs WHERE dataset = 'news' ORDER BY id DESC LIMIT 1").get().error), /收集端.*10 小時前/);
+
+    CONFIG.news.feedUrl = '';
+    assert.equal((await runNewsFeedImport(db, { logger: silent, now: NEWS_NOW, fetchImpl: async () => assert.fail('不該打') })).skipped, true);
+  } finally {
+    CONFIG.news.feedUrl = feedUrl;
+  }
 });

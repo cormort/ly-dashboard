@@ -1,0 +1,60 @@
+# 媒體 RSS 收集：每小時抓中央社／自由／聯合／公視，存進 news-data 分支（news/YYYY-MM-DD.ndjson）。
+# 儀表板同步時匯入（server/ingest.mjs runNewsFeedImport），手機或伺服器沒開時也不會漏收。
+# 程式與格式見 scripts/collect-news-rss.mjs、server/news-feed.mjs；決策見 DECISIONS D113–D117。
+name: collect-news
+
+on:
+  schedule:
+    # GitHub 的排程常會晚 10～30 分鐘；避開整點（整點最擁擠、最常被延後）
+    - cron: '17 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# 上一輪還沒跑完就不要再開一輪，兩輪同時 push 會互相衝突
+concurrency:
+  group: collect-news
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: 取出程式（main）
+        uses: actions/checkout@v4
+        with:
+          path: app
+
+      - name: 取出資料分支（news-data，第一次執行時建立）
+        run: |
+          if git ls-remote --exit-code --heads "https://github.com/${GITHUB_REPOSITORY}.git" news-data >/dev/null; then
+            git clone --depth 1 --branch news-data "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" data
+          else
+            mkdir data && cd data
+            git init -b news-data
+            git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+            printf '# news-data\n\n媒體 RSS 收集結果（GitHub Actions 每小時更新），由 main 的 scripts/collect-news-rss.mjs 產生。格式見 server/news-feed.mjs。\n' > README.md
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: 抓 RSS 並併入當天的檔
+        run: node app/scripts/collect-news-rss.mjs --out data
+
+      - name: 有變動才 commit
+        working-directory: data
+        run: |
+          git add -A
+          if git diff --cached --quiet; then
+            echo "沒有新新聞"
+            exit 0
+          fi
+          git -c user.name="news-collector[bot]" -c user.email="news-collector@users.noreply.github.com" \
+            commit -q -m "news: $(date -u +%Y-%m-%dT%H:%MZ) 收集"
+          git push -q origin news-data

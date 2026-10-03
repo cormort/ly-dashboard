@@ -5,6 +5,7 @@ import { openDb, recordSyncRun, saveSnapshot, applyDataset, applyBills, applyBud
 import { buildDataset, normalizeBills, normalizeBudget, normalizeBudgetReports, normalizeCommitteeMeets, normalizeCommitteeRecords, normalizeMeetings, normalizeSocial, newsName, parseNewsRss, DataValidationError, NORMALIZER_VERSION } from './normalize.mjs';
 import { fetchJson, FetchError, sha256 } from './fetch-ly.mjs';
 import { entityNewsTerms, makeTagger, mentionsKnownEntity } from './queries.mjs';
+import { feedDate, feedFileUrl, parseFeedFile } from './news-feed.mjs';
 
 /**
  * Ingestion 管線：FETCH → VALIDATE → NORMALIZE → PERSIST。
@@ -514,6 +515,56 @@ export function retagOutletArticles(db, { cutoff, now = () => new Date() }) {
 }
 
 /**
+ * 匯入 GitHub Actions 收集的媒體 RSS（CONFIG.news.feedUrl，news-data 分支每天一個檔）。
+ *
+ * 為什麼：本機的 RSS 輪詢只在伺服器開著時才有（手機休眠就停），收集端在 GitHub 上每小時跑，
+ * 這裡把它收到的補進來。本機直接抓的仍然保留，兩邊依網址去重。
+ *
+ * 讀幾天：距離上次成功匯入幾天就讀幾天（至少 2 天，跨午夜不漏；第一次讀滿保存期限）。
+ * 有檔案讀失敗就不推進「上次匯入」，下次會多讀；檔案不存在（404，那天還沒收集）不算失敗。
+ */
+export async function runNewsFeedImport(db, { logger = console, fetchImpl = fetchJson, now = () => new Date() } = {}) {
+  const result = { files: 0, items: 0, stored: 0, added: 0, failures: 0, latest_collected_at: null };
+  if (!CONFIG.news.feedUrl) return { ...result, skipped: true };
+  const keepDays = CONFIG.news.keepDays;
+  const last = getMeta(db, 'news_feed_imported_at');
+  const days = last ? Math.min(keepDays, Math.max(2, Math.ceil((now().getTime() - Date.parse(last)) / 86_400_000) + 1)) : keepDays;
+  const cutoff = new Date(now().getTime() - keepDays * 86_400_000).toISOString();
+  const targets = outletTargets(db);
+  const fetchedAt = now().toISOString();
+  for (let d = 0; d < days; d += 1) {
+    const date = feedDate(new Date(now().getTime() - d * 86_400_000).toISOString());
+    let text;
+    try {
+      ({ text } = await fetchImpl(feedFileUrl(CONFIG.news.feedUrl, date), { ua: CONFIG.userAgent, text: true, retries: 1 }));
+    } catch (error) {
+      if (error?.status === 404) continue;
+      result.failures += 1;
+      logger.warn(`[news] 收集檔 ${date} 讀取失敗：${error?.message || error}`);
+      continue;
+    }
+    const items = parseFeedFile(text).filter((i) => i.published_at >= cutoff);
+    result.files += 1;
+    result.items += items.length;
+    for (const i of items) if (i.collected_at && (!result.latest_collected_at || i.collected_at > result.latest_collected_at)) result.latest_collected_at = i.collected_at;
+    result.stored += upsertArticles(db, items, { origin: 'outlet', fetchedAt });
+    result.added += dispatchOutletItems(db, items, targets, { fetchedAt });
+  }
+  if (!result.failures) setMeta(db, 'news_feed_imported_at', now().toISOString());
+  if (result.latest_collected_at) setMeta(db, 'news_feed_latest_collected_at', result.latest_collected_at);
+  return result;
+}
+
+/** 收集端是不是停了：回傳要放進同步備註的文字，正常時回 null */
+function feedStaleNote(db, now) {
+  if (!CONFIG.news.feedUrl) return null;
+  const latest = getMeta(db, 'news_feed_latest_collected_at');
+  if (!latest) return 'RSS 收集端（GitHub Actions）還沒有資料';
+  const hours = Math.floor((now().getTime() - Date.parse(latest)) / 3_600_000);
+  return hours > CONFIG.news.feedStaleHours ? `RSS 收集端（GitHub Actions）最後一次收集是 ${hours} 小時前，可能停了` : null;
+}
+
+/**
  * 媒體 RSS 的獨立輪詢（排程每 CONFIG.news.outletIntervalMs 一次，見 index.mjs startScheduler）。
  * 為什麼要比每日同步頻繁：feed 只留最新幾十則（實測中央社 20、自由 40、公視 25），
  * 一天抓一次的話，中間被擠出 feed 的報導就永遠收不到了。
@@ -522,8 +573,12 @@ export async function runOutletPoll(db, { logger = console, fetchImpl = fetchJso
   const cutoff = new Date(now().getTime() - CONFIG.news.keepDays * 86_400_000).toISOString();
   const result = await runOutletNews(db, { logger, fetchImpl, now, cutoff });
   if (result.failures < result.total) setMeta(db, 'news_outlets_fetched_at', now().toISOString());
-  logger.log(`[news] 媒體 RSS 輪詢：${result.items} 則（新增 ${result.stored} 則進新聞庫、${result.added} 則委員新聞）${result.failures ? `，${result.failures}/${result.total} 家失敗` : ''}`);
-  return result;
+  const feed = await runNewsFeedImport(db, { logger, fetchImpl, now });
+  logger.log(
+    `[news] 媒體 RSS 輪詢：${result.items} 則（新增 ${result.stored} 則進新聞庫、${result.added} 則委員新聞）${result.failures ? `，${result.failures}/${result.total} 家失敗` : ''}` +
+      (feed.skipped ? '' : `；收集檔 ${feed.files} 個、新增 ${feed.stored} 則`),
+  );
+  return { ...result, feed };
 }
 
 /* ---------------- 近半年新聞回補（一次性，scripts/backfill-news.mjs） ---------------- */
@@ -751,6 +806,9 @@ export async function runNewsIngest(
   const outlet = await runOutletNews(db, { logger, fetchImpl, now, cutoff });
   added += outlet.added;
   if (outlet.failures < outlet.total) setMeta(db, 'news_outlets_fetched_at', now().toISOString());
+  // GitHub Actions 收集的媒體 RSS：補伺服器沒開時漏掉的
+  const feed = await runNewsFeedImport(db, { logger, fetchImpl, now });
+  added += feed.added;
   // 每日一次對整個原始新聞庫重新分派：名單換過之後，舊新聞也標得到新的人／機關
   const retag = retagOutletArticles(db, { cutoff, now });
   added += retag.added;
@@ -764,6 +822,9 @@ export async function runNewsIngest(
   if (entity.partial) notes.push(`基金／機關新聞時間預算用盡，本輪完成 ${entity.processed}/${entity.total} 組，下輪接續`);
   if (entity.failures) notes.push(`基金／機關新聞 ${entity.failures}/${entity.processed} 組失敗`);
   if (outlet.failures) notes.push(`媒體 RSS ${outlet.failures}/${outlet.total} 家抓取失敗`);
+  if (feed.failures) notes.push(`RSS 收集檔 ${feed.failures} 個讀取失敗`);
+  const stale = feedStaleNote(db, now);
+  if (stale) notes.push(stale);
   const error = notes.length ? notes.join('；') : null;
   // 全部失敗時不可以寫 complete：health 的 notices 只看 partial，前端橫幅只看 sync_runs，
   // 若這裡寫 complete:113/113，等於在 UI 上說「新聞同步完成」而實際上什麼都沒抓到。
@@ -785,7 +846,7 @@ export async function runNewsIngest(
     error: legislators.length === 0 ? '名錄尚未同步' : error,
   });
   (failed ? logger.error : logger.log)(`[news] ${status}：新增 ${added} 則、清除過期 ${pruned} 則${error ? `（${error}）` : ''}`);
-  return { status, added, pruned, failures: failures.length, processed, total: legislators.length, partial, entity, outlet };
+  return { status, added, pruned, failures: failures.length, processed, total: legislators.length, partial, entity, outlet, feed };
 }
 
 /** 社群帳號整理表：抓 CSV → 驗證 → 整批覆寫；失敗保留舊資料。 */
