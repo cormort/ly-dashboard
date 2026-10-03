@@ -526,6 +526,158 @@ export async function runOutletPoll(db, { logger = console, fetchImpl = fetchJso
   return result;
 }
 
+/* ---------------- 近半年新聞回補（一次性，scripts/backfill-news.mjs） ---------------- */
+
+/** Google 新聞的日期區間查詢：`q after:YYYY-MM-DD before:YYYY-MM-DD`（before 不含當天） */
+export function rangeFeedUrl(q, from, to) {
+  const day = (d) => d.toISOString().slice(0, 10);
+  const qs = new URLSearchParams({ q: `${q} after:${day(from)} before:${day(to)}`, hl: 'zh-TW', gl: 'TW', ceid: 'TW:zh-Hant' });
+  return `${CONFIG.news.url}?${qs}`;
+}
+
+/**
+ * 回補的對象，查詢字與「標題要不要收」的規則和每日同步（runNewsIngest／runEntityNews）一致：
+ * 委員 `"漢名" 立委`、首長 `"姓名" 機關`（有 hint 另需標題含關鍵字）、主計 `"主計"`、基金機關的 OR 批次。
+ * key 是接續用的識別：名錄或清單變了，已完成的 key 仍然算完成，新增的對象下次會補到。
+ */
+export function backfillTargets(db) {
+  const tagger = makeTagger([]);
+  const size = Math.max(1, CONFIG.news.entityBatch);
+  const terms = entityNewsTerms();
+  const targets = db
+    .prepare('SELECT id, name FROM legislators WHERE leave_flag = 0 ORDER BY id')
+    .all()
+    .map((l) => {
+      const name = newsName(l.name);
+      return { key: `legislator:${l.id}`, label: name, q: `"${name}" 立委`, parse: (text) => parseNewsRss(text, { name }), write: (db2, items, at) => upsertNews(db2, l.id, items, { fetchedAt: at }) };
+    });
+  for (const o of OFFICIALS) {
+    targets.push({
+      key: `official:${o.name}`,
+      label: `${o.agency}${o.title}${o.name}`,
+      q: `"${o.name}" ${o.agency}`,
+      parse: (text) => parseNewsRss(text, { name: o.name }).filter((n) => !o.hint || o.hint.some((h) => n.title.includes(h))),
+      write: (db2, items, at) => upsertTopicNews(db2, `official:${o.name}`, items, { fetchedAt: at }),
+    });
+  }
+  targets.push({ key: 'dgbas', label: '主計', q: '"主計"', parse: (text) => parseNewsRss(text, { name: '主計' }), write: (db2, items, at) => upsertTopicNews(db2, 'dgbas', items, { fetchedAt: at }) });
+  for (let i = 0; i < terms.length; i += size) {
+    const batch = terms.slice(i, i + size);
+    targets.push({
+      // 以批次的第一個名稱當 key：清單增減時批次會位移，最多重抓幾組，不會漏
+      key: `entities:${batch[0]}`,
+      label: `基金機關（${batch[0]} 等 ${batch.length} 個）`,
+      q: `(${batch.map((t) => `"${t}"`).join(' OR ')})`,
+      parse: (text) => parseNewsRss(text, { match: (title) => mentionsKnownEntity(tagger, title) }),
+      write: (db2, items, at) => upsertTopicNews(db2, 'entities', items, { fetchedAt: at }),
+    });
+  }
+  return targets;
+}
+
+/** 把 [from, to) 切成每 days 天一段（最後一段到 to 為止） */
+function slices(from, to, days) {
+  const out = [];
+  for (let t = from.getTime(); t < to.getTime(); t += days * 86_400_000) out.push([new Date(t), new Date(Math.min(t + days * 86_400_000, to.getTime()))]);
+  return out;
+}
+
+/**
+ * 近 keepDays 天的新聞回補（一次性；每日同步只看近 30 天）。
+ *
+ * - 每個對象按月查，Google 新聞一次最多回約 100 則：回了 ≥ CAP 則就把那個月細切成週、週再切成日，
+ *   新聞少的對象（大多數）一個月一次就夠，新聞多的才多打幾次。
+ * - 可中斷接續：進度（起訖日、已完成的對象、目前對象做到第幾個月）存在 meta `news_backfill`，
+ *   每做完一個月就存一次。時間預算用完、或連續 maxFailures 次失敗（多半是被 Google 限流）就停下。
+ * - 寫入規則與每日同步相同（同標題去重、存進原始新聞庫），補完直接出現在各新聞頁。
+ */
+export const BACKFILL_CAP = 95;
+export async function runNewsBackfill(
+  db,
+  { logger = console, fetchImpl = fetchJson, now = () => new Date(), delayMs = 2000, budgetMs = 30 * 60 * 1000, maxFailures = 5, reset = false } = {},
+) {
+  const saved = reset ? null : JSON.parse(getMeta(db, 'news_backfill', 'null') ?? 'null');
+  const state = saved?.done
+    ? saved
+    : (() => {
+        // 起點對齊到當天 00:00 UTC：日期區間查詢以「天」為單位
+        const to = new Date(`${now().toISOString().slice(0, 10)}T00:00:00.000Z`);
+        to.setUTCDate(to.getUTCDate() + 1);
+        const from = new Date(to.getTime() - CONFIG.news.keepDays * 86_400_000);
+        return { from: from.toISOString(), to: to.toISOString(), done: [], current: null };
+      })();
+  const save = () => setMeta(db, 'news_backfill', JSON.stringify(state));
+  const cutoff = state.from;
+  const months = slices(new Date(state.from), new Date(state.to), 30);
+  const targets = backfillTargets(db);
+  const done = new Set(state.done);
+  const deadline = Date.now() + budgetMs;
+  const result = { requests: 0, added: 0, failures: 0, targets: targets.length, completed: done.size, stopped: null };
+  let consecutive = 0;
+  let first = true;
+
+  /** 查一段：回了 ≥ CAP 則就細切（月 → 週 → 日），日已經是最細了就照收 */
+  const fetchSlice = async (target, from, to, level) => {
+    if (Date.now() >= deadline) throw Object.assign(new Error('budget'), { budget: true });
+    if (!first) await pause(delayMs);
+    first = false;
+    result.requests += 1;
+    let items;
+    try {
+      const { text } = await fetchImpl(rangeFeedUrl(target.q, from, to), { ua: CONFIG.userAgent, text: true, retries: 2 });
+      items = target.parse(text).filter((i) => i.published_at >= cutoff);
+      consecutive = 0;
+    } catch (error) {
+      result.failures += 1;
+      consecutive += 1;
+      logger.warn(`[backfill] ${target.label} ${from.toISOString().slice(0, 10)}～${to.toISOString().slice(0, 10)} 失敗：${error?.message || error}`);
+      if (consecutive >= maxFailures) throw Object.assign(new Error('failures'), { failures: true });
+      return false;
+    }
+    if (items.length >= BACKFILL_CAP && level !== 'day') {
+      for (const [a, b] of slices(from, to, level === 'month' ? 7 : 1)) {
+        if (!(await fetchSlice(target, a, b, level === 'month' ? 'week' : 'day'))) return false;
+      }
+      return true;
+    }
+    const at = now().toISOString();
+    if (target.key.startsWith('legislator:')) result.added += target.write(db, items, at);
+    else target.write(db, items, at);
+    saveGoogleArticles(db, items, now);
+    return true;
+  };
+
+  try {
+    for (const target of targets) {
+      if (done.has(target.key)) continue;
+      const startMonth = state.current?.key === target.key ? state.current.month : 0;
+      for (let m = startMonth; m < months.length; m += 1) {
+        // 失敗的月份不前進：下次從這個月重來（寫入是冪等的，重抓不會重複）
+        if (!(await fetchSlice(target, months[m][0], months[m][1], 'month'))) {
+          state.current = { key: target.key, month: m };
+          save();
+          m -= 1;
+          continue;
+        }
+        state.current = { key: target.key, month: m + 1 };
+        save();
+      }
+      done.add(target.key);
+      state.done = [...done];
+      state.current = null;
+      save();
+      result.completed = done.size;
+      logger.log(`[backfill] ${result.completed}/${targets.length} ${target.label} 完成`);
+    }
+  } catch (error) {
+    if (error?.budget) result.stopped = 'budget';
+    else if (error?.failures) result.stopped = 'failures';
+    else throw error;
+  }
+  if (!result.stopped) setMeta(db, 'news_backfill_done_at', now().toISOString());
+  return result;
+}
+
 /**
  * 新聞同步：在職委員逐位抓 Google News RSS（依序＋間隔，避免被限流）。
  * 單一委員失敗不影響其他人；超過一半失敗才整體標記 failed（多半是被擋或斷網）。

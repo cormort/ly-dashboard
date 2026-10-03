@@ -88,6 +88,7 @@ bash scripts/verify.sh --full               # 一鍵（完整：含 g0v／Google
 npm test                                    # 後端 135 passed（fail-closed、交易回滾、change_log、排行榜、M1–M5 與第三輪回歸）
 node scripts/verify-news-rss.mjs            # 媒體官方 RSS 打真網路逐家驗（抓得到／解析得出來／真的對得上委員）；只讀，不動 data/
 node scripts/verify-news-rss.mjs <url>      # 試別的 feed（例如比較 udn 的分類 id，見 DECISIONS D101）
+node scripts/backfill-news.mjs              # 一次性回補近 180 天的委員／首長／主計／機關新聞（Google 日期區間查詢）；預設跑 30 分鐘、可中斷接續（--minutes、--delay-ms、--reset、--status）
 npm --prefix web test                       # 前端 tsc -b＋煙霧／渲染煙霧，58 項全過
 node server/ingest.mjs                      # 123 位委員 / 783 席次 / 5 會期 / 113 本會期名錄 + 議案／社群／新聞
 node server/ingest.mjs                      # 第二次：名錄 status=skipped（sha256 + 正規化版本未變）

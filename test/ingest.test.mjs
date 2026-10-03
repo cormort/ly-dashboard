@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { openDb, applyDataset, applyBills, applySocial, applyCommitteeRecords, applyCommitteeMeets, upsertNews, upsertArticles, pruneNews, pruneLogs, getMeta, setMeta, migrate } from '../server/db.mjs';
 import { buildDataset, normalizeBills, normalizeCommitteeRecords, normalizeMeetings, normalizeSocial, newsName, rocDate, DataValidationError } from '../server/normalize.mjs';
 import { CONFIG } from '../server/config.mjs';
-import { entityFeedUrl, guardShrink, runIngest, runBillsIngest, runRecordsIngest, runBudgetIngest, runBudgetReportsIngest, runMeetingsIngest, budgetPageUrl, runNewsIngest, runOutletNews, runOutletPoll, retagOutletArticles, runSocialIngest, runAll } from '../server/ingest.mjs';
+import { entityFeedUrl, guardShrink, runIngest, runBillsIngest, runRecordsIngest, runBudgetIngest, runBudgetReportsIngest, runMeetingsIngest, budgetPageUrl, runNewsIngest, runOutletNews, runOutletPoll, retagOutletArticles, runNewsBackfill, backfillTargets, rangeFeedUrl, BACKFILL_CAP, runSocialIngest, runAll } from '../server/ingest.mjs';
 import { entityNewsTerms, listFunds, getHealth, listBills, listBudget, listBudgetMeetings, listBudgetReports, budgetState, listChanges, listCounties, listLegislatorVotes, listRankings, compareLegislators, listRegions, listSplitTicket, listDemographics, listPopulationTrend, getTownMap, listLegislators, listNews, listNewsArticles, listSyncRuns } from '../server/queries.mjs';
 import { FetchError } from '../server/fetch-ly.mjs';
 import { syncOnce, pollOutletsOnce } from '../server/index.mjs';
@@ -1317,4 +1317,97 @@ test('舊資料庫遷移：news／topic_news 補 title_key 並回填，同標題
   assert.equal(db.prepare('SELECT title_key FROM news').get().title_key, '標題一', '回填去掉空白的標題');
   assert.equal(upsertNews(db, 'L1', [{ url: 'https://b/2', title: '標題一', source: 's', published_at: '2026-09-01T00:00:00Z' }], { fetchedAt: 'y' }), 0, '回填後同標題去重照常');
   migrate(db); // 重跑不出錯
+});
+
+/* ---------------- 近半年新聞回補（scripts/backfill-news.mjs） ---------------- */
+
+const BACKFILL_NOW = () => new Date('2026-10-03T12:00:00.000Z');
+/** 解析回補 URL 的查詢字與日期區間 */
+const rangeOf = (url) => {
+  const q = new URL(url).searchParams.get('q');
+  const [, query, after, before] = /^(.*) after:(\S+) before:(\S+)$/.exec(q);
+  return { query, after, before };
+};
+
+test('回補：日期區間查詢的網址、對象清單涵蓋委員／首長／主計／基金機關', () => {
+  const { query, after, before } = rangeOf(rangeFeedUrl('"丁學忠" 立委', new Date('2026-04-06T00:00:00Z'), new Date('2026-05-06T00:00:00Z')));
+  assert.deepEqual([query, after, before], ['"丁學忠" 立委', '2026-04-06', '2026-05-06']);
+  const db = seeded();
+  const targets = backfillTargets(db);
+  const count = (prefix) => targets.filter((t) => t.key.startsWith(prefix)).length;
+  assert.equal(count('legislator:'), listLegislators(db, { session: 'all' }).items.filter((x) => !x.former).length);
+  assert.ok(count('official:') > 20 && count('dgbas') === 1 && count('entities:') > 50);
+  assert.equal(new Set(targets.map((t) => t.key)).size, targets.length, 'key 不可重複（接續靠它）');
+});
+
+test('回補：每月一段；滿約 100 則才細切成週；寫入委員新聞與新聞庫；完成後不再重跑', async () => {
+  const db = seeded();
+  const ting = listLegislators(db, { q: '丁學忠' }).items[0].id;
+  const calls = [];
+  const fetchImpl = async (url) => {
+    const r = rangeOf(url);
+    calls.push(r);
+    if (!r.query.includes('丁學忠')) return rssResponse(rssOf([]));
+    // 2026-08 那個月新聞很多（≥ CAP），要細切；細切後每週各回 1 則
+    const many = r.after >= '2026-08-01' && r.after < '2026-08-08' && r.before > '2026-08-30';
+    if (many) {
+      return rssResponse(rssOf(Array.from({ length: BACKFILL_CAP }, (_, i) => ({ title: `丁學忠八月第${i}則`, url: `https://g/aug-${i}`, date: 'Mon, 10 Aug 2026 08:00:00 GMT' }))));
+    }
+    return rssResponse(rssOf([{ title: `丁學忠 ${r.after} 那段`, url: `https://g/${r.after}`, date: new Date(`${r.after}T08:00:00Z`).toUTCString() }]));
+  };
+  const result = await runNewsBackfill(db, { logger: silent, fetchImpl, now: BACKFILL_NOW, delayMs: 0 });
+  assert.equal(result.stopped, null);
+  assert.equal(result.completed, result.targets);
+  const tingCalls = calls.filter((c) => c.query.includes('丁學忠'));
+  const monthly = tingCalls.filter((c) => (Date.parse(c.before) - Date.parse(c.after)) / 86_400_000 >= 28);
+  assert.equal(monthly.length, 6, '180 天切成 6 段月份');
+  assert.ok(tingCalls.some((c) => (Date.parse(c.before) - Date.parse(c.after)) / 86_400_000 === 7), '滿 CAP 的那個月細切成週');
+  const titles = listNews(db, { legislator: ting, limit: 100 }).items.map((n) => n.title);
+  assert.ok(titles.length >= 6 + 4 && !titles.some((t) => t.startsWith('丁學忠八月第')), `細切後收週的結果，不收被截斷的那批（實際 ${titles.length} 則）`);
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM articles WHERE origin = 'google'").get().n, titles.length, '也存進原始新聞庫');
+  assert.ok(getMeta(db, 'news_backfill_done_at'));
+
+  const again = await runNewsBackfill(db, { logger: silent, fetchImpl: async () => assert.fail('完成後不該再打'), now: BACKFILL_NOW, delayMs: 0 });
+  assert.equal(again.requests, 0);
+  assert.equal((await runNewsBackfill(db, { logger: silent, fetchImpl, now: BACKFILL_NOW, delayMs: 0, reset: true })).completed, result.targets, '--reset 從頭再來');
+});
+
+test('回補：連續失敗（被限流）就停下並記住進度；下次從同一個對象、同一個月接續', async () => {
+  const db = seeded();
+  const targets = backfillTargets(db);
+  let n = 0;
+  // 前 10 次正常（第 1 位委員 6 個月＋第 2 位的前 4 個月），之後一律 429
+  const flaky = async () => {
+    n += 1;
+    if (n > 10) throw new FetchError('HTTP 429', { status: 429, attempts: 3 });
+    return rssResponse(rssOf([]));
+  };
+  const first = await runNewsBackfill(db, { logger: silent, fetchImpl: flaky, now: BACKFILL_NOW, delayMs: 0, maxFailures: 3 });
+  assert.equal(first.stopped, 'failures');
+  assert.equal(first.completed, 1);
+  const saved = JSON.parse(getMeta(db, 'news_backfill'));
+  assert.deepEqual(saved.done, [targets[0].key]);
+  assert.deepEqual(saved.current, { key: targets[1].key, month: 4 }, '停在第 2 位的第 5 個月');
+  assert.equal(getMeta(db, 'news_backfill_done_at'), null, '沒做完不能記完成');
+
+  const resumed = [];
+  const ok = async (url) => (resumed.push(rangeOf(url)), rssResponse(rssOf([])));
+  const second = await runNewsBackfill(db, { logger: silent, fetchImpl: ok, now: () => new Date('2026-10-05T00:00:00Z'), delayMs: 0 });
+  assert.equal(second.stopped, null);
+  assert.equal(resumed[0].query, targets[1].q, '從第 2 位接續，不是從頭');
+  assert.equal(resumed[0].after, new Date(Date.parse(saved.from) + 4 * 30 * 86_400_000).toISOString().slice(0, 10), '從第 5 個月開始，起點沿用第一次的（不因為今天換了而位移）');
+  assert.equal(resumed.filter((r) => r.query === targets[1].q).length, 2, '第 2 位只補剩下的 2 個月');
+  assert.equal(second.completed, targets.length);
+});
+
+test('回補：時間預算用完就停下（不算失敗）', async () => {
+  const db = seeded();
+  const slow = async () => {
+    await new Promise((r) => setTimeout(r, 15));
+    return rssResponse(rssOf([]));
+  };
+  const result = await runNewsBackfill(db, { logger: silent, fetchImpl: slow, now: BACKFILL_NOW, delayMs: 0, budgetMs: 40 });
+  assert.equal(result.stopped, 'budget');
+  assert.ok(result.requests >= 1 && result.failures === 0);
+  assert.ok(JSON.parse(getMeta(db, 'news_backfill')).current, '記住做到哪');
 });

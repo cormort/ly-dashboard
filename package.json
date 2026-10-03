@@ -14,6 +14,7 @@
     "start": "node server/index.mjs",
     "dev:api": "node --watch server/index.mjs --no-scheduler",
     "build:web": "npm --prefix web run build",
-    "verify:rss": "node scripts/verify-news-rss.mjs"
+    "verify:rss": "node scripts/verify-news-rss.mjs",
+    "backfill:news": "node scripts/backfill-news.mjs"
   }
 }

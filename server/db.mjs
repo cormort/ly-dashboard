@@ -209,6 +209,8 @@ export function openDb(path) {
   const db = new DatabaseSync(path);
   db.exec('PRAGMA journal_mode = WAL');
   db.exec('PRAGMA foreign_keys = ON');
+  // 回補腳本（scripts/backfill-news.mjs）與伺服器是兩個行程、會同時寫：遇到鎖先等，不要立刻丟 SQLITE_BUSY
+  db.exec('PRAGMA busy_timeout = 5000');
   migrate(db);
   return db;
 }
