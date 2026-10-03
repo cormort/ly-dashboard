@@ -1336,6 +1336,7 @@ export function listNewsArticles(db, { q = '', source = '', legislator = '', sco
   const resolvedLimit = Math.max(1, Math.min(Number(limit) || 30, 100));
   const resolvedOffset = Math.max(0, Math.trunc(Number(offset) || 0));
   const keyword = String(q).trim();
+  if (scope === 'all') return listAllNewsArticles(db, { keyword, source, limit: resolvedLimit, offset: resolvedOffset });
   const officials = scope === 'officials';
   const people = officials
     ? new Map(OFFICIALS.map((o) => [o.name, { id: o.name, name: o.name, party: `${o.agency}${o.title}` }]))
@@ -1364,6 +1365,49 @@ export function listNewsArticles(db, { q = '', source = '', legislator = '', sco
     people: officials ? [...people.values()].map((p) => ({ ...p, count: perPerson.get(p.id) ?? 0 })).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'zh-Hant')) : undefined,
     sources: [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 30).map(([name, count]) => ({ name, count })),
     items: matching.slice(resolvedOffset, resolvedOffset + resolvedLimit),
+  };
+}
+
+/**
+ * 全部新聞（新聞頁「全部新聞」）：委員、機關首長、主計、基金機關四類合併，不限期間（資料庫裡有的都算，
+ * 保存期限見 CONFIG.news.keepDays）。同一則報導在不同類別可能是不同網址（Google 轉址、媒體原址），
+ * 所以以「標題去掉空白」合併（同 db.mjs 的標題去重），並列出標題提到的委員與首長。
+ * 關鍵字以空白分隔、**全部**符合才列出（範圍越打越窄，符合「搜尋」的直覺）。
+ */
+function listAllNewsArticles(db, { keyword, source, limit, offset }) {
+  const words = keyword.split(/\s+/).filter(Boolean);
+  const legislators = new Map(db.prepare('SELECT id, name, party FROM legislators').all().map((l) => [l.id, { id: l.id, name: l.name, party: l.party, kind: 'legislator' }]));
+  const officials = new Map(OFFICIALS.map((o) => [o.name, { id: o.name, name: o.name, party: `${o.agency}${o.title}`, kind: 'official' }]));
+  const rows = [
+    ...db.prepare('SELECT legislator_id AS who, url, title, source, published_at FROM news').all().map((r) => ({ ...r, person: legislators.get(r.who) })),
+    ...db.prepare('SELECT topic, url, title, source, published_at FROM topic_news').all().map((r) => ({ ...r, person: r.topic.startsWith('official:') ? officials.get(r.topic.slice(9)) : undefined })),
+  ];
+  const byTitle = new Map();
+  // 涵蓋期間算在關鍵字之前：它回答的是「資料庫裡有多久的新聞」，不是「搜尋結果落在哪段」
+  const dates = rows.map((r) => r.published_at).sort();
+  for (const r of rows) {
+    if (words.length && !words.every((w) => r.title.includes(w))) continue;
+    const key = r.title.replace(/[ \u3000\t]/g, '');
+    let a = byTitle.get(key);
+    if (!a) byTitle.set(key, (a = { url: r.url, title: r.title, source: r.source || '未知', published_at: r.published_at, legislators: [] }));
+    // 合併時保留第一筆的網址與媒體；第一筆沒有媒體名時才用後面的補
+    if (a.source === '未知' && r.source) a.source = r.source;
+    if (r.person && !a.legislators.some((p) => p.id === r.person.id)) a.legislators.push(r.person);
+  }
+  const all = [...byTitle.values()].sort((a, b) => b.published_at.localeCompare(a.published_at) || a.url.localeCompare(b.url));
+  const counts = new Map();
+  for (const a of all) counts.set(a.source, (counts.get(a.source) ?? 0) + 1);
+  const matching = source ? all.filter((a) => a.source === source) : all;
+  return {
+    meta: { ...envelope(db), news_fetched_at: getMeta(db, 'news_fetched_at') },
+    total: matching.length,
+    recent_7d: matching.filter((a) => a.published_at >= new Date(Date.now() - 7 * 86400000).toISOString()).length,
+    source_total: counts.size,
+    // 資料庫裡最早／最新一則的發布時間，畫面上要講清楚「所有期間」實際涵蓋到哪裡（不受篩選條件影響）
+    first_date: dates[0] ?? null,
+    last_date: dates.at(-1) ?? null,
+    sources: [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 30).map(([name, count]) => ({ name, count })),
+    items: matching.slice(offset, offset + limit),
   };
 }
 

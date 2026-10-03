@@ -427,7 +427,8 @@ export interface NewsArticle {
   title: string;
   source: string;
   published_at: string;
-  legislators: { id: string; name: string; party: string }[];
+  /** scope=all 時另有 kind：legislator＝委員（party 為黨籍）、official＝機關首長（party 為機關＋職稱） */
+  legislators: { id: string; name: string; party: string; kind?: 'legislator' | 'official' }[];
 }
 
 export interface NewsArticlesResponse {
@@ -438,6 +439,9 @@ export interface NewsArticlesResponse {
   source_total: number;
   /** 前 30 家媒體與報導則數（不受媒體條件影響） */
   sources: { name: string; count: number }[];
+  /** 只有 scope=all 才有：資料庫裡最早／最新一則的發布時間（「所有期間」實際涵蓋的範圍） */
+  first_date?: string | null;
+  last_date?: string | null;
   /** 只有 scope=officials 才有：首長名單（依則數排序），party 欄放「機關＋職稱」 */
   people?: { id: string; name: string; party: string; count: number }[];
   items: NewsArticle[];

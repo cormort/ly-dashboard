@@ -11,8 +11,8 @@ import { partyStyle } from '../lib/parties';
 export interface NewsPageProps {
   refreshToken: number;
   onOpenId: (id: string) => void;
-  /** officials＝機關首長新聞（server/officials.json），預設看委員新聞 */
-  scope?: 'legislators' | 'officials';
+  /** officials＝機關首長新聞（server/officials.json）、all＝全部新聞（四類合併、不限期間），預設看委員新聞 */
+  scope?: 'legislators' | 'officials' | 'all';
 }
 
 const PAGE = 30;
@@ -31,7 +31,8 @@ const readFilters = (): Filters => {
 /** 新聞：所有委員的新聞合併成一份（同一篇只列一次），可依關鍵字與媒體篩選，並看各媒體的報導量。 */
 export function NewsPage({ refreshToken, onOpenId, scope = 'legislators' }: NewsPageProps) {
   const officials = scope === 'officials';
-  const route = officials ? 'officials' : 'news';
+  const everything = scope === 'all';
+  const route = officials ? 'officials' : everything ? 'allnews' : 'news';
   const [filters, setFilters] = useState<Filters>(readFilters);
   const [draft, setDraft] = useState(filters.q);
   const [page, setPage] = useState(0);
@@ -68,7 +69,7 @@ export function NewsPage({ refreshToken, onOpenId, scope = 'legislators' }: News
 
   return (
     <>
-      <h1 className="sr-only">{officials ? '機關首長新聞' : '新聞'}</h1>
+      <h1 className="sr-only">{officials ? '機關首長新聞' : everything ? '全部新聞' : '新聞'}</h1>
 
       <form
         className="filters"
@@ -78,6 +79,8 @@ export function NewsPage({ refreshToken, onOpenId, scope = 'legislators' }: News
           change({ q: draft.trim() });
         }}
       >
+        {/* 全部新聞以關鍵字為主，不提供依人篩選（委員與首長上百人混在一起反而難找） */}
+        {everything ? null : (
         <select value={filters.legislator} aria-label={officials ? '依首長分析' : '依委員分析'} onChange={(event) => change({ legislator: event.target.value, source: '' })}>
           <option value="">{officials ? '全部首長' : '全部委員'}</option>
           {people.map((l) => (
@@ -86,7 +89,14 @@ export function NewsPage({ refreshToken, onOpenId, scope = 'legislators' }: News
             </option>
           ))}
         </select>
-        <input type="search" value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="搜尋標題關鍵字" aria-label="搜尋新聞標題" />
+        )}
+        <input
+          type="search"
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          placeholder={everything ? '搜尋標題關鍵字（空白分隔＝全部符合）' : '搜尋標題關鍵字'}
+          aria-label="搜尋新聞標題"
+        />
         <button type="submit">搜尋</button>
         {filters.q ? (
           <button type="button" aria-pressed="true" aria-label={`取消關鍵字：${filters.q}`} onClick={() => (setDraft(''), change({ q: '' }))}>
@@ -107,7 +117,12 @@ export function NewsPage({ refreshToken, onOpenId, scope = 'legislators' }: News
       <section className="panel" aria-label="新聞列表" id="news-results">
         <div className="sectionhead">
           <h2>報導</h2>
-          {data ? <span className="muted">{data.total.toLocaleString()} 則</span> : null}
+          {data ? (
+            <span className="muted">
+              {data.total.toLocaleString()} 則
+              {everything && data.first_date && data.last_date ? `・資料涵蓋 ${data.first_date.slice(0, 10)} 至 ${data.last_date.slice(0, 10)}` : ''}
+            </span>
+          ) : null}
         </div>
         {res.phase === 'loading' && !data ? <LoadingState label="讀取中…" /> : null}
         {res.phase === 'error' ? <ErrorState title="無法取得新聞（/api/v1/news/articles）" error={res.error} onRetry={res.reload} /> : null}
@@ -126,7 +141,12 @@ export function NewsPage({ refreshToken, onOpenId, scope = 'legislators' }: News
                     <button type="button" className="link-button" onClick={() => change({ source: a.source })}>
                       {a.source}
                     </button>
-                    {a.legislators.map((l) => (
+                    {a.legislators.map((l) =>
+                      l.kind === 'official' ? (
+                        <span key={l.id} className="muted" title={l.party}>
+                          {l.name}
+                        </span>
+                      ) : (
                       <button
                         key={l.id}
                         type="button"
@@ -137,7 +157,8 @@ export function NewsPage({ refreshToken, onOpenId, scope = 'legislators' }: News
                       >
                         {l.name}
                       </button>
-                    ))}
+                      ),
+                    )}
                   </p>
                 </li>
               ))}

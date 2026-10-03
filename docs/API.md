@@ -432,7 +432,7 @@ Query 參數（全部可選）：
 
 | 參數 | 說明 |
 | --- | --- |
-| `scope` | `legislators`（預設，委員新聞，資料同 `/news`）或 `officials`（機關首長新聞：`server/officials.json` 名單中的院長、副院長與部會首長，同樣是 Google 新聞、只收標題含姓名者，兩字姓名另需標題含機關關鍵字） |
+| `scope` | `legislators`（預設，委員新聞，資料同 `/news`）、`all`（全部新聞，見下）或 `officials`（機關首長新聞：`server/officials.json` 名單中的院長、副院長與部會首長，同樣是 Google 新聞、只收標題含姓名者，兩字姓名另需標題含機關關鍵字） |
 | `legislator` | 只看某人：委員新聞用委員 id，首長新聞用首長姓名 |
 | `q` | 標題關鍵字（子字串比對） |
 | `source` | 媒體名稱（精確比對，取自 `sources[].name`） |
@@ -456,6 +456,9 @@ Query 參數（全部可選）：
 - `total`：套用全部條件後的篇數；`recent_7d`：其中從**現在**起算近 7 天的篇數（總覽「首長新聞（近 7 天）」統計卡用；同步停了就會往下掉）。
 - `sources`（前 30 家，依篇數排序）與 `source_total`：套用 `legislator`、`q` 之後、`source` **之前**統計，選了某家媒體後其他家的數字不會消失。
 - `people`：只有 `scope=officials` 才有，列出全部首長與各自則數（不受篩選條件影響），`id` 即姓名，`party` 欄放「機關＋職稱」。
+- `scope=all`（新聞頁「全部新聞」`/news/all`）：委員、機關首長、主計、基金機關四類合併，不限期間（資料庫保存的都在內），
+  同一則以**標題去掉空白**合併（不同類別可能是不同網址）；`q` 以空白分隔、**全部**符合才列出；不支援 `legislator`。
+  另回 `first_date`／`last_date`：資料庫裡最早／最新一則的發布時間（不受篩選影響）。`items[].legislators` 每人多一個 `kind: 'legislator'|'official'`。
 - `items[].legislators`：委員新聞為 `{ id, name, party }`；首長新聞為 `{ id: 姓名, name, party: 機關＋職稱 }`。指定 `legislator` 時只列該人。媒體不明時 `source` 為 `未知`。
 
 ## GET /api/v1/rankings

@@ -374,6 +374,24 @@ test('最近動態：取貼文／新聞／議案中最新者排序，只列在�
   official.run('official:劉世芳', 'https://example.com/o2', '卓榮泰與劉世芳視察', 'UDN', ago(1), ago(0));
   official.run('official:卓榮泰', 'https://example.com/o3', '卓榮泰上週行程', 'UDN', ago(8), ago(0));
   assert.equal(listNewsArticles(db, { scope: 'officials' }).recent_7d, before + 1, '兩位首長同一篇只算一則，8 天前不算');
+
+  // 全部新聞：委員＋首長＋主計＋基金機關合併、不限期間；同標題（不同網址）合併成一則並列出所有被提到的人
+  official.run('dgbas', 'https://example.com/d1', '主計總處公布物價', 'CNA', '2025-01-02T00:00:00.000Z', ago(0));
+  official.run('entities', 'https://example.com/e1', '台電 宣布電價', '中央社', ago(2), ago(0));
+  official.run('official:卓榮泰', 'https://news.google.com/x', '台電宣布電價', '中央社 CNA', ago(2), ago(0));
+  const everything = listNewsArticles(db, { scope: 'all', limit: 100 });
+  const committee = listNewsArticles(db, { limit: 100 }).total;
+  const officialsTotal = listNewsArticles(db, { scope: 'officials', limit: 100 }).total;
+  assert.equal(everything.total, committee + officialsTotal + 1, '委員＋首長＋主計（台電那則與首長的同標題合併）');
+  assert.equal(everything.first_date, '2025-01-02T00:00:00.000Z', '不限期間：最早的那則也在，並回報涵蓋範圍');
+  assert.ok(everything.items.every((a, i, arr) => i === 0 || arr[i - 1].published_at >= a.published_at), '新→舊');
+  const tpc = listNewsArticles(db, { scope: 'all', q: '台電' });
+  assert.equal(tpc.total, 1, '同標題（忽略空白）只列一則');
+  assert.deepEqual(tpc.items[0].legislators.map((p) => [p.name, p.kind]), [['卓榮泰', 'official']]);
+  assert.equal(listNewsArticles(db, { scope: 'all', q: '卓榮泰 劉世芳' }).total, 1, '多個關鍵字要全部符合');
+  assert.equal(listNewsArticles(db, { scope: 'all', q: '卓榮泰 劉世芳' }).first_date, '2025-01-02T00:00:00.000Z', '涵蓋期間不受關鍵字影響');
+  const tingAll = listNewsArticles(db, { scope: 'all', q: '丁學忠' });
+  assert.ok(tingAll.total > 0 && tingAll.items[0].legislators.some((p) => p.name === '丁學忠' && p.kind === 'legislator'), '委員新聞也在內');
   const { sources, source_total: sourceTotal } = listNews(db, {});
   assert.ok(sources.length > 0 && sources.length <= Math.min(12, sourceTotal), '新聞來源最多 12 家');
   assert.ok(sources.every((s, i, a) => i === 0 || a[i - 1].count >= s.count), '依則數排序');
