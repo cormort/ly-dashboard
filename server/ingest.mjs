@@ -664,6 +664,7 @@ export async function runNewsBackfill(
         return { from: from.toISOString(), to: to.toISOString(), done: [], current: null };
       })();
   const save = () => setMeta(db, 'news_backfill', JSON.stringify(state));
+  const day = (d) => d.toISOString().slice(0, 10);
   const cutoff = state.from;
   const months = slices(new Date(state.from), new Date(state.to), 30);
   const targets = backfillTargets(db);
@@ -679,6 +680,8 @@ export async function runNewsBackfill(
     if (!first) await pause(delayMs);
     first = false;
     result.requests += 1;
+    // 心跳：每 20 次請求印一次目前做到哪（新聞多的對象一組就要打上百次）
+    if (result.requests % 20 === 0) logger.log(`[backfill] …已打 ${result.requests} 次請求，目前：${target.label} ${day(from)}`);
     let items;
     try {
       const { text } = await fetchImpl(rangeFeedUrl(target.q, from, to), { ua: CONFIG.userAgent, text: true, retries: 2 });
@@ -692,6 +695,8 @@ export async function runNewsBackfill(
       return false;
     }
     if (items.length >= BACKFILL_CAP && level !== 'day') {
+      // 細切會一口氣打很多次（一個月切到日最多 30 次），先說一聲，不然看起來像當掉
+      logger.log(`[backfill] ${target.label} ${day(from)}～${day(to)} 超過 ${BACKFILL_CAP} 則，細切成${level === 'month' ? '週' : '日'}查…`);
       for (const [a, b] of slices(from, to, level === 'month' ? 7 : 1)) {
         if (!(await fetchSlice(target, a, b, level === 'month' ? 'week' : 'day'))) return false;
       }
