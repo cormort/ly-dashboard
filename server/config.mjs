@@ -65,7 +65,7 @@ export const CONFIG = {
     outlets: [
       { name: '中央社', url: 'https://feeds.feedburner.com/rsscna/politics' },
       { name: '自由時報', url: 'https://news.ltn.com.tw/rss/politics.xml' },
-      { name: '聯合新聞網', url: 'https://udn.com/rssfeed/news/2/6638?ch=news' },
+      { name: '聯合新聞網', url: 'https://udn.com/news/rssfeed/7225' },
       { name: '公視新聞', url: 'https://news.pts.org.tw/xml/newsfeed.xml' },
     ],
   },
