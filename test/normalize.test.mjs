@@ -183,6 +183,14 @@ test('parseNewsRss：真實 Google News RSS，去掉來源尾綴、只留標題�
   assert.throws(() => parseNewsRss('<html>blocked</html>', { name: 'x' }), DataValidationError);
 });
 
+test('parseNewsRss：媒體自己的 RSS 沒有 <source>，用呼叫端給的媒體名；CDATA 標題要解開', () => {
+  const xml = '<rss version="2.0"><channel><item><title><![CDATA[丁學忠質詢 &amp; 追問]]></title><link>https://cna.example/1</link><pubDate>Tue, 29 Sep 2026 08:00:00 GMT</pubDate></item></channel></rss>';
+  assert.deepEqual(parseNewsRss(xml, { name: '丁學忠', source: '中央社' }), [
+    { title: '丁學忠質詢 & 追問', source: '中央社', url: 'https://cna.example/1', published_at: '2026-09-29T08:00:00.000Z' },
+  ]);
+  assert.equal(parseNewsRss(xml, { name: '丁學忠' })[0].source, '', '沒給媒體名時維持空字串（Google 新聞的行為不變）');
+});
+
 test('newsName：族語名只留漢名、異體字換成媒體常用字', () => {
   assert.equal(newsName('伍麗華Saidhai‧Tahovecahe'), '伍麗華');
   assert.equal(newsName('鄭天財Sra Kacaw'), '鄭天財');

@@ -525,15 +525,24 @@ export function applyCommitteeMeets(db, meets, { fetchedAt }) {
 }
 
 /**
+ * 同一則報導的標題鍵：去掉空白。Google 新聞給的是 news.google.com 轉址、媒體 RSS 給的是原址，
+ * 同一則報導兩個網址不同，只能靠標題認；轉載（例如 Yahoo 轉中央社）也一併算同一則。
+ */
+const titleKey = (title) => String(title ?? '').replace(/[ \u3000\t]/g, ''); // 與 SAME_TITLE_SQL 去掉的字元一致
+const SAME_TITLE_SQL = "REPLACE(REPLACE(REPLACE(title, ' ', ''), '　', ''), char(9), '') = ?";
+
+/**
  * 新聞是**累積**的（不像名錄整批覆寫）：RSS 只給近期，覆寫會把歷史洗掉。
- * 同一連結只存一次；超過 keepDays 的刪除。
+ * 同一連結只存一次、同一位委員的同一個標題也只存一次（見 titleKey）；超過 keepDays 的刪除。
  */
 export function upsertNews(db, legislatorId, items, { fetchedAt }) {
   const insert = db.prepare(
     'INSERT OR IGNORE INTO news(legislator_id, url, title, source, published_at, fetched_at) VALUES(?, ?, ?, ?, ?, ?)',
   );
   const refresh = db.prepare('UPDATE news SET title = ?, source = ? WHERE legislator_id = ? AND url = ?');
+  const sameTitle = db.prepare(`SELECT 1 FROM news WHERE legislator_id = ? AND url <> ? AND ${SAME_TITLE_SQL} LIMIT 1`);
   const insertItem = (item) => {
+    if (sameTitle.get(legislatorId, item.url, titleKey(item.title))) return 0;
     const result = insert.run(legislatorId, item.url, item.title, item.source, item.published_at, fetchedAt);
     if (Number(result.changes) === 0) refresh.run(item.title, item.source, legislatorId, item.url);
     return Number(result.changes);
@@ -556,10 +565,14 @@ export function upsertTopicNews(db, topic, items, { fetchedAt }) {
   const stmt = db.prepare(
     'INSERT INTO topic_news(topic, url, title, source, published_at, fetched_at) VALUES(?, ?, ?, ?, ?, ?) ON CONFLICT(topic, url) DO UPDATE SET title = excluded.title, source = excluded.source',
   );
+  const sameTitle = db.prepare(`SELECT 1 FROM topic_news WHERE topic = ? AND url <> ? AND ${SAME_TITLE_SQL} LIMIT 1`);
   // 交易包起來，與本檔其他整批寫入一致：中途失敗就整批回滾，不留半套。
   db.exec('BEGIN');
   try {
-    const added = items.reduce((n, i) => n + Number(stmt.run(topic, i.url, i.title, i.source, i.published_at, fetchedAt).changes), 0);
+    const added = items.reduce(
+      (n, i) => (sameTitle.get(topic, i.url, titleKey(i.title)) ? n : n + Number(stmt.run(topic, i.url, i.title, i.source, i.published_at, fetchedAt).changes)),
+      0,
+    );
     db.exec('COMMIT');
     return added;
   } catch (error) {

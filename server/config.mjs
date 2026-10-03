@@ -60,6 +60,14 @@ export const CONFIG = {
     // 有自己的時間預算（不被委員新聞用光）；用不完就從上次停下的組別接著抓。
     entityBatch: Number(process.env.LY_NEWS_ENTITY_BATCH ?? 8),
     entityBudgetMs: Number(process.env.LY_NEWS_ENTITY_BUDGET_MS ?? 4 * 60 * 1000),
+    // 媒體官方 RSS：補 Google 新聞漏掉的報導、也不受 Google 限流影響。每家每輪只抓一次（最新幾十則），
+    // 再依標題分派給委員／機關首長／主計／基金機關，規則與 Google 那一路相同。抓不到只記警告。
+    outlets: [
+      { name: '中央社', url: 'https://feeds.feedburner.com/rsscna/politics' },
+      { name: '自由時報', url: 'https://news.ltn.com.tw/rss/politics.xml' },
+      { name: '聯合新聞網', url: 'https://udn.com/rssfeed/news/2/6638?ch=news' },
+      { name: '公視新聞', url: 'https://news.pts.org.tw/xml/newsfeed.xml' },
+    ],
   },
   // 社群帳號：人工整理的 Google 試算表（知道連結者可檢視），以 CSV 匯出網址抓取。
   social: {

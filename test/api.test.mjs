@@ -406,9 +406,10 @@ function seededFull() {
     upsertNews(
       db,
       id,
-      Array.from({ length: count }, () => ({
+      Array.from({ length: count }, (_, i) => ({
         url: `https://news.example/${id}/${serial++}`,
-        title: `${id} 的新聞`,
+        // 標題要不同：同一位委員的同一個標題只存一次（upsertNews 的標題去重）
+        title: `${id} 的新聞 ${i + 1}`,
         source: '測試來源',
         published_at: new Date(Date.now() - serial * 3600_000).toISOString(),
       })),

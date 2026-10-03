@@ -618,11 +618,12 @@ const tag = (xml, name) => decodeXml(new RegExp(`<${name}[^>]*>([\\s\\S]*?)</${n
  * 標題有名字才算「關於這位委員」，也順便擋掉大部分同名誤判。
  * ponytail: 正規表示式解析 RSS（格式固定、零相依）；來源換成任意 XML 時再換解析器。
  */
-export function parseNewsRss(xml, { name, match } = {}) {
+export function parseNewsRss(xml, { name, match, source: defaultSource = '' } = {}) {
   if (!/<rss[\s>]/.test(String(xml))) throw new DataValidationError('新聞回應不是 RSS');
   const items = [];
   for (const [, body] of String(xml).matchAll(/<item>([\s\S]*?)<\/item>/g)) {
-    const source = tag(body, 'source');
+    // 媒體自己的 RSS 沒有 <source>（Google 新聞才有），由呼叫端給媒體名
+    const source = tag(body, 'source') || defaultSource;
     let title = tag(body, 'title');
     if (source && title.endsWith(` - ${source}`)) title = title.slice(0, -(source.length + 3)).trim();
     const url = tag(body, 'link');

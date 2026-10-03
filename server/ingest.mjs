@@ -447,6 +447,41 @@ export async function runEntityNews(db, { logger = console, fetchImpl = fetchJso
 }
 
 /**
+ * 媒體官方 RSS（CONFIG.news.outlets）：每家抓一次，再依標題分派到既有的新聞對象，篩選規則與 Google 那一路相同：
+ * 委員＝標題含漢名（兩個字的名字如「范雲」「黃捷」另需標題含「立委」或「委員」，因為沒有 Google 查詢的「立委」條件把關）、
+ * 機關首長＝標題含姓名（有 hint 時另需含關鍵字）、主計＝標題含「主計」、基金機關＝標題提到具名單位。
+ * 同一則報導從 Google 再抓到一次時，由 upsertNews／upsertTopicNews 的標題去重擋掉。
+ */
+export async function runOutletNews(db, { logger = console, fetchImpl = fetchJson, now = () => new Date(), cutoff, outlets = CONFIG.news.outlets }) {
+  const result = { processed: 0, total: outlets.length, failures: 0, items: 0, added: 0 };
+  const legislators = db.prepare('SELECT id, name FROM legislators WHERE leave_flag = 0').all().map((l) => ({ id: l.id, name: newsName(l.name) }));
+  const tagger = makeTagger([]);
+  const fetchedAt = now().toISOString();
+  for (const outlet of outlets) {
+    result.processed += 1;
+    try {
+      const { text } = await fetchImpl(outlet.url, { ua: CONFIG.userAgent, text: true, retries: 2 });
+      const items = parseNewsRss(text, { match: () => true, source: outlet.name }).filter((i) => i.published_at >= cutoff);
+      result.items += items.length;
+      for (const l of legislators) {
+        const mine = items.filter((i) => i.title.includes(l.name) && (l.name.length > 2 || i.title.includes('立委') || i.title.includes('委員')));
+        if (mine.length) result.added += upsertNews(db, l.id, mine, { fetchedAt });
+      }
+      for (const o of OFFICIALS) {
+        const mine = items.filter((i) => i.title.includes(o.name) && (!o.hint || o.hint.some((h) => i.title.includes(h))));
+        if (mine.length) upsertTopicNews(db, `official:${o.name}`, mine, { fetchedAt });
+      }
+      upsertTopicNews(db, 'dgbas', items.filter((i) => i.title.includes('主計')), { fetchedAt });
+      upsertTopicNews(db, 'entities', items.filter((i) => mentionsKnownEntity(tagger, i.title)), { fetchedAt });
+    } catch (error) {
+      result.failures += 1;
+      logger.warn(`[news] ${outlet.name} RSS 抓取失敗：${error?.message || error}`);
+    }
+  }
+  return result;
+}
+
+/**
  * 新聞同步：在職委員逐位抓 Google News RSS（依序＋間隔，避免被限流）。
  * 單一委員失敗不影響其他人；超過一半失敗才整體標記 failed（多半是被擋或斷網）。
  */
@@ -511,6 +546,9 @@ export async function runNewsIngest(
   }
   // 基金／機關／行政法人：自己的 OR 批次查詢（不依賴委員新聞），有獨立時間預算；失敗只記警告
   const entity = await runEntityNews(db, { logger, fetchImpl, now, delayMs, budgetMs: entityBudgetMs, cutoff });
+  // 媒體官方 RSS：只是補充來源，失敗不影響整體成敗，只記在 notes
+  const outlet = await runOutletNews(db, { logger, fetchImpl, now, cutoff });
+  added += outlet.added;
   const pruned = pruneNews(db, { keepDays: CONFIG.news.keepDays, now: now() });
 
   const failed = legislators.length === 0 || failures.length > processed / 2;
@@ -520,6 +558,7 @@ export async function runNewsIngest(
   if (failures.length) notes.push(`${failures.length}/${processed} 位失敗，例：${failures.slice(0, 3).join('；')}`);
   if (entity.partial) notes.push(`基金／機關新聞時間預算用盡，本輪完成 ${entity.processed}/${entity.total} 組，下輪接續`);
   if (entity.failures) notes.push(`基金／機關新聞 ${entity.failures}/${entity.processed} 組失敗`);
+  if (outlet.failures) notes.push(`媒體 RSS ${outlet.failures}/${outlet.total} 家抓取失敗`);
   const error = notes.length ? notes.join('；') : null;
   // 全部失敗時不可以寫 complete：health 的 notices 只看 partial，前端橫幅只看 sync_runs，
   // 若這裡寫 complete:113/113，等於在 UI 上說「新聞同步完成」而實際上什麼都沒抓到。
@@ -541,7 +580,7 @@ export async function runNewsIngest(
     error: legislators.length === 0 ? '名錄尚未同步' : error,
   });
   (failed ? logger.error : logger.log)(`[news] ${status}：新增 ${added} 則、清除過期 ${pruned} 則${error ? `（${error}）` : ''}`);
-  return { status, added, pruned, failures: failures.length, processed, total: legislators.length, partial, entity };
+  return { status, added, pruned, failures: failures.length, processed, total: legislators.length, partial, entity, outlet };
 }
 
 /** 社群帳號整理表：抓 CSV → 驗證 → 整批覆寫；失敗保留舊資料。 */

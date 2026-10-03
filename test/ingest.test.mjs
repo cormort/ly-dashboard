@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { openDb, applyDataset, applyBills, applySocial, applyCommitteeRecords, applyCommitteeMeets, upsertNews, pruneLogs, getMeta, setMeta } from '../server/db.mjs';
 import { buildDataset, normalizeBills, normalizeCommitteeRecords, normalizeMeetings, normalizeSocial, newsName, rocDate, DataValidationError } from '../server/normalize.mjs';
 import { CONFIG } from '../server/config.mjs';
-import { entityFeedUrl, guardShrink, runIngest, runBillsIngest, runRecordsIngest, runBudgetIngest, runBudgetReportsIngest, runMeetingsIngest, budgetPageUrl, runNewsIngest, runSocialIngest, runAll } from '../server/ingest.mjs';
+import { entityFeedUrl, guardShrink, runIngest, runBillsIngest, runRecordsIngest, runBudgetIngest, runBudgetReportsIngest, runMeetingsIngest, budgetPageUrl, runNewsIngest, runOutletNews, runSocialIngest, runAll } from '../server/ingest.mjs';
 import { entityNewsTerms, listFunds, getHealth, listBills, listBudget, listBudgetMeetings, listBudgetReports, budgetState, listChanges, listCounties, listLegislatorVotes, listRankings, compareLegislators, listRegions, listSplitTicket, listDemographics, listPopulationTrend, getTownMap, listLegislators, listNews, listSyncRuns } from '../server/queries.mjs';
 import { FetchError } from '../server/fetch-ly.mjs';
 import { syncOnce } from '../server/index.mjs';
@@ -197,7 +197,9 @@ test('新聞同步：只存標題含姓名的項目、可累積去重、在職�
   const first = await runNewsIngest(db, { logger: silent, fetchImpl, now, delayMs: 0 });
   assert.equal(first.status, 'success');
   assert.equal(urls.filter((u) => u.includes('%E7%AB%8B%E5%A7%94')).length, listLegislators(db, { session: 'all' }).items.filter((x) => !x.former).length, '只抓在職委員');
-  assert.ok(urls.every((u) => u.includes('news.google.com')));
+  const outletUrls = CONFIG.news.outlets.map((o) => o.url);
+  assert.ok(urls.every((u) => u.includes('news.google.com') || outletUrls.includes(u)), 'Google 新聞以外只抓設定的媒體 RSS');
+  assert.deepEqual(urls.filter((u) => outletUrls.includes(u)), outletUrls, '每家媒體 RSS 每輪只抓一次');
   const ting = listLegislators(db, { q: '丁學忠' }).items[0].id;
   const news = listNews(db, { legislator: ting, limit: 100 });
   assert.ok(news.total > 0 && news.items.every((n) => n.title.includes('丁學忠')));
@@ -1069,3 +1071,81 @@ test('基金新聞：批次失敗只記警告不影響整體；預算用盡會�
   assert.match(String(db.prepare("SELECT error FROM sync_runs WHERE dataset = 'news' ORDER BY id DESC LIMIT 1").get().error), /基金／機關新聞/);
 });
 
+
+/* ---------------- 媒體官方 RSS（中央社／自由／聯合／公視） ---------------- */
+
+/** 媒體自己的 RSS：沒有 <source>、標題沒有「 - 來源」尾綴，標題常包在 CDATA 裡 */
+const outletRss = (items) =>
+  `<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel><title>政治</title>${items
+    .map((i) => `<item><title><![CDATA[${i.title}]]></title><link>${i.url}</link><pubDate>${i.date}</pubDate></item>`)
+    .join('')}</channel></rss>`;
+const OUTLETS = [
+  { name: '中央社', url: 'https://outlet.example/cna' },
+  { name: '自由時報', url: 'https://outlet.example/ltn' },
+];
+
+test('媒體 RSS：每家抓一次，依標題分派到委員／首長／主計／基金機關，來源記媒體名', async () => {
+  const db = seeded();
+  const calls = [];
+  const fetchImpl = async (url) => {
+    calls.push(url);
+    if (url.endsWith('/cna')) {
+      return rssResponse(
+        outletRss([
+          { title: '丁學忠質詢國防預算', url: 'https://cna.example/1', date: 'Tue, 29 Sep 2026 08:00:00 GMT' },
+          { title: '卓榮泰赴立法院施政報告', url: 'https://cna.example/2', date: 'Tue, 29 Sep 2026 09:00:00 GMT' },
+          { title: '主計總處公布物價指數', url: 'https://cna.example/3', date: 'Tue, 29 Sep 2026 10:00:00 GMT' },
+          { title: '台電宣布電價調整', url: 'https://cna.example/4', date: 'Tue, 29 Sep 2026 11:00:00 GMT' },
+          { title: '今天天氣很好', url: 'https://cna.example/5', date: 'Tue, 29 Sep 2026 12:00:00 GMT' },
+          // 兩個字的委員名：沒有「立委／委員」不收（「黃捷運」這種會誤判），有才收
+          { title: '黃捷運站周邊交通管制', url: 'https://cna.example/6', date: 'Tue, 29 Sep 2026 13:00:00 GMT' },
+          { title: '立委黃捷提案修法', url: 'https://cna.example/7', date: 'Tue, 29 Sep 2026 14:00:00 GMT' },
+          // 超過保存期限的不收
+          { title: '丁學忠舊聞', url: 'https://cna.example/old', date: 'Tue, 01 Jan 2025 08:00:00 GMT' },
+        ]),
+      );
+    }
+    return rssResponse(outletRss([]));
+  };
+  const cutoff = new Date(NEWS_NOW().getTime() - CONFIG.news.keepDays * 86_400_000).toISOString();
+  const result = await runOutletNews(db, { logger: silent, fetchImpl, now: NEWS_NOW, cutoff, outlets: OUTLETS });
+  assert.deepEqual(calls, OUTLETS.map((o) => o.url), '每家抓一次');
+  assert.equal(result.failures, 0);
+
+  const ting = listLegislators(db, { q: '丁學忠' }).items[0].id;
+  const news = listNews(db, { legislator: ting }).items;
+  assert.deepEqual(news.map((n) => [n.title, n.source]), [['丁學忠質詢國防預算', '中央社']], '來源記媒體名、過期的不收');
+  const huang = listLegislators(db, { q: '黃捷' }).items[0].id;
+  assert.deepEqual(listNews(db, { legislator: huang }).items.map((n) => n.title), ['立委黃捷提案修法'], '兩字名需標題含立委／委員');
+  const topic = (t) => db.prepare('SELECT title FROM topic_news WHERE topic = ? ORDER BY url').all(t).map((r) => r.title);
+  assert.deepEqual(topic('official:卓榮泰'), ['卓榮泰赴立法院施政報告']);
+  assert.deepEqual(topic('dgbas'), ['主計總處公布物價指數']);
+  assert.deepEqual(topic('entities'), ['主計總處公布物價指數', '台電宣布電價調整'], '主計總處本身也在機關清單裡（與 Google 那一路相同）；天氣、委員新聞不收');
+});
+
+test('媒體 RSS：一家失敗只記警告；同一則報導 Google 與媒體各抓到一次只存一則', async () => {
+  const db = seeded();
+  const warnings = [];
+  const logger = { ...silent, warn: (m) => warnings.push(m) };
+  const fetchImpl = async (url) => {
+    if (url.endsWith('/ltn')) throw new FetchError('HTTP 403', { status: 403, attempts: 2 });
+    if (url.endsWith('/cna')) return rssResponse(outletRss([{ title: '丁學忠 質詢國防預算', url: 'https://cna.example/1', date: 'Tue, 29 Sep 2026 08:00:00 GMT' }]));
+    // Google 新聞：同一則報導，網址是 news.google.com 的轉址，標題帶「 - 中央社」尾綴
+    const q = decodeURIComponent(new URL(url).searchParams.get('q') ?? '');
+    if (q.includes('丁學忠')) return rssResponse(rssOf([{ title: '丁學忠質詢國防預算', source: '中央社 CNA', url: 'https://news.google.com/rss/articles/abc', date: 'Tue, 29 Sep 2026 08:05:00 GMT' }]));
+    return rssResponse(rssOf([]));
+  };
+  const original = CONFIG.news.outlets;
+  CONFIG.news.outlets = OUTLETS;
+  try {
+    const result = await runNewsIngest(db, { logger, fetchImpl, now: NEWS_NOW, delayMs: 0, entityBudgetMs: 0 });
+    assert.equal(result.status, 'success', '媒體 RSS 失敗不影響新聞同步成敗');
+    assert.equal(result.outlet.failures, 1);
+    assert.ok(warnings.some((w) => w.includes('自由時報')), '失敗要記警告');
+    assert.match(String(db.prepare("SELECT error FROM sync_runs WHERE dataset = 'news' ORDER BY id DESC LIMIT 1").get().error), /媒體 RSS 1\/2 家/);
+  } finally {
+    CONFIG.news.outlets = original;
+  }
+  const ting = listLegislators(db, { q: '丁學忠' }).items[0].id;
+  assert.equal(listNews(db, { legislator: ting }).total, 1, '標題相同（忽略空白）就是同一則，不重複計入排行');
+});
