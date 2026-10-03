@@ -31,12 +31,12 @@ const FILES = ['elbase.csv', 'elcand.csv', 'elctks.csv', 'elpaty.csv', 'elprof.c
 
 /**
  * 各屆「直轄市議員」的三個選舉種類目錄。區域＝議員(區域)選舉、平原＝議員(平地原住民)、
- * 山原＝議員(山地原住民)。2010 是新北市升格後第 1 屆（目錄名是「五都市長議員及里長」）。
+ * 山原＝議員(山地原住民)。2010 的目錄名是「五都市長議員及里長」。
+ * 屆次編號各縣市不同（新北市 2010 是第 1 屆、臺北市是第 11 屆），不放在這裡，見 build 腳本的 COUNTY_META。
  */
 export const ELECTIONS = [
   {
     year: 2022,
-    term: 4,
     date: '2022-11-26',
     dirs: {
       area: '2022-111年地方公職人員選舉/T1/prv',
@@ -46,7 +46,6 @@ export const ELECTIONS = [
   },
   {
     year: 2018,
-    term: 3,
     date: '2018-11-24',
     dirs: {
       area: '2018-107年地方公職人員選舉/直轄市區域議員',
@@ -56,7 +55,6 @@ export const ELECTIONS = [
   },
   {
     year: 2014,
-    term: 2,
     date: '2014-11-29',
     dirs: {
       area: '2014-103年地方公職人員選舉/直轄市區域議員',
@@ -66,7 +64,6 @@ export const ELECTIONS = [
   },
   {
     year: 2010,
-    term: 1,
     date: '2010-11-27',
     dirs: {
       area: '20101127-五都市長議員及里長/區域議員',

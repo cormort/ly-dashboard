@@ -311,7 +311,8 @@ Query 參數（全部可選）：
 - `districts[]`：`{ no, kind, name, area[], electorate, population, valid, invalid, ballots, turnout, seats, candidate_count, list[], last_winner, first_loser }`。
   `list[]` 依得票由高到低：`{ no（號次）, name, party, gender, age, education, elected, quota, incumbent, votes, pct }`。
   `quota: true` 表示因**婦女保障名額**當選（中選會當選註記 `!`）—— 這種當選人的得票可能比落選者還少，
-  所以「當選者一定排在落選者前面」不成立。`name` 若含來源檔的私用區字元會以「□」表示（見 `warnings`）。
+  所以「當選者一定排在落選者前面」不成立。`first_loser.margin` 是「最低票當選人 − 落選頭」的票數差，
+  最低票當選人是保障名額時會是**負數**（例如 2010 臺中市第5選舉區 -534）。`name` 若含來源檔的私用區字元會以「□」表示（見 `warnings`）。
   `incumbent` 是中選會的「現任」欄位，**2010 那一屆整欄都是 N**，所以只當參考（見 `compare.incumbent_source`）。
 - `parties[]`：`{ party, seats, votes, candidates, pct, seat_pct }`，`seat_pct - pct` 就是「超額代表」。
 - `stats`：`{ candidates, top, lowest_winner, highest_loser, area_electorate, area_turnout }`。

@@ -5,15 +5,14 @@
  * 這些資料幾年到一次，不放進每日同步流程，需要更新時手動重跑（同 county-stats.json 的做法）：
  *
  *   node scripts/fetch-cec-council.mjs              # 抓中選會原始檔到 .cache/cec-council
- *   node scripts/build-council-stats.mjs            # 預設做「新北市」
- *   node scripts/build-council-stats.mjs --county 臺北市
+ *   node scripts/build-council-stats.mjs            # 預設做 COUNTY_META 裡的所有縣市（目前六都）
+ *   node scripts/build-council-stats.mjs --county 臺北市   # 只做指定縣市（可重複 --county）
  *
  * 來源：中選會選舉資料庫（kiang/db.cec.gov.tw 轉存）。只涵蓋直轄市議員；縣市議員在另一個目錄，
  * 尚未納入（見 README「資料限制」）。
  *
- * 目前納入四屆：2010（第1屆）／2014（第2屆）／2018（第3屆）／2022（第4屆）。
- * 2010 是新北市升格後第一次選議員，四屆的區域議員都是 62 席，加上平地原住民 3 席、
- * 山地原住民 1 席，合計 66 席。
+ * 目前納入 2010／2014／2018／2022 四次選舉（桃園市 2014 才升格，只有後三次）。
+ * 各縣市的屆次編號與席次不同，見下方 COUNTY_META。
  */
 import { readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';

@@ -1,4 +1,4 @@
-import { useMemo, type CSSProperties } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { buildUrl } from '../api/client';
 import type { CouncilCandidate, CouncilDistrict, CouncilResponse, CouncilTerm } from '../api/types';
 import { EmptyState, ErrorState, LoadingState } from '../components/DataStates';
@@ -17,6 +17,18 @@ const signed = (n: number, digits = 0) => `${n > 0 ? '+' : ''}${num(n, digits)}`
 
 /** 得票由高到低的名單裡「當選」不一定是前 N 名（婦女保障名額），所以結果欄自己講清楚 */
 const resultText = (c: CouncilCandidate) => (c.elected ? (c.quota ? '當選（婦女保障）' : '當選') : '落選');
+
+/**
+ * 落選頭與最低票當選人的差距。`margin` 是「最低票當選 − 落選頭」，最低票當選人是婦女保障名額時
+ * 會是負數（落選頭的票反而比較多），直接印「差 -534 票」看起來像資料錯了，所以換個講法。
+ */
+export function marginText(d: Pick<CouncilDistrict, 'first_loser'>): string {
+  const loser = d.first_loser;
+  if (!loser) return '';
+  const head = `｜落選頭 ${loser.name}（${num(loser.votes)} 票`;
+  if (loser.margin !== null && loser.margin < 0) return `${head}，比婦女保障名額當選人多 ${num(-loser.margin)} 票）`;
+  return `${head}，差 ${numOrDash(loser.margin)} 票）`;
+}
 
 /** 姓名連到政黨色：沿用各縣市動態的 `.region-person`（底色線代表黨籍），不另外塞標籤 */
 function Person({ name, party, note }: { name: string; party: string; note?: string }) {
@@ -258,7 +270,7 @@ function DistrictRow({ d }: { d: CouncilDistrict }) {
         ) : null}
         <p className="muted">
           有效票 {num(d.valid)}・無效票 {num(d.invalid)}・投票數 {num(d.ballots)}・選舉區人口 {num(d.population)}
-          {d.first_loser ? `｜落選頭 ${d.first_loser.name}（${num(d.first_loser.votes)} 票，差 ${numOrDash(d.first_loser.margin)} 票）` : ''}
+          {marginText(d)}
           {d.last_winner ? `｜最低當選票 ${d.last_winner.name}（${num(d.last_winner.votes)} 票）` : ''}
         </p>
       </div>
@@ -274,11 +286,26 @@ export function CouncilPage({ refreshToken }: CouncilPageProps) {
   const [county, setCounty] = useParam<string>('county', '');
   const [year, setYear] = useParam<string>('year', '');
   const res = useApi<CouncilResponse>(buildUrl('/council', { county }), { refreshToken });
+  // 網址帶到沒建置的縣市（404 county_not_found）：重試也還是 404，又看不到縣市切換鈕，
+  // 所以退回預設縣市，並留一行說明為什麼換了
+  const [missing, setMissing] = useState<string | null>(null);
+  const notFound = res.phase === 'error' && res.error?.code === 'county_not_found' && county !== '';
+  useEffect(() => {
+    if (!notFound) return;
+    setMissing(county);
+    setCounty('');
+  }, [notFound, county, setCounty]);
+  // 換縣市時屆次一併回到最新一屆：各縣市的屆次不同（桃園沒有 2010），留著舊的 ?year= 網址會騙人
+  const switchCounty = (name: string) => {
+    setMissing(null);
+    setYear('');
+    setCounty(name);
+  };
 
   const terms = res.data?.terms ?? [];
   const term = useMemo(() => terms.find((t) => String(t.year) === year) ?? terms[0] ?? null, [terms, year]);
 
-  if (res.phase === 'loading' && !res.data) return <LoadingState label="載入議員選舉資料…" />;
+  if (notFound || (res.phase === 'loading' && !res.data)) return <LoadingState label="載入議員選舉資料…" />;
   if (res.phase === 'error') return <ErrorState error={res.error} onRetry={res.reload} />;
   if (!res.data || !term) return <EmptyState message="沒有議員選舉資料" hint="請先跑 node scripts/build-council-stats.mjs 產生資料檔。" />;
 
@@ -305,11 +332,12 @@ export function CouncilPage({ refreshToken }: CouncilPageProps) {
             : ''}
           。
         </p>
+        {missing ? <p className="muted">沒有「{missing}」的議員選舉資料（目前建置直轄市），已改看{res.data.county}。</p> : null}
         <div className="council-switches">
           {res.data.counties.length > 1 ? (
             <div className="segmented" role="group" aria-label="選擇縣市">
               {res.data.counties.map((name) => (
-                <button key={name} type="button" aria-pressed={name === res.data?.county} onClick={() => setCounty(name)}>
+                <button key={name} type="button" aria-pressed={name === res.data?.county} onClick={() => switchCounty(name)}>
                   {name}
                 </button>
               ))}
@@ -331,7 +359,7 @@ export function CouncilPage({ refreshToken }: CouncilPageProps) {
         <Tile value={numOrDash(area?.electorate ?? null)} label="區域選舉人數" hint="不含原住民選舉人（原住民另有選舉區）" />
         <Tile value={`${numOrDash(area?.turnout ?? null, 2)}%`} label="區域投票率" hint={`有效票 ${numOrDash(area?.valid ?? null)}`} />
         <Tile value={top ? top.name : '—'} label="最高票" hint={top ? `${top.party}・${num(top.votes)} 票・${top.district}` : undefined} />
-        <Tile value={lowest ? lowest.name : '—'} label="當選最低票" hint={lowest ? `${lowest.party}・${num(lowest.votes)} 票` : undefined} />
+        <Tile value={lowest ? lowest.name : '—'} label="當選最低票" hint={lowest ? `${lowest.party}・${num(lowest.votes)} 票${lowest.quota ? '（婦女保障）' : ''}` : undefined} />
       </div>
 
       <PartyPanel term={term} />

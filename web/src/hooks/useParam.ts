@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 
 /**
  * 頁面層的網址狀態：`?key=`（replaceState，可分享、重整後一致、上一頁不會被灌滿）。
@@ -20,11 +20,14 @@ export function useParam<T extends string>(key: string, fallback: T, allowed?: r
     return raw;
   };
   const [value, setValue] = useState<T>(read);
-  const update = (next: T) => {
+  const update = useCallback((next: T) => {
     setValue(next);
     const params = new URLSearchParams(window.location.search);
-    params.set(key, next);
-    window.history.replaceState(null, '', `${window.location.pathname}?${params.toString()}`);
-  };
+    // 空字串＝回到預設值，直接拿掉參數，網址不留 `?key=`
+    if (next === '') params.delete(key);
+    else params.set(key, next);
+    const qs = params.toString();
+    window.history.replaceState(null, '', `${window.location.pathname}${qs ? `?${qs}` : ''}`);
+  }, [key]);
   return [value, update];
 }

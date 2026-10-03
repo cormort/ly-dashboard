@@ -43,7 +43,7 @@ import { CommitteesPage } from '../src/pages/CommitteesPage';
 import { routeOf, type Route } from '../src/hooks/useRoute';
 import { BillStageBar } from '../src/components/BillStage';
 import { CountiesPage } from '../src/pages/CountiesPage';
-import { CouncilPage } from '../src/pages/CouncilPage';
+import { CouncilPage, marginText } from '../src/pages/CouncilPage';
 import { NewsPage } from '../src/pages/NewsPage';
 import { ChoroplethMap } from '../src/components/ChoroplethMap';
 import { bbox, countyViewBoxFor } from '../src/components/TownMap';
@@ -919,6 +919,13 @@ expectAll(
 check('/counties 對應縣市頁', routeOf('/counties') === 'counties');
 expectAll('議員頁：loading 態有讀取提示（不先畫任何議員資料）', render(createElement(CouncilPage, { refreshToken: 0 })), ['載入議員選舉資料']);
 check('/council 對應議員頁', routeOf('/council') === 'council');
+check(
+  '議員頁：落選頭差距——一般情形印「差 N 票」，保障名額造成負差距時改講「多 N 票」，不印負號',
+  marginText({ first_loser: { name: '甲', party: '無黨籍', votes: 9000, pct: 10, margin: 1234 } }) === '｜落選頭 甲（9,000 票，差 1,234 票）' &&
+    marginText({ first_loser: { name: '林竹旺', party: '無黨籍', votes: 8000, pct: 9, margin: -534 } }) === '｜落選頭 林竹旺（8,000 票，比婦女保障名額當選人多 534 票）' &&
+    marginText({ first_loser: { name: '乙', party: '無黨籍', votes: 1, pct: 1, margin: null } }) === '｜落選頭 乙（1 票，差 — 票）' &&
+    marginText({ first_loser: null }) === '',
+);
 check('/news 對應新聞頁', routeOf('/news') === 'news');
 check('/officials 對應機關首長新聞頁', routeOf('/officials') === 'officials');
 
