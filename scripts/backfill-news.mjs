@@ -29,13 +29,14 @@ const { values: args } = parseArgs({
 });
 
 const db = openDb(CONFIG.dbPath);
-const total = backfillTargets(db).length;
+const targets = backfillTargets(db);
+const total = targets.length;
 const saved = JSON.parse(getMeta(db, 'news_backfill', 'null') ?? 'null');
 const doneAt = getMeta(db, 'news_backfill_done_at');
 
 if (args.status) {
   if (!saved) console.log(`尚未開始（共 ${total} 組對象）`);
-  else console.log(`區間 ${saved.from.slice(0, 10)}～${saved.to.slice(0, 10)}：已完成 ${saved.done.length}/${total} 組${saved.current ? `，進行中：${saved.current.key} 第 ${saved.current.month + 1} 個月` : ''}${doneAt ? `（${doneAt} 全部完成）` : ''}`);
+  else console.log(`區間 ${saved.from.slice(0, 10)}～${saved.to.slice(0, 10)}：已完成 ${targets.filter((t) => saved.done.includes(t.key)).length}/${total} 組${saved.current ? `，進行中：${saved.current.key} 第 ${saved.current.month + 1} 個月` : ''}${doneAt ? `（${doneAt} 全部完成）` : ''}`);
   process.exit(0);
 }
 
@@ -45,7 +46,7 @@ if (!(minutes > 0) || !(delayMs >= 0)) {
   console.error('--minutes 要大於 0、--delay-ms 不可為負');
   process.exit(2);
 }
-console.log(`[backfill] 開始：共 ${total} 組對象，已完成 ${args.reset ? 0 : saved?.done.length ?? 0} 組；時間預算 ${minutes} 分鐘、間隔 ${delayMs} ms`);
+console.log(`[backfill] 開始：共 ${total} 組對象，已完成 ${args.reset || !saved ? 0 : targets.filter((t) => saved.done.includes(t.key)).length} 組；時間預算 ${minutes} 分鐘、間隔 ${delayMs} ms`);
 const result = await runNewsBackfill(db, { delayMs, budgetMs: minutes * 60 * 1000, reset: args.reset });
 const summary = `請求 ${result.requests} 次、失敗 ${result.failures} 次、新增委員新聞 ${result.added} 則；完成 ${result.completed}/${result.targets} 組`;
 if (result.stopped === 'budget') console.log(`[backfill] 時間到，先停在這裡（${summary}）。再跑一次就會接續。`);

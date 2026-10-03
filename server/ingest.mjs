@@ -356,6 +356,12 @@ export async function runBillsIngest(db, { logger = console, fetchImpl = fetchJs
 
 const OFFICIALS = JSON.parse(readFileSync(new URL('./officials.json', import.meta.url), 'utf8')).officials;
 
+/** 主計新聞的兩組查詢（每日同步與回補共用）：中央的主計總處、地方的縣市政府主計處 */
+const DGBAS_QUERIES = [
+  { key: 'dgbas:central', label: '主計總處', q: '("主計總處" OR "主計長")' },
+  { key: 'dgbas:local', label: '地方主計處', q: '"主計處"' },
+];
+
 export function newsFeedUrl(name, q = `"${name}" 立委`) {
   const qs = new URLSearchParams({ q: `${q} when:${CONFIG.news.windowDays}d`, hl: 'zh-TW', gl: 'TW', ceid: 'TW:zh-Hant' });
   return `${CONFIG.news.url}?${qs}`;
@@ -617,7 +623,9 @@ export function backfillTargets(db) {
       write: (db2, items, at) => upsertTopicNews(db2, `official:${o.name}`, items, { fetchedAt: at }),
     });
   }
-  targets.push({ key: 'dgbas', label: '主計', q: '"主計"', parse: (text) => parseNewsRss(text, { name: '主計' }), write: (db2, items, at) => upsertTopicNews(db2, 'dgbas', items, { fetchedAt: at }) });
+  for (const { key, label, q } of DGBAS_QUERIES) {
+    targets.push({ key, label, q, parse: (text) => parseNewsRss(text, { name: '主計' }), write: (db2, items, at) => upsertTopicNews(db2, 'dgbas', items, { fetchedAt: at }) });
+  }
   for (let i = 0; i < terms.length; i += size) {
     const batch = terms.slice(i, i + size);
     targets.push({
@@ -670,7 +678,8 @@ export async function runNewsBackfill(
   const targets = backfillTargets(db);
   const done = new Set(state.done);
   const deadline = Date.now() + budgetMs;
-  const result = { requests: 0, added: 0, failures: 0, targets: targets.length, completed: done.size, stopped: null };
+  // 已完成數只算現在的對象（舊的 key，例如拆分前的 'dgbas'，不算）
+  const result = { requests: 0, added: 0, failures: 0, targets: targets.length, completed: targets.filter((t) => done.has(t.key)).length, stopped: null };
   let consecutive = 0;
   let first = true;
 
@@ -712,23 +721,29 @@ export async function runNewsBackfill(
   try {
     for (const target of targets) {
       if (done.has(target.key)) continue;
-      const startMonth = state.current?.key === target.key ? state.current.month : 0;
+      // 每組各自記到第幾個月（progress）：中途插入新的對象（例如主計拆成兩組）時，
+      // 原本做到一半的那組不會因為 current 被蓋掉而重頭來。舊版只有 current，一併沿用
+      state.progress ??= state.current ? { [state.current.key]: state.current.month } : {};
+      const startMonth = state.progress[target.key] ?? 0;
       for (let m = startMonth; m < months.length; m += 1) {
         // 失敗的月份不前進：下次從這個月重來（寫入是冪等的，重抓不會重複）
         if (!(await fetchSlice(target, months[m][0], months[m][1], 'month'))) {
           state.current = { key: target.key, month: m };
+          state.progress[target.key] = m;
           save();
           m -= 1;
           continue;
         }
         state.current = { key: target.key, month: m + 1 };
+        state.progress[target.key] = m + 1;
         save();
       }
       done.add(target.key);
       state.done = [...done];
       state.current = null;
+      delete state.progress[target.key];
       save();
-      result.completed = done.size;
+      result.completed = targets.filter((t) => done.has(t.key)).length;
       logger.log(`[backfill] ${result.completed}/${targets.length} ${target.label} 完成`);
     }
   } catch (error) {
@@ -785,14 +800,17 @@ export async function runNewsIngest(
       failures.push(`${l.name}：${error?.message || error}`);
     }
   }
-  // 主計總處專頁：不限委員，標題提到「主計」的新聞都收（地方主計處等在頁面上另外標示）
-  try {
-    const { text } = await fetchImpl(newsFeedUrl('主計', '"主計"'), { ua: CONFIG.userAgent, text: true, retries: 2 });
-    const items = parseNewsRss(text, { name: '主計' }).filter((n) => n.published_at >= cutoff);
-    upsertTopicNews(db, 'dgbas', items, { fetchedAt: now().toISOString() });
-    saveGoogleArticles(db, items, now);
-  } catch (error) {
-    logger.warn(`[news] 主計總處新聞抓取失敗：${error?.message || error}`);
+  // 主計總處專頁：不限委員，主計總處與地方主計處分兩次查（各有自己的約 100 則上限，合查時地方的常被擠掉），
+  // 都寫進 'dgbas'；頁面上再依標題分「提及主計總處」「地方主計處」「僅提及主計」（queries.mjs dgbasOf）
+  for (const { label, q } of DGBAS_QUERIES) {
+    try {
+      const { text } = await fetchImpl(newsFeedUrl('主計', q), { ua: CONFIG.userAgent, text: true, retries: 2 });
+      const items = parseNewsRss(text, { name: '主計' }).filter((n) => n.published_at >= cutoff);
+      upsertTopicNews(db, 'dgbas', items, { fetchedAt: now().toISOString() });
+      saveGoogleArticles(db, items, now);
+    } catch (error) {
+      logger.warn(`[news] ${label}新聞抓取失敗：${error?.message || error}`);
+    }
   }
   // 機關首長：逐位抓，標題含姓名才收（兩字姓名另需標題含機關關鍵字）；失敗只記警告
   for (const o of OFFICIALS) {

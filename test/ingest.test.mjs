@@ -992,6 +992,8 @@ const rssOf = (items) =>
     .join('')}</channel></rss>`;
 const rssResponse = (xml) => ({ text: xml, status: 200, headers: {}, bytes: xml.length, sha256: 'x', attempts: 1 });
 const NEWS_NOW = () => new Date('2026-09-30T00:00:00.000Z');
+/** 基金機關的 OR 批次查詢（主計總處的查詢也有 OR，要排除） */
+const isEntityBatch = (q) => q.includes(' OR ') && !q.startsWith('("主計總處" OR "主計長")');
 
 test('基金新聞：搜尋詞不重複、取最短簡稱、全部合併成 OR 批次', () => {
   const terms = entityNewsTerms();
@@ -1007,7 +1009,7 @@ test('基金新聞：不依賴委員新聞，標題提到具名單位才收，�
   const fetchImpl = async (url) => {
     const q = decodeURIComponent(new URL(url).searchParams.get('q'));
     queries.push(q);
-    if (!q.includes(' OR ')) return rssResponse(rssOf([])); // 委員／首長查詢：沒有新聞
+    if (!isEntityBatch(q)) return rssResponse(rssOf([])); // 委員／首長查詢：沒有新聞
     return rssResponse(
       rssOf([
         { title: '台電宣布電價調整', url: 'https://news.example/tpc', date: 'Tue, 29 Sep 2026 08:00:00 GMT' },
@@ -1020,7 +1022,7 @@ test('基金新聞：不依賴委員新聞，標題提到具名單位才收，�
   assert.equal(result.status, 'success');
   assert.equal(result.entity.processed, result.entity.total);
   assert.equal(result.entity.added, 1, '77 組都回同一則，只算新增 1 列');
-  assert.equal(queries.filter((q) => q.includes(' OR ')).length, result.entity.total, '每組一次查詢');
+  assert.equal(queries.filter(isEntityBatch).length, result.entity.total, '每組一次查詢');
   assert.ok(result.entity.total >= 50 && result.entity.total < 200, `約 80 組，實際 ${result.entity.total}`);
 
   const stored = db.prepare("SELECT title FROM topic_news WHERE topic = 'entities'").all().map((r) => r.title);
@@ -1045,7 +1047,7 @@ test('基金新聞：批次失敗只記警告不影響整體；預算用盡會�
     now: NEWS_NOW,
     fetchImpl: async (url) => {
       const q = decodeURIComponent(new URL(url).searchParams.get('q'));
-      if (!q.includes(' OR ')) return rssResponse(rssOf([]));
+      if (!isEntityBatch(q)) return rssResponse(rssOf([]));
       first.push(q);
       await new Promise((r) => setTimeout(r, 10));
       return rssResponse(rssOf([]));
@@ -1062,7 +1064,7 @@ test('基金新聞：批次失敗只記警告不影響整體；預算用盡會�
     now: NEWS_NOW,
     fetchImpl: async (url) => {
       const q = decodeURIComponent(new URL(url).searchParams.get('q'));
-      if (!q.includes(' OR ')) return rssResponse(rssOf([]));
+      if (!isEntityBatch(q)) return rssResponse(rssOf([]));
       second.push(q);
       if (second.length === 1) throw new FetchError('HTTP 503', { status: 503, attempts: 2 }); // 第一組失敗
       await new Promise((r) => setTimeout(r, 10));
@@ -1301,7 +1303,7 @@ test('全部新聞：搜得到沒提到任何人的新聞、關鍵字也比對�
 
   const all = listNewsArticles(db, { scope: 'all' });
   assert.equal(all.total, 2, '颱風那則沒提到任何人也在');
-  assert.deepEqual(all.kind_counts, { all: 2, other: 1, legislator: 1, official: 0, entity: 0, dgbas: 0 });
+  assert.deepEqual(all.kind_counts, { all: 2, other: 1, legislator: 1, official: 0, entity: 0, dgbas: 0, local_accounting: 0 });
   assert.ok(all.items.every((a) => !('summary' in a) && !('text' in a)), '摘要只拿來搜尋，不回傳');
 
   const budget = listNewsArticles(db, { scope: 'all', q: '預算' });
@@ -1343,7 +1345,7 @@ test('回補：日期區間查詢的網址、對象清單涵蓋委員／首長�
   const targets = backfillTargets(db);
   const count = (prefix) => targets.filter((t) => t.key.startsWith(prefix)).length;
   assert.equal(count('legislator:'), listLegislators(db, { session: 'all' }).items.filter((x) => !x.former).length);
-  assert.ok(count('official:') > 20 && count('dgbas') === 1 && count('entities:') > 50);
+  assert.ok(count('official:') > 20 && count('dgbas:') === 2 && count('entities:') > 50);
   assert.equal(new Set(targets.map((t) => t.key)).size, targets.length, 'key 不可重複（接續靠它）');
 });
 
@@ -1595,4 +1597,65 @@ test('機關新聞：只列標題提到中央機關的（含委員新聞與「�
   const rows = newsCsv(listNewsArticles(db, { scope: 'agencies', all: true }).items, 'agencies').split('\r\n');
   assert.equal(rows[0], '發布時間,媒體,標題,類別,提到的機關,提到的委員／首長,連結');
   assert.ok(rows[3].includes(',機關,交通部、衛生福利部,'));
+});
+
+/* ---------------- 主計拆成主計總處／地方主計處 ---------------- */
+
+test('主計：每日同步分兩次查（主計總處、地方主計處），都寫進主計主題；全部新聞分成兩類', async () => {
+  const db = seeded();
+  const queries = [];
+  const fetchImpl = async (url) => {
+    const q = decodeURIComponent(new URL(url).searchParams.get('q') ?? '');
+    queries.push(q);
+    if (q.startsWith('("主計總處" OR "主計長")')) return rssResponse(rssOf([{ title: '主計總處公布物價指數', url: 'https://g/c1', date: 'Tue, 29 Sep 2026 08:00:00 GMT' }]));
+    if (q.startsWith('"主計處"')) {
+      return rssResponse(
+        rssOf([
+          { title: '臺北市主計處公布市府預算', url: 'https://g/l1', date: 'Tue, 29 Sep 2026 09:00:00 GMT' },
+          { title: '國防部主計局說明', url: 'https://g/x1', date: 'Tue, 29 Sep 2026 10:00:00 GMT' },
+        ]),
+      );
+    }
+    return rssResponse(rssOf([]));
+  };
+  const original = CONFIG.news.outlets;
+  const feedUrl = CONFIG.news.feedUrl;
+  Object.assign(CONFIG.news, { outlets: [], feedUrl: '' });
+  try {
+    await runNewsIngest(db, { logger: silent, fetchImpl, now: NEWS_NOW, delayMs: 0, entityBudgetMs: 0 });
+  } finally {
+    Object.assign(CONFIG.news, { outlets: original, feedUrl });
+  }
+  assert.deepEqual(
+    queries.filter((q) => q.startsWith('("主計總處" OR "主計長")') || q.startsWith('"主計處"')).map((q) => q.replace(/ when:.*$/, '')),
+    ['("主計總處" OR "主計長")', '"主計處"'],
+    '主計查兩次',
+  );
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM topic_news WHERE topic = 'dgbas'").get().n, 3);
+  const all = listNewsArticles(db, { scope: 'all' });
+  assert.equal(all.kind_counts.dgbas, 1);
+  assert.equal(all.kind_counts.local_accounting, 1);
+  assert.deepEqual(listNewsArticles(db, { scope: 'all', kind: 'local_accounting' }).items.map((a) => a.title), ['臺北市主計處公布市府預算']);
+  assert.ok(listNewsArticles(db, { scope: 'all', kind: 'other' }).items.some((a) => a.title === '國防部主計局說明'), '只說主計的不歸兩類');
+  assert.ok(newsCsv(listNewsArticles(db, { scope: 'all', all: true }).items, 'all').includes(',地方主計,'));
+});
+
+test('回補：插入新的對象（主計拆成兩組）時，做到一半的那組從原本的月份接續，不重頭來', async () => {
+  const db = seeded();
+  const targets = backfillTargets(db);
+  const entity = targets.find((t) => t.key.startsWith('entities:'));
+  const before = targets.filter((t) => !t.key.startsWith('entities:') && !t.key.startsWith('dgbas:')).map((t) => t.key);
+  // 模擬舊版進度：委員、首長、舊的 'dgbas' 都做完了，第一組基金機關做到第 4 個月
+  const now = BACKFILL_NOW();
+  const to = new Date(`${now.toISOString().slice(0, 10)}T00:00:00.000Z`);
+  to.setUTCDate(to.getUTCDate() + 1);
+  const from = new Date(to.getTime() - CONFIG.news.keepDays * 86_400_000);
+  setMeta(db, 'news_backfill', JSON.stringify({ from: from.toISOString(), to: to.toISOString(), done: [...before, 'dgbas'], current: { key: entity.key, month: 4 } }));
+  const asked = [];
+  const result = await runNewsBackfill(db, { logger: silent, now: BACKFILL_NOW, delayMs: 0, fetchImpl: async (url) => (asked.push(rangeOf(url).query), rssResponse(rssOf([]))) });
+  assert.equal(result.stopped, null);
+  assert.equal(asked.filter((q) => q === '("主計總處" OR "主計長")').length, 6, '新的主計總處組完整補 6 個月');
+  assert.equal(asked.filter((q) => q === '"主計處"').length, 6, '新的地方主計處組完整補 6 個月');
+  assert.equal(asked.filter((q) => q === entity.q).length, 2, '基金機關那組只補剩下的 2 個月');
+  assert.equal(result.completed, targets.length, '舊的 dgbas key 不算進完成數');
 });

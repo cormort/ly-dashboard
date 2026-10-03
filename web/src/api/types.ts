@@ -435,8 +435,8 @@ export interface NewsArticle {
   legislators: { id: string; name: string; party: string; kind?: 'legislator' | 'official' }[];
 }
 
-/** 全部新聞的類別：委員、機關首長、基金／機關、主計 */
-export type NewsKind = 'legislator' | 'official' | 'entity' | 'dgbas';
+/** 全部新聞的類別：委員、機關首長、基金／機關、主計總處、地方主計處 */
+export type NewsKind = 'legislator' | 'official' | 'entity' | 'dgbas' | 'local_accounting';
 
 export interface NewsArticlesResponse {
   meta: Meta & { news_fetched_at: string | null; news_outlets_fetched_at?: string | null };

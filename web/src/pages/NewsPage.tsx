@@ -36,11 +36,12 @@ const KINDS: { key: NewsKind | 'all' | 'other'; label: string }[] = [
   { key: 'legislator', label: '委員' },
   { key: 'official', label: '首長' },
   { key: 'entity', label: '機關／基金' },
-  { key: 'dgbas', label: '主計' },
+  { key: 'dgbas', label: '主計總處' },
+  { key: 'local_accounting', label: '地方主計' },
   { key: 'other', label: '其他' },
 ];
 /** 每則新聞旁的類別標示：委員與首長已經列出人名，只標沒有人名的兩類 */
-const KIND_TAG: Partial<Record<NewsKind, string>> = { entity: '機關／基金', dgbas: '主計' };
+const KIND_TAG: Partial<Record<NewsKind, string>> = { entity: '機關／基金', dgbas: '主計總處', local_accounting: '地方主計' };
 
 /** 新聞：所有委員的新聞合併成一份（同一篇只列一次），可依關鍵字與媒體篩選，並看各媒體的報導量。 */
 export function NewsPage({ refreshToken, onOpenId, scope = 'legislators' }: NewsPageProps) {

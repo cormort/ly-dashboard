@@ -1375,8 +1375,17 @@ export function listNewsArticles(db, { q = '', source = '', legislator = '', sco
 }
 
 /** 全部新聞的類別：由「這則新聞被分派到哪裡」推出（news → 委員、topic_news 的 topic → 其餘） */
-export const NEWS_KINDS = ['legislator', 'official', 'entity', 'dgbas'];
-const kindOfTopic = (topic) => (topic.startsWith('official:') ? 'official' : topic === 'dgbas' ? 'dgbas' : topic === 'entities' ? 'entity' : null);
+export const NEWS_KINDS = ['legislator', 'official', 'entity', 'dgbas', 'local_accounting'];
+/**
+ * 主計新聞（topic 'dgbas'）再依標題分兩類，規則同主計總處專頁（dgbasOf）：提到主計總處／主計長 → dgbas，
+ * 縣市政府主計處 → local_accounting；只說「主計」的（主計局、泛稱）不歸類（沒有別的類別就是「其他」）。
+ */
+const kindOfTopic = (topic, title) => {
+  if (topic.startsWith('official:')) return 'official';
+  if (topic === 'entities') return 'entity';
+  if (topic === 'dgbas') return DGBAS_RE.test(title) ? 'dgbas' : LOCAL_ACCOUNTING_RE.test(title) ? 'local_accounting' : null;
+  return null;
+};
 
 /**
  * 全部新聞（新聞頁「全部新聞」）：原始新聞庫 articles（媒體 RSS 的每一則，不只提到委員／首長／機關的，
@@ -1412,7 +1421,7 @@ function allNewsGroups(db) {
   const rows = [
     ...db.prepare('SELECT url, title, summary, source, published_at FROM articles').all(),
     ...db.prepare('SELECT legislator_id AS who, url, title, source, published_at FROM news').all().map((r) => ({ ...r, kind: 'legislator', person: legislators.get(r.who) })),
-    ...db.prepare('SELECT topic, url, title, source, published_at FROM topic_news').all().map((r) => ({ ...r, kind: kindOfTopic(r.topic), person: r.topic.startsWith('official:') ? officials.get(r.topic.slice(9)) : undefined })),
+    ...db.prepare('SELECT topic, url, title, source, published_at FROM topic_news').all().map((r) => ({ ...r, kind: kindOfTopic(r.topic, r.title), person: r.topic.startsWith('official:') ? officials.get(r.topic.slice(9)) : undefined })),
   ];
   // 涵蓋期間算在任何篩選之前：它回答的是「資料庫裡有多久的新聞」，不是「搜尋結果落在哪段」
   let first = null;
@@ -2013,7 +2022,7 @@ export function compareLegislators(db, { ids = '' } = {}) {
 /** RFC 4180：含逗號、引號、換行的欄位加引號，引號重複 */
 export const csvRow = (cells) => cells.map((c) => (/[",\n\r]/.test(String(c ?? '')) ? `"${String(c).replace(/"/g, '""')}"` : String(c ?? ''))).join(',');
 
-const NEWS_KIND_LABEL = { legislator: '委員', official: '首長', entity: '機關／基金', dgbas: '主計' };
+const NEWS_KIND_LABEL = { legislator: '委員', official: '首長', entity: '機關／基金', dgbas: '主計總處', local_accounting: '地方主計' };
 const SCOPE_KIND_LABEL = { legislators: '委員', officials: '首長', agencies: '機關' };
 
 /**
