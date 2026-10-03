@@ -213,7 +213,7 @@ export function createServer(db) {
           case '/api/v1/news/articles': {
             const filters = { q: q.q, source: q.source, legislator: q.legislator, scope: q.scope, kind: q.kind };
             if (q.format === 'csv') {
-              const scope = ['all', 'officials'].includes(q.scope) ? q.scope : 'legislators';
+              const scope = ['all', 'officials', 'agencies'].includes(q.scope) ? q.scope : 'legislators';
               return sendCsv(res, `news-${scope}.csv`, newsCsv(listNewsArticles(db, { ...filters, all: true }).items, scope));
             }
             return sendJson(res, 200, listNewsArticles(db, { ...filters, limit: q.limit, offset: q.offset }));

@@ -463,8 +463,12 @@ Query 參數（全部可選）：
   - 另回 `first_date`／`last_date`（資料庫裡最早／最新一則，不受篩選影響）、`kind_counts`（`{ all, other, legislator, official, entity, dgbas }`，套用 `q` 之後、`kind` 與 `source` 之前），
     `meta.news_outlets_fetched_at`（媒體 RSS 最近一次抓到的時間，每小時輪詢）。`items[].kinds` 是這則的類別，`items[].legislators` 每人多一個 `kind: 'legislator'|'official'`。
   - `sources` 在 `kind` 之後、`source` 之前統計。
+- `scope=agencies`（新聞頁「機關新聞」`/news/agencies`）：`scope=all` 的全部新聞裡，標題提到**中央機關**（fund-config 的 agencies，同「機關」頁的定義；
+  基金、財團法人、行政法人不算）的報導。`items[].agencies` 是提到的機關（簡稱對到全名，例如「主計總處」→「行政院主計總處」）；
+  `legislator` 在這裡是機關名稱（只看某個機關）；`people` 是有新聞的機關與則數（`party` 固定為「機關」，不受篩選影響）。`q` 同樣比對標題與摘要。
 - `format=csv`（新聞頁「下載 CSV」）：同樣的篩選條件，回傳**全部符合**的新聞（不分頁），檔名 `news-<scope>.csv`，含 BOM（Excel 直接開不會亂碼）。
   欄位：發布時間（臺灣時間 `YYYY-MM-DD HH:mm`）、媒體、標題、類別（委員／首長／機關／基金／主計／其他）、提到的委員／首長、連結；摘要不匯出。
+  `scope=agencies` 另多一欄「提到的機關」。
 - `items[].legislators`：委員新聞為 `{ id, name, party }`；首長新聞為 `{ id: 姓名, name, party: 機關＋職稱 }`。指定 `legislator` 時只列該人。媒體不明時 `source` 為 `未知`。
 
 ## GET /api/v1/rankings

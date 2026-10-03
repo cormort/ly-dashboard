@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 
-export type Route = 'home' | 'dashboard' | 'legislators' | 'bills' | 'budget' | 'rankings' | 'compare' | 'funds' | 'agencies' | 'foundations' | 'administrative' | 'dgbas' | 'committees' | 'news' | 'allnews' | 'officials' | 'counties' | 'council' | 'my';
+export type Route = 'home' | 'dashboard' | 'legislators' | 'bills' | 'budget' | 'rankings' | 'compare' | 'funds' | 'agencies' | 'foundations' | 'administrative' | 'dgbas' | 'committees' | 'news' | 'allnews' | 'agencynews' | 'officials' | 'counties' | 'council' | 'my';
 
 const PATHS: Record<Route, string> = {
   // 預設首頁是總覽；最近動態移到 /activity
@@ -19,6 +19,7 @@ const PATHS: Record<Route, string> = {
   committees: '/committees',
   news: '/news',
   allnews: '/news/all',
+  agencynews: '/news/agencies',
   officials: '/officials',
   counties: '/counties',
   council: '/council',
@@ -40,6 +41,7 @@ export function routeOf(pathname: string): Route {
   if (pathname.startsWith('/committees')) return 'committees';
   // `/news/all` 要排在 `/news` 前面，否則會被當成委員新聞
   if (pathname.startsWith('/news/all')) return 'allnews';
+  if (pathname.startsWith('/news/agencies')) return 'agencynews';
   if (pathname.startsWith('/news')) return 'news';
   if (pathname.startsWith('/officials')) return 'officials';
   if (pathname.startsWith('/counties')) return 'counties';

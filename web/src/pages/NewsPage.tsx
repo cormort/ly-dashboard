@@ -11,8 +11,8 @@ import { partyStyle } from '../lib/parties';
 export interface NewsPageProps {
   refreshToken: number;
   onOpenId: (id: string) => void;
-  /** officials＝機關首長新聞（server/officials.json）、all＝全部新聞（四類合併、不限期間），預設看委員新聞 */
-  scope?: 'legislators' | 'officials' | 'all';
+  /** officials＝機關首長新聞（server/officials.json）、agencies＝機關新聞（標題提到中央機關）、all＝全部新聞（四類合併、不限期間），預設看委員新聞 */
+  scope?: 'legislators' | 'officials' | 'agencies' | 'all';
 }
 
 const PAGE = 30;
@@ -46,7 +46,11 @@ const KIND_TAG: Partial<Record<NewsKind, string>> = { entity: '機關／基金',
 export function NewsPage({ refreshToken, onOpenId, scope = 'legislators' }: NewsPageProps) {
   const officials = scope === 'officials';
   const everything = scope === 'all';
-  const route = officials ? 'officials' : everything ? 'allnews' : 'news';
+  const agencies = scope === 'agencies';
+  const route = officials ? 'officials' : agencies ? 'agencynews' : everything ? 'allnews' : 'news';
+  // 首長與機關的下拉選單來自新聞 API 的 people；委員來自名冊
+  const listFromApi = officials || agencies;
+  const who = officials ? '首長' : agencies ? '機關' : '委員';
   const [filters, setFilters] = useState<Filters>(readFilters);
   const [draft, setDraft] = useState(filters.q);
   const [page, setPage] = useState(0);
@@ -69,7 +73,7 @@ export function NewsPage({ refreshToken, onOpenId, scope = 'legislators' }: News
 
   const res = useApi<NewsArticlesResponse>(buildUrl('/news/articles', { ...filters, scope, limit: PAGE, offset: page * PAGE }), { refreshToken });
   const roster = useApi<LegislatorsResponse>(buildUrl('/legislators', { session: 'all' }), { refreshToken });
-  const people = officials
+  const people = listFromApi
     ? (res.data?.people ?? []).map((p) => ({ id: p.id, name: p.name, count: p.count }))
     : (roster.data?.items ?? []).filter((l) => !l.former).map((l) => ({ id: l.id, name: l.name, count: l.news_count })).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'zh-Hant'));
   const picked = people.find((l) => l.id === filters.legislator);
@@ -83,7 +87,7 @@ export function NewsPage({ refreshToken, onOpenId, scope = 'legislators' }: News
 
   return (
     <>
-      <h1 className="sr-only">{officials ? '機關首長新聞' : everything ? '全部新聞' : '新聞'}</h1>
+      <h1 className="sr-only">{officials ? '機關首長新聞' : agencies ? '機關新聞' : everything ? '全部新聞' : '新聞'}</h1>
 
       <form
         className="filters"
@@ -95,8 +99,8 @@ export function NewsPage({ refreshToken, onOpenId, scope = 'legislators' }: News
       >
         {/* 全部新聞以關鍵字為主，不提供依人篩選（委員與首長上百人混在一起反而難找） */}
         {everything ? null : (
-        <select value={filters.legislator} aria-label={officials ? '依首長分析' : '依委員分析'} onChange={(event) => change({ legislator: event.target.value, source: '' })}>
-          <option value="">{officials ? '全部首長' : '全部委員'}</option>
+        <select value={filters.legislator} aria-label={`依${who}分析`} onChange={(event) => change({ legislator: event.target.value, source: '' })}>
+          <option value="">全部{who}</option>
           {people.map((l) => (
             <option key={l.id} value={l.id}>
               {l.name} {l.count}
@@ -174,7 +178,13 @@ export function NewsPage({ refreshToken, onOpenId, scope = 'legislators' }: News
                   </a>
                   <p className="bill-meta">
                     <span>{formatDateTime(a.published_at)}</span>
-                    {(a.kinds ?? []).map((k) => (KIND_TAG[k] ? <span key={k} className="muted">{KIND_TAG[k]}</span> : null))}
+                    {agencies ? null : (a.kinds ?? []).map((k) => (KIND_TAG[k] ? <span key={k} className="muted">{KIND_TAG[k]}</span> : null))}
+                    {/* 機關新聞：提到的機關，點了只看那個機關 */}
+                    {(a.agencies ?? []).map((name) => (
+                      <button key={name} type="button" className="link-button" aria-pressed={filters.legislator === name} onClick={() => change({ legislator: name, source: '' })}>
+                        {name}
+                      </button>
+                    ))}
                     <button type="button" className="link-button" onClick={() => change({ source: a.source })}>
                       {a.source}
                     </button>

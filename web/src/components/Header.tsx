@@ -76,6 +76,7 @@ const NAV: NavGroup[] = [
     home: 'officials',
     routes: [
       { route: 'officials', label: '機關首長新聞' },
+      { route: 'agencynews', label: '機關新聞' },
       { route: 'news', label: '委員新聞' },
       { route: 'allnews', label: '全部新聞' },
     ],

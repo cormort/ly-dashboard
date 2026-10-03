@@ -299,7 +299,7 @@ check(
 
 // 子頁也依首長與幕僚的使用頻率排，主題的預設頁就是第一個子頁
 check(
-  '子頁順序：議事 預算→委員會→法案、新聞 首長→委員→全部、機關／基金 機關在前，委員含縣市與議員，主題連結指向第一個子頁',
+  '子頁順序：議事 預算→委員會→法案、新聞 首長→機關→委員→全部、機關／基金 機關在前，委員含縣市與議員，主題連結指向第一個子頁',
   (() => {
     const subOf = (route: Route) => {
       const sub = render(createElement(Header, { ...headerProps, route })).match(/<nav class="subnav"[^>]*>([\s\S]*?)<\/nav>/)?.[1] ?? '';
@@ -308,7 +308,7 @@ check(
     const top = render(createElement(Header, { ...headerProps, route: 'dashboard' as const })).match(/<nav aria-label="主要頁面">([\s\S]*?)<\/nav>/)?.[1] ?? '';
     return (
       subOf('budget') === '預算審議→委員會→法案查詢' &&
-      subOf('officials') === '機關首長新聞→委員新聞→全部新聞' &&
+      subOf('officials') === '機關首長新聞→機關新聞→委員新聞→全部新聞' &&
       subOf('agencies') === '機關→基金→財團法人→行政法人' &&
       subOf('legislators') === '委員查詢→最近動態→排行榜→委員比較→縣市→議員' &&
       ['href="/budget"', 'href="/officials"', 'href="/agencies"'].every((h) => top.includes(h))
@@ -927,6 +927,7 @@ check(
     marginText({ first_loser: null }) === '',
 );
 check('/news 對應新聞頁', routeOf('/news') === 'news');
+check('/news/agencies 對應機關新聞頁（不被 /news 吃掉）', routeOf('/news/agencies') === 'agencynews');
 check('/news/all 對應全部新聞頁（不被 /news 吃掉）', routeOf('/news/all') === 'allnews' && pathFor('allnews', { q: '預算' }) === '/news/all?q=%E9%A0%90%E7%AE%97');
 check('/officials 對應機關首長新聞頁', routeOf('/officials') === 'officials');
 

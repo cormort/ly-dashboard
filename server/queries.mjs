@@ -1342,6 +1342,7 @@ export function listNewsArticles(db, { q = '', source = '', legislator = '', sco
     const resolvedKind = kind === 'other' || NEWS_KINDS.includes(kind) ? kind : '';
     return listAllNewsArticles(db, { keyword, source, kind: resolvedKind, limit: resolvedLimit, offset: resolvedOffset });
   }
+  if (scope === 'agencies') return listAgencyNewsArticles(db, { keyword, source, agency: String(legislator ?? ''), limit: resolvedLimit, offset: resolvedOffset });
   const officials = scope === 'officials';
   const people = officials
     ? new Map(OFFICIALS.map((o) => [o.name, { id: o.name, name: o.name, party: `${o.agency}${o.title}` }]))
@@ -1433,6 +1434,41 @@ function allNewsGroups(db) {
   const entry = { version, groups, first, last };
   allNewsCache.set(db, entry);
   return entry;
+}
+
+/**
+ * 機關新聞（新聞頁「機關新聞」）：全部新聞裡，標題提到中央機關（fund-config 的 agencies，即「機關」頁的定義）的報導。
+ * 每則附上提到的機關（agencies）；`agency` 只看某個機關；`people` 是有新聞的機關與則數（下拉選單用，不受篩選影響）。
+ * 標記結果掛在全部新聞的快取上（allNewsGroups），資料沒變就不重算。
+ */
+function listAgencyNewsArticles(db, { keyword, source, agency, limit, offset }) {
+  const words = keyword.split(/\s+/).filter(Boolean);
+  const entry = allNewsGroups(db);
+  if (!entry.agencyGroups) {
+    const tagger = makeTagger([]);
+    entry.agencyGroups = [];
+    for (const g of entry.groups) {
+      const agencies = tagger(g.title).agency;
+      if (agencies.length) entry.agencyGroups.push({ group: g, agencies });
+    }
+  }
+  const perAgency = new Map();
+  for (const { agencies } of entry.agencyGroups) for (const a of agencies) perAgency.set(a, (perAgency.get(a) ?? 0) + 1);
+  const all = entry.agencyGroups.filter(({ group, agencies }) => (!agency || agencies.includes(agency)) && words.every((w) => group.text.includes(w)));
+  const counts = new Map();
+  for (const { group } of all) counts.set(group.source, (counts.get(group.source) ?? 0) + 1);
+  const matching = source ? all.filter(({ group }) => group.source === source) : all;
+  return {
+    meta: { ...envelope(db), news_fetched_at: getMeta(db, 'news_fetched_at'), news_outlets_fetched_at: getMeta(db, 'news_outlets_fetched_at') },
+    total: matching.length,
+    recent_7d: matching.filter(({ group }) => group.published_at >= new Date(Date.now() - 7 * 86400000).toISOString()).length,
+    source_total: counts.size,
+    first_date: entry.first,
+    last_date: entry.last,
+    people: [...perAgency].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'zh-Hant')).map(([name, count]) => ({ id: name, name, party: '機關', count })),
+    sources: [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 30).map(([name, count]) => ({ name, count })),
+    items: matching.slice(offset, offset + limit).map(({ group: { text: _text, ...item }, agencies }) => ({ ...item, agencies })),
+  };
 }
 
 function listAllNewsArticles(db, { keyword, source, kind, limit, offset }) {
@@ -1978,7 +2014,7 @@ export function compareLegislators(db, { ids = '' } = {}) {
 export const csvRow = (cells) => cells.map((c) => (/[",\n\r]/.test(String(c ?? '')) ? `"${String(c).replace(/"/g, '""')}"` : String(c ?? ''))).join(',');
 
 const NEWS_KIND_LABEL = { legislator: '委員', official: '首長', entity: '機關／基金', dgbas: '主計' };
-const SCOPE_KIND_LABEL = { legislators: '委員', officials: '首長' };
+const SCOPE_KIND_LABEL = { legislators: '委員', officials: '首長', agencies: '機關' };
 
 /**
  * 新聞 CSV（新聞頁「下載 CSV」）：listNewsArticles 的 items，欄位與畫面一致。
@@ -1986,10 +2022,14 @@ const SCOPE_KIND_LABEL = { legislators: '委員', officials: '首長' };
  * 類別：全部新聞用每則的 kinds（沒有＝其他），委員／首長新聞頁就是該頁的類別。
  */
 export function newsCsv(items, scope = 'legislators') {
-  const header = ['發布時間', '媒體', '標題', '類別', '提到的委員／首長', '連結'];
+  // 機關新聞多一欄「提到的機關」
+  const agencies = scope === 'agencies';
+  const header = ['發布時間', '媒體', '標題', '類別', ...(agencies ? ['提到的機關'] : []), '提到的委員／首長', '連結'];
   const taipei = (iso) => new Date(Date.parse(iso) + 8 * 3_600_000).toISOString().slice(0, 16).replace('T', ' ');
   const kindOf = (a) => (scope === 'all' ? (a.kinds?.length ? a.kinds.map((k) => NEWS_KIND_LABEL[k]).join('、') : '其他') : SCOPE_KIND_LABEL[scope] ?? '');
-  const lines = items.map((a) => csvRow([taipei(a.published_at), a.source, a.title, kindOf(a), a.legislators.map((p) => p.name).join('、'), a.url]));
+  const lines = items.map((a) =>
+    csvRow([taipei(a.published_at), a.source, a.title, kindOf(a), ...(agencies ? [(a.agencies ?? []).join('、')] : []), a.legislators.map((p) => p.name).join('、'), a.url]),
+  );
   return [csvRow(header), ...lines].join('\r\n');
 }
 

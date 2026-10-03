@@ -427,6 +427,8 @@ export interface NewsArticle {
   title: string;
   source: string;
   published_at: string;
+  /** 只有 scope=agencies 才有：標題提到的中央機關 */
+  agencies?: string[];
   /** 只有 scope=all 才有：這則被分派到哪些類別（都沒有＝只在原始新聞庫裡的「其他」新聞） */
   kinds?: NewsKind[];
   /** scope=all 時另有 kind：legislator＝委員（party 為黨籍）、official＝機關首長（party 為機關＋職稱） */

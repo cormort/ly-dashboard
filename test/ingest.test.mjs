@@ -1562,3 +1562,37 @@ test('新聞 CSV：全部符合的都匯出（不分頁）、臺灣時間、類�
   assert.equal(newsCsv(filtered, 'all').split('\r\n').length, 2, '照篩選條件匯出');
   assert.equal(newsCsv(listNewsArticles(db, { all: true }).items, 'legislators').split('\r\n')[1].split(',').at(-3), '委員', '委員新聞頁的類別就是委員');
 });
+
+test('機關新聞：只列標題提到中央機關的（含委員新聞與「其他」類）、附上機關、可只看單一機關、匯出多一欄機關', () => {
+  const db = seeded();
+  const ting = listLegislators(db, { q: '丁學忠' }).items[0].id;
+  const at = (d) => `2026-09-${d}T08:00:00.000Z`;
+  const items = [
+    { url: 'https://cna.example/1', title: '主計總處公布物價指數', source: '中央社', published_at: at(28) },
+    { url: 'https://cna.example/2', title: '丁學忠要求交通部說明', source: '中央社', published_at: at(29) },
+    { url: 'https://cna.example/3', title: '交通部與衛生福利部聯合記者會', source: '公視新聞', published_at: at(27) },
+    { url: 'https://cna.example/4', title: '颱風明天登陸', source: '中央社', published_at: at(26) },
+    { url: 'https://cna.example/5', title: '台電宣布電價調整', source: '中央社', published_at: at(25) }, // 國營事業＝基金，不是機關
+  ];
+  upsertArticles(db, items, { origin: 'outlet', fetchedAt: 'x' });
+  upsertNews(db, ting, [items[1]], { fetchedAt: 'x' });
+
+  const res = listNewsArticles(db, { scope: 'agencies' });
+  assert.deepEqual(
+    res.items.map((a) => [a.title, a.agencies]),
+    [
+      ['丁學忠要求交通部說明', ['交通部']],
+      ['主計總處公布物價指數', ['行政院主計總處']],
+      ['交通部與衛生福利部聯合記者會', ['交通部', '衛生福利部']],
+    ],
+    '簡稱對到全名；颱風、台電不算',
+  );
+  assert.equal(res.items[0].legislators[0].name, listLegislators(db, { q: '丁學忠' }).items[0].name, '提到的委員也列出');
+  assert.deepEqual(res.people.slice(0, 1), [{ id: '交通部', name: '交通部', party: '機關', count: 2 }], '下拉選單依則數排序');
+  assert.deepEqual(listNewsArticles(db, { scope: 'agencies', legislator: '衛生福利部' }).items.map((a) => a.title), ['交通部與衛生福利部聯合記者會']);
+  assert.equal(listNewsArticles(db, { scope: 'agencies', q: '物價' }).total, 1);
+
+  const rows = newsCsv(listNewsArticles(db, { scope: 'agencies', all: true }).items, 'agencies').split('\r\n');
+  assert.equal(rows[0], '發布時間,媒體,標題,類別,提到的機關,提到的委員／首長,連結');
+  assert.ok(rows[3].includes(',機關,交通部、衛生福利部,'));
+});
