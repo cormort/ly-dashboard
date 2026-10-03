@@ -1149,3 +1149,46 @@ test('媒體 RSS：一家失敗只記警告；同一則報導 Google 與媒體�
   const ting = listLegislators(db, { q: '丁學忠' }).items[0].id;
   assert.equal(listNews(db, { legislator: ting }).total, 1, '標題相同（忽略空白）就是同一則，不重複計入排行');
 });
+
+test('媒體 RSS：公視是 Atom，也要抓得到（回歸：整家被當成「不是 RSS」丟掉）', async () => {
+  const db = seeded();
+  // 公視 newsfeed.xml 的實際形狀：<feed>／<entry>／自閉合的 link／<updated>，沒有 <pubDate>
+  const atomRss = (items) => `<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xml:lang="zh-TW">
+  <id>https://news.pts.org.tw/xml/newsfeed.xml</id>
+  <link href="https://news.pts.org.tw/xml/newsfeed.xml" rel="self"></link>
+  <title><![CDATA[公視新聞網]]></title>
+  <updated>2026-09-30T08:00:00+08:00</updated>
+${items
+  .map(
+    (i) => `  <entry>
+    <title><![CDATA[${i.title}]]></title>
+    <link rel="alternate" href="${i.url}" />
+    <id>${i.url}</id>
+    <updated>${i.date}</updated>
+  </entry>`,
+  )
+  .join('\n')}
+</feed>`;
+  const outlets = [{ name: '公視新聞', url: 'https://outlet.example/pts' }];
+  const fetchImpl = async () =>
+    rssResponse(
+      atomRss([
+        { title: '丁學忠質詢國防預算', url: 'https://news.pts.org.tw/article/1', date: '2026-09-29T16:00:00+08:00' },
+        { title: '卓榮泰赴立法院施政報告', url: 'https://news.pts.org.tw/article/2', date: '2026-09-29T17:00:00+08:00' },
+        { title: '今天天氣很好', url: 'https://news.pts.org.tw/article/3', date: '2026-09-29T18:00:00+08:00' },
+      ]),
+    );
+  const cutoff = new Date(NEWS_NOW().getTime() - CONFIG.news.keepDays * 86_400_000).toISOString();
+  const result = await runOutletNews(db, { logger: silent, fetchImpl, now: NEWS_NOW, cutoff, outlets });
+  assert.equal(result.failures, 0, 'Atom 不可以被當成「不是 RSS」而整家失敗');
+  assert.equal(result.items, 3, '三個 <entry> 都要解析出來');
+  const ting = listLegislators(db, { q: '丁學忠' }).items[0].id;
+  assert.deepEqual(listNews(db, { legislator: ting }).items.map((n) => [n.title, n.source, n.published_at]), [
+    ['丁學忠質詢國防預算', '公視新聞', '2026-09-29T08:00:00.000Z'],
+  ]);
+  assert.deepEqual(
+    db.prepare("SELECT title FROM topic_news WHERE topic = 'official:卓榮泰'").all().map((r) => r.title),
+    ['卓榮泰赴立法院施政報告'],
+  );
+});

@@ -614,20 +614,39 @@ const decodeXml = (value) =>
 const tag = (xml, name) => decodeXml(new RegExp(`<${name}[^>]*>([\\s\\S]*?)</${name}>`).exec(xml)?.[1] ?? '');
 
 /**
+ * Atom 的 <link> 是自閉合標籤（`<link rel="alternate" href="…" />`），`tag()` 抓不到，
+ * 而且同一則 entry 可能有多個 link（self／alternate）。優先 rel="alternate"，其次沒有 rel 的，最後才用第一個。
+ */
+function atomLink(body) {
+  const links = [...body.matchAll(/<link\b([^>]*?)\/?>/g)].map(([, attrs]) => ({
+    href: /\bhref="([^"]*)"/.exec(attrs)?.[1] ?? '',
+    rel: /\brel="([^"]*)"/.exec(attrs)?.[1] ?? '',
+  }));
+  return (links.find((l) => l.rel === 'alternate') ?? links.find((l) => !l.rel) ?? links[0])?.href ?? '';
+}
+
+/**
  * Google News RSS → 新聞項目。只保留**標題含委員姓名**的項目：搜尋會命中內文順帶一提的，
  * 標題有名字才算「關於這位委員」，也順便擋掉大部分同名誤判。
  * ponytail: 正規表示式解析 RSS（格式固定、零相依）；來源換成任意 XML 時再換解析器。
+ *
+ * 公視新聞（CONFIG.news.outlets 之一）只有 Atom 格式（`<feed>`／`<entry>`／`<link href>`／`<updated>`），
+ * 沒有 RSS 2.0 版本可換，所以在這裡一併支援：抓不到時整家媒體會每輪都失敗，
+ * 而且只記一則 warning（實測 2026-10-03：公視 25 則全部被判「新聞回應不是 RSS」丟掉）。
  */
 export function parseNewsRss(xml, { name, match, source: defaultSource = '' } = {}) {
-  if (!/<rss[\s>]/.test(String(xml))) throw new DataValidationError('新聞回應不是 RSS');
+  const raw = String(xml);
+  const isAtom = !/<rss[\s>]/.test(raw);
+  if (isAtom && !/<feed[\s>]/.test(raw)) throw new DataValidationError('新聞回應不是 RSS 也不是 Atom');
   const items = [];
-  for (const [, body] of String(xml).matchAll(/<item>([\s\S]*?)<\/item>/g)) {
+  for (const [, body] of raw.matchAll(isAtom ? /<entry>([\s\S]*?)<\/entry>/g : /<item>([\s\S]*?)<\/item>/g)) {
     // 媒體自己的 RSS 沒有 <source>（Google 新聞才有），由呼叫端給媒體名
-    const source = tag(body, 'source') || defaultSource;
+    const source = isAtom ? defaultSource : tag(body, 'source') || defaultSource;
     let title = tag(body, 'title');
     if (source && title.endsWith(` - ${source}`)) title = title.slice(0, -(source.length + 3)).trim();
-    const url = tag(body, 'link');
-    const published = new Date(tag(body, 'pubDate'));
+    // Atom 沒有 <link> 文字節點，網址在 href；<id> 通常就是文章網址，當後備
+    const url = isAtom ? atomLink(body) || tag(body, 'id') : tag(body, 'link');
+    const published = new Date(isAtom ? tag(body, 'published') || tag(body, 'updated') : tag(body, 'pubDate'));
     // match：批次查詢（一次查多個名稱）時由呼叫端決定標題要不要收；否則標題必須含 name
     if (!(match ? match(title) : title.includes(name)) || !url || Number.isNaN(published.getTime())) continue;
     items.push({ title, source, url, published_at: published.toISOString() });

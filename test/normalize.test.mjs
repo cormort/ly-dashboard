@@ -191,6 +191,40 @@ test('parseNewsRss：媒體自己的 RSS 沒有 <source>，用呼叫端給的媒
   assert.equal(parseNewsRss(xml, { name: '丁學忠' })[0].source, '', '沒給媒體名時維持空字串（Google 新聞的行為不變）');
 });
 
+test('parseNewsRss：Atom（公視只有這種格式）—— <entry>／link href／<updated> 都要收', () => {
+  // 公視 newsfeed.xml 的實際結構：feed 層有一個 rel="self" 的 link，entry 的 link 是自閉合標籤
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xml:lang="zh-TW">
+  <id>https://news.pts.org.tw/xml/newsfeed.xml</id>
+  <link href="https://news.pts.org.tw/xml/newsfeed.xml" rel="self"></link>
+  <title><![CDATA[公視新聞網]]></title>
+  <updated>2026-10-03T20:20:57+08:00</updated>
+  <entry>
+    <title><![CDATA[丁學忠質詢國防預算 &amp; 追問]]></title>
+    <link rel="alternate" href="https://news.pts.org.tw/article/829822" />
+    <id>https://news.pts.org.tw/article/829822</id>
+    <summary type="html"><![CDATA[內文不是標題，不該被當成項目]]></summary>
+    <updated>2026-10-03T20:20:57+08:00</updated>
+  </entry>
+  <entry>
+    <title>黃捷提案修法</title>
+    <link href="https://news.pts.org.tw/article/829821" />
+    <published>2026-10-03T11:47:29.000Z</published>
+    <updated>2026-10-03T19:47:29+08:00</updated>
+  </entry>
+</feed>`;
+  assert.deepEqual(parseNewsRss(xml, { name: '丁學忠', source: '公視新聞' }), [
+    { title: '丁學忠質詢國防預算 & 追問', source: '公視新聞', url: 'https://news.pts.org.tw/article/829822', published_at: '2026-10-03T12:20:57.000Z' },
+  ]);
+  // 沒有 rel 的 link 也收；<published> 優先於 <updated>
+  assert.deepEqual(parseNewsRss(xml, { name: '黃捷', source: '公視新聞' }), [
+    { title: '黃捷提案修法', source: '公視新聞', url: 'https://news.pts.org.tw/article/829821', published_at: '2026-10-03T11:47:29.000Z' },
+  ]);
+  // 空的 Atom 是合法來源（只是這輪沒新聞），不可以當成「不是 RSS」丟錯
+  assert.deepEqual(parseNewsRss('<feed xmlns="http://www.w3.org/2005/Atom"><title>x</title></feed>', { name: '丁學忠' }), []);
+  assert.throws(() => parseNewsRss('<feedish>', { name: 'x' }), DataValidationError);
+});
+
 test('newsName：族語名只留漢名、異體字換成媒體常用字', () => {
   assert.equal(newsName('伍麗華Saidhai‧Tahovecahe'), '伍麗華');
   assert.equal(newsName('鄭天財Sra Kacaw'), '鄭天財');

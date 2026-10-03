@@ -13,6 +13,7 @@
     "serve": "node server/index.mjs",
     "start": "node server/index.mjs",
     "dev:api": "node --watch server/index.mjs --no-scheduler",
-    "build:web": "npm --prefix web run build"
+    "build:web": "npm --prefix web run build",
+    "verify:rss": "node scripts/verify-news-rss.mjs"
   }
 }

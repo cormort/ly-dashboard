@@ -62,10 +62,13 @@ export const CONFIG = {
     entityBudgetMs: Number(process.env.LY_NEWS_ENTITY_BUDGET_MS ?? 4 * 60 * 1000),
     // 媒體官方 RSS：補 Google 新聞漏掉的報導、也不受 Google 限流影響。每家每輪只抓一次（最新幾十則），
     // 再依標題分派給委員／機關首長／主計／基金機關，規則與 Google 那一路相同。抓不到只記警告。
+    // join：中央社與自由是政治類、聯合 6638 是要聞類（政治為主）、公視只有一個綜合 feed（Atom）。
+    // 聯合的 id 是分類代碼，換 id 就是換分類；`/news/rssfeed/7225` 是「全球」（國際），
+    // 2026-10-03 實測 398 則寫入委員新聞 0 筆，故改用 6638 要聞（496 則 → 210 筆）。
     outlets: [
       { name: '中央社', url: 'https://feeds.feedburner.com/rsscna/politics' },
       { name: '自由時報', url: 'https://news.ltn.com.tw/rss/politics.xml' },
-      { name: '聯合新聞網', url: 'https://udn.com/news/rssfeed/7225' },
+      { name: '聯合新聞網', url: 'https://udn.com/news/rssfeed/6638' },
       { name: '公視新聞', url: 'https://news.pts.org.tw/xml/newsfeed.xml' },
     ],
   },
