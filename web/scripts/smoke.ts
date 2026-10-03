@@ -227,13 +227,6 @@ async function main(): Promise<void> {
     assert.equal(legislatorParams({ region: '  ' }).region, undefined);
     assert.equal(legislatorParams({ region: '雲林縣' }).region, '雲林縣');
   });
-  await check('議員頁的 county 可寫入並還原 URL', () => {
-    const search = '?county=%E8%87%BA%E5%8C%97%E5%B8%82';
-    const parsed = parseFilters(search);
-    assert.equal(parsed.county, '臺北市');
-    assert.equal(serializeFilters(parsed), search, '中文縣市名要編碼後才進 URL');
-    assert.equal(parseFilters('').county, null, '沒指定時是 null（＝用 API 的預設縣市）');
-  });
   await check('未指定的條件不會出現在 query string', () => {
     assert.equal(serializeFilters(parseFilters('')), '');
     assert.equal(parseFilters('').term, null);

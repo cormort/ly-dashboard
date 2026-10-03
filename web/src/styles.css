@@ -1234,24 +1234,20 @@ a.stat-tile:hover { border-color: #98a2b3; box-shadow: var(--card-base-hover); t
 .my-head .agency-picker-row { margin-left: auto; }
 .my-head .agency-picker label { display: flex; align-items: center; gap: var(--space-2); white-space: nowrap; }
 .my-head .agency-picker input { flex: 1; min-width: 15em; }
-/* 議員分頁（/council）：靜態的中選會選舉結果 */
-.council { display: grid; gap: var(--space-4); }
-.council .stat-row { margin: 0; }
-/* 縣市與屆次是兩個獨立的切換器，中間要留白，不然看起來像同一組；
-   資料來源那一行放到切換器下面自成一行，不要跟切換器搶寬度 */
-.council-controls { display: grid; gap: var(--space-2); }
-.council-switches { display: flex; align-items: center; gap: var(--space-4); flex-wrap: wrap; }
-.council-columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: var(--space-4); margin-top: var(--space-4); }
-.council-columns h3 { margin: 0 0 var(--space-2); font-size: var(--fs-md); }
-.council-person { display: inline-flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
-.council-person small { font-variant-numeric: tabular-nums; }
+/* 議員分頁（/council）：靜態的中選會選舉結果。
+   版面盡量沿用既有類別（panel／stat-row／roster／region-people／regions-details／stat-dual），
+   這裡只留這一頁真的需要的四件事。 */
+.council-head { align-items: center; row-gap: var(--space-2); }
+.council-switches { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); margin-left: auto; }
+/* 選舉區摘要比各縣市動態多一行當選名單（這一頁的重點），所以允許換行 */
 .council-districts { display: grid; gap: var(--space-2); }
-.council-district { border: 1px solid var(--card-line); border-radius: var(--radius-lg); background: var(--surface); padding: 10px var(--space-4); }
-.council-district > summary { cursor: pointer; display: grid; gap: 4px; }
-.council-district > summary::marker { color: var(--muted); }
-.council-district[open] > summary { margin-bottom: var(--space-3); }
-.council-seats { color: var(--muted); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
-.council-winners { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: var(--fs-sm); }
-.council-winner { display: inline-flex; align-items: baseline; gap: 5px; }
+.council-district > summary { flex-wrap: wrap; }
+.council-district > summary .region-people { flex-basis: 100%; font-weight: 400; }
+.council-district-body { display: grid; gap: var(--space-3); padding: 0 var(--space-4) var(--space-4); }
+/* 兩份名單（現任落選／未列名候選人）：一列一個人，右邊接票數或選舉區 */
+.council-people { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-1); font-size: var(--fs-md); }
+.council-people li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px var(--space-2); }
+.council-people small { font-variant-numeric: tabular-nums; }
 .roster tr.council-elected { background: var(--accent-soft); }
-.council .stat-value-long { font-size: var(--fs-lg); line-height: 1.35; overflow-wrap: anywhere; }
+.council-value-long { font-size: var(--fs-lg); line-height: 1.35; overflow-wrap: anywhere; }
+

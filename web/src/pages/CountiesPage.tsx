@@ -1,8 +1,9 @@
-import { useMemo, useState, type CSSProperties } from 'react';
+import { useMemo, type CSSProperties } from 'react';
 import { buildUrl } from '../api/client';
 import type { CountiesResponse, CountyElection, CountyElectionKey, CountyItem } from '../api/types';
 import { EmptyState, ErrorState, LoadingState } from '../components/DataStates';
 import { useApi } from '../hooks/useApi';
+import { useParam } from '../hooks/useParam';
 import { ChoroplethMap } from '../components/ChoroplethMap';
 import { LegislatorVotes } from '../components/LegislatorVotes';
 import { SplitTicket } from '../components/SplitTicket';
@@ -136,26 +137,6 @@ const SCALES: { key: ScaleName; label: string }[] = [
   { key: 'Hot', label: '熱力圖' },
 ];
 const TOP_N = ['5', '10', '15', '全部'];
-
-/** 狀態存在 ?key=（replaceState，可分享、重整後一致） */
-function useParam<T extends string>(key: string, fallback: T, allowed?: readonly T[]): [T, (value: T) => void] {
-  const read = (): T => {
-    const raw = new URLSearchParams(window.location.search).get(key) as T | null;
-    // 網址參數是使用者可以隨手改的：不合法的值要落回預設，不能帶進 render
-    // （?scale= 未知色階會讓整頁被 ErrorBoundary 蓋掉、?top=abc 會讓排行榜空白）
-    if (raw === null || raw === '') return fallback;
-    if (allowed && !allowed.includes(raw)) return fallback;
-    return raw;
-  };
-  const [value, setValue] = useState<T>(read);
-  const update = (next: T) => {
-    setValue(next);
-    const params = new URLSearchParams(window.location.search);
-    params.set(key, next);
-    window.history.replaceState(null, '', `${window.location.pathname}?${params.toString()}`);
-  };
-  return [value, update];
-}
 
 /**
  * 把 `?county=` 解析成縣市資料列。抽成純函式：一來可測，二來避免「查不到就靜默用第一筆」
