@@ -782,7 +782,7 @@ test('靜態資料（人口／選舉／圖資）的資料截止與筆數要看�
   assert.deepEqual(Object.keys(s).sort(), ['council', 'counties', 'demographics', 'legislator_votes', 'population_trend', 'recalls', 'town_map']);
   // 議員選舉四年一次，「超過 3 個月沒更新」對它沒有意義（當選日隔天就超過了）→ 只監控讀不到／是空的
   assert.equal(s.council.stale_check, false);
-  assert.equal(s.council.count, 8, '兩個直轄市 × 四屆議員選舉結果');
+  assert.equal(s.council.count, 23, '六都的議員選舉結果（4+4+3+4+4+4 屆，桃園 2014 才升格）');
   assert.equal(s.council.as_of, '2022-11-26', '資料截止取最新一屆的投票日');
   assert.equal(s.counties.stale_check, true);
   assert.equal(s.counties.count, 22);
@@ -1073,8 +1073,11 @@ test('罷免票數：35 案都有官方票數，且數字自身一致', () => {
 
 test('議員資料：各縣市每屆的席次結構與政黨加總一致', () => {
   const { db } = seeded();
-  assert.deepEqual(listCouncil(db, {}).counties, ['新北市', '臺北市'], '兩個直轄市都建置了');
-  // 席次結構是這個功能的骨幹：來源檔解析錯、或選區重劃沒跟上，這裡就會紅
+  const COUNTIES = ['新北市', '臺北市', '桃園市', '臺中市', '臺南市', '高雄市'];
+  assert.deepEqual(listCouncil(db, {}).counties, COUNTIES, '六都都建置了');
+  // 席次結構是這個功能的骨幹：來源檔解析錯、或選區重劃沒跟上，這裡就會紅。
+  // 這些數字逐屆對過外部來源（維基百科各市議會／議員列表、高雄市議會官網、2022 年報導），
+  // 不是抄中選會檔案的統計值 —— 中選會的 elprof 當選人數另外在 build 時逐選舉區驗證。
   const EXPECTED = {
     新北市: {
       2010: [62, 3, 1],
@@ -1088,14 +1091,38 @@ test('議員資料：各縣市每屆的席次結構與政黨加總一致', () =>
       2018: [61, 1, 1],
       2022: [59, 1, 1],
     },
+    // 桃園 2014 才升格，只有三屆
+    桃園市: {
+      2014: [55, 3, 2],
+      2018: [56, 4, 3],
+      2022: [56, 4, 3],
+    },
+    臺中市: {
+      2010: [61, 1, 1],
+      2014: [61, 1, 1],
+      2018: [62, 1, 2],
+      2022: [62, 1, 2],
+    },
+    臺南市: {
+      2010: [55, 1, 1],
+      2014: [55, 1, 1],
+      2018: [55, 1, 1],
+      2022: [55, 1, 1],
+    },
+    高雄市: {
+      2010: [62, 1, 3],
+      2014: [62, 1, 3],
+      2018: [62, 1, 3],
+      2022: [61, 1, 3],
+    },
   };
-  for (const county of ['新北市', '臺北市']) {
+  for (const county of COUNTIES) {
     const res = listCouncil(db, { county });
     assert.equal(res.county, county);
     assert.deepEqual(
       res.terms.map((t) => t.year),
-      [2022, 2018, 2014, 2010],
-      '由新到舊',
+      Object.keys(EXPECTED[county]).map(Number).sort((a, b) => b - a),
+      '由新到舊；桃園只有三屆（2014 才升格）',
     );
     for (const t of res.terms) {
       const [area, plain, mountain] = EXPECTED[county][t.year];
@@ -1122,10 +1149,20 @@ test('議員資料：各縣市每屆的席次結構與政黨加總一致', () =>
       for (const d of t.districts) {
         assert.equal(d.list.filter((c) => c.elected).length, d.seats, `${county} ${t.year} ${d.name}`);
         assert.equal(d.list.reduce((s, c) => s + c.votes, 0), d.valid, `${county} ${t.year} ${d.name} 得票合計等於有效票`);
-        // 依得票由高到低排序；當選的一定排在落選前面
+        // 依得票由高到低排序。**不**能要求當選者一定排在落選者前面：
+        // 婦女保障名額會讓得票較少的女性能當選（實測 2010 臺中市第 5 選舉區的羅永珍）
         const sorted = [...d.list].sort((a, b) => b.votes - a.votes);
         assert.deepEqual(d.list.map((c) => c.name), sorted.map((c) => c.name));
-        assert.ok(d.list.findIndex((c) => !c.elected) === -1 || d.list.findIndex((c) => !c.elected) === d.seats);
+        // 排序被打破時一定是婦女保障名額造成的：保障名額讓得票較少的女性能當選
+        const quotaWinners = d.list.filter((c) => c.elected && c.quota);
+        for (const [i, c] of d.list.entries()) {
+          if (i >= d.seats && c.elected) {
+            assert.ok(c.quota, `${county} ${t.year} ${d.name}：${c.name} 當選但排在落選者後面，必須是婦女保障名額`);
+          }
+          if (i < d.seats && !c.elected) {
+            assert.ok(quotaWinners.length > 0, `${county} ${t.year} ${d.name}：${c.name} 得票在前 ${d.seats} 名卻落選，必須有婦女保障名額當選人`);
+          }
+        }
       }
     }
   }
@@ -1208,6 +1245,56 @@ test('議員資料：縣市名支援臺／台，沒有建置的縣市回 null', 
   assert.equal(listCouncil(db, { county: '台北市' }).county, '臺北市', '台／臺視為同一個字');
   assert.equal(listCouncil(db, { county: '臺北市' }).county, '臺北市');
   // 回 null 而不是空殼：API 層才分得出「沒建置這個縣市」（404）與「有建置但沒有議員」（空陣列）
-  assert.equal(listCouncil(db, { county: '高雄市' }), null);
-  assert.deepEqual(councilCounties(), ['新北市', '臺北市'], '404 的訊息要列出真的有哪些縣市');
+  assert.equal(listCouncil(db, { county: '基隆市' }), null, '非直轄市沒有議員資料');
+  assert.deepEqual(councilCounties(), ['新北市', '臺北市', '桃園市', '臺中市', '臺南市', '高雄市'], '404 的訊息要列出真的有哪些縣市');
+});
+
+test('議員資料：婦女保障名額當選（當選註記 !）不可以被當成落選', () => {
+  const { db } = seeded();
+  // 中選會格式文件的當選註記有 4 種：* 當選／空白 未當選／! 婦女保障（當選）／- 因婦女保障被排擠未當選。
+  // 只認 * 會讓這四個人變成落選，席次與政黨席次跟著少一席。
+  const at = (county, year, no) => listCouncil(db, { county }).terms.find((t) => t.year === year).districts.find((d) => d.no === no);
+  const tainan = at('臺南市', 2022, '01');
+  const quota = tainan.list.find((c) => c.name === '沈家鳳');
+  assert.equal(quota.elected, true, '! 是當選');
+  assert.equal(quota.quota, true, '要標記成婦女保障名額當選');
+  assert.equal(tainan.list.filter((c) => c.elected).length, 6);
+
+  const taichung = at('臺中市', 2010, '05');
+  const law = taichung.list.find((c) => c.name === '羅永珍');
+  assert.equal(law.elected, true);
+  assert.equal(law.quota, true);
+  // 婦女保障名額的當選人得票可能比落選者少（這就是保障名額的意義）
+  assert.ok(taichung.list.some((c) => !c.elected && c.votes > law.votes), '落選者的票比婦保當選人多');
+
+  // 全台四屆總共 4 位婦女保障名額當選人
+  const all = ['新北市', '臺北市', '桃園市', '臺中市', '臺南市', '高雄市'].flatMap((county) =>
+    listCouncil(db, { county }).terms.flatMap((t) => t.districts.flatMap((d) => d.list.filter((c) => c.quota))),
+  );
+  assert.deepEqual(
+    all.map((c) => c.name).sort(),
+    ['沈家鳳', '洪秀錦', '李雨庭', '羅永珍'].sort(),
+  );
+});
+
+test('議員資料：來源檔的姓名寫法差異（字形、族語名、私用區字元）不會讓連任者被誤判成沒參選', () => {
+  const { db } = seeded();
+  const notRunning = (county, year) => listCouncil(db, { county }).terms.find((t) => t.year === year).compare.not_running.map((p) => p.name);
+  // 2018 寫「戴瑋姍」、2022 寫「戴瑋姗」
+  assert.ok(!notRunning('新北市', 2022).includes('戴瑋姍'));
+  // 2010 寫「林慶鎮」、2014 寫「林慶鎭」（鎭是鎮的異體字）
+  assert.ok(!notRunning('臺南市', 2014).includes('林慶鎮'));
+  // 2010 寫「柯路加Istanba Ciban」、2014 寫「柯路加 Istanda Ciban」
+  assert.ok(!notRunning('高雄市', 2014).includes('柯路加Istanba Ciban'));
+  // 2014 的「周鍾㴴」在來源檔是私用區字元（U+E003），比對時視為萬用字元
+  assert.ok(!notRunning('高雄市', 2014).some((name) => name.startsWith('周鍾')));
+
+  // 私用區字元不能直接出貨（會被渲染成看不到的字），一律以「□」表示並在 warnings 說明
+  const res = listCouncil(db, {});
+  const names = ['新北市', '臺北市', '桃園市', '臺中市', '臺南市', '高雄市'].flatMap((county) =>
+    listCouncil(db, { county }).terms.flatMap((t) => t.districts.flatMap((d) => d.list.map((c) => c.name))),
+  );
+  assert.ok(!names.some((name) => /[\uE000-\uF8FF]/.test(name)), '不可以有私用區字元');
+  assert.ok(names.includes('陳□吉'), '2022 新北市的陳□吉以「□」表示');
+  assert.ok(res.warnings.some((w) => w.includes('私用區字元')));
 });

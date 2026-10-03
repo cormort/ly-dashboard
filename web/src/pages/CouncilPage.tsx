@@ -211,6 +211,7 @@ function DistrictRow({ d }: { d: CouncilDistrict }) {
             <span key={c.name} className="council-winner">
               <PartyTag party={c.party} />
               {c.name}
+              {c.quota ? <small className="muted">（婦女保障）</small> : null}
             </span>
           ))}
         </span>
@@ -241,7 +242,7 @@ function DistrictRow({ d }: { d: CouncilDistrict }) {
                 </td>
                 <td className="num">{num(c.votes)}</td>
                 <td className="num">{num(c.pct, 2)}%</td>
-                <td>{c.elected ? '當選' : '落選'}</td>
+                <td>{c.elected ? (c.quota ? '當選（婦女保障）' : '當選') : '落選'}</td>
                 <td className="num">{c.age ?? '—'}</td>
                 <td>{c.education ?? '—'}</td>
               </tr>
@@ -249,6 +250,12 @@ function DistrictRow({ d }: { d: CouncilDistrict }) {
           </tbody>
         </table>
       </div>
+      {d.list.some((c) => c.quota) ? (
+        <p className="muted">
+          這個選舉區有婦女保障名額當選人（{d.list.filter((c) => c.quota).map((c) => c.name).join('、')}）：
+          保障名額讓得票數較少的女性能當選，因此當選者不一定都排在落選者前面，排序仍依得票數。
+        </p>
+      ) : null}
       <p className="muted">
         有效票 {num(d.valid)}・無效票 {num(d.invalid)}・投票數 {num(d.ballots)}・選舉區人口 {num(d.population)}
         {d.first_loser ? `｜落選頭 ${d.first_loser.name}（${num(d.first_loser.votes)} 票，差 ${numOrDash(d.first_loser.margin)} 票）` : ''}

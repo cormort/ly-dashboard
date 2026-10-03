@@ -752,6 +752,8 @@ export interface CouncilCandidate {
   age: number | null;
   education: string | null;
   elected: boolean;
+  /** 因婦女保障名額當選（中選會當選註記 `!`）：得票可能比落選者還少 */
+  quota: boolean;
   /** 中選會「現任」欄位；2010 那一屆檔案整欄都是 N，因此只當參考 */
   incumbent: boolean | null;
   votes: number;

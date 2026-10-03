@@ -106,8 +106,8 @@ printf "  /api/v1/council%s → " ""
 curl -s "http://127.0.0.1:${PORT}/api/v1/council" | python3 -c 'import sys,json;d=json.load(sys.stdin);t=d["terms"];print("／".join(d["counties"]), "｜", d["county"], len(t), "屆｜", t[0]["year"], t[0]["seats"], "席｜政黨加總", sum(p["seats"] for p in t[0]["parties"]), "席")'
 printf "  /api/v1/council?county=臺北市 → "
 curl -s "http://127.0.0.1:${PORT}/api/v1/council?county=%E8%87%BA%E5%8C%97%E5%B8%82" | python3 -c 'import sys,json;d=json.load(sys.stdin);t=d["terms"][0];print(d["county"], t["label"], t["seats"], "席")'
-printf "  /api/v1/council?county=高雄市 → "
-curl -s -o /dev/null -w "HTTP %{http_code}（預期 404）\n" "http://127.0.0.1:${PORT}/api/v1/council?county=%E9%AB%98%E9%9B%84%E5%B8%82"
+printf "  /api/v1/council?county=基隆市 → "
+curl -s -o /dev/null -w "HTTP %{http_code}（預期 404：非直轄市沒有議員資料）\n" "http://127.0.0.1:${PORT}/api/v1/council?county=%E5%9F%BA%E9%9A%86%E5%B8%82"
 printf "  POST /api/v1/sync?scope=roster → "
 curl -s -o /tmp/verify-sync.json -w "HTTP %{http_code} " -X POST "http://127.0.0.1:${PORT}/api/v1/sync?scope=roster"
 python3 -c 'import json;d=json.load(open("/tmp/verify-sync.json"));print(d["message"],"| scope:",d["scope"])'

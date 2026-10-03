@@ -297,18 +297,21 @@ Query 參數（全部可選）：
 ## GET /api/v1/council?county=新北市
 
 議員分頁用。直轄市議員選舉結果（`server/council-stats.json`，由 `scripts/fetch-cec-council.mjs` + `scripts/build-council-stats.mjs` 產生，四年一次、需手動重跑），資料來源為中選會選舉資料庫。
-`county` 省略時用資料檔裡的第一個縣市；**目前建置新北市與臺北市**，其他縣市回 `404 county_not_found`
+`county` 省略時用資料檔裡的第一個縣市；**目前建置六都**（新北市、臺北市、桃園市、臺中市、臺南市、高雄市），其他縣市回 `404 county_not_found`
 （不是空殼，前端才分得出「沒這個縣市」與「這個縣市沒有議員」），訊息會列出實際有建置的縣市。臺／台視為同一個字。
 
 回應：`{ meta, source: { label, url }, note, county, counties[], terms[], warnings[] }`。
-`counties` 是有建置的縣市清單（前端拿它做縣市切換），`terms` 由新到舊（兩市目前都是 2022／2018／2014／2010）。
-**屆次編號各縣市不同**：新北市 2010 是第 1 屆、臺北市同一年是第 11 屆，`term`／`label` 直接取自資料檔。
+`counties` 是有建置的縣市清單（前端拿它做縣市切換），`terms` 由新到舊。
+**屆次編號與屆數各縣市不同**：新北市 2010 是第 1 屆、臺北市同一年是第 11 屆；桃園市 2014 才升格，只有三屆
+（2022／2018／2014）。`term`／`label` 直接取自資料檔，不要用「第幾次選舉」推算。
 
 每個 term：`{ year, term, date, label, seats, kinds[], districts[], parties[], valid, stats, compare }`
 - `kinds[]`：三種選舉種類的合計，`{ kind: 'area'|'plain'|'mountain', label, seats, electorate, population, valid, invalid, ballots, turnout, candidate_count }`。
   **區域議員的選舉人數不含原住民選舉人**（原住民另有選舉區），不要相加當全市選舉人數。
 - `districts[]`：`{ no, kind, name, area[], electorate, population, valid, invalid, ballots, turnout, seats, candidate_count, list[], last_winner, first_loser }`。
-  `list[]` 依得票由高到低：`{ no（號次）, name, party, gender, age, education, elected, incumbent, votes, pct }`；
+  `list[]` 依得票由高到低：`{ no（號次）, name, party, gender, age, education, elected, quota, incumbent, votes, pct }`。
+  `quota: true` 表示因**婦女保障名額**當選（中選會當選註記 `!`）—— 這種當選人的得票可能比落選者還少，
+  所以「當選者一定排在落選者前面」不成立。`name` 若含來源檔的私用區字元會以「□」表示（見 `warnings`）。
   `incumbent` 是中選會的「現任」欄位，**2010 那一屆整欄都是 N**，所以只當參考（見 `compare.incumbent_source`）。
 - `parties[]`：`{ party, seats, votes, candidates, pct, seat_pct }`，`seat_pct - pct` 就是「超額代表」。
 - `stats`：`{ candidates, top, lowest_winner, highest_loser, area_electorate, area_turnout }`。
