@@ -641,6 +641,19 @@ export function backfillTargets(db) {
       write: (db2, items, at) => upsertTopicNews(db2, 'entities', items, { fetchedAt: at }),
     });
   }
+  // 直轄市議員排在最後：已經回補到一半或做完的人，加了議員之後只會接著補議員，前面的進度不動
+  const ambiguous = ambiguousCouncilorNames(db);
+  for (const c of currentCouncilors()) {
+    if (c.name.includes('□')) continue;
+    const keep = councilorTitleFilter(c, ambiguous);
+    targets.push({
+      key: `councilor:${c.id}`,
+      label: `${c.county}議員${c.name}`,
+      q: councilorQuery(c),
+      parse: (text) => parseNewsRss(text, { name: c.name }).filter(keep),
+      write: (db2, items, at) => upsertTopicNews(db2, `councilor:${c.id}`, items, { fetchedAt: at }),
+    });
+  }
   return targets;
 }
 
@@ -769,6 +782,16 @@ const COUNTY_CUES = {
   高雄市: ['高雄', '高市'],
 };
 
+/** 議員的 Google 新聞查詢字（每日同步與回補共用） */
+const councilorQuery = (c) => `"${c.name}" ${c.county}議員`;
+
+/** 議員新聞的標題篩選：要含姓名；兩字名或同名的另需「議員」或縣市簡稱（每日同步與回補共用） */
+function councilorTitleFilter(c, ambiguous) {
+  const needsCue = c.name.length <= 2 || ambiguous.has(c.name);
+  const cues = ['議員', ...(COUNTY_CUES[c.county] ?? [])];
+  return (item) => item.title.includes(c.name) && (!needsCue || cues.some((k) => item.title.includes(k)));
+}
+
 /**
  * 現任直轄市議員的 Google 新聞：逐位查「"姓名" 縣市議員」近 30 天，存成 topic_news 'councilor:<id>'（並進新聞庫）。
  * 標題要含姓名；兩字名、或與縣市長／立委／部會首長同名的，標題另需含「議員」或縣市簡稱。
@@ -793,10 +816,9 @@ export async function runCouncilNews(db, { logger = console, fetchImpl = fetchJs
     const c = councilors[(start + n) % councilors.length];
     result.processed += 1;
     try {
-      const { text } = await fetchImpl(newsFeedUrl(c.name, `"${c.name}" ${c.county}議員`), { ua: CONFIG.userAgent, text: true, retries: 2 });
-      const needsCue = c.name.length <= 2 || ambiguous.has(c.name);
-      const cues = ['議員', ...(COUNTY_CUES[c.county] ?? [])];
-      const items = parseNewsRss(text, { name: c.name }).filter((i) => i.published_at >= cutoff && (!needsCue || cues.some((k) => i.title.includes(k))));
+      const { text } = await fetchImpl(newsFeedUrl(c.name, councilorQuery(c)), { ua: CONFIG.userAgent, text: true, retries: 2 });
+      const keep = councilorTitleFilter(c, ambiguous);
+      const items = parseNewsRss(text, { name: c.name }).filter((i) => i.published_at >= cutoff && keep(i));
       upsertTopicNews(db, `councilor:${c.id}`, items, { fetchedAt: now().toISOString() });
       saveGoogleArticles(db, items, now);
     } catch (error) {

@@ -1823,3 +1823,30 @@ test('議員 Google 新聞：時間預算用完就停、下輪從停下的議員
   const none = await runCouncilNews(db, { logger: silent, fetchImpl: async () => assert.fail('不該查'), now: NEWS_NOW, cutoff, budgetMs: 0 });
   assert.equal(none.skipped, true);
 });
+
+test('回補：直轄市議員排在最後；已做完前面各組的進度，只會接著補議員；篩選同每日查詢', async () => {
+  const db = seeded();
+  const targets = backfillTargets(db);
+  const firstCouncilor = targets.findIndex((t) => t.key.startsWith('councilor:'));
+  assert.ok(firstCouncilor > 0 && targets.slice(firstCouncilor).every((t) => t.key.startsWith('councilor:')), '議員全部在最後');
+  assert.equal(targets.length - firstCouncilor, currentCouncilors().filter((c) => !c.name.includes('□')).length);
+  const xu = targets.find((t) => t.key === 'councilor:臺北市|3|許淑華');
+  assert.equal(xu.q, '"許淑華" 臺北市議員');
+  const xml = rssOf([
+    { title: '北市許淑華質詢', url: 'https://g/1', date: 'Tue, 29 Sep 2026 08:00:00 GMT' },
+    { title: '許淑華行銷南投', url: 'https://g/2', date: 'Tue, 29 Sep 2026 08:00:00 GMT' },
+  ]);
+  assert.deepEqual(xu.parse(xml).map((i) => i.title), ['北市許淑華質詢'], '同名要有縣市簡稱或議員');
+
+  // 模擬：委員／首長／主計／基金機關都做完了（加議員之前的狀態）
+  const now = BACKFILL_NOW();
+  const to = new Date(`${now.toISOString().slice(0, 10)}T00:00:00.000Z`);
+  to.setUTCDate(to.getUTCDate() + 1);
+  const from = new Date(to.getTime() - CONFIG.news.keepDays * 86_400_000);
+  setMeta(db, 'news_backfill', JSON.stringify({ from: from.toISOString(), to: to.toISOString(), done: targets.slice(0, firstCouncilor).map((t) => t.key), current: null }));
+  const asked = [];
+  const result = await runNewsBackfill(db, { logger: silent, now: BACKFILL_NOW, delayMs: 0, fetchImpl: async (url) => (asked.push(rangeOf(url).query), rssResponse(rssOf([]))) });
+  assert.equal(result.stopped, null);
+  assert.ok(asked.every((q) => q.endsWith('議員')), '只查議員');
+  assert.equal(asked.length, (targets.length - firstCouncilor) * 6, '每位議員 6 個月');
+});
