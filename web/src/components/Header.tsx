@@ -69,7 +69,15 @@ const NAV: NavGroup[] = [
       { route: 'counties', label: '縣市' },
     ],
   },
-  { id: 'council', label: '議員', home: 'council', routes: [{ route: 'council', label: '六都議員' }] },
+  {
+    id: 'council',
+    label: '議員',
+    home: 'council',
+    routes: [
+      { route: 'council', label: '總覽' },
+      { route: 'councilactivity', label: '近期動態' },
+    ],
+  },
   {
     id: 'news',
     label: '新聞',

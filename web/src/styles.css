@@ -1251,3 +1251,11 @@ a.stat-tile:hover { border-color: #98a2b3; box-shadow: var(--card-base-hover); t
 .roster tr.council-elected { background: var(--accent-soft); }
 .council-value-long { font-size: var(--fs-lg); line-height: 1.35; overflow-wrap: anywhere; }
 
+
+/* 議員近期動態：臉書欄（粉專連結＋按需載入的嵌入框） */
+.council-fb-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; max-height: 70vh; overflow-y: auto; }
+.council-fb-row { padding: 8px 0; border-top: 1px solid var(--rule-soft); }
+.council-fb-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; }
+.council-fb-head a { display: inline-flex; align-items: center; gap: 2px; font-size: var(--fs-sm); }
+.council-fb-head a svg { width: 12px; height: 12px; }
+.council-fb-embed { display: block; width: 100%; max-width: 340px; margin-top: 8px; border: 0; overflow: hidden; }

@@ -300,7 +300,7 @@ check(
 
 // 子頁也依首長與幕僚的使用頻率排，主題的預設頁就是第一個子頁
 check(
-  '子頁順序：議事 預算→委員會→法案、新聞 首長→機關→委員→全部、機關／基金 機關在前，委員含縣市，議員自成一個頁籤',
+  '子頁順序：議事 預算→委員會→法案、新聞 首長→機關→委員→全部、機關／基金 機關在前，委員含縣市，議員自成一個頁籤（總覽→近期動態）',
   (() => {
     const subOf = (route: Route) => {
       const sub = render(createElement(Header, { ...headerProps, route })).match(/<nav class="subnav"[^>]*>([\s\S]*?)<\/nav>/)?.[1] ?? '';
@@ -312,8 +312,9 @@ check(
       subOf('officials') === '機關首長新聞→機關新聞→委員新聞→全部新聞' &&
       subOf('agencies') === '機關→基金→財團法人→行政法人' &&
       subOf('legislators') === '委員查詢→最近動態→排行榜→委員比較→縣市' &&
-      // 議員自成一個頁籤（沒有子頁），所以次級導覽不該再出現「議員」
-      subOf('council') === '' &&
+      // 議員自成一個頁籤，子頁是總覽（選舉結果）與近期動態（新聞＋臉書）；委員的次級導覽不該再出現「議員」
+      subOf('council') === '總覽→近期動態' &&
+      subOf('councilactivity') === '總覽→近期動態' &&
       !subOf('legislators').includes('議員') &&
       ['href="/budget"', 'href="/officials"', 'href="/agencies"', 'href="/council"'].every((h) => top.includes(h))
     );
@@ -923,6 +924,7 @@ expectAll(
 check('/counties 對應縣市頁', routeOf('/counties') === 'counties');
 expectAll('議員頁：loading 態有讀取提示（不先畫任何議員資料）', render(createElement(CouncilPage, { refreshToken: 0 })), ['載入議員選舉資料']);
 check('/council 對應議員頁', routeOf('/council') === 'council');
+check('/council/activity 對應議員近期動態（不被 /council 吃掉）', routeOf('/council/activity') === 'councilactivity');
 check(
   '議員頁：落選頭差距——一般情形印「差 N 票」，保障名額造成負差距時改講「多 N 票」，不印負號',
   marginText({ first_loser: { name: '甲', party: '無黨籍', votes: 9000, pct: 10, margin: 1234 } }) === '｜落選頭 甲（9,000 票，差 1,234 票）' &&

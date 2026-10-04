@@ -1007,6 +1007,109 @@ function withFacebook(county, term) {
   };
 }
 
+/** 粉專對照表裡已經不在議會的狀態（轉任立委、病逝、解職／停權）：近期動態不列這些人 */
+const COUNCIL_DEPARTED = /轉任|病逝|解職|停權/;
+
+/**
+ * 現任直轄市議員：最新一屆當選人（扣掉已離開議會的），加上粉專對照表裡的遞補／補選者（extra）。
+ * id 是「縣市|選區號|姓名」，與粉專對照表的 key 相同。姓名含私用區字元（□）的不拿來比對新聞。
+ */
+let currentCouncilorsCache = null;
+export function currentCouncilors() {
+  if (currentCouncilorsCache) return currentCouncilorsCache;
+  const stats = loadCouncilStats();
+  const { links = {}, extra = [] } = loadCouncilFacebook();
+  const out = [];
+  for (const c of stats.counties) {
+    const term = c.terms[0];
+    for (const d of term.districts) {
+      for (const p of d.list) {
+        if (!p.elected) continue;
+        const id = `${c.county}|${Number(d.no)}|${p.name}`;
+        const hit = links[id];
+        if (hit && COUNCIL_DEPARTED.test(hit.status)) continue;
+        out.push({ id, name: p.name, county: c.county, district: d.name, party: p.party, facebook: hit?.url ?? null, status: hit?.status ?? null });
+      }
+    }
+  }
+  // 例：「新北市 第5選區 石一佑（現任（遞補））https://www.facebook.com/shihyiyou/」——中選會資料沒有遞補者，黨籍不明
+  for (const line of extra) {
+    const m = /^(\S+) 第(\d+)選區 (\S+?)（(.+)）(https?:\/\/\S+)$/.exec(line);
+    if (m && !out.some((x) => x.id === `${m[1]}|${m[2]}|${m[3]}`)) {
+      out.push({ id: `${m[1]}|${m[2]}|${m[3]}`, name: m[3], county: m[1], district: `第${m[2]}選舉區`, party: '', facebook: m[5], status: m[4] });
+    }
+  }
+  return (currentCouncilorsCache = out);
+}
+
+/**
+ * 議員近期動態（議員頁「近期動態」）：全部新聞（allNewsGroups）裡，標題提到現任議員的報導。
+ * 比對規則同委員新聞：標題含姓名；兩個字的名字另需標題含「議員」（沒有查詢條件把關，「黃仁」這種會撞到一般用語）。
+ * 姓名前面緊接著別的職稱（「南投縣長許淑華」「立委某某」）不算；議員和縣市長、在職立委、部會首長同名時
+ * （例如臺北市議員與南投縣長都叫許淑華），標題另需含「議員」才算——光看姓名分不出是誰。
+ * 同名的議員（不同縣市）都會標上，選了縣市就只算那個縣市的。標記結果掛在全部新聞的快取上，資料沒變就不重算。
+ */
+const OTHER_OFFICE_BEFORE = /(縣長|市長|立委|委員|部長|院長|總統|主委|署長|局長|區長|鄉長|鎮長)$/;
+export function listCouncilActivity(db, { county = '', councilor = '', q = '', source = '', limit = 30, offset = 0 } = {}) {
+  const resolvedLimit = Math.max(1, Math.min(Number(limit) || 30, 100));
+  const resolvedOffset = Math.max(0, Math.trunc(Number(offset) || 0));
+  const words = String(q ?? '').trim().split(/\s+/).filter(Boolean);
+  const all = currentCouncilors();
+  const counties = [...new Set(all.map((c) => c.county))];
+  const wantedCounty = counties.includes(fixCountyName(county)) ? fixCountyName(county) : '';
+  const entry = allNewsGroups(db);
+  if (!entry.councilGroups) {
+    const byName = new Map();
+    for (const c of all) if (!c.name.includes('□')) (byName.get(c.name) ?? byName.set(c.name, []).get(c.name)).push(c);
+    const re = new RegExp([...byName.keys()].sort((a, b) => b.length - a.length).map(escapeRe).join('|'), 'g');
+    const ambiguous = new Set([
+      ...loadCountyStats().counties.map((c) => c.elections?.mayor_2022?.candidates?.[0]?.name).filter(Boolean),
+      ...db.prepare('SELECT name FROM legislators WHERE leave_flag = 0').all().map((l) => newsName(l.name)),
+      ...OFFICIALS.map((o) => o.name),
+    ]);
+    entry.councilGroups = [];
+    for (const g of entry.groups) {
+      const names = new Set(
+        [...g.title.matchAll(re)]
+          .filter((m) => !OTHER_OFFICE_BEFORE.test(g.title.slice(0, m.index)))
+          .map((m) => m[0])
+          .filter((n) => (n.length > 2 && !ambiguous.has(n)) || g.title.includes('議員')),
+      );
+      if (names.size) entry.councilGroups.push({ group: g, councilors: [...names].flatMap((n) => byName.get(n)) });
+    }
+  }
+  const inCounty = (c) => !wantedCounty || c.county === wantedCounty;
+  const perCouncilor = new Map();
+  const scoped = [];
+  for (const { group, councilors } of entry.councilGroups) {
+    const mine = councilors.filter(inCounty);
+    if (!mine.length) continue;
+    for (const c of mine) perCouncilor.set(c.id, (perCouncilor.get(c.id) ?? 0) + 1);
+    scoped.push({ group, councilors: mine });
+  }
+  const searched = scoped.filter(({ group, councilors }) => (!councilor || councilors.some((c) => c.id === councilor)) && words.every((w) => group.text.includes(w)));
+  const counts = new Map();
+  for (const { group } of searched) counts.set(group.source, (counts.get(group.source) ?? 0) + 1);
+  const matching = source ? searched.filter(({ group }) => group.source === source) : searched;
+  const brief = ({ id, name, county: c, district, party }) => ({ id, name, county: c, district, party });
+  return {
+    meta: { ...envelope(db), news_fetched_at: getMeta(db, 'news_fetched_at'), news_outlets_fetched_at: getMeta(db, 'news_outlets_fetched_at') },
+    counties,
+    county: wantedCounty,
+    // 議員名單（臉書欄與下拉選單用）：依新聞則數排序；不受關鍵字、議員、媒體條件影響
+    councilors: all
+      .filter(inCounty)
+      .map((c) => ({ ...c, count: perCouncilor.get(c.id) ?? 0 }))
+      .sort((a, b) => b.count - a.count || a.county.localeCompare(b.county, 'zh-Hant') || a.district.localeCompare(b.district, 'zh-Hant', { numeric: true }) || a.name.localeCompare(b.name, 'zh-Hant')),
+    total: matching.length,
+    source_total: counts.size,
+    sources: [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 30).map(([name, count]) => ({ name, count })),
+    first_date: entry.first,
+    last_date: entry.last,
+    items: matching.slice(resolvedOffset, resolvedOffset + resolvedLimit).map(({ group: { url, title, source: s, published_at }, councilors }) => ({ url, title, source: s, published_at, councilors: councilors.map(brief) })),
+  };
+}
+
 /** 議員資料有建置哪些縣市（給 404 的訊息用，不必先解析成功） */
 export function councilCounties() {
   try {

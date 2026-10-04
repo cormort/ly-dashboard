@@ -6,7 +6,7 @@ import { openDb, applyDataset, applyBills, applySocial, applyCommitteeRecords, a
 import { buildDataset, normalizeBills, normalizeCommitteeRecords, normalizeMeetings, normalizeSocial, newsName, rocDate, DataValidationError } from '../server/normalize.mjs';
 import { CONFIG } from '../server/config.mjs';
 import { entityFeedUrl, guardShrink, runIngest, runBillsIngest, runRecordsIngest, runBudgetIngest, runBudgetReportsIngest, runMeetingsIngest, budgetPageUrl, runNewsIngest, runOutletNews, runOutletPoll, retagOutletArticles, runNewsBackfill, backfillTargets, rangeFeedUrl, BACKFILL_CAP, runNewsFeedImport, runSocialIngest, runAll } from '../server/ingest.mjs';
-import { entityNewsTerms, listFunds, getHealth, listBills, listBudget, listBudgetMeetings, listBudgetReports, budgetState, listChanges, listCounties, listLegislatorVotes, listRankings, compareLegislators, listRegions, listSplitTicket, listDemographics, listPopulationTrend, getTownMap, listLegislators, listNews, listNewsArticles, newsCsv, listSyncRuns } from '../server/queries.mjs';
+import { entityNewsTerms, listFunds, getHealth, listBills, listBudget, listBudgetMeetings, listBudgetReports, budgetState, listChanges, listCounties, listLegislatorVotes, listRankings, compareLegislators, listRegions, listSplitTicket, listDemographics, listPopulationTrend, getTownMap, listLegislators, listNews, listNewsArticles, newsCsv, listCouncilActivity, currentCouncilors, listSyncRuns } from '../server/queries.mjs';
 import { FetchError } from '../server/fetch-ly.mjs';
 import { csvRowsToFeedItems, feedDate, feedFileUrl, mergeFeedFile, parseFeedFile } from '../server/news-feed.mjs';
 import { syncOnce, pollOutletsOnce } from '../server/index.mjs';
@@ -1723,4 +1723,50 @@ test('同一家多個分類 feed（中央社）：同一則出現在兩類只存
   assert.deepEqual(db.prepare('SELECT source FROM articles').all().map((r) => r.source), ['中央社']);
   assert.ok(warnings.some((w) => w.includes('中央社（社會）')), `失敗的 log 要標出分類：${warnings}`);
   assert.ok(CONFIG.news.outlets.filter((o) => o.name === '中央社').length >= 4, '設定裡中央社有政治、產經證券、社會、地方');
+});
+
+/* ---------------- 議員近期動態 ---------------- */
+
+test('議員名單：最新一屆當選人扣掉轉任立委／病逝／解職，加上遞補者', () => {
+  const all = currentCouncilors();
+  assert.ok(all.length > 350 && all.length < 380, `六都現任議員約 360 多位，實際 ${all.length}`);
+  assert.ok(all.some((c) => c.id === '新北市|5|石一佑' && c.status.includes('遞補')), '遞補者有列');
+  assert.equal(new Set(all.map((c) => c.id)).size, all.length, 'id 不重複');
+});
+
+test('議員近期動態：標題提到議員才列；兩字名、或與縣市長／立委／首長同名要有「議員」；別的職稱在前不算', () => {
+  const db = seeded();
+  const at = (d) => `2026-09-${d}T08:00:00.000Z`;
+  upsertArticles(
+    db,
+    [
+      { url: 'https://n/1', title: '秦慧珠質詢北市預算', source: '自由時報', published_at: at(29) },
+      { url: 'https://n/2', title: '南投縣長許淑華推廣好茶', source: '聯合新聞網', published_at: at(28) }, // 縣長在前
+      { url: 'https://n/3', title: '許淑華行銷南投', source: '聯合新聞網', published_at: at(27) }, // 與南投縣長同名、沒寫議員
+      { url: 'https://n/4', title: '北市議員許淑華談台語', source: '中央社', published_at: at(26) },
+      { url: 'https://n/5', title: '耿葳出席活動', source: '中央社', published_at: at(25) }, // 兩字名沒寫議員
+      { url: 'https://n/6', title: '議員耿葳質詢', source: '中央社', published_at: at(24) },
+      { url: 'https://n/7', title: '颱風明天登陸', source: '中央社', published_at: at(23) },
+    ],
+    { origin: 'outlet', fetchedAt: 'x' },
+  );
+  const all = listCouncilActivity(db, {});
+  assert.deepEqual(
+    all.items.map((i) => [i.title, i.councilors.map((c) => c.name)]),
+    [
+      ['秦慧珠質詢北市預算', ['秦慧珠']],
+      ['北市議員許淑華談台語', ['許淑華']],
+      ['議員耿葳質詢', ['耿葳']],
+    ],
+  );
+  assert.equal(all.councilors.find((c) => c.name === '秦慧珠').count, 1, '名單附新聞則數');
+  // 李柏毅同時是在職立委（同名）：沒寫「議員」不算
+  upsertArticles(db, [{ url: 'https://n/8', title: '李柏毅質詢', source: '中央社', published_at: at(22) }], { origin: 'outlet', fetchedAt: 'y' });
+  assert.ok(!listCouncilActivity(db, {}).items.some((i) => i.title === '李柏毅質詢'), '與立委同名要寫議員');
+  assert.equal(all.councilors[0].count, 1, '依則數排序');
+  assert.equal(listCouncilActivity(db, { county: '高雄市' }).total, 0, '縣市篩選');
+  assert.equal(listCouncilActivity(db, { county: '台北市' }).total, 3, '臺／台都可以');
+  assert.ok(listCouncilActivity(db, { county: '高雄市' }).councilors.every((c) => c.county === '高雄市'));
+  assert.deepEqual(listCouncilActivity(db, { councilor: '臺北市|3|許淑華' }).items.map((i) => i.title), ['北市議員許淑華談台語']);
+  assert.equal(listCouncilActivity(db, { q: '預算' }).total, 1);
 });

@@ -294,6 +294,17 @@ Query 參數（全部可選）：
 
 每縣市另有 `trends`：`{ president（2012–2024）, mayor（2009 縣市長與 2010 五都合為一輪記 2010、`label` 為「2009／10」，至 2022）, party_list（不分區政黨票 2012–2024） }`，各為依年份排序的 `[{ year, label, valid, turnout, votes: { 政黨: 票數 } }]`（無黨籍候選人合併為「無黨籍」）；`trend_types` 為各類型名稱。
 
+## GET /api/v1/council/activity?county=&councilor=&q=&source=&limit=30&offset=0
+
+議員頁「近期動態」用。現任直轄市議員（最新一屆當選人，扣掉粉專對照表標為轉任立委、病逝、解職／停權的，加上遞補／補選者）的新聞與粉專。
+- 新聞：`/news/articles?scope=all` 的全部新聞裡，**標題提到現任議員**的報導。兩個字的名字、或與縣市長（2022 當選人）／在職立委／部會首長同名的，標題另需含「議員」；
+  姓名前面緊接著別的職稱（「南投縣長許淑華」）不算。同名的議員（不同縣市）都會標上。
+- `county`：縣市（臺／台皆可，省略＝六都）；`councilor`：議員 id（`縣市|選區號|姓名`）；`q`：比對標題與摘要，空白分隔全部符合。
+- 回應：`{ meta, counties[], county, councilors[], total, source_total, sources[], first_date, last_date, items[] }`。
+  `councilors[]`：`{ id, name, county, district, party, facebook, status, count }`（目前縣市條件下的新聞則數，依則數排序；不受 `councilor`／`q`／`source` 影響）。
+  `items[]`：`{ url, title, source, published_at, councilors[{ id, name, county, district, party }] }`。
+- 臉書：只有粉專網址（`facebook`），沒有貼文資料；前端以 Facebook 官方的粉專嵌入框（Page Plugin）按需顯示最近貼文。
+
 ## GET /api/v1/council?county=新北市
 
 議員分頁用。直轄市議員選舉結果（`server/council-stats.json`，由 `scripts/fetch-cec-council.mjs` + `scripts/build-council-stats.mjs` 產生，四年一次、需手動重跑），資料來源為中選會選舉資料庫。

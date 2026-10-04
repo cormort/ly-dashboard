@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 
-export type Route = 'home' | 'dashboard' | 'legislators' | 'bills' | 'budget' | 'rankings' | 'compare' | 'funds' | 'agencies' | 'foundations' | 'administrative' | 'dgbas' | 'committees' | 'news' | 'allnews' | 'agencynews' | 'officials' | 'counties' | 'council' | 'my';
+export type Route = 'home' | 'dashboard' | 'legislators' | 'bills' | 'budget' | 'rankings' | 'compare' | 'funds' | 'agencies' | 'foundations' | 'administrative' | 'dgbas' | 'committees' | 'news' | 'allnews' | 'agencynews' | 'officials' | 'counties' | 'council' | 'councilactivity' | 'my';
 
 const PATHS: Record<Route, string> = {
   // 預設首頁是總覽；最近動態移到 /activity
@@ -23,6 +23,7 @@ const PATHS: Record<Route, string> = {
   officials: '/officials',
   counties: '/counties',
   council: '/council',
+  councilactivity: '/council/activity',
   my: '/my',
 };
 
@@ -45,6 +46,8 @@ export function routeOf(pathname: string): Route {
   if (pathname.startsWith('/news')) return 'news';
   if (pathname.startsWith('/officials')) return 'officials';
   if (pathname.startsWith('/counties')) return 'counties';
+  // `/council/activity` 要排在 `/council` 前面
+  if (pathname.startsWith('/council/activity')) return 'councilactivity';
   if (pathname.startsWith('/council')) return 'council';
   if (pathname.startsWith('/my')) return 'my';
   // `/dashboard` 是舊網址，一併導到總覽

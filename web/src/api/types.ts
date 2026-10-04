@@ -873,6 +873,39 @@ export interface CouncilResponse {
   warnings: string[];
 }
 
+/* ---------- /council/activity ---------- */
+
+/** 現任直轄市議員（id＝「縣市|選區號|姓名」）；遞補者黨籍不明（party 為空字串） */
+export interface CouncilorBrief {
+  id: string;
+  name: string;
+  county: string;
+  district: string;
+  party: string;
+}
+
+export interface Councilor extends CouncilorBrief {
+  facebook: string | null;
+  /** 粉專對照表的現任狀態（現任、現任（議長）、現任（遞補）…） */
+  status: string | null;
+  /** 目前縣市條件下的新聞則數 */
+  count: number;
+}
+
+export interface CouncilActivityResponse {
+  meta: Meta & { news_fetched_at: string | null; news_outlets_fetched_at?: string | null };
+  counties: string[];
+  /** 目前的縣市條件（空字串＝六都全部） */
+  county: string;
+  councilors: Councilor[];
+  total: number;
+  source_total: number;
+  sources: { name: string; count: number }[];
+  first_date: string | null;
+  last_date: string | null;
+  items: { url: string; title: string; source: string; published_at: string; councilors: CouncilorBrief[] }[];
+}
+
 /* ---------- /legislator-votes ---------- */
 
 export interface LegislatorRace {
