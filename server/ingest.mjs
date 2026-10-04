@@ -554,7 +554,11 @@ export async function runNewsFeedImport(db, { logger = console, fetchImpl = fetc
     result.files += 1;
     result.items += items.length;
     for (const i of items) if (i.collected_at && (!result.latest_collected_at || i.collected_at > result.latest_collected_at)) result.latest_collected_at = i.collected_at;
-    result.stored += upsertArticles(db, items, { origin: 'outlet', fetchedAt });
+    // 從「下載 CSV」併進來的歷史新聞帶 origin（多半是 Google 新聞），照實存；其餘是媒體 RSS
+    for (const origin of ['outlet', 'google']) {
+      const part = items.filter((i) => (i.origin ?? 'outlet') === origin);
+      if (part.length) result.stored += upsertArticles(db, part, { origin, fetchedAt });
+    }
     result.added += dispatchOutletItems(db, items, targets, { fetchedAt });
   }
   if (!result.failures) setMeta(db, 'news_feed_imported_at', now().toISOString());

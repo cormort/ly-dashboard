@@ -8,7 +8,7 @@ import { CONFIG } from '../server/config.mjs';
 import { entityFeedUrl, guardShrink, runIngest, runBillsIngest, runRecordsIngest, runBudgetIngest, runBudgetReportsIngest, runMeetingsIngest, budgetPageUrl, runNewsIngest, runOutletNews, runOutletPoll, retagOutletArticles, runNewsBackfill, backfillTargets, rangeFeedUrl, BACKFILL_CAP, runNewsFeedImport, runSocialIngest, runAll } from '../server/ingest.mjs';
 import { entityNewsTerms, listFunds, getHealth, listBills, listBudget, listBudgetMeetings, listBudgetReports, budgetState, listChanges, listCounties, listLegislatorVotes, listRankings, compareLegislators, listRegions, listSplitTicket, listDemographics, listPopulationTrend, getTownMap, listLegislators, listNews, listNewsArticles, newsCsv, listSyncRuns } from '../server/queries.mjs';
 import { FetchError } from '../server/fetch-ly.mjs';
-import { feedDate, feedFileUrl, mergeFeedFile, parseFeedFile } from '../server/news-feed.mjs';
+import { csvRowsToFeedItems, feedDate, feedFileUrl, mergeFeedFile, parseFeedFile } from '../server/news-feed.mjs';
 import { syncOnce, pollOutletsOnce } from '../server/index.mjs';
 
 const fixture = (name) => JSON.parse(readFileSync(fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url)), 'utf8'));
@@ -1658,4 +1658,48 @@ test('回補：插入新的對象（主計拆成兩組）時，做到一半的�
   assert.equal(asked.filter((q) => q === '"主計處"').length, 6, '新的地方主計處組完整補 6 個月');
   assert.equal(asked.filter((q) => q === entity.q).length, 2, '基金機關那組只補剩下的 2 個月');
   assert.equal(result.completed, targets.length, '舊的 dgbas key 不算進完成數');
+});
+
+/* ---------------- 下載 CSV 的歷史新聞併進收集檔 ---------------- */
+
+test('CSV → 收集檔：臺灣時間轉 UTC、依表頭找欄位、Google 轉址標 origin、壞列略過；匯入時照 origin 存', async () => {
+  const rows = [
+    ['發布時間', '媒體', '標題', '類別', '提到的機關', '提到的委員／首長', '連結'],
+    ['2026-04-07 15:00', '自由時報', '丁學忠質詢國防預算', '委員', '', '丁學忠', 'https://news.google.com/rss/articles/abc'],
+    ['2026-04-08 00:30', '中央社', '颱風明天登陸', '其他', '', '', 'https://cna.example/1'],
+    ['不是時間', '中央社', '壞列', '', '', '', 'https://cna.example/bad'],
+  ];
+  const items = csvRowsToFeedItems(rows);
+  assert.deepEqual(
+    items.map((i) => [i.published_at, i.origin, feedDate(i.published_at)]),
+    [
+      ['2026-04-07T07:00:00.000Z', 'google', '2026-04-07'],
+      ['2026-04-07T16:30:00.000Z', 'outlet', '2026-04-08'],
+    ],
+  );
+  assert.throws(() => csvRowsToFeedItems([['標題', '連結']]), /缺少欄位/);
+  assert.equal(parseFeedFile(mergeFeedFile('', items, 'T')).find((i) => i.origin === 'google').url, 'https://news.google.com/rss/articles/abc', 'origin 寫進收集檔');
+
+  const db = seeded();
+  const ting = listLegislators(db, { q: '丁學忠' }).items[0].id;
+  const feedUrl = CONFIG.news.feedUrl;
+  CONFIG.news.feedUrl = 'https://raw.example/feed';
+  const files = new Map();
+  for (const i of items) files.set(feedDate(i.published_at), mergeFeedFile(files.get(feedDate(i.published_at)) ?? '', [i], 'T'));
+  try {
+    const now = () => new Date('2026-05-01T00:00:00.000Z');
+    await runNewsFeedImport(db, {
+      logger: silent,
+      now,
+      fetchImpl: async (url) => {
+        const date = url.match(/(\d{4}-\d{2}-\d{2})\.ndjson$/)[1];
+        if (files.has(date)) return { text: files.get(date), status: 200 };
+        throw new FetchError('HTTP 404', { status: 404 });
+      },
+    });
+  } finally {
+    CONFIG.news.feedUrl = feedUrl;
+  }
+  assert.deepEqual(db.prepare('SELECT origin FROM articles ORDER BY url').all().map((r) => r.origin), ['outlet', 'google'], 'Google 來的照實標 google');
+  assert.equal(listNews(db, { legislator: ting }).total, 1, '照標題規則分派到委員');
 });
