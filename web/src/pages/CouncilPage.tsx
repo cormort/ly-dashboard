@@ -30,6 +30,10 @@ export function marginText(d: Pick<CouncilDistrict, 'first_loser'>): string {
   return `${head}，差 ${numOrDash(loser.margin)} 票）`;
 }
 
+/** 粉專對照表的現任狀態裡，要標在姓名旁的離任原因（其餘如議長、遞補不標） */
+const DEPARTED = new Set(['轉任立委', '病逝']);
+const departedNote = (c: CouncilCandidate) => (c.facebook_status && DEPARTED.has(c.facebook_status) ? c.facebook_status : undefined);
+
 /** 姓名連到政黨色：沿用各縣市動態的 `.region-person`（底色線代表黨籍），不另外塞標籤 */
 function Person({ name, party, note, facebook }: { name: string; party: string; note?: string; facebook?: string }) {
   return (
@@ -229,7 +233,7 @@ function DistrictRow({ d }: { d: CouncilDistrict }) {
         {/* 當選名單是這一頁的重點，留在收合的摘要裡就能一眼掃完；底色線代表黨籍 */}
         <span className="region-people">
           {winners.map((c) => (
-            <Person key={c.name} name={c.name} party={c.party} note={c.quota ? '婦女保障' : undefined} facebook={c.facebook} />
+            <Person key={c.name} name={c.name} party={c.party} note={[c.quota ? '婦女保障' : '', departedNote(c) ?? ''].filter(Boolean).join('、') || undefined} facebook={c.facebook} />
           ))}
         </span>
       </summary>
@@ -262,6 +266,7 @@ function DistrictRow({ d }: { d: CouncilDistrict }) {
                     ) : (
                       c.name
                     )}
+                    {departedNote(c) ? <small className="muted">（{departedNote(c)}）</small> : null}
                   </td>
                   <td>
                     <PartyTag party={c.party} />
