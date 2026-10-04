@@ -373,4 +373,4 @@ README 的待處理項。桃園 2014 年底才升格，2010–2014 那一任是*
 | # | 事實 | 怎麼確認 | 影響 |
 | --- | --- | --- | --- |
 | D131 | **`https://cormort.github.io/ly-dashboard/` 不存在**（HTTP 404）。GitHub API 顯示 `cormort/ly-dashboard` 的 `has_pages: false`、Pages 端點回 404，該帳號其他 60 多個 repo 有 Pages，只有這個沒有 | `curl` 站台（404）＋ `GET /repos/cormort/ly-dashboard`（`has_pages: false`）＋ `GET /repos/cormort/ly-dashboard/pages`（404） | 使用者說的「同步這個網址到本地」沒有這個站台可同步。這個 repo 是 SQLite＋API 的伺服器端應用，本來也不能跑在 GitHub Pages（純靜態）。**所以「同步」照「把遠端 repo 拉到本地」做**：本地 `main` 原本落後 `origin/main` **13 個 commit**（到 e64471f），已 fast-forward。若使用者其實是指別的站台（例如舊版立委觀測站或某台自架的伺服器），要再確認網址 |
-| D132 | **這一輪的改動沒有推上 GitHub**，`git push` 留給使用者 | 提交在本地：`617c2cf`，`origin/main` 還停在 `e64471f` | 使用者只說「同步到本地」＋「繼續做」，沒有說要發佈；這個 repo 是公開的，推上去等於對外發佈。要發佈就 `git push origin main`（不是 force push，只是在 e6441f 之後加一個 commit）。另外這一輪**沒有**動線上任何資料 |
+| D132 | 改動要不要推上 GitHub | 第一版先只留在本地（`617c2cf`）；**使用者隨後明確要求 commit and push，已推上 `origin/main`（31e379a）** | 使用者原本只說「同步到本地」＋「繼續做」，沒有說要發佈，而這個 repo 是公開的，推上去等於對外發佈，所以先不推並在回報裡講明。使用者要求推送後執行 `git push origin main`（一般推送，不是 force push，只在 `e64471f` 之後加一個 commit），推完以 `git rev-parse HEAD origin/main` 確認兩邊同一個 sha。這一輪**沒有**動線上任何資料 |
