@@ -21,6 +21,7 @@ import { buildDataset } from '../server/normalize.mjs';
 import { runOutletNews } from '../server/ingest.mjs';
 import { fetchJson } from '../server/fetch-ly.mjs';
 import { CONFIG } from '../server/config.mjs';
+import { outletLabel } from '../server/news-feed.mjs';
 
 const root = new URL('../', import.meta.url);
 const fixture = (name) => JSON.parse(readFileSync(fileURLToPath(new URL(`test/fixtures/${name}`, root)), 'utf8'));
@@ -56,7 +57,7 @@ console.log(pad('媒體', 16), pad('格式', 10), padL('則數', 6), padL('委�
 
 let failed = 0;
 for (const outlet of outlets) {
-  const row = { name: outlet.name, kind: '—', items: '—', news: '—', topics: '—', status: 'OK' };
+  const row = { name: outletLabel(outlet), kind: '—', items: '—', news: '—', topics: '—', status: 'OK' };
   try {
     // 只判斷標籤、不解析：RSS／Atom 混用最容易在這裡發現（公視就是 Atom）
     const { text } = await rawFetch(outlet.url);
@@ -79,9 +80,10 @@ for (const outlet of outlets) {
       } else if (result.items === 0) {
         row.status = '警告：0 則（feed 空、格式不認得、或全部過期）';
         failed += 1;
-      } else if (row.news === 0) {
-        // 解析得出來但一則委員新聞都沒對上：通常是 feed 指到錯的分類（D101 的 udn 7225 就是這樣）
-        row.status = '警告：完全沒對上委員（分類可能選錯，見 D101）';
+      } else if (row.news === 0 && row.topics === 0) {
+        // 解析得出來但委員、首長、機關一則都沒對上：通常是 feed 指到錯的分類（D101 的 udn 7225 就是這樣）。
+        // 只看委員會誤報：中央社的產經、社會、地方本來就少有委員，但會有機關新聞
+        row.status = '警告：委員、首長、機關都沒對上（分類可能選錯，見 D101）';
         failed += 1;
       }
     }

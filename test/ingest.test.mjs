@@ -1703,3 +1703,24 @@ test('CSV → 收集檔：臺灣時間轉 UTC、依表頭找欄位、Google 轉�
   assert.deepEqual(db.prepare('SELECT origin FROM articles ORDER BY url').all().map((r) => r.origin), ['outlet', 'google'], 'Google 來的照實標 google');
   assert.equal(listNews(db, { legislator: ting }).total, 1, '照標題規則分派到委員');
 });
+
+test('同一家多個分類 feed（中央社）：同一則出現在兩類只存一次、媒體名一樣；失敗的 log 標出是哪一類', async () => {
+  const db = seeded();
+  const warnings = [];
+  const outlets = [
+    { name: '中央社', feed: '政治', url: 'https://outlet.example/cna-politics' },
+    { name: '中央社', feed: '地方', url: 'https://outlet.example/cna-local' },
+    { name: '中央社', feed: '社會', url: 'https://outlet.example/cna-social' },
+  ];
+  const same = outletRss([{ title: '臺北市主計處公布市府預算', url: 'https://cna.example/9', date: 'Tue, 29 Sep 2026 08:00:00 GMT' }]);
+  const fetchImpl = async (url) => {
+    if (url.endsWith('social')) throw new FetchError('HTTP 404', { status: 404 });
+    return rssResponse(same);
+  };
+  const cutoff = new Date(NEWS_NOW().getTime() - CONFIG.news.keepDays * 86_400_000).toISOString();
+  const result = await runOutletNews(db, { logger: { ...silent, warn: (m) => warnings.push(m) }, fetchImpl, now: NEWS_NOW, cutoff, outlets });
+  assert.equal(result.stored, 1, '政治、地方都回同一則，網址相同只存一次');
+  assert.deepEqual(db.prepare('SELECT source FROM articles').all().map((r) => r.source), ['中央社']);
+  assert.ok(warnings.some((w) => w.includes('中央社（社會）')), `失敗的 log 要標出分類：${warnings}`);
+  assert.ok(CONFIG.news.outlets.filter((o) => o.name === '中央社').length >= 4, '設定裡中央社有政治、產經證券、社會、地方');
+});

@@ -74,7 +74,12 @@ export const CONFIG = {
     // 媒體 RSS 另外每小時抓一次（feed 只留最新幾十則，一天抓一次會漏）；0＝停用，只隨每日同步抓
     outletIntervalMs: Number(process.env.LY_NEWS_OUTLET_INTERVAL_MS ?? 60 * 60 * 1000),
     outlets: [
-      { name: '中央社', url: 'https://feeds.feedburner.com/rsscna/politics' },
+      // 中央社分類各一個 feed（政治只留最新 20 則）；name 是新聞上顯示的媒體名，feed 只用在 log 分辨是哪一類。
+      // 分類網址取自中央社 RSS 服務頁（https://www.cna.com.tw/about/rss.aspx）；國際、兩岸、科技、生活、文化、運動、娛樂與用途關聯低，沒收
+      { name: '中央社', feed: '政治', url: 'https://feeds.feedburner.com/rsscna/politics' },
+      { name: '中央社', feed: '產經證券', url: 'https://feeds.feedburner.com/rsscna/finance' },
+      { name: '中央社', feed: '社會', url: 'https://feeds.feedburner.com/rsscna/social' },
+      { name: '中央社', feed: '地方', url: 'https://feeds.feedburner.com/rsscna/local' },
       { name: '自由時報', url: 'https://news.ltn.com.tw/rss/politics.xml' },
       { name: '聯合新聞網', url: 'https://udn.com/news/rssfeed/6638' },
       { name: '公視新聞', url: 'https://news.pts.org.tw/xml/newsfeed.xml' },

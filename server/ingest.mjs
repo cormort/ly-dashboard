@@ -5,7 +5,7 @@ import { openDb, recordSyncRun, saveSnapshot, applyDataset, applyBills, applyBud
 import { buildDataset, normalizeBills, normalizeBudget, normalizeBudgetReports, normalizeCommitteeMeets, normalizeCommitteeRecords, normalizeMeetings, normalizeSocial, newsName, parseNewsRss, DataValidationError, NORMALIZER_VERSION } from './normalize.mjs';
 import { fetchJson, FetchError, sha256 } from './fetch-ly.mjs';
 import { entityNewsTerms, makeTagger, mentionsKnownEntity } from './queries.mjs';
-import { feedDate, feedFileUrl, parseFeedFile } from './news-feed.mjs';
+import { feedDate, feedFileUrl, outletLabel, parseFeedFile } from './news-feed.mjs';
 
 /**
  * Ingestion 管線：FETCH → VALIDATE → NORMALIZE → PERSIST。
@@ -480,7 +480,7 @@ export async function runOutletNews(db, { logger = console, fetchImpl = fetchJso
       result.added += dispatchOutletItems(db, items, targets, { fetchedAt });
     } catch (error) {
       result.failures += 1;
-      logger.warn(`[news] ${outlet.name} RSS 抓取失敗：${error?.message || error}`);
+      logger.warn(`[news] ${outletLabel(outlet)} RSS 抓取失敗：${error?.message || error}`);
     }
   }
   return result;

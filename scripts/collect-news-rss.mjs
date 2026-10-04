@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 /**
- * 媒體 RSS 收集端：抓 CONFIG.news.outlets 的四家 RSS，併進 `<out>/news/YYYY-MM-DD.ndjson`（格式見 server/news-feed.mjs）。
+ * 媒體 RSS 收集端：抓 CONFIG.news.outlets 的各家 RSS（中央社有多個分類 feed），併進 `<out>/news/YYYY-MM-DD.ndjson`（格式見 server/news-feed.mjs）。
  * 由 GitHub Actions 每小時執行（.github/workflows/collect-news.yml），結果 commit 到 news-data 分支，
  * 儀表板同步時再匯入（ingest.mjs runNewsFeedImport）。這樣手機／伺服器沒開的時候也不會漏收。
  *
  *   node scripts/collect-news-rss.mjs --out ../news-data
  *
  * 只用 node 內建模組（不需要 npm install），不碰資料庫。
- * 一家抓不到只印警告（GitHub Actions 的 ::warning::）；四家全失敗才 exit 1，讓 Actions 顯示紅燈。
+ * 一家抓不到只印警告（GitHub Actions 的 ::warning::）；全部失敗才 exit 1，讓 Actions 顯示紅燈。
  */
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -15,7 +15,7 @@ import { parseArgs } from 'node:util';
 import { CONFIG } from '../server/config.mjs';
 import { fetchJson } from '../server/fetch-ly.mjs';
 import { parseNewsRss } from '../server/normalize.mjs';
-import { feedDate, mergeFeedFile } from '../server/news-feed.mjs';
+import { feedDate, mergeFeedFile, outletLabel } from '../server/news-feed.mjs';
 
 const { values: args } = parseArgs({ options: { out: { type: 'string', default: 'news-data' } } });
 
@@ -33,10 +33,10 @@ for (const outlet of CONFIG.news.outlets) {
       if (!byDate.has(date)) byDate.set(date, []);
       byDate.get(date).push(i);
     }
-    console.log(`${outlet.name}：${items.length} 則`);
+    console.log(`${outletLabel(outlet)}：${items.length} 則`);
   } catch (error) {
     failures += 1;
-    console.log(`::warning::${outlet.name} RSS 抓取失敗：${error?.message || error}`);
+    console.log(`::warning::${outletLabel(outlet)} RSS 抓取失敗：${error?.message || error}`);
   }
 }
 
@@ -54,6 +54,6 @@ for (const [date, items] of byDate) {
 }
 console.log(`寫入 ${changed} 個檔（${[...byDate.keys()].sort().join('、') || '無'}）`);
 if (failures === CONFIG.news.outlets.length) {
-  console.log('::error::四家 RSS 全部抓取失敗');
+  console.log('::error::所有 RSS 全部抓取失敗');
   process.exit(1);
 }

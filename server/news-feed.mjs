@@ -11,6 +11,9 @@
 
 const TAIPEI_OFFSET_MS = 8 * 60 * 60 * 1000;
 
+/** log 用的媒體名稱：同一家有多個分類 feed（中央社）時標出是哪一類 */
+export const outletLabel = (outlet) => (outlet.feed ? `${outlet.name}（${outlet.feed}）` : outlet.name);
+
 /** 這則新聞歸到哪一天的檔：臺灣時間的發布日 */
 export const feedDate = (publishedAt) => new Date(Date.parse(publishedAt) + TAIPEI_OFFSET_MS).toISOString().slice(0, 10);
 
