@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { openDb, applyDataset, applyBills, applySocial, applyCommitteeRecords, applyCommitteeMeets, upsertNews, upsertArticles, pruneNews, pruneLogs, getMeta, setMeta, migrate } from '../server/db.mjs';
 import { buildDataset, normalizeBills, normalizeCommitteeRecords, normalizeMeetings, normalizeSocial, newsName, rocDate, DataValidationError } from '../server/normalize.mjs';
 import { CONFIG } from '../server/config.mjs';
-import { entityFeedUrl, guardShrink, runIngest, runBillsIngest, runRecordsIngest, runBudgetIngest, runBudgetReportsIngest, runMeetingsIngest, budgetPageUrl, runNewsIngest, runOutletNews, runOutletPoll, retagOutletArticles, runNewsBackfill, backfillTargets, rangeFeedUrl, BACKFILL_CAP, runNewsFeedImport, runSocialIngest, runAll } from '../server/ingest.mjs';
+import { entityFeedUrl, guardShrink, runIngest, runBillsIngest, runRecordsIngest, runBudgetIngest, runBudgetReportsIngest, runMeetingsIngest, budgetPageUrl, runNewsIngest, runOutletNews, runOutletPoll, retagOutletArticles, runNewsBackfill, backfillTargets, rangeFeedUrl, BACKFILL_CAP, runNewsFeedImport, runCouncilNews, runSocialIngest, runAll } from '../server/ingest.mjs';
 import { entityNewsTerms, listFunds, getHealth, listBills, listBudget, listBudgetMeetings, listBudgetReports, budgetState, listChanges, listCounties, listLegislatorVotes, listRankings, compareLegislators, listRegions, listSplitTicket, listDemographics, listPopulationTrend, getTownMap, listLegislators, listNews, listNewsArticles, newsCsv, listCouncilActivity, currentCouncilors, listSyncRuns } from '../server/queries.mjs';
 import { FetchError } from '../server/fetch-ly.mjs';
 import { csvRowsToFeedItems, feedDate, feedFileUrl, mergeFeedFile, parseFeedFile } from '../server/news-feed.mjs';
@@ -1769,4 +1769,57 @@ test('議員近期動態：標題提到議員才列；兩字名、或與縣市�
   assert.ok(listCouncilActivity(db, { county: '高雄市' }).councilors.every((c) => c.county === '高雄市'));
   assert.deepEqual(listCouncilActivity(db, { councilor: '臺北市|3|許淑華' }).items.map((i) => i.title), ['北市議員許淑華談台語']);
   assert.equal(listCouncilActivity(db, { q: '預算' }).total, 1);
+});
+
+/* ---------------- 議員 Google 新聞 ---------------- */
+
+test('議員 Google 新聞：逐位查「"姓名" 縣市議員」；同名／兩字名要有議員或縣市簡稱；記在議員名下，近期動態同名也不誤標', async () => {
+  const db = seeded();
+  const queries = [];
+  const fetchImpl = async (url) => {
+    const q = decodeURIComponent(new URL(url).searchParams.get('q'));
+    queries.push(q);
+    if (q.startsWith('"許淑華" 臺北市議員')) {
+      return rssResponse(
+        rssOf([
+          { title: '北市許淑華質詢市府預算', url: 'https://g/s1', date: 'Tue, 29 Sep 2026 08:00:00 GMT' }, // 有縣市簡稱
+          { title: '許淑華行銷南投好茶', url: 'https://g/s2', date: 'Tue, 29 Sep 2026 09:00:00 GMT' }, // 同名、沒線索：不收
+        ]),
+      );
+    }
+    if (q.startsWith('"秦慧珠" 臺北市議員')) return rssResponse(rssOf([{ title: '秦慧珠談交通', url: 'https://g/c1', date: 'Tue, 29 Sep 2026 10:00:00 GMT' }]));
+    return rssResponse(rssOf([]));
+  };
+  const cutoff = new Date(NEWS_NOW().getTime() - CONFIG.news.keepDays * 86_400_000).toISOString();
+  const result = await runCouncilNews(db, { logger: silent, fetchImpl, now: NEWS_NOW, cutoff, budgetMs: 60_000 });
+  assert.equal(result.processed, result.total, '全部議員都查到');
+  assert.equal(queries.length, currentCouncilors().filter((c) => !c.name.includes('□')).length);
+  assert.ok(queries.some((q) => q.startsWith('"秦慧珠" 臺北市議員 when:')));
+  const topic = (name) => db.prepare("SELECT title FROM topic_news WHERE topic LIKE ? ORDER BY url").all(`councilor:%|${name}`).map((r) => r.title);
+  assert.deepEqual(topic('許淑華'), ['北市許淑華質詢市府預算']);
+  assert.deepEqual(topic('秦慧珠'), ['秦慧珠談交通']);
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM articles WHERE origin = 'google'").get().n, 2, '也進新聞庫');
+
+  // 近期動態：「北市許淑華…」標題沒有「議員」，但查詢記在她名下，所以算她的
+  const act = listCouncilActivity(db, { councilor: '臺北市|3|許淑華' });
+  assert.deepEqual(act.items.map((i) => i.title), ['北市許淑華質詢市府預算']);
+  assert.ok(!listNewsArticles(db, { scope: 'all' }).items.some((i) => 'councilorIds' in i), '內部欄位不外洩');
+});
+
+test('議員 Google 新聞：時間預算用完就停、下輪從停下的議員接續；預算 0＝不查', async () => {
+  const db = seeded();
+  const cutoff = new Date(NEWS_NOW().getTime() - CONFIG.news.keepDays * 86_400_000).toISOString();
+  const first = [];
+  const slow = (list) => async (url) => {
+    list.push(new URL(url).searchParams.get('q'));
+    await new Promise((r) => setTimeout(r, 10));
+    return rssResponse(rssOf([]));
+  };
+  const r1 = await runCouncilNews(db, { logger: silent, fetchImpl: slow(first), now: NEWS_NOW, cutoff, budgetMs: 35 });
+  assert.ok(r1.partial && r1.processed >= 1 && r1.processed < r1.total);
+  const second = [];
+  await runCouncilNews(db, { logger: silent, fetchImpl: slow(second), now: NEWS_NOW, cutoff, budgetMs: 35 });
+  assert.notEqual(second[0], first[0], '第二輪不是從頭開始');
+  const none = await runCouncilNews(db, { logger: silent, fetchImpl: async () => assert.fail('不該查'), now: NEWS_NOW, cutoff, budgetMs: 0 });
+  assert.equal(none.skipped, true);
 });

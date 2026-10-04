@@ -1043,6 +1043,18 @@ export function currentCouncilors() {
 }
 
 /**
+ * 光看姓名分不出是不是議員的名字：和縣市長（2022 當選人）、在職立委、部會首長同名的。
+ * 這些名字（以及兩個字的名字）標題要有「議員」等線索才算（議員近期動態與每日議員新聞查詢共用）。
+ */
+export function ambiguousCouncilorNames(db) {
+  return new Set([
+    ...loadCountyStats().counties.map((c) => c.elections?.mayor_2022?.candidates?.[0]?.name).filter(Boolean),
+    ...db.prepare('SELECT name FROM legislators WHERE leave_flag = 0').all().map((l) => newsName(l.name)),
+    ...OFFICIALS.map((o) => o.name),
+  ]);
+}
+
+/**
  * 議員近期動態（議員頁「近期動態」）：全部新聞（allNewsGroups）裡，標題提到現任議員的報導。
  * 比對規則同委員新聞：標題含姓名；兩個字的名字另需標題含「議員」（沒有查詢條件把關，「黃仁」這種會撞到一般用語）。
  * 姓名前面緊接著別的職稱（「南投縣長許淑華」「立委某某」）不算；議員和縣市長、在職立委、部會首長同名時
@@ -1062,11 +1074,8 @@ export function listCouncilActivity(db, { county = '', councilor = '', q = '', s
     const byName = new Map();
     for (const c of all) if (!c.name.includes('□')) (byName.get(c.name) ?? byName.set(c.name, []).get(c.name)).push(c);
     const re = new RegExp([...byName.keys()].sort((a, b) => b.length - a.length).map(escapeRe).join('|'), 'g');
-    const ambiguous = new Set([
-      ...loadCountyStats().counties.map((c) => c.elections?.mayor_2022?.candidates?.[0]?.name).filter(Boolean),
-      ...db.prepare('SELECT name FROM legislators WHERE leave_flag = 0').all().map((l) => newsName(l.name)),
-      ...OFFICIALS.map((o) => o.name),
-    ]);
+    const ambiguous = ambiguousCouncilorNames(db);
+    const byId = new Map(all.map((c) => [c.id, c]));
     entry.councilGroups = [];
     for (const g of entry.groups) {
       const names = new Set(
@@ -1075,7 +1084,10 @@ export function listCouncilActivity(db, { county = '', councilor = '', q = '', s
           .map((m) => m[0])
           .filter((n) => (n.length > 2 && !ambiguous.has(n)) || g.title.includes('議員')),
       );
-      if (names.size) entry.councilGroups.push({ group: g, councilors: [...names].flatMap((n) => byName.get(n)) });
+      // 每日同步對議員逐位查的 Google 新聞（topic 'councilor:<id>'）直接算在該議員名下：查詢已帶縣市與「議員」，同名也不會誤標
+      const matched = new Map([...names].flatMap((n) => byName.get(n)).map((c) => [c.id, c]));
+      for (const id of g.councilorIds ?? []) if (byId.has(id)) matched.set(id, byId.get(id));
+      if (matched.size) entry.councilGroups.push({ group: g, councilors: [...matched.values()] });
     }
   }
   const inCounty = (c) => !wantedCounty || c.county === wantedCounty;
@@ -1560,6 +1572,7 @@ function allNewsGroups(db) {
     if (r.summary) a.text += `\n${r.summary}`;
     if (r.kind && !a.kinds.includes(r.kind)) a.kinds.push(r.kind);
     if (r.person && !a.legislators.some((p) => p.id === r.person.id)) a.legislators.push(r.person);
+    if (r.topic?.startsWith('councilor:')) (a.councilorIds ??= []).push(r.topic.slice(10));
   }
   const groups = [...byTitle.values()].sort((a, b) => b.published_at.localeCompare(a.published_at) || a.url.localeCompare(b.url));
   const entry = { version, groups, first, last };
@@ -1598,7 +1611,7 @@ function listAgencyNewsArticles(db, { keyword, source, agency, limit, offset }) 
     last_date: entry.last,
     people: [...perAgency].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'zh-Hant')).map(([name, count]) => ({ id: name, name, party: '機關', count })),
     sources: [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 30).map(([name, count]) => ({ name, count })),
-    items: matching.slice(offset, offset + limit).map(({ group: { text: _text, ...item }, agencies }) => ({ ...item, agencies })),
+    items: matching.slice(offset, offset + limit).map(({ group: { text: _text, councilorIds: _ids, ...item }, agencies }) => ({ ...item, agencies })),
   };
 }
 
@@ -1627,7 +1640,7 @@ function listAllNewsArticles(db, { keyword, source, kind, limit, offset }) {
     kind_counts: kindCounts,
     sources: [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 30).map(([name, count]) => ({ name, count })),
     // 摘要只拿來搜尋，不回傳（text 是內部用的搜尋字串）
-    items: matching.slice(offset, offset + limit).map(({ text: _text, ...item }) => item),
+    items: matching.slice(offset, offset + limit).map(({ text: _text, councilorIds: _ids, ...item }) => item),
   };
 }
 

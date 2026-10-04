@@ -297,7 +297,8 @@ Query 參數（全部可選）：
 ## GET /api/v1/council/activity?county=&councilor=&q=&source=&limit=30&offset=0
 
 議員頁「近期動態」用。現任直轄市議員（最新一屆當選人，扣掉粉專對照表標為轉任立委、病逝、解職／停權的，加上遞補／補選者）的新聞與粉專。
-- 新聞：`/news/articles?scope=all` 的全部新聞裡，**標題提到現任議員**的報導。兩個字的名字、或與縣市長（2022 當選人）／在職立委／部會首長同名的，標題另需含「議員」；
+- 新聞：每日同步對每位現任議員查 Google 新聞「`"姓名" 縣市議員`」（`topic_news 'councilor:<id>'`，直接算在該議員名下），
+  再加上 `/news/articles?scope=all` 的全部新聞裡**標題提到現任議員**的報導。兩個字的名字、或與縣市長（2022 當選人）／在職立委／部會首長同名的，標題另需含「議員」；
   姓名前面緊接著別的職稱（「南投縣長許淑華」）不算。同名的議員（不同縣市）都會標上。
 - `county`：縣市（臺／台皆可，省略＝六都）；`councilor`：議員 id（`縣市|選區號|姓名`）；`q`：比對標題與摘要，空白分隔全部符合。
 - 回應：`{ meta, counties[], county, councilors[], total, source_total, sources[], first_date, last_date, items[] }`。

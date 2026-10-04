@@ -4,7 +4,7 @@ import { CONFIG } from './config.mjs';
 import { openDb, recordSyncRun, saveSnapshot, applyDataset, applyBills, applyBudget, applyBudgetReports, applyCommitteeMeets, applyCommitteeRecords, applyMeetings, applySocial, upsertNews, upsertTopicNews, upsertArticles, pruneNews, pruneLogs, getMeta, setMeta } from './db.mjs';
 import { buildDataset, normalizeBills, normalizeBudget, normalizeBudgetReports, normalizeCommitteeMeets, normalizeCommitteeRecords, normalizeMeetings, normalizeSocial, newsName, parseNewsRss, DataValidationError, NORMALIZER_VERSION } from './normalize.mjs';
 import { fetchJson, FetchError, sha256 } from './fetch-ly.mjs';
-import { entityNewsTerms, makeTagger, mentionsKnownEntity } from './queries.mjs';
+import { ambiguousCouncilorNames, currentCouncilors, entityNewsTerms, makeTagger, mentionsKnownEntity } from './queries.mjs';
 import { feedDate, feedFileUrl, outletLabel, parseFeedFile } from './news-feed.mjs';
 
 /**
@@ -759,6 +759,56 @@ export async function runNewsBackfill(
   return result;
 }
 
+/** 各直轄市在標題裡常見的簡稱：兩字名或同名議員的新聞，標題有「議員」或縣市簡稱才收 */
+const COUNTY_CUES = {
+  新北市: ['新北'],
+  臺北市: ['北市', '臺北', '台北'],
+  桃園市: ['桃園', '桃市'],
+  臺中市: ['中市', '臺中', '台中'],
+  臺南市: ['南市', '臺南', '台南'],
+  高雄市: ['高雄', '高市'],
+};
+
+/**
+ * 現任直轄市議員的 Google 新聞：逐位查「"姓名" 縣市議員」近 30 天，存成 topic_news 'councilor:<id>'（並進新聞庫）。
+ * 標題要含姓名；兩字名、或與縣市長／立委／部會首長同名的，標題另需含「議員」或縣市簡稱。
+ * 有獨立的時間預算（CONFIG.news.councilBudgetMs），用完就停、下輪從停下的議員接續（meta news_council_cursor）。
+ */
+export async function runCouncilNews(db, { logger = console, fetchImpl = fetchJson, now = () => new Date(), delayMs = 0, budgetMs = CONFIG.news.councilBudgetMs, cutoff }) {
+  const councilors = currentCouncilors().filter((c) => !c.name.includes('□'));
+  const result = { processed: 0, total: councilors.length, added: 0, failures: 0, partial: false };
+  if (!councilors.length || budgetMs <= 0) return { ...result, skipped: true };
+  const ambiguous = ambiguousCouncilorNames(db);
+  const deadline = Date.now() + budgetMs;
+  const start = Math.max(0, Number(getMeta(db, 'news_council_cursor', '0')) || 0) % councilors.length;
+  const count = () => Number(db.prepare("SELECT COUNT(*) AS n FROM topic_news WHERE topic LIKE 'councilor:%'").get().n);
+  const before = count();
+  for (let n = 0; n < councilors.length; n += 1) {
+    if (Date.now() >= deadline) {
+      result.partial = true;
+      logger.warn(`[news] 議員新聞時間預算 ${Math.round(budgetMs / 1000)} 秒用盡，完成 ${result.processed}/${councilors.length} 位，下輪接續`);
+      break;
+    }
+    if (n > 0) await pause(delayMs);
+    const c = councilors[(start + n) % councilors.length];
+    result.processed += 1;
+    try {
+      const { text } = await fetchImpl(newsFeedUrl(c.name, `"${c.name}" ${c.county}議員`), { ua: CONFIG.userAgent, text: true, retries: 2 });
+      const needsCue = c.name.length <= 2 || ambiguous.has(c.name);
+      const cues = ['議員', ...(COUNTY_CUES[c.county] ?? [])];
+      const items = parseNewsRss(text, { name: c.name }).filter((i) => i.published_at >= cutoff && (!needsCue || cues.some((k) => i.title.includes(k))));
+      upsertTopicNews(db, `councilor:${c.id}`, items, { fetchedAt: now().toISOString() });
+      saveGoogleArticles(db, items, now);
+    } catch (error) {
+      result.failures += 1;
+      logger.warn(`[news] ${c.county}議員${c.name} 新聞抓取失敗：${error?.message || error}`);
+    }
+  }
+  result.added = count() - before;
+  setMeta(db, 'news_council_cursor', String((start + result.processed) % councilors.length));
+  return result;
+}
+
 /**
  * 新聞同步：在職委員逐位抓 Google News RSS（依序＋間隔，避免被限流）。
  * 單一委員失敗不影響其他人；超過一半失敗才整體標記 failed（多半是被擋或斷網）。
@@ -772,6 +822,7 @@ export async function runNewsIngest(
     delayMs = CONFIG.news.delayMs,
     budgetMs = CONFIG.news.budgetMs,
     entityBudgetMs = CONFIG.news.entityBudgetMs,
+    councilBudgetMs = CONFIG.news.councilBudgetMs,
   } = {},
 ) {
   const startedAt = now().toISOString();
@@ -831,6 +882,8 @@ export async function runNewsIngest(
   }
   // 基金／機關／行政法人：自己的 OR 批次查詢（不依賴委員新聞），有獨立時間預算；失敗只記警告
   const entity = await runEntityNews(db, { logger, fetchImpl, now, delayMs, budgetMs: entityBudgetMs, cutoff });
+  // 直轄市議員：自己的逐位查詢與時間預算；失敗只記警告
+  const council = await runCouncilNews(db, { logger, fetchImpl, now, delayMs, budgetMs: councilBudgetMs, cutoff });
   // 媒體官方 RSS：只是補充來源，失敗不影響整體成敗，只記在 notes
   const outlet = await runOutletNews(db, { logger, fetchImpl, now, cutoff });
   added += outlet.added;
@@ -850,6 +903,8 @@ export async function runNewsIngest(
   if (failures.length) notes.push(`${failures.length}/${processed} 位失敗，例：${failures.slice(0, 3).join('；')}`);
   if (entity.partial) notes.push(`基金／機關新聞時間預算用盡，本輪完成 ${entity.processed}/${entity.total} 組，下輪接續`);
   if (entity.failures) notes.push(`基金／機關新聞 ${entity.failures}/${entity.processed} 組失敗`);
+  if (council.partial) notes.push(`議員新聞時間預算用盡，本輪完成 ${council.processed}/${council.total} 位，下輪接續`);
+  if (council.failures) notes.push(`議員新聞 ${council.failures}/${council.processed} 位失敗`);
   if (outlet.failures) notes.push(`媒體 RSS ${outlet.failures}/${outlet.total} 家抓取失敗`);
   if (feed.failures) notes.push(`RSS 收集檔 ${feed.failures} 個讀取失敗`);
   const stale = feedStaleNote(db, now);
@@ -875,7 +930,7 @@ export async function runNewsIngest(
     error: legislators.length === 0 ? '名錄尚未同步' : error,
   });
   (failed ? logger.error : logger.log)(`[news] ${status}：新增 ${added} 則、清除過期 ${pruned} 則${error ? `（${error}）` : ''}`);
-  return { status, added, pruned, failures: failures.length, processed, total: legislators.length, partial, entity, outlet, feed };
+  return { status, added, pruned, failures: failures.length, processed, total: legislators.length, partial, entity, council, outlet, feed };
 }
 
 /** 社群帳號整理表：抓 CSV → 驗證 → 整批覆寫；失敗保留舊資料。 */

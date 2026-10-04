@@ -60,6 +60,8 @@ export const CONFIG = {
     // 有自己的時間預算（不被委員新聞用光）；用不完就從上次停下的組別接著抓。
     entityBatch: Number(process.env.LY_NEWS_ENTITY_BATCH ?? 8),
     entityBudgetMs: Number(process.env.LY_NEWS_ENTITY_BUDGET_MS ?? 4 * 60 * 1000),
+    // 現任直轄市議員（約 360 位）逐位查 Google 新聞的時間預算；用完下輪從停下的議員接續。0＝不查
+    councilBudgetMs: Number(process.env.LY_NEWS_COUNCIL_BUDGET_MS ?? 8 * 60 * 1000),
     // 媒體官方 RSS：補 Google 新聞漏掉的報導、也不受 Google 限流影響。每家每輪只抓一次（最新幾十則），
     // 再依標題分派給委員／機關首長／主計／基金機關，規則與 Google 那一路相同。抓不到只記警告。
     // join：中央社與自由是政治類、聯合 6638 是要聞類（政治為主）、公視只有一個綜合 feed（Atom）。

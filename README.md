@@ -189,6 +189,7 @@ curl -X POST -H "x-sync-token: <隨機字串>" localhost:8787/api/v1/sync?scope=
 | 委員名錄／席次／委員會／聯絡方式 | **SQLite**（`legislators`、`memberships`、`committee_seats`） | 每次同步整批覆寫（只保留最新一版） |
 | 議案、預算案、預算報告、委員會會議與紀錄 | **SQLite** | 每次同步整批覆寫 |
 | 新聞標題與連結（`news`） | **SQLite** | **累積**保存 180 天（`LY_NEWS_*`），過期自動刪 |
+| 議員新聞（`topic_news 'councilor:<id>'`） | **SQLite** | 每日同步逐位查 Google 新聞，累積保存 180 天；時間預算 `LY_NEWS_COUNCIL_BUDGET_MS`（預設 8 分鐘，0＝不查），用完下輪接續 |
 | 原始新聞庫（`articles`：媒體 RSS 每一則＋摘要、Google 新聞結果） | **SQLite** | **累積**保存 180 天；媒體 RSS 每小時輪詢（`LY_NEWS_OUTLET_INTERVAL_MS`，預設 1 小時，0＝停用），每日同步時對全庫重新分派 |
 | 媒體 RSS 收集檔（`news/YYYY-MM-DD.ndjson`） | **git：`news-data` 分支** | GitHub Actions（`.github/workflows/collect-news.yml`）每小時收集、只增不刪；伺服器每小時與每日同步時匯入（`LY_NEWS_FEED_URL`，空字串＝不匯入；repo 目前公開，不需要 token；若改回私人，要設 `LY_GITHUB_TOKEN`＝只有此 repo Contents 唯讀權限的 fine-grained token），補伺服器沒開時漏掉的 |
 | 臉書專頁與最新貼文摘要（`social_accounts`） | **SQLite** | 每次同步整批覆寫；人工更正過的帳號會清空貼文摘要 |
