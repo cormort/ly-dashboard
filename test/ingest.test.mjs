@@ -6,7 +6,7 @@ import { openDb, applyDataset, applyBills, applySocial, applyCommitteeRecords, a
 import { buildDataset, normalizeBills, normalizeCommitteeRecords, normalizeMeetings, normalizeSocial, newsName, rocDate, DataValidationError } from '../server/normalize.mjs';
 import { CONFIG } from '../server/config.mjs';
 import { entityFeedUrl, guardShrink, runIngest, runBillsIngest, runRecordsIngest, runBudgetIngest, runBudgetReportsIngest, runMeetingsIngest, budgetPageUrl, runNewsIngest, runOutletNews, runOutletPoll, retagOutletArticles, runNewsBackfill, backfillTargets, rangeFeedUrl, BACKFILL_CAP, runNewsFeedImport, runCouncilNews, runSocialIngest, runAll } from '../server/ingest.mjs';
-import { entityNewsTerms, listFunds, getHealth, listBills, listBudget, listBudgetMeetings, listBudgetReports, budgetState, listChanges, listCounties, listLegislatorVotes, listRankings, compareLegislators, listRegions, listSplitTicket, listDemographics, listPopulationTrend, getTownMap, listLegislators, listNews, listNewsArticles, newsCsv, listCouncilActivity, currentCouncilors, listSyncRuns } from '../server/queries.mjs';
+import { entityNewsTerms, listFunds, getHealth, listBills, listBudget, listBudgetMeetings, listBudgetReports, budgetState, listChanges, listCounties, listLegislatorVotes, listRankings, compareLegislators, listRegions, listSplitTicket, listDemographics, listPopulationTrend, getTownMap, listLegislators, listNews, listNewsArticles, newsCsv, listCouncilActivity, currentCouncilors, socialFreshness, listSyncRuns } from '../server/queries.mjs';
 import { FetchError } from '../server/fetch-ly.mjs';
 import { csvRowsToFeedItems, feedDate, feedFileUrl, mergeFeedFile, parseFeedFile } from '../server/news-feed.mjs';
 import { syncOnce, pollOutletsOnce } from '../server/index.mjs';
@@ -1879,4 +1879,29 @@ test('全部新聞「議員」類別：Google 議員查詢與標題提到議員�
   assert.ok(rows[1].includes(',議員,臺北市議員秦慧珠,'), rows[1]);
   // 快取裡的資料沒有被改到：再查一次結果一樣
   assert.equal(listNewsArticles(db, { scope: 'all' }).kind_counts.councilor, 2);
+});
+
+/* ---------------- 社群整理表的新鮮度 ---------------- */
+
+test('社群整理表新鮮度：標出資料截至哪天；超過天數算過期，/health 提醒、臉書榜附提醒', async () => {
+  const db = seeded();
+  assert.deepEqual(socialFreshness(db), { as_of: null, age_days: null, stale: false, stale_days: CONFIG.social.staleDays }, '沒資料不提醒');
+  await runSocialIngest(db, { logger: silent, fetchImpl: async () => ({ text: socialCsv, status: 200, attempts: 1 }) });
+  const asOf = socialFreshness(db).as_of;
+  assert.match(asOf, /^\d{4}-\d{2}-\d{2}$/);
+  // 臺灣時間的「今天」＝資料截至日的 2 天後 → 不過期；10 天後 → 過期
+  const at = (days) => Date.parse(`${asOf}T12:00:00+08:00`) + days * 86_400_000;
+  assert.deepEqual(socialFreshness(db, at(2)), { as_of: asOf, age_days: 2, stale: false, stale_days: CONFIG.social.staleDays });
+  const old = socialFreshness(db, at(10));
+  assert.equal(old.stale, true);
+  assert.equal(old.age_days, 10);
+  const health = getHealth(db, { now: at(10) });
+  assert.deepEqual(health.social, old);
+  assert.ok(health.warnings.some((w) => w.includes(`停在 ${asOf}`) && w.includes('10 天前')), `warnings：${health.warnings}`);
+  assert.ok(!getHealth(db, { now: at(2) }).warnings.some((w) => w.includes('臉書整理表')), '沒過期不提醒');
+  const board = listRankings(db, { type: 'facebook' }).boards.facebook;
+  assert.equal(board.as_of, asOf);
+  assert.ok(board.note.includes(`資料截至 ${asOf}`));
+  assert.equal(typeof board.stale, 'boolean');
+  assert.equal(board.stale_note === null, !board.stale, '過期才有提醒文字');
 });

@@ -109,6 +109,7 @@ export default function App() {
               tracked={tracked.isTracked(selected.id)}
               onToggleTrack={(legislator) => tracked.toggle(legislator.id)}
               source={source}
+              socialFreshness={health.data?.social ?? null}
               sessionLabel={sessionLabel}
               onOpenId={setPendingId}
               onCompare={(l) => {

@@ -77,6 +77,11 @@ export function RankingBoardView({ board, onOpenId }: { board: RankingBoard; onO
             <Trophy size={16} aria-hidden="true" /> {board.title}
           </h2>
           <p className="ranking-note">{board.note}</p>
+          {board.stale_note ? (
+            <p className="ranking-note social-stale" role="note">
+              {board.stale_note}
+            </p>
+          ) : null}
         </div>
         <span className="pill">前 {board.items.length} 名</span>
       </div>

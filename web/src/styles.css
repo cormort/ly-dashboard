@@ -1259,3 +1259,6 @@ a.stat-tile:hover { border-color: #98a2b3; box-shadow: var(--card-base-hover); t
 .council-fb-head a { display: inline-flex; align-items: center; gap: 2px; font-size: var(--fs-sm); }
 .council-fb-head a svg { width: 12px; height: 12px; }
 .fb-embed { display: block; width: 100%; max-width: 340px; margin-top: 8px; border: 0; overflow: hidden; }
+
+/* 社群整理表過期提醒（人工維護的資料停更時，不要讓舊日期看起來像最新） */
+.social-stale { display: block; color: var(--warn); }

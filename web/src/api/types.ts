@@ -73,6 +73,13 @@ export interface DatasetStatus {
   status?: string | null;
 }
 
+export interface SocialFreshness {
+  as_of: string | null;
+  age_days: number | null;
+  stale: boolean;
+  stale_days: number;
+}
+
 export interface HealthResponse {
   meta: Meta;
   ok: boolean;
@@ -87,6 +94,8 @@ export interface HealthResponse {
    * `/health` 的 `ok`／`stale` 只看同步資料，這一份要另外看：人口超過 `LY_STATIC_STALE_MONTHS`
    * 會出現在 `warnings`（提醒重跑 build 腳本）。
    */
+  /** 社群整理表（人工維護）的新鮮度：最新貼文日期最新的一天、距今幾天、是否超過 stale_days */
+  social?: SocialFreshness;
   static_data: Record<
     'counties' | 'demographics' | 'population_trend' | 'town_map' | 'legislator_votes',
     { as_of: string | null; count: number; label: string }
@@ -567,6 +576,10 @@ export interface RankingBoard {
   note: string;
   unit: string;
   items: RankingItem[];
+  /** 只有臉書榜：整理表的資料截至日、是否過期與提醒文字 */
+  as_of?: string | null;
+  stale?: boolean;
+  stale_note?: string | null;
 }
 
 export interface RankingsResponse {

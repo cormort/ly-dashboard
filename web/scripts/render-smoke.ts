@@ -715,6 +715,27 @@ const detailHtml = render(
     },
   ),
 );
+{
+  const DetailComponent = (await import('../src/components/LegislatorDetail')).LegislatorDetail;
+  const withFreshness = (stale: boolean) =>
+    render(
+      createElement(DetailComponent, {
+        legislator: LEGISLATOR,
+        onClose: () => undefined,
+        tracked: false,
+        onToggleTrack: () => undefined,
+        source: META.source,
+        sessionLabel: (id: string) => id,
+        onOpenId: () => undefined,
+        onCompare: () => undefined,
+        socialFreshness: { as_of: '2026-09-27', age_days: stale ? 12 : 1, stale, stale_days: 7 },
+      }),
+    );
+  const fresh = withFreshness(false);
+  const old = withFreshness(true);
+  check('詳情側欄：最新貼文旁標整理表資料截至哪天', fresh.includes('整理表資料截至 2026-09-27') && !fresh.includes('沒更新'));
+  check('詳情側欄：整理表過期時提醒、引導看嵌入貼文', old.includes('整理表已 12 天沒更新') && old.includes('看貼文'));
+}
 check('詳情側欄：臉書帳號旁有「看貼文」（官方嵌入框點了才載入，預設不載入）', detailHtml.includes('看貼文') && !detailHtml.includes('facebook.com/plugins/page.php'));
 expectAll('詳情側欄有 dialog 語意、學經歷、會期與來源連結', detailHtml, [
   'role="dialog"',

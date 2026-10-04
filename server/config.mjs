@@ -93,6 +93,8 @@ export const CONFIG = {
       process.env.LY_SOCIAL_CSV ||
       'https://docs.google.com/spreadsheets/d/1hFuV22z3ceSGFC03zGUUX5qEKzetBQLeCA-mHTJcQFw/export?format=csv&gid=1916425311',
     name: '委員社群帳號整理表',
+    // 整理表裡「最新貼文日期」最新的一筆超過這麼多天，就在畫面與 /health 提醒「整理表可能沒在更新」
+    staleDays: Number(process.env.LY_SOCIAL_STALE_DAYS ?? 7),
   },
   source: {
     name: '立法院開放資料',

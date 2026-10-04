@@ -1,7 +1,7 @@
 import { Portrait } from './Portrait';
 import { useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
 import { ExternalLink, GitCompareArrows, MapPin, Star, X } from 'lucide-react';
-import type { Legislator, SourceInfo } from '../api/types';
+import type { Legislator, SocialFreshness, SourceInfo } from '../api/types';
 import { useEscapeKey } from '../hooks/useEscapeKey';
 import { text } from '../lib/format';
 import { partyStyle } from '../lib/parties';
@@ -22,6 +22,8 @@ export interface LegislatorDetailProps {
   /** 開另一位委員的檔案（共同提案人） */
   onOpenId: (id: string) => void;
   onCompare: (legislator: Legislator) => void;
+  /** 社群整理表的新鮮度（/health），用來標「資料截至」與過期提醒；沒有就不標 */
+  socialFreshness?: SocialFreshness | null;
 }
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])';
@@ -36,6 +38,7 @@ export function LegislatorDetail({
   sessionLabel,
   onOpenId,
   onCompare,
+  socialFreshness = null,
 }: LegislatorDetailProps) {
   const panelRef = useRef<HTMLElement | null>(null);
   const closeRef = useRef<HTMLButtonElement | null>(null);
@@ -168,6 +171,13 @@ export function LegislatorDetail({
                     <small>
                       最新貼文 {account.latest_post_date}
                       {account.latest_post_summary ? `：${account.latest_post_summary}` : ''}
+                      {/* 整理表是人工維護的：標出資料截至哪天，太久沒更新就提醒（最新的請看下面的嵌入貼文） */}
+                      {socialFreshness?.as_of ? <span className="muted">（整理表資料截至 {socialFreshness.as_of}）</span> : null}
+                    </small>
+                  ) : null}
+                  {account.platform === 'facebook' && socialFreshness?.stale ? (
+                    <small className="social-stale" role="note">
+                      整理表已 {socialFreshness.age_days} 天沒更新，上面的日期可能不是最新；請按「看貼文」看臉書上的最新貼文。
                     </small>
                   ) : null}
                   {/* 臉書可以直接看最近的貼文（官方嵌入框，點了才載入）；Threads 沒有官方嵌入框 */}

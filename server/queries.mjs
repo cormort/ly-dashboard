@@ -307,6 +307,19 @@ const HEALTH_TABLES = [
   ['social_accounts', 'social_accounts'],
 ];
 
+/**
+ * 社群整理表的新鮮度：所有帳號「最新貼文日期」裡最新的一天（整理表是人工維護的，程式每天照抄，
+ * 沒人更新時日期就停住）。超過 CONFIG.social.staleDays 天算過期，畫面上要標出來，不要讓舊日期看起來像最新。
+ */
+export function socialFreshness(db, now = Date.now()) {
+  const asOf = db.prepare("SELECT MAX(latest_post_date) AS d FROM social_accounts WHERE latest_post_date IS NOT NULL AND latest_post_date <> ''").get()?.d ?? null;
+  if (!asOf) return { as_of: null, age_days: null, stale: false, stale_days: CONFIG.social.staleDays };
+  // 以臺灣的「今天」算天數：整理表的日期是臺灣日期
+  const today = new Date(now + 8 * 3_600_000).toISOString().slice(0, 10);
+  const ageDays = Math.max(0, Math.round((Date.parse(today) - Date.parse(asOf)) / 86_400_000));
+  return { as_of: asOf, age_days: ageDays, stale: ageDays > CONFIG.social.staleDays, stale_days: CONFIG.social.staleDays };
+}
+
 export function getHealth(db, { now = Date.now(), staticLoaders = undefined } = {}) {
   const lastRuns = db
     .prepare(
@@ -329,6 +342,8 @@ export function getHealth(db, { now = Date.now(), staticLoaders = undefined } = 
   if (stats.social_accounts > 0 && socialCount > 0 && stats.social_accounts < socialCount) {
     notices.push(`社群帳號數（${stats.social_accounts}）少於上次成功同步（${socialCount}）`);
   }
+  const social = socialFreshness(db, now);
+  if (social.stale) notices.push(`臉書整理表的最新貼文日期停在 ${social.as_of}（${social.age_days} 天前），試算表可能沒有人在更新`);
 
   // 靜態資料（人口／選舉／鄉鎮圖資）不在同步流程內，`stale`／`ok` 看不到它們。
   // 來源是月報，忘了重跑 build 腳本就會讓畫面上的數字放很久而沒有訊號，所以在這裡提醒。
@@ -354,6 +369,8 @@ export function getHealth(db, { now = Date.now(), staticLoaders = undefined } = 
     },
     // 不在同步流程內的靜態資料：只有「資料截止」與筆數，沒有 fetched_at（它們不是抓來的）
     static_data: staticData,
+    // 社群整理表（人工維護）的新鮮度：立委側欄、臉書排行榜用來標「資料截至」與過期提醒
+    social,
     datasets: {
       id9: { fetched_at: getMeta(db, 'last_success_at'), count: stats.legislators },
       id14: { fetched_at: getMeta(db, 'last_success_at'), count: stats.committee_seats },
@@ -451,12 +468,17 @@ export function listRankings(db, { type = 'all', days = 30, limit = 10 } = {}) {
           detail: { label: row.page_name || '臉書專頁', text: row.latest_post_summary || '（無摘要）', url: row.url },
         };
       });
+    const freshness = socialFreshness(db);
     boards.facebook = {
       type: 'facebook',
       title: '臉書發文排行',
-      note: '依整理表記錄的最新貼文日期排序（0 天＝今天），只計在職委員',
+      note: `依整理表記錄的最新貼文日期排序（0 天＝今天），只計在職委員。整理表資料截至 ${freshness.as_of ?? '—'}`,
       unit: '天前',
       items: withIntensity(items),
+      // 整理表是人工維護的：過期時前端要標出來，排名不代表現在
+      as_of: freshness.as_of,
+      stale: freshness.stale,
+      stale_note: freshness.stale ? `整理表已 ${freshness.age_days} 天沒有新的貼文日期，排行可能不是現況（點委員可在側欄直接看臉書最新貼文）` : null,
     };
   }
 
