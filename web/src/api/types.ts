@@ -769,6 +769,9 @@ export interface CouncilCandidate {
   quota: boolean;
   /** 中選會「現任」欄位；2010 那一屆檔案整欄都是 N，因此只當參考 */
   incumbent: boolean | null;
+  /** 粉專網址與現任狀態：只有最新一屆、且對照表對得到的當選人才有 */
+  facebook?: string;
+  facebook_status?: string;
   votes: number;
   /** 得票率（%，佔該選區有效票） */
   pct: number;

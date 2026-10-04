@@ -31,10 +31,16 @@ export function marginText(d: Pick<CouncilDistrict, 'first_loser'>): string {
 }
 
 /** 姓名連到政黨色：沿用各縣市動態的 `.region-person`（底色線代表黨籍），不另外塞標籤 */
-function Person({ name, party, note }: { name: string; party: string; note?: string }) {
+function Person({ name, party, note, facebook }: { name: string; party: string; note?: string; facebook?: string }) {
   return (
     <span className="region-person" style={{ '--party': partyStyle(party).color } as CSSProperties}>
-      {name}
+      {facebook ? (
+        <a href={facebook} target="_blank" rel="noopener noreferrer" title={`${name} 的 Facebook 粉專`}>
+          {name}
+        </a>
+      ) : (
+        name
+      )}
       {note ? <small className="muted">（{note}）</small> : null}
     </span>
   );
@@ -223,7 +229,7 @@ function DistrictRow({ d }: { d: CouncilDistrict }) {
         {/* 當選名單是這一頁的重點，留在收合的摘要裡就能一眼掃完；底色線代表黨籍 */}
         <span className="region-people">
           {winners.map((c) => (
-            <Person key={c.name} name={c.name} party={c.party} note={c.quota ? '婦女保障' : undefined} />
+            <Person key={c.name} name={c.name} party={c.party} note={c.quota ? '婦女保障' : undefined} facebook={c.facebook} />
           ))}
         </span>
       </summary>
@@ -248,7 +254,15 @@ function DistrictRow({ d }: { d: CouncilDistrict }) {
                 <tr key={c.no} className={c.elected ? 'council-elected' : undefined}>
                   <td className="num">{i + 1}</td>
                   <td className="num">{c.no}</td>
-                  <td>{c.name}</td>
+                  <td>
+                    {c.facebook ? (
+                      <a href={c.facebook} target="_blank" rel="noopener noreferrer" title={`${c.name} 的 Facebook 粉專`}>
+                        {c.name}
+                      </a>
+                    ) : (
+                      c.name
+                    )}
+                  </td>
                   <td>
                     <PartyTag party={c.party} />
                   </td>

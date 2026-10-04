@@ -958,6 +958,10 @@ const loadCountyStats = () => (countyStats ??= JSON.parse(readFileSync(new URL('
 let councilStats = null;
 const loadCouncilStats = () => (councilStats ??= JSON.parse(readFileSync(new URL('./council-stats.json', import.meta.url), 'utf8')));
 
+/** 議員 Facebook 粉專（scripts/build-council-facebook.mjs 產生）：只對最新一屆的當選人 */
+let councilFacebook = null;
+const loadCouncilFacebook = () => (councilFacebook ??= JSON.parse(readFileSync(new URL('./council-facebook.json', import.meta.url), 'utf8')));
+
 /** 網址上的縣市名：去空白、臺／台統一；空字串視為沒指定 */
 function fixCountyName(county) {
   const name = String(county ?? '').trim().replace(/^台/, '臺');
@@ -983,8 +987,23 @@ export function listCouncil(db, { county } = {}) {
     county: found.county,
     // 前端要拿它做縣市切換，所以連「有哪些縣市」一起回
     counties: available,
-    terms: found.terms,
+    terms: found.terms.map((t, i) => (i === 0 ? withFacebook(found.county, t) : t)),
     warnings: data.warnings ?? [],
+  };
+}
+
+/** 最新一屆當選人加上 `facebook`（粉專網址）與 `facebook_status`（現任狀態）；對照表沒有的人不加欄位 */
+function withFacebook(county, term) {
+  const { links } = loadCouncilFacebook();
+  return {
+    ...term,
+    districts: term.districts.map((d) => ({
+      ...d,
+      list: d.list.map((c) => {
+        const hit = c.elected && links[`${county}|${Number(d.no)}|${c.name}`];
+        return hit ? { ...c, facebook: hit.url, facebook_status: hit.status } : c;
+      }),
+    })),
   };
 }
 
