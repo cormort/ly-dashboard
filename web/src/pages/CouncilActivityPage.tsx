@@ -41,6 +41,12 @@ function FacebookRow({ c, open, onToggle }: { c: Councilor; open: boolean; onTog
           <small className="muted">（沒有粉專資料）</small>
         )}
       </div>
+      {c.latest_post_date ? (
+        <small className="council-fb-latest">
+          最新貼文 {c.latest_post_date}
+          {c.latest_post_summary ? `：${c.latest_post_summary}` : ''}
+        </small>
+      ) : null}
       {open && c.facebook ? <FacebookEmbed url={c.facebook} name={c.name} /> : null}
     </li>
   );
@@ -172,7 +178,15 @@ export function CouncilActivityPage({ refreshToken }: CouncilActivityPageProps) 
             <h2>臉書</h2>
             <span className="muted">{picked ? picked.name : `${data.county || '六都'} ${fbList.length} 位`}</span>
           </div>
-          <p className="muted">點「看貼文」載入 Facebook 官方的粉專嵌入框（只對粉絲專頁有效；個人檔案請點「粉專」連結）。</p>
+          <p className="muted">
+            點「看貼文」載入 Facebook 官方的粉專嵌入框（只對粉絲專頁有效；個人檔案請點「粉專」連結）。
+            {data.social?.as_of ? `「最新貼文」來自議員臉書整理表，資料截至 ${data.social.as_of}。` : ''}
+          </p>
+          {data.social?.stale ? (
+            <p className="social-stale" role="note">
+              議員臉書整理表已 {data.social.age_days} 天沒更新，「最新貼文」可能不是最新；請按「看貼文」看臉書上的最新貼文。
+            </p>
+          ) : null}
           <ul className="council-fb-list">
             {fbList.map((c) => (
               <FacebookRow key={c.id} c={c} open={openFb === c.id} onToggle={() => setOpenFb(openFb === c.id ? null : c.id)} />

@@ -95,6 +95,8 @@ export const CONFIG = {
     name: '委員社群帳號整理表',
     // 整理表裡「最新貼文日期」最新的一筆超過這麼多天，就在畫面與 /health 提醒「整理表可能沒在更新」
     staleDays: Number(process.env.LY_SOCIAL_STALE_DAYS ?? 7),
+    // 議員臉書整理表（格式見 docs/social-sheet-spec.md「議員分頁」）的 CSV 匯出網址；空字串＝不匯入
+    councilUrl: process.env.LY_COUNCIL_SOCIAL_CSV || '',
   },
   source: {
     name: '立法院開放資料',

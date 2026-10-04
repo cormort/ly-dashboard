@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { openDb, applyDataset, applyBills, applySocial, applyCommitteeRecords, applyCommitteeMeets, upsertNews, upsertArticles, pruneNews, pruneLogs, getMeta, setMeta, migrate } from '../server/db.mjs';
-import { buildDataset, normalizeBills, normalizeCommitteeRecords, normalizeMeetings, normalizeSocial, newsName, rocDate, DataValidationError } from '../server/normalize.mjs';
+import { buildDataset, normalizeBills, normalizeCommitteeRecords, normalizeMeetings, normalizeSocial, normalizeCouncilSocial, newsName, rocDate, DataValidationError } from '../server/normalize.mjs';
 import { CONFIG } from '../server/config.mjs';
-import { entityFeedUrl, guardShrink, runIngest, runBillsIngest, runRecordsIngest, runBudgetIngest, runBudgetReportsIngest, runMeetingsIngest, budgetPageUrl, runNewsIngest, runOutletNews, runOutletPoll, retagOutletArticles, runNewsBackfill, backfillTargets, rangeFeedUrl, BACKFILL_CAP, runNewsFeedImport, runCouncilNews, runSocialIngest, runAll } from '../server/ingest.mjs';
+import { entityFeedUrl, guardShrink, runIngest, runBillsIngest, runRecordsIngest, runBudgetIngest, runBudgetReportsIngest, runMeetingsIngest, budgetPageUrl, runNewsIngest, runOutletNews, runOutletPoll, retagOutletArticles, runNewsBackfill, backfillTargets, rangeFeedUrl, BACKFILL_CAP, runNewsFeedImport, runCouncilNews, runCouncilSocialIngest, runSocialIngest, runAll } from '../server/ingest.mjs';
 import { entityNewsTerms, listFunds, getHealth, listBills, listBudget, listBudgetMeetings, listBudgetReports, budgetState, listChanges, listCounties, listLegislatorVotes, listRankings, compareLegislators, listRegions, listSplitTicket, listDemographics, listPopulationTrend, getTownMap, listLegislators, listNews, listNewsArticles, newsCsv, listCouncilActivity, currentCouncilors, socialFreshness, listSyncRuns } from '../server/queries.mjs';
 import { FetchError } from '../server/fetch-ly.mjs';
 import { csvRowsToFeedItems, feedDate, feedFileUrl, mergeFeedFile, parseFeedFile } from '../server/news-feed.mjs';
@@ -1904,4 +1904,68 @@ test('社群整理表新鮮度：標出資料截至哪天；超過天數算過�
   assert.ok(board.note.includes(`資料截至 ${asOf}`));
   assert.equal(typeof board.stale, 'boolean');
   assert.equal(board.stale_note === null, !board.stale, '過期才有提醒文字');
+});
+
+/* ---------------- 議員臉書整理表 ---------------- */
+
+/** 用現任議員名單做一份「議員分頁」CSV（格式見 docs/social-sheet-spec.md） */
+function councilSheet({ edit = (rows) => rows } = {}) {
+  const rows = currentCouncilors().map((c) => {
+    const no = Number(c.id.split('|')[1]);
+    return [c.county, `第${no}選區`, c.name, c.party, c.facebook ?? `https://www.facebook.com/test.${no}`, c.status ?? '現任', '', ''];
+  });
+  const body = edit(rows).map((r) => r.map((x) => (/[",]/.test(x) ? `"${x.replace(/"/g, '""')}"` : x)).join(','));
+  return ['直轄市,選區,姓名,黨籍,Facebook 粉專網址,現任狀態,最新貼文日期,最新貼文主題摘要', ...body].join('\n');
+}
+
+test('議員臉書整理表：照規格解析；縣市＋姓名比對（同名用選區分辨、台→臺）；日期格式不對當空白', () => {
+  const sheet = councilSheet({
+    edit: (rows) =>
+      rows.map((r) => {
+        if (r[2] === '秦慧珠') return [...r.slice(0, 6), '2026-10-04', '關心北市交通'];
+        if (r[2] === '許淑華') return ['台北市', r[1], r[2], r[3], r[4], r[5], '2026/10/4', '日期格式錯'];
+        return r;
+      }),
+  });
+  const { rows, warnings } = normalizeCouncilSocial(sheet, currentCouncilors());
+  assert.equal(warnings.length, 0);
+  const qin = rows.find((r) => r.councilor_id.endsWith('|秦慧珠'));
+  assert.deepEqual([qin.latest_post_date, qin.latest_post_summary], ['2026-10-04', '關心北市交通']);
+  const xu = rows.find((r) => r.councilor_id === '臺北市|3|許淑華');
+  assert.ok(xu, '「台北市」也對得到');
+  assert.equal(xu.latest_post_date, '', '日期格式不對當空白');
+  assert.throws(() => normalizeCouncilSocial('直轄市,姓名\n臺北市,某', currentCouncilors()), /缺少欄位：選區、Facebook 粉專網址/);
+  assert.throws(() => normalizeCouncilSocial(councilSheet({ edit: (r) => r.slice(0, 150) }), currentCouncilors()), /筆數異常/);
+  assert.throws(() => normalizeCouncilSocial(councilSheet({ edit: (r) => r.map((x, i) => (i < 60 ? [x[0], x[1], `不存在${i}`, ...x.slice(3)] : x)) }), currentCouncilors()), /對不到現任議員/);
+});
+
+test('議員臉書整理表同步：沒設網址就跳過；成功時覆寫並出現在議員近期動態；掉超過 20% 拒收保留舊資料', async () => {
+  const db = seeded();
+  const url = CONFIG.social.councilUrl;
+  try {
+    CONFIG.social.councilUrl = '';
+    assert.equal((await runCouncilSocialIngest(db, { logger: silent, fetchImpl: async () => assert.fail('不該抓') })).status, 'skipped');
+
+    CONFIG.social.councilUrl = 'https://sheet.example/council.csv';
+    const sheet = councilSheet({
+      edit: (rows) =>
+        rows.map((r) => (r[2] === '秦慧珠' ? [...r.slice(0, 4), 'https://www.facebook.com/qin.new', r[5], '2026-10-04', '關心北市交通'] : r[2] === '侯漢廷' ? [...r.slice(0, 5), '轉任立委', '', ''] : r)),
+    });
+    const ok = await runCouncilSocialIngest(db, { logger: silent, fetchImpl: async () => ({ text: sheet, status: 200, attempts: 1 }) });
+    assert.equal(ok.status, 'success');
+    const act = listCouncilActivity(db, { county: '臺北市' });
+    const qin = act.councilors.find((c) => c.name === '秦慧珠');
+    assert.deepEqual([qin.facebook, qin.latest_post_date, qin.latest_post_summary], ['https://www.facebook.com/qin.new', '2026-10-04', '關心北市交通'], '整理表的網址與最新貼文優先');
+    assert.ok(!act.councilors.some((c) => c.name === '侯漢廷'), '整理表標轉任立委的不列為現任');
+    assert.equal(act.social.as_of, '2026-10-04');
+
+    const before = db.prepare('SELECT COUNT(*) AS n FROM council_social').get().n;
+    const truncated = councilSheet({ edit: (rows) => rows.slice(0, 210) });
+    const bad = await runCouncilSocialIngest(db, { logger: silent, fetchImpl: async () => ({ text: truncated, status: 200, attempts: 1 }) });
+    assert.equal(bad.status, 'failed');
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM council_social').get().n, before, '保留舊資料');
+    assert.equal(getHealth(db).council_social.as_of, '2026-10-04', '/health 也回報議員整理表的資料截至日');
+  } finally {
+    CONFIG.social.councilUrl = url;
+  }
 });

@@ -905,6 +905,9 @@ export interface Councilor extends CouncilorBrief {
   status: string | null;
   /** 目前縣市條件下的新聞則數 */
   count: number;
+  /** 議員臉書整理表的最新貼文（沒有整理表或查不到時為 null） */
+  latest_post_date: string | null;
+  latest_post_summary: string | null;
 }
 
 export interface CouncilActivityResponse {
@@ -918,6 +921,8 @@ export interface CouncilActivityResponse {
   sources: { name: string; count: number }[];
   first_date: string | null;
   last_date: string | null;
+  /** 議員臉書整理表的新鮮度（as_of 為 null＝還沒有整理表） */
+  social?: SocialFreshness;
   items: { url: string; title: string; source: string; published_at: string; councilors: CouncilorBrief[] }[];
 }
 

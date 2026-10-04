@@ -683,6 +683,63 @@ export function parseCsv(text) {
   return rows.filter((r) => r.some((x) => x.trim() !== ''));
 }
 
+/**
+ * 議員臉書整理表（docs/social-sheet-spec.md「議員分頁」）→ [{ councilor_id, url, status, latest_post_date, latest_post_summary }]。
+ * councilors 是現任議員名單（queries.mjs currentCouncilors，id＝「縣市|選區號|姓名」）。
+ * 比對：同縣市、姓名相同（去括號、統一異體字）；同縣市同名才用「第N選區」的 N 分辨。
+ * fail closed：缺必要欄位、少於 200 列、對不到議員的列超過 10% → 整份拒收（網站保留上一版）。
+ */
+const COUNCIL_SOCIAL_COLUMNS = { county: '直轄市', district: '選區', name: '姓名', url: 'Facebook 粉專網址' };
+const COUNCIL_SOCIAL_OPTIONAL = { status: '現任狀態', latestDate: '最新貼文日期', summary: '最新貼文主題摘要' };
+const NAME_VARIANT = { 杰: '傑', 姗: '姍', 啓: '啟', 釆: '采', 椿: '樁', 黄: '黃' };
+const councilNameKey = (s) => String(s ?? '').replace(/[(（].*?[)）]/g, '').replace(/\s+/g, '').replace(/./g, (ch) => NAME_VARIANT[ch] ?? ch);
+
+export function normalizeCouncilSocial(csvText, councilors) {
+  const [header = [], ...rows] = parseCsv(csvText);
+  const find = (label) => header.findIndex((h) => h.trim() === label);
+  const col = Object.fromEntries(Object.entries(COUNCIL_SOCIAL_COLUMNS).map(([k, label]) => [k, find(label)]));
+  const missing = Object.entries(col).filter(([, i]) => i < 0).map(([k]) => COUNCIL_SOCIAL_COLUMNS[k]);
+  if (missing.length) throw new DataValidationError(`議員臉書整理表缺少欄位：${missing.join('、')}`);
+  if (rows.length < 200) throw new DataValidationError(`議員臉書整理表筆數異常（${rows.length} < 200）`);
+  const opt = Object.fromEntries(Object.entries(COUNCIL_SOCIAL_OPTIONAL).map(([k, label]) => [k, find(label)]));
+  const cell = (row, i) => (i >= 0 ? String(row[i] ?? '').trim() : '');
+  const byCountyName = new Map();
+  for (const c of councilors) {
+    const key = `${c.county}|${councilNameKey(c.name)}`;
+    (byCountyName.get(key) ?? byCountyName.set(key, []).get(key)).push(c);
+  }
+  const out = new Map();
+  const unmatched = [];
+  for (const row of rows) {
+    const county = cell(row, col.county).replace(/^台/, '臺');
+    const name = cell(row, col.name);
+    let hits = byCountyName.get(`${county}|${councilNameKey(name)}`) ?? [];
+    if (hits.length > 1) {
+      const no = Number(cell(row, col.district).match(/第(\d+)選/)?.[1]);
+      hits = hits.filter((c) => Number(c.id.split('|')[1]) === no);
+    }
+    if (hits.length !== 1) {
+      unmatched.push(`${county}${name}`);
+      continue;
+    }
+    const url = cell(row, col.url);
+    if (!/^https:\/\/(www\.|m\.)?facebook\.com\//.test(url)) continue; // 只收臉書網址，擋掉空白與誤貼
+    const date = cell(row, opt.latestDate);
+    out.set(hits[0].id, {
+      councilor_id: hits[0].id,
+      url,
+      status: cell(row, opt.status) || null,
+      latest_post_date: /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : '',
+      latest_post_summary: cell(row, opt.summary),
+    });
+  }
+  if (unmatched.length > rows.length * 0.1) {
+    throw new DataValidationError(`議員臉書整理表有 ${unmatched.length} 個姓名對不到現任議員：${unmatched.slice(0, 5).join('、')}`);
+  }
+  const warnings = unmatched.length ? [`議員臉書整理表有 ${unmatched.length} 個姓名對不到現任議員：${unmatched.join('、')}`] : [];
+  return { rows: [...out.values()], warnings };
+}
+
 /** 各平台可接受的網址格式（更正表用；整理表本身只收 facebook） */
 const SOCIAL_URL_PATTERNS = {
   facebook: /^https:\/\/(www\.|m\.)?facebook\.com\/\S+$/,

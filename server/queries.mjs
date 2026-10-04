@@ -311,8 +311,9 @@ const HEALTH_TABLES = [
  * 社群整理表的新鮮度：所有帳號「最新貼文日期」裡最新的一天（整理表是人工維護的，程式每天照抄，
  * 沒人更新時日期就停住）。超過 CONFIG.social.staleDays 天算過期，畫面上要標出來，不要讓舊日期看起來像最新。
  */
-export function socialFreshness(db, now = Date.now()) {
-  const asOf = db.prepare("SELECT MAX(latest_post_date) AS d FROM social_accounts WHERE latest_post_date IS NOT NULL AND latest_post_date <> ''").get()?.d ?? null;
+export function socialFreshness(db, now = Date.now(), table = 'social_accounts') {
+  // table 只會是程式內的兩個固定值（立委 social_accounts、議員 council_social），不是使用者輸入
+  const asOf = db.prepare(`SELECT MAX(latest_post_date) AS d FROM ${table === 'council_social' ? 'council_social' : 'social_accounts'} WHERE latest_post_date IS NOT NULL AND latest_post_date <> ''`).get()?.d ?? null;
   if (!asOf) return { as_of: null, age_days: null, stale: false, stale_days: CONFIG.social.staleDays };
   // 以臺灣的「今天」算天數：整理表的日期是臺灣日期
   const today = new Date(now + 8 * 3_600_000).toISOString().slice(0, 10);
@@ -344,6 +345,8 @@ export function getHealth(db, { now = Date.now(), staticLoaders = undefined } = 
   }
   const social = socialFreshness(db, now);
   if (social.stale) notices.push(`臉書整理表的最新貼文日期停在 ${social.as_of}（${social.age_days} 天前），試算表可能沒有人在更新`);
+  const councilSocial = socialFreshness(db, now, 'council_social');
+  if (councilSocial.stale) notices.push(`議員臉書整理表的最新貼文日期停在 ${councilSocial.as_of}（${councilSocial.age_days} 天前），試算表可能沒有人在更新`);
 
   // 靜態資料（人口／選舉／鄉鎮圖資）不在同步流程內，`stale`／`ok` 看不到它們。
   // 來源是月報，忘了重跑 build 腳本就會讓畫面上的數字放很久而沒有訊號，所以在這裡提醒。
@@ -371,6 +374,7 @@ export function getHealth(db, { now = Date.now(), staticLoaders = undefined } = 
     static_data: staticData,
     // 社群整理表（人工維護）的新鮮度：立委側欄、臉書排行榜用來標「資料截至」與過期提醒
     social,
+    council_social: councilSocial,
     datasets: {
       id9: { fetched_at: getMeta(db, 'last_success_at'), count: stats.legislators },
       id14: { fetched_at: getMeta(db, 'last_success_at'), count: stats.committee_seats },
@@ -1121,7 +1125,16 @@ export function listCouncilActivity(db, { county = '', councilor = '', q = '', s
   const resolvedLimit = Math.max(1, Math.min(Number(limit) || 30, 100));
   const resolvedOffset = Math.max(0, Math.trunc(Number(offset) || 0));
   const words = String(q ?? '').trim().split(/\s+/).filter(Boolean);
-  const all = currentCouncilors();
+  // 議員臉書整理表（每日同步，見 runCouncilSocialIngest）：粉專網址以整理表為準，並附最新貼文；
+  // 整理表把狀態改成轉任／病逝／解職的人不列為現任
+  const sheet = new Map(db.prepare('SELECT * FROM council_social').all().map((r) => [r.councilor_id, r]));
+  const all = currentCouncilors()
+    .map((c) => {
+      const s = sheet.get(c.id);
+      return s ? { ...c, facebook: s.url, status: s.status ?? c.status, latest_post_date: s.latest_post_date || null, latest_post_summary: s.latest_post_summary || null } : { ...c, latest_post_date: null, latest_post_summary: null };
+    })
+    .filter((c) => !(c.status && COUNCIL_DEPARTED.test(c.status)));
+  const active = new Set(all.map((c) => c.id));
   const counties = [...new Set(all.map((c) => c.county))];
   const wantedCounty = counties.includes(fixCountyName(county)) ? fixCountyName(county) : '';
   const entry = allNewsGroups(db);
@@ -1130,7 +1143,7 @@ export function listCouncilActivity(db, { county = '', councilor = '', q = '', s
   const perCouncilor = new Map();
   const scoped = [];
   for (const { group, councilors } of entry.councilGroups) {
-    const mine = councilors.filter(inCounty);
+    const mine = councilors.filter((c) => active.has(c.id) && inCounty(c));
     if (!mine.length) continue;
     for (const c of mine) perCouncilor.set(c.id, (perCouncilor.get(c.id) ?? 0) + 1);
     scoped.push({ group, councilors: mine });
@@ -1154,6 +1167,8 @@ export function listCouncilActivity(db, { county = '', councilor = '', q = '', s
     sources: [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 30).map(([name, count]) => ({ name, count })),
     first_date: entry.first,
     last_date: entry.last,
+    // 議員臉書整理表的新鮮度（沒有整理表時 as_of 為 null）
+    social: socialFreshness(db, Date.now(), 'council_social'),
     items: matching.slice(resolvedOffset, resolvedOffset + resolvedLimit).map(({ group: { url, title, source: s, published_at }, councilors }) => ({ url, title, source: s, published_at, councilors: councilors.map(brief) })),
   };
 }

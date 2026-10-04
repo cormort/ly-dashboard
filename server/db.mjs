@@ -152,6 +152,14 @@ CREATE TABLE IF NOT EXISTS social_accounts (
   source TEXT,
   PRIMARY KEY (legislator_id, platform, url)
 );
+-- 議員臉書整理表（人工／AI 每日維護的 Google 試算表，格式見 docs/social-sheet-spec.md）：每次同步整批覆寫
+CREATE TABLE IF NOT EXISTS council_social (
+  councilor_id TEXT PRIMARY KEY,
+  url TEXT NOT NULL,
+  status TEXT,
+  latest_post_date TEXT,
+  latest_post_summary TEXT
+);
 CREATE TABLE IF NOT EXISTS budget_bills (
   id TEXT PRIMARY KEY,
   term INTEGER,
@@ -678,6 +686,21 @@ export function pruneNews(db, { keepDays, now = new Date() }) {
 }
 
 /** 社群帳號整批覆寫（來源是人工整理表，以最新一版為準）。 */
+/** 議員臉書整理表整批覆寫（來源是人工維護的試算表，以最新一版為準） */
+export function applyCouncilSocial(db, rows) {
+  db.exec('BEGIN');
+  try {
+    db.exec('DELETE FROM council_social');
+    const insert = db.prepare('INSERT OR REPLACE INTO council_social(councilor_id, url, status, latest_post_date, latest_post_summary) VALUES(?, ?, ?, ?, ?)');
+    for (const r of rows) insert.run(r.councilor_id, r.url, r.status, r.latest_post_date, r.latest_post_summary);
+    db.exec('COMMIT');
+    return rows.length;
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
+}
+
 export function applySocial(db, accounts, { fetchedAt }) {
   const previous = new Set(
     db.prepare('SELECT legislator_id, platform, url FROM social_accounts').all().map((r) => `${r.legislator_id}|${r.platform}|${r.url}`),

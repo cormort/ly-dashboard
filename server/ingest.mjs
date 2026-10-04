@@ -1,8 +1,8 @@
 import { pathToFileURL } from 'node:url';
 import { readFileSync } from 'node:fs';
 import { CONFIG } from './config.mjs';
-import { openDb, recordSyncRun, saveSnapshot, applyDataset, applyBills, applyBudget, applyBudgetReports, applyCommitteeMeets, applyCommitteeRecords, applyMeetings, applySocial, upsertNews, upsertTopicNews, upsertArticles, pruneNews, pruneLogs, getMeta, setMeta } from './db.mjs';
-import { buildDataset, normalizeBills, normalizeBudget, normalizeBudgetReports, normalizeCommitteeMeets, normalizeCommitteeRecords, normalizeMeetings, normalizeSocial, newsName, parseNewsRss, DataValidationError, NORMALIZER_VERSION } from './normalize.mjs';
+import { openDb, recordSyncRun, saveSnapshot, applyDataset, applyBills, applyBudget, applyBudgetReports, applyCommitteeMeets, applyCommitteeRecords, applyMeetings, applySocial, applyCouncilSocial, upsertNews, upsertTopicNews, upsertArticles, pruneNews, pruneLogs, getMeta, setMeta } from './db.mjs';
+import { buildDataset, normalizeCouncilSocial, normalizeBills, normalizeBudget, normalizeBudgetReports, normalizeCommitteeMeets, normalizeCommitteeRecords, normalizeMeetings, normalizeSocial, newsName, parseNewsRss, DataValidationError, NORMALIZER_VERSION } from './normalize.mjs';
 import { fetchJson, FetchError, sha256 } from './fetch-ly.mjs';
 import { ambiguousCouncilorNames, currentCouncilors, entityNewsTerms, makeTagger, mentionsKnownEntity } from './queries.mjs';
 import { feedDate, feedFileUrl, outletLabel, parseFeedFile } from './news-feed.mjs';
@@ -996,6 +996,38 @@ export async function runSocialIngest(db, { logger = console, fetchImpl = fetchJ
 }
 
 /**
+ * 議員臉書整理表（CONFIG.social.councilUrl，格式見 docs/social-sheet-spec.md）：抓 CSV → 驗證 → 整批覆寫；
+ * 失敗保留舊資料。沒設網址就跳過（議員的粉專網址仍來自 server/council-facebook.json）。
+ */
+export async function runCouncilSocialIngest(db, { logger = console, fetchImpl = fetchJson, now = () => new Date() } = {}) {
+  if (!CONFIG.social.councilUrl) return { status: 'skipped', reason: '沒有設定 LY_COUNCIL_SOCIAL_CSV' };
+  const startedAt = now().toISOString();
+  const startedMs = Date.now();
+  const record = (fields) =>
+    recordSyncRun(db, { dataset: 'council_social', started_at: startedAt, finished_at: now().toISOString(), duration_ms: Date.now() - startedMs, ua: CONFIG.userAgent, ...fields });
+  try {
+    const result = await fetchImpl(CONFIG.social.councilUrl, { ua: CONFIG.userAgent, text: true });
+    const { rows, warnings } = normalizeCouncilSocial(result.text, currentCouncilors());
+    // 同立委整理表（M4）：和上一次比，掉超過 20% 就 fail closed，寧可留舊資料
+    const existing = Number(db.prepare('SELECT COUNT(*) AS n FROM council_social').get().n);
+    if (existing >= 50 && rows.length < existing * 0.8) {
+      throw new DataValidationError(`議員臉書帳號由 ${existing} 筆掉到 ${rows.length} 筆（< 80%），疑似整理表被改動`);
+    }
+    applyCouncilSocial(db, rows);
+    setMeta(db, 'council_social_fetched_at', now().toISOString());
+    for (const w of warnings) logger.warn(`[council-social] 警告：${w}`);
+    logger.log(`[council-social] 已套用：${rows.length} 位議員的臉書資料`);
+    record({ status: 'success', records: rows.length, attempt: result.attempts ?? 1, http_status: result.status ?? 200 });
+    return { status: 'success', rows: rows.length, warnings };
+  } catch (error) {
+    const message = error instanceof FetchError ? `${error.message}（嘗試 ${error.attempts} 次）` : String(error?.message || error);
+    logger.error(`[council-social] 同步失敗，保留既有資料：${message}`);
+    record({ status: 'failed', http_status: error?.status ?? null, error: message });
+    return { status: 'failed', error: message };
+  }
+}
+
+/**
  * 名錄 → 議案 → 預算 → 社群 → 新聞；名錄失敗就不跑其餘（沒有名錄就對不到人）。
  * `LY_SKIP_BILLS` / `LY_SKIP_NEWS` / `LY_SKIP_SOCIAL` 可跳過外部來源（測試與離線驗證用）。
  */
@@ -1009,8 +1041,9 @@ export async function runAll(db, options = {}) {
   const meetings = CONFIG.skip.budget ? skipped('meetings') : await runMeetingsIngest(db, options);
   const records = CONFIG.skip.bills ? skipped('records') : await runRecordsIngest(db, options);
   const social = CONFIG.skip.social ? skipped('social') : await runSocialIngest(db, options);
+  const councilSocial = CONFIG.skip.social ? skipped('council_social') : await runCouncilSocialIngest(db, options);
   const news = CONFIG.skip.news ? skipped('news') : await runNewsIngest(db, options);
-  return { ...roster, bills, budget, budget_reports: budgetReports, meetings, records, social, news };
+  return { ...roster, bills, budget, budget_reports: budgetReports, meetings, records, social, council_social: councilSocial, news };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
