@@ -91,8 +91,8 @@
 2. 共用設定：「知道連結的使用者」→「檢視者」（程式不登入，私人試算表會讀到登入頁而拒收）。
 3. 給網站的網址是每個分頁的 **CSV 匯出網址**：
    `https://docs.google.com/spreadsheets/d/<試算表ID>/export?format=csv&gid=<分頁gid>`
-   - 立委分頁：伺服器環境變數 `LY_SOCIAL_CSV`（沒設時用專案內建的那份試算表）。
-   - 議員分頁：伺服器環境變數 `LY_COUNCIL_SOCIAL_CSV`（沒設就不讀議員分頁，議員粉專網址仍用專案內的對照表）。
+   - 立委分頁：伺服器環境變數 `LY_SOCIAL_CSV`；沒設時用程式內建的那份（試算表 `11XrvNGMKZb_8rekFdGIg5VsXcV8rdJkZjyzd1I4gAMM` 的第一個分頁）。
+   - 議員分頁：伺服器環境變數 `LY_COUNCIL_SOCIAL_CSV`；沒設時用程式內建的那份（試算表 `17Aqrr2ThH3-V00ege6YtQzK2hguu3fSgfaY9QryZ11I` 的第一個分頁）。設成空字串＝不讀議員分頁。
 4. 網站每天同步一次；改完試算表，最晚隔天會出現在網站上。
 
 ---
@@ -110,7 +110,7 @@
 
 ## 議員分頁的匯入
 
-每日同步時讀 `LY_COUNCIL_SOCIAL_CSV`（`server/ingest.mjs` 的 `runCouncilSocialIngest`），整份拒收的條件：
+每日同步時讀議員分頁（`server/ingest.mjs` 的 `runCouncilSocialIngest`），整份拒收的條件：
 
 - 缺少 `直轄市`、`選區`、`姓名`、`Facebook 粉專網址` 任何一欄（`現任狀態`、`最新貼文日期`、`最新貼文主題摘要` 選填）；
 - 資料少於 200 列；
