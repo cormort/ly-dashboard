@@ -1,6 +1,18 @@
 {
  "term_year": 2022,
  "source": "全臺六都直轄市議員 Facebook 粉專對照表",
+ "unmatched": [
+  "新北市 第5選區 黃俊哲",
+  "臺中市 第15選區 黃仁",
+  "臺南市 第6選區 邱昭勝",
+  "高雄市 第8選區 黃紹庭"
+ ],
+ "extra": [
+  "新北市 第5選區 石一佑（現任（遞補））https://www.facebook.com/shihyiyou/",
+  "臺中市 第15選區 吳建德（現任（補選））https://www.facebook.com/chiante.wu/",
+  "臺南市 第6選區 王錦德（現任（遞補））https://www.facebook.com/chinte.wang/",
+  "高雄市 第8選區 吳益政（現任（遞補））https://www.facebook.com/yicheng.wu/"
+ ],
  "links": {
   "新北市|1|陳偉杰": {
    "url": "https://www.facebook.com/weijie.tw/",
@@ -514,6 +526,10 @@
    "url": "https://www.facebook.com/village.chief.chan/",
    "status": "現任"
   },
+  "桃園市|1|黃瓊慧": {
+   "url": "https://www.facebook.com/hi54qn/",
+   "status": "現任"
+  },
   "桃園市|1|余信憲": {
    "url": "https://www.facebook.com/hsinhsien.yu/",
    "status": "現任"
@@ -568,6 +584,10 @@
   },
   "桃園市|3|呂林小鳳": {
    "url": "https://www.facebook.com/hsiaofeng.lulin/",
+   "status": "現任"
+  },
+  "桃園市|3|朱珍瑤": {
+   "url": "https://www.facebook.com/chenyao.chu/",
    "status": "現任"
   },
   "桃園市|3|楊朝偉": {

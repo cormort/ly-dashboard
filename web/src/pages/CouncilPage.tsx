@@ -34,6 +34,16 @@ export function marginText(d: Pick<CouncilDistrict, 'first_loser'>): string {
 const DEPARTED = new Set(['轉任立委', '病逝']);
 const departedNote = (c: CouncilCandidate) => (c.facebook_status && DEPARTED.has(c.facebook_status) ? c.facebook_status : undefined);
 
+/**
+ * 議會名和現在不同的屆次要講清楚：桃園 2009 那一屆是升格前的「桃園縣議會」（桃園縣議員第 17 屆），
+ * 但資料掛在「桃園市」底下。不講的話，頁面標題寫「桃園市議員」、內容卻是桃園縣議員的數字，
+ * 看起來會像是資料錯了。
+ */
+export function upgradedNotes(county: string, terms: Pick<CouncilTerm, 'year' | 'label' | 'body'>[]): string[] {
+  const body = `${county}議會`;
+  return terms.filter((t) => t.body !== body).map((t) => `${t.year} 年投票時還沒有${body}，那一屆是${t.body}（${t.label}）。`);
+}
+
 /** 姓名連到政黨色：沿用各縣市動態的 `.region-person`（底色線代表黨籍），不另外塞標籤 */
 function Person({ name, party, note, facebook }: { name: string; party: string; note?: string; facebook?: string }) {
   return (
@@ -210,7 +220,7 @@ function ComparePanel({ term }: { term: CouncilTerm }) {
         「連任／新任」採中選會的「現任」欄位
         {c.incumbent_source === 'cec'
           ? `；其中 ${c.incumbent_mismatch.length} 人與「上一屆當選名單」比對不同（多為遞補、補選或換選區）。`
-          : '（這一屆的檔案沒有這個欄位，改用上一屆的當選名單比對）。'}
+          : '（這一屆的檔案整欄都是「非現任」，沒有可用的註記，改用上一屆的當選名單比對）。'}
         「未列名候選人」包含轉任、辭職與逝世。
       </p>
     </section>
@@ -334,11 +344,12 @@ export function CouncilPage({ refreshToken }: CouncilPageProps) {
   const lowest = term.stats.lowest_winner;
   // 選舉區與席次會隨人口重劃（新北市 2022 由 10 個分為 11 個、臺北市 2022 由 63 席減為 61 席），
   // 所以跨屆比較用席次與政黨，並把「有變」直接講出來（沒變就不囉嗦）
-  const shape = terms.map((t) => ({ year: t.year, districts: t.districts.filter((d) => d.kind === 'area').length, seats: t.seats }));
+  const shape = terms.map((t) => ({ year: t.year, body: t.body, districts: t.districts.filter((d) => d.kind === 'area').length, seats: t.seats }));
   const oldest = shape.at(-1);
   const newest = shape[0];
   const redrawn = Boolean(oldest && newest && oldest.districts !== newest.districts);
   const changed = Boolean(oldest && newest && (redrawn || oldest.seats !== newest.seats));
+  const notes = upgradedNotes(res.data.county, terms);
 
   return (
     <>
@@ -347,10 +358,15 @@ export function CouncilPage({ refreshToken }: CouncilPageProps) {
         <p className="page-lead">
           跨屆比較以「席次」與「政黨」為準，不直接比選舉區編號
           {changed
-            ? `；${res.data.county}由 ${oldest!.year} 年的 ${oldest!.seats} 席${redrawn ? `、區域選舉區 ${oldest!.districts} 個` : ''}變成 ${newest!.year} 年的 ${newest!.seats} 席${redrawn ? `、${newest!.districts} 個` : ''}`
+            ? `；由 ${oldest!.year} 年${oldest!.body === `${res.data.county}議會` ? '' : `（${oldest!.body}）`}的 ${oldest!.seats} 席${redrawn ? `、區域選舉區 ${oldest!.districts} 個` : ''}變成 ${newest!.year} 年的 ${newest!.seats} 席${redrawn ? `、${newest!.districts} 個` : ''}`
             : ''}
           。
         </p>
+        {notes.map((text) => (
+          <p className="muted" key={text}>
+            {text}
+          </p>
+        ))}
         {missing ? <p className="muted">沒有「{missing}」的議員選舉資料（目前建置直轄市），已改看{res.data.county}。</p> : null}
         <div className="council-switches">
           {res.data.counties.length > 1 ? (

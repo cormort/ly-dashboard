@@ -767,7 +767,7 @@ export interface CouncilCandidate {
   elected: boolean;
   /** 因婦女保障名額當選（中選會當選註記 `!`）：得票可能比落選者還少 */
   quota: boolean;
-  /** 中選會「現任」欄位；2010 那一屆檔案整欄都是 N，因此只當參考 */
+  /** 中選會「現任」欄位；2010 那一屆與桃園市 2014 整欄都是 N，因此只當參考（見 CouncilCompare.incumbent_source） */
   incumbent: boolean | null;
   /** 粉專網址與現任狀態：只有最新一屆、且對照表對得到的當選人才有 */
   facebook?: string;
@@ -828,7 +828,7 @@ export interface CouncilCompare {
   freshmen: number;
   defeated_incumbents: { name: string; party: string; district: string; votes: number; pct: number }[];
   not_running: { name: string; party: string; district: string }[];
-  /** 'cec'＝用中選會的「現任」欄位；'name_match'＝該屆沒有這個欄位，只能用上屆當選名單比對 */
+  /** 'cec'＝用中選會的「現任」欄位（整欄都是 N 時視為不可用）；'name_match'＝只能用上屆當選名單比對 */
   incumbent_source: 'cec' | 'name_match';
   /** 中選會現任欄位與「上屆當選名單」不一致的人數（遞補、補選、換選區都會造成） */
   incumbent_mismatch: string[];
@@ -841,6 +841,11 @@ export interface CouncilTerm {
   term: number;
   date: string;
   label: string;
+  /**
+   * 這一屆的議會名稱。桃園 2009 那一屆是升格前的「桃園縣議會」（桃園縣議員第 17 屆），
+   * 其餘是「桃園市議會」——頁面靠它分辨哪一屆不是現在的議會。
+   */
+  body: string;
   seats: number;
   kinds: CouncilKindSummary[];
   districts: CouncilDistrict[];

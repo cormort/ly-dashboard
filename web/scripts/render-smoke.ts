@@ -43,7 +43,7 @@ import { CommitteesPage } from '../src/pages/CommitteesPage';
 import { pathFor, routeOf, type Route } from '../src/hooks/useRoute';
 import { BillStageBar } from '../src/components/BillStage';
 import { CountiesPage } from '../src/pages/CountiesPage';
-import { CouncilPage, marginText } from '../src/pages/CouncilPage';
+import { CouncilPage, marginText, upgradedNotes } from '../src/pages/CouncilPage';
 import { NewsPage } from '../src/pages/NewsPage';
 import { ChoroplethMap } from '../src/components/ChoroplethMap';
 import { bbox, countyViewBoxFor } from '../src/components/TownMap';
@@ -207,13 +207,14 @@ expectAll('最近動態（/activity）：站名、導覽、動態／議題／新
 const topNav = homeHtml.match(/<nav aria-label="主要頁面">([\s\S]*?)<\/nav>/)?.[1] ?? '';
 expectNone('最上層導覽不該再把所有子頁面平鋪出來', topNav, ['排行榜', '法案查詢', '委員比較', '縣市', '最近動態', '機關首長新聞']);
 check('首頁初始不顯示任何委員', !homeHtml.includes('查看檔案'));
-// 上層導覽順序（機關首長視角）：總覽 → 我的機關 → 議事 → 委員 → 新聞 → 機關／基金；縣市、最近動態收進「委員」，首長新聞收進「新聞」
+// 上層導覽順序（機關首長視角）：總覽 → 我的機關 → 議事 → 委員 → 議員 → 新聞 → 機關／基金；
+// 縣市、最近動態收進「委員」，首長新聞收進「新聞」，議員自成一個頁籤（2026-10-04 起）
 check(
-  '上層導覽的順序是 總覽→我的機關→議事→委員→新聞→機關／基金',
+  '上層導覽的順序是 總覽→我的機關→議事→委員→議員→新聞→機關／基金',
   (() => {
     const nav = dashboardHtml.match(/<nav aria-label="主要頁面">([\s\S]*?)<\/nav>/)?.[1] ?? '';
     const labels = [...nav.matchAll(/>([^<>]+)<\/a>/g)].map((m) => m[1].trim()).filter(Boolean);
-    return labels.join('→') === '總覽→我的機關→議事→委員→新聞→機關／基金';
+    return labels.join('→') === '總覽→我的機關→議事→委員→議員→新聞→機關／基金';
   })(),
 );
 check('不含示範／假資料字串', !/甲黨|示範資料|林怡安|陳宏宇|乙黨/.test(homeHtml));
@@ -299,7 +300,7 @@ check(
 
 // 子頁也依首長與幕僚的使用頻率排，主題的預設頁就是第一個子頁
 check(
-  '子頁順序：議事 預算→委員會→法案、新聞 首長→機關→委員→全部、機關／基金 機關在前，委員含縣市與議員，主題連結指向第一個子頁',
+  '子頁順序：議事 預算→委員會→法案、新聞 首長→機關→委員→全部、機關／基金 機關在前，委員含縣市，議員自成一個頁籤',
   (() => {
     const subOf = (route: Route) => {
       const sub = render(createElement(Header, { ...headerProps, route })).match(/<nav class="subnav"[^>]*>([\s\S]*?)<\/nav>/)?.[1] ?? '';
@@ -310,8 +311,11 @@ check(
       subOf('budget') === '預算審議→委員會→法案查詢' &&
       subOf('officials') === '機關首長新聞→機關新聞→委員新聞→全部新聞' &&
       subOf('agencies') === '機關→基金→財團法人→行政法人' &&
-      subOf('legislators') === '委員查詢→最近動態→排行榜→委員比較→縣市→議員' &&
-      ['href="/budget"', 'href="/officials"', 'href="/agencies"'].every((h) => top.includes(h))
+      subOf('legislators') === '委員查詢→最近動態→排行榜→委員比較→縣市' &&
+      // 議員自成一個頁籤（沒有子頁），所以次級導覽不該再出現「議員」
+      subOf('council') === '' &&
+      !subOf('legislators').includes('議員') &&
+      ['href="/budget"', 'href="/officials"', 'href="/agencies"', 'href="/council"'].every((h) => top.includes(h))
     );
   })(),
 );
@@ -925,6 +929,22 @@ check(
     marginText({ first_loser: { name: '林竹旺', party: '無黨籍', votes: 8000, pct: 9, margin: -534 } }) === '｜落選頭 林竹旺（8,000 票，比婦女保障名額當選人多 534 票）' &&
     marginText({ first_loser: { name: '乙', party: '無黨籍', votes: 1, pct: 1, margin: null } }) === '｜落選頭 乙（1 票，差 — 票）' &&
     marginText({ first_loser: null }) === '',
+);
+check(
+  '議員頁：升格前那一屆要講清楚是哪一個議會（桃園 2009 是桃園縣議會，不是桃園市議會）',
+  (() => {
+    const terms = [
+      { year: 2022, label: '第3屆', body: '桃園市議會' },
+      { year: 2009, label: '桃園縣第17屆', body: '桃園縣議會' },
+    ];
+    const notes = upgradedNotes('桃園市', terms);
+    return (
+      notes.length === 1 &&
+      notes[0] === '2009 年投票時還沒有桃園市議會，那一屆是桃園縣議會（桃園縣第17屆）。' &&
+      // 六都裡只有桃園有升格前的資料；其他縣市不可冒出這個提示
+      upgradedNotes('新北市', [{ year: 2010, label: '第1屆', body: '新北市議會' }]).length === 0
+    );
+  })(),
 );
 check('/news 對應新聞頁', routeOf('/news') === 'news');
 check('/news/agencies 對應機關新聞頁（不被 /news 吃掉）', routeOf('/news/agencies') === 'agencynews');

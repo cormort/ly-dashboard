@@ -801,7 +801,7 @@ test('靜態資料（人口／選舉／圖資）的資料截止與筆數要看�
   assert.deepEqual(Object.keys(s).sort(), ['council', 'counties', 'demographics', 'legislator_votes', 'population_trend', 'recalls', 'town_map']);
   // 議員選舉四年一次，「超過 3 個月沒更新」對它沒有意義（當選日隔天就超過了）→ 只監控讀不到／是空的
   assert.equal(s.council.stale_check, false);
-  assert.equal(s.council.count, 23, '六都的議員選舉結果（4+4+3+4+4+4 屆，桃園 2014 才升格）');
+  assert.equal(s.council.count, 24, '六都的議員選舉結果（4+4+4+4+4+4 屆，桃園含升格前的 2009 桃園縣議員）');
   assert.equal(s.council.as_of, '2022-11-26', '資料截止取最新一屆的投票日');
   assert.equal(s.counties.stale_check, true);
   assert.equal(s.counties.count, 22);
@@ -1110,8 +1110,9 @@ test('議員資料：各縣市每屆的席次結構與政黨加總一致', () =>
       2018: [61, 1, 1],
       2022: [59, 1, 1],
     },
-    // 桃園 2014 才升格，只有三屆
+    // 桃園 2014 才升格；此外桃園另有升格前的 2009 年桃園縣議員（桃園縣議會第 17 屆，60 席）
     桃園市: {
+      2009: [56, 3, 1],
       2014: [55, 3, 2],
       2018: [56, 4, 3],
       2022: [56, 4, 3],
@@ -1141,7 +1142,7 @@ test('議員資料：各縣市每屆的席次結構與政黨加總一致', () =>
     assert.deepEqual(
       res.terms.map((t) => t.year),
       Object.keys(EXPECTED[county]).map(Number).sort((a, b) => b - a),
-      '由新到舊；桃園只有三屆（2014 才升格）',
+      '由新到舊；桃園多了升格前的 2009 桃園縣議員',
     );
     for (const t of res.terms) {
       const [area, plain, mountain] = EXPECTED[county][t.year];
@@ -1255,6 +1256,57 @@ test('議員資料：臺北市的席次、屆次與政黨對得上中選會公�
   // 臺北市的兩個原住民選舉區都只有 1 席（新北市的平地原住民有 3 席）
   assert.equal(latest.districts.filter((d) => d.kind === 'mountain')[0].seats, 1);
   assert.equal(latest.districts.filter((d) => d.kind === 'plain')[0].seats, 1);
+});
+
+test('議員資料：桃園含升格前的 2009 年桃園縣議員（桃園縣議會第 17 屆，60 席）', () => {
+  const { db } = seeded();
+  const res = listCouncil(db, { county: '桃園市' });
+  assert.deepEqual(
+    res.terms.map((t) => `${t.year} ${t.label}`),
+    ['2022 第3屆', '2018 第2屆', '2014 第1屆', '2009 桃園縣第17屆'],
+    '桃園 2014 才升格，2009 那一屆是桃園縣議員第 17 屆（屆次編號沿用桃園縣自己的）',
+  );
+  const t09 = res.terms.at(-1);
+  assert.equal(t09.date, '2009-12-05');
+  assert.equal(t09.body, '桃園縣議會', '升格前那一屆的議會名要和現在的不一樣，頁面才分得出來');
+  assert.equal(res.terms[0].body, '桃園市議會');
+  assert.equal(t09.seats, 60);
+  // 對照維基百科「第17屆桃園縣議員列表」：60 席、國民黨 30、民進黨 17、無黨籍 13
+  const seats = (t) => Object.fromEntries(t.parties.filter((p) => p.seats > 0).map((p) => [p.party, p.seats]));
+  assert.deepEqual(seats(t09), { 中國國民黨: 30, 民主進步黨: 17, 無黨籍: 13 });
+  assert.equal(t09.districts.filter((d) => d.kind === 'area').length, 12, '12 個區域選舉區 + 2 個原住民選舉區');
+  assert.equal(t09.compare, null, '沒有更早的一屆可以比（上一屆是 2005）');
+  // 縣市議員的來源檔多一層「省市別」，篩錯會變成整個臺灣省 16 個縣市加起來 —— 用選舉人數與候選人數守住
+  assert.equal(t09.kinds.find((k) => k.kind === 'area').electorate, 1397759, '桃園縣區域選舉人數');
+  assert.equal(t09.stats.candidates, 99, '桃園縣候選人 91（區域）＋5（平地原住民）＋3（山地原住民）');
+  const d1 = t09.districts.find((d) => d.no === '01');
+  assert.deepEqual(d1.area, ['桃園市']);
+  assert.equal(d1.seats, 12);
+  assert.equal(d1.list[0].name, '萬美玲', '第1選舉區最高票');
+  // 來源檔把龍潭的「閻中傑」寫成異體字「𨶒」（U+28D92，基本平面以外）；出貨時換成標準字形，
+  // 不然多數字型沒有那個字，畫面上只會是一個空白框。得票與外部來源（選舉黃頁）一致。
+  const d10 = t09.districts.find((d) => d.no === '10');
+  assert.deepEqual(
+    d10.list.filter((c) => c.elected).map((c) => `${c.name} ${c.votes}`),
+    ['張肇良 15178', '閻中傑 10608', '魏雪卿 10088'],
+  );
+});
+
+test('議員資料：桃園 2014 與升格前的 2009 比較（中選會該屆現任欄位整欄都是 N）', () => {
+  const { db } = seeded();
+  const term = listCouncil(db, { county: '桃園市' }).terms.find((t) => t.year === 2014);
+  assert.equal(term.compare.year, 2009);
+  // 桃園市 2014 是升格後第一屆，中選會把所有人記成「非現任」；照欄位讀會出現「連任 0 人、新任 60 人」，
+  // 但那一屆當選人裡有一大半是 2009 的桃園縣議員 —— 所以整欄都是 N 時要退回「上屆當選名單」比對
+  assert.equal(term.compare.incumbent_source, 'name_match');
+  assert.equal(term.compare.re_elected + term.compare.freshmen, 60);
+  assert.equal(term.compare.re_elected, 37);
+  assert.equal(term.compare.defeated_incumbents.length, 16, '2009 當選、2014 競選連任失敗');
+  assert.equal(term.compare.not_running.length, 7, '2009 當選、2014 未列名候選人');
+  // 「𨶒中傑」在 2009 的檔案裡是異體字（U+28D92），2014 寫「閻中傑」；他 2014 是當選人，
+  // 不可以被算成「上一屆當選但這一屆未列名候選人」（基本平面以外的字是代理對，比對要依字碼點切）
+  assert.equal(term.compare.not_running.find((p) => p.name.includes('中傑')), undefined);
+  assert.ok(term.districts.some((d) => d.list.some((c) => c.name === '閻中傑' && c.elected)));
 });
 
 test('議員資料：縣市名支援臺／台，沒有建置的縣市回 null', () => {

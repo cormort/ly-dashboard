@@ -1,10 +1,10 @@
 {
- "built_at": "2026-10-03T10:56:39.483Z",
+ "built_at": "2026-10-04T10:19:03.832Z",
  "source": {
   "label": "中選會選舉資料庫（kiang/db.cec.gov.tw 轉存）",
   "url": "https://github.com/kiang/db.cec.gov.tw"
  },
- "note": "直轄市議員選舉。屆次編號各縣市不同（新北市 2010 升格後為第 1 屆，臺北市同一年是第 11 屆）。區域議員選舉人數不含原住民選舉人（原住民另有選舉區）。",
+ "note": "直轄市議員選舉；桃園另有升格前的 2009 年桃園縣議員（桃園縣議會第 17 屆，2014 年底才升格）。屆次編號各縣市不同（新北市 2010 升格後為第 1 屆，臺北市同一年是第 11 屆，桃園縣 2009 是第 17 屆）。區域議員選舉人數不含原住民選舉人（原住民另有選舉區）。",
  "counties": [
   {
    "county": "新北市",
@@ -2254,6 +2254,7 @@
       "area_electorate": 3266983,
       "area_turnout": 56.81
      },
+     "body": "新北市議會",
      "compare": {
       "year": 2018,
       "label": "第3屆",
@@ -4657,6 +4658,7 @@
       "area_electorate": 3217863,
       "area_turnout": 64.16
      },
+     "body": "新北市議會",
      "compare": {
       "year": 2014,
       "label": "第2屆",
@@ -7039,6 +7041,7 @@
       "area_electorate": 3112249,
       "area_turnout": 61.85
      },
+     "body": "新北市議會",
      "compare": {
       "year": 2010,
       "label": "第1屆",
@@ -9636,6 +9639,7 @@
       "area_electorate": 2968922,
       "area_turnout": 71.41
      },
+     "body": "新北市議會",
      "compare": null
     }
    ]
@@ -11628,6 +11632,7 @@
       "area_electorate": 2008789,
       "area_turnout": 67.78
      },
+     "body": "臺北市議會",
      "compare": {
       "year": 2018,
       "label": "第13屆",
@@ -14068,6 +14073,7 @@
       "area_electorate": 2146532,
       "area_turnout": 65.99
      },
+     "body": "臺北市議會",
      "compare": {
       "year": 2014,
       "label": "第12屆",
@@ -16186,6 +16192,7 @@
       "area_electorate": 2129690,
       "area_turnout": 70.51
      },
+     "body": "臺北市議會",
      "compare": {
       "year": 2010,
       "label": "第11屆",
@@ -18112,6 +18119,7 @@
       "area_electorate": 2030823,
       "area_turnout": 70.69
      },
+     "body": "臺北市議會",
      "compare": null
     }
    ]
@@ -20435,6 +20443,7 @@
       "area_electorate": 1763482,
       "area_turnout": 59.89
      },
+     "body": "桃園市議會",
      "compare": {
       "year": 2018,
       "label": "第2屆",
@@ -22991,6 +23000,7 @@
       "area_electorate": 1677612,
       "area_turnout": 60.82
      },
+     "body": "桃園市議會",
      "compare": {
       "year": 2014,
       "label": "第1屆",
@@ -25716,6 +25726,2121 @@
       "area_electorate": 1520296,
       "area_turnout": 63.03
      },
+     "body": "桃園市議會",
+     "compare": {
+      "year": 2009,
+      "label": "桃園縣第17屆",
+      "parties": [
+       {
+        "party": "中國國民黨",
+        "seats": 29,
+        "prev_seats": 30,
+        "delta": -1,
+        "votes": 361213,
+        "pct": 37.52
+       },
+       {
+        "party": "民主進步黨",
+        "seats": 20,
+        "prev_seats": 17,
+        "delta": 3,
+        "votes": 302881,
+        "pct": 31.46
+       },
+       {
+        "party": "無黨籍",
+        "seats": 9,
+        "prev_seats": 13,
+        "delta": -4,
+        "votes": 225854,
+        "pct": 23.46
+       },
+       {
+        "party": "綠黨",
+        "seats": 1,
+        "prev_seats": 0,
+        "delta": 1,
+        "votes": 25913,
+        "pct": 2.69
+       },
+       {
+        "party": "台灣團結聯盟",
+        "seats": 1,
+        "prev_seats": 0,
+        "delta": 1,
+        "votes": 11340,
+        "pct": 1.18
+       },
+       {
+        "party": "親民黨",
+        "seats": 0,
+        "prev_seats": 0,
+        "delta": 0,
+        "votes": 14920,
+        "pct": 1.55
+       },
+       {
+        "party": "無黨團結聯盟",
+        "seats": 0,
+        "prev_seats": 0,
+        "delta": 0,
+        "votes": 12454,
+        "pct": 1.29
+       },
+       {
+        "party": "新黨",
+        "seats": 0,
+        "prev_seats": 0,
+        "delta": 0,
+        "votes": 7207,
+        "pct": 0.75
+       },
+       {
+        "party": "台灣主義黨",
+        "seats": 0,
+        "prev_seats": 0,
+        "delta": 0,
+        "votes": 597,
+        "pct": 0.06
+       },
+       {
+        "party": "人民民主陣線",
+        "seats": 0,
+        "prev_seats": 0,
+        "delta": 0,
+        "votes": 290,
+        "pct": 0.03
+       },
+       {
+        "party": "臺灣建國黨",
+        "seats": 0,
+        "prev_seats": 0,
+        "delta": 0,
+        "votes": 81,
+        "pct": 0.01
+       },
+       {
+        "party": "台灣國民黨",
+        "seats": 0,
+        "prev_seats": 0,
+        "delta": 0,
+        "votes": 0,
+        "pct": 0
+       }
+      ],
+      "re_elected": 37,
+      "defeated_incumbents": [
+       {
+        "name": "王淳長",
+        "party": "無黨籍",
+        "district": "第5選舉區",
+        "votes": 9225,
+        "pct": 22.47
+       },
+       {
+        "name": "吳宗憲",
+        "party": "中國國民黨",
+        "district": "第12選舉區",
+        "votes": 9161,
+        "pct": 27.74
+       },
+       {
+        "name": "徐景文",
+        "party": "民主進步黨",
+        "district": "第7選舉區",
+        "votes": 8352,
+        "pct": 4.65
+       },
+       {
+        "name": "黃智銘",
+        "party": "民主進步黨",
+        "district": "第1選舉區",
+        "votes": 8269,
+        "pct": 4.6
+       },
+       {
+        "name": "黃哲鍾",
+        "party": "無黨團結聯盟",
+        "district": "第1選舉區",
+        "votes": 8183,
+        "pct": 4.55
+       },
+       {
+        "name": "李訓求",
+        "party": "中國國民黨",
+        "district": "第4選舉區",
+        "votes": 7819,
+        "pct": 12.19
+       },
+       {
+        "name": "沐平波",
+        "party": "中國國民黨",
+        "district": "第7選舉區",
+        "votes": 7276,
+        "pct": 4.05
+       },
+       {
+        "name": "廖輝星",
+        "party": "民主進步黨",
+        "district": "第1選舉區",
+        "votes": 7136,
+        "pct": 3.97
+       },
+       {
+        "name": "張文瑜",
+        "party": "無黨籍",
+        "district": "第3選舉區",
+        "votes": 7005,
+        "pct": 8.2
+       },
+       {
+        "name": "陳宗義",
+        "party": "民主進步黨",
+        "district": "第1選舉區",
+        "votes": 6697,
+        "pct": 3.72
+       },
+       {
+        "name": "李麗珠",
+        "party": "中國國民黨",
+        "district": "第2選舉區",
+        "votes": 6175,
+        "pct": 10.09
+       },
+       {
+        "name": "劉邦鉉",
+        "party": "無黨籍",
+        "district": "第8選舉區",
+        "votes": 5211,
+        "pct": 5.26
+       },
+       {
+        "name": "許森能",
+        "party": "無黨籍",
+        "district": "第2選舉區",
+        "votes": 4990,
+        "pct": 8.15
+       },
+       {
+        "name": "蔣中千",
+        "party": "無黨團結聯盟",
+        "district": "第7選舉區",
+        "votes": 4271,
+        "pct": 2.38
+       },
+       {
+        "name": "梁新武",
+        "party": "無黨籍",
+        "district": "第7選舉區",
+        "votes": 3551,
+        "pct": 1.98
+       },
+       {
+        "name": "羅文欽",
+        "party": "無黨籍",
+        "district": "第8選舉區",
+        "votes": 2057,
+        "pct": 2.08
+       }
+      ],
+      "freshmen": 23,
+      "not_running": [
+       {
+        "name": "呂宏仁",
+        "party": "中國國民黨",
+        "district": "第4選舉區"
+       },
+       {
+        "name": "傅淑香",
+        "party": "民主進步黨",
+        "district": "第7選舉區"
+       },
+       {
+        "name": "鄧仁艾",
+        "party": "中國國民黨",
+        "district": "第8選舉區"
+       },
+       {
+        "name": "魏雪卿",
+        "party": "中國國民黨",
+        "district": "第10選舉區"
+       },
+       {
+        "name": "郭蔡美英",
+        "party": "民主進步黨",
+        "district": "第12選舉區"
+       },
+       {
+        "name": "陳泰宇",
+        "party": "無黨籍",
+        "district": "平地原住民選舉區"
+       },
+       {
+        "name": "洪國治",
+        "party": "中國國民黨",
+        "district": "平地原住民選舉區"
+       }
+      ],
+      "name_variant_suspects": [
+       "洪國治 ↔ 洪國彰"
+      ],
+      "incumbent_source": "name_match",
+      "incumbent_mismatch": []
+     }
+    },
+    {
+     "year": 2009,
+     "term": 17,
+     "date": "2009-12-05",
+     "label": "桃園縣第17屆",
+     "seats": 60,
+     "kinds": [
+      {
+       "kind": "area",
+       "label": "區域",
+       "seats": 56,
+       "valid": 741571,
+       "invalid": 12739,
+       "ballots": 754310,
+       "electorate": 1397759,
+       "population": 1917360,
+       "turnout": 53.97,
+       "candidate_count": 91
+      },
+      {
+       "kind": "plain",
+       "label": "平地原住民",
+       "seats": 3,
+       "valid": 8743,
+       "invalid": 169,
+       "ballots": 8912,
+       "electorate": 19250,
+       "population": 31388,
+       "turnout": 46.3,
+       "candidate_count": 5
+      },
+      {
+       "kind": "mountain",
+       "label": "山地原住民",
+       "seats": 1,
+       "valid": 7228,
+       "invalid": 184,
+       "ballots": 7412,
+       "electorate": 15282,
+       "population": 26010,
+       "turnout": 48.5,
+       "candidate_count": 3
+      }
+     ],
+     "districts": [
+      {
+       "no": "01",
+       "kind": "area",
+       "name": "第1選舉區",
+       "area": [
+        "桃園市"
+       ],
+       "valid": 140643,
+       "invalid": 2020,
+       "ballots": 142663,
+       "electorate": 283505,
+       "population": 394687,
+       "turnout": 50.32,
+       "seats": 12,
+       "candidate_count": 19,
+       "list": [
+        {
+         "no": 12,
+         "name": "萬美玲",
+         "party": "中國國民黨",
+         "gender": "女",
+         "age": 40,
+         "education": "大專",
+         "elected": true,
+         "quota": false,
+         "incumbent": true,
+         "votes": 13414,
+         "pct": 9.54
+        },
+        {
+         "no": 10,
+         "name": "廖輝星",
+         "party": "民主進步黨",
+         "gender": "男",
+         "age": 55,
+         "education": "大專",
+         "elected": true,
+         "quota": false,
+         "incumbent": true,
+         "votes": 12691,
+         "pct": 9.02
+        },
+        {
+         "no": 1,
+         "name": "黃景熙",
+         "party": "無黨籍",
+         "gender": "男",
+         "age": 50,
+         "education": "大專",
+         "elected": true,
+         "quota": false,
+         "incumbent": false,
+         "votes": 11642,
+         "pct": 8.28
+        },
+        {
+         "no": 20,
+         "name": "邱素芬",
+         "party": "民主進步黨",
+         "gender": "女",
+         "age": 43,
+         "education": "高中",
+         "elected": true,
+         "quota": false,
+         "incumbent": true,
+         "votes": 11589,
+         "pct": 8.24
+        },
+        {
+         "no": 5,
+         "name": "黃婉如",
+         "party": "中國國民黨",
+         "gender": "女",
+         "age": 55,
+         "education": "碩士",
+         "elected": true,
+         "quota": false,
+         "incumbent": true,
+         "votes": 10562,
+         "pct": 7.51
+        },
+        {
+         "no": 18,
+         "name": "陳宗義",
+         "party": "民主進步黨",
+         "gender": "男",
+         "age": 50,
+         "education": "大專",
+         "elected": true,
+         "quota": false,
+         "incumbent": false,
+         "votes": 9593,
+         "pct": 6.82
+        },
+        {
+         "no": 2,
+         "name": "林政賢",
+         "party": "中國國民黨",
+         "gender": "男",
+         "age": 50,
+         "education": "大專",
+         "elected": true,
+         "quota": false,
+         "incumbent": false,
+         "votes": 8581,
+         "pct": 6.1
+        },
+        {
+         "no": 19,
+         "name": "李曉鐘",
+         "party": "無黨籍",
+         "gender": "男",
+         "age": 50,
+         "education": "高中",
+         "elected": true,
+         "quota": false,
+         "incumbent": true,
+         "votes": 8114,
+         "pct": 5.77
+        },
+        {
+         "no": 3,
+         "name": "詹江村",
+         "party": "中國國民黨",
+         "gender": "男",
+         "age": 46,
+         "education": "碩士",
+         "elected": true,
+         "quota": false,
+         "incumbent": true,
+         "votes": 8113,
+         "pct": 5.77
+        },
+        {
+         "no": 11,
+         "name": "黃智銘",
+         "party": "無黨籍",
+         "gender": "男",
+         "age": 56,
+         "education": "大專",
+         "elected": true,
+         "quota": false,
+         "incumbent": true,
+         "votes": 7462,
+         "pct": 5.31
+        },
+        {
+         "no": 9,
+         "name": "黃哲鍾",
+         "party": "無黨籍",
+         "gender": "男",
+         "age": 60,
+         "education": "大專",
+         "elected": true,
+         "quota": false,
+         "incumbent": false,
+         "votes": 6318,
+         "pct": 4.49
+        },
+        {
+         "no": 13,
+         "name": "陳美梅",
+         "party": "無黨籍",
+         "gender": "女",
+         "age": 35,
+         "education": "碩士",
+         "elected": true,
+         "quota": false,
+         "incumbent": false,
+         "votes": 6162,
+         "pct": 4.38
+        },
+        {
+         "no": 8,
+         "name": "黃婷鈺",
+         "party": "無黨籍",
+         "gender": "女",
+         "age": 34,
+         "education": "大專",
+         "elected": false,
+         "quota": false,
+         "incumbent": false,
+         "votes": 6101,
+         "pct": 4.34
+        },
+        {
+         "no": 4,
+         "name": "卓德樹",
+         "party": "中國國民黨",
+         "gender": "男",
+         "age": 60,
+         "education": "大專",
+         "elected": false,
+         "quota": false,
+         "incumbent": true,
+         "votes": 4817,
+         "pct": 3.42
+        },
+        {
+         "no": 16,
+         "name": "高世嘉",
+         "party": "中國國民黨",
+         "gender": "男",
+         "age": 44,
+         "education": "碩士",
+         "elected": false,
+         "quota": false,
+         "incumbent": false,
+         "votes": 4455,
+         "pct": 3.17
+        },
+        {
+         "no": 15,
+         "name": "郭貴香",
+         "party": "無黨籍",
+         "gender": "女",
+         "age": 46,
+         "education": "大專",
+         "elected": false,
+         "quota": false,
+         "incumbent": false,
+         "votes": 4341,
+         "pct": 3.09
+        },
+        {
+         "no": 14,
+         "name": "林國政",
+         "party": "無黨籍",
+         "gender": "男",
+         "age": 43,
+         "education": "碩士",
+         "elected": false,
+         "quota": false,
+         "incumbent": false,
+         "votes": 3784,
+         "pct": 2.69
+        },
+        {
+         "no": 17,
+         "name": "呂秀紋",
+         "party": "無黨籍",
+         "gender": "女",
+         "age": 55,
+         "education": "高中",
+         "elected": false,
+         "quota": false,
+         "incumbent": false,
+         "votes": 2696,
+         "pct": 1.92
+        },
+        {
+         "no": 6,
+         "name": "甘乃迪",
+         "party": "台灣國民黨",
+         "gender": "男",
+         "age": 54,
+         "education": "高中",
+         "elected": false,
+         "quota": false,
+         "incumbent": false,
+         "votes": 208,
+         "pct": 0.15
+        }
+       ],
+       "last_winner": {
+        "name": "陳美梅",
+        "party": "無黨籍",
+        "votes": 6162,
+        "pct": 4.38
+       },
+       "first_loser": {
+        "name": "黃婷鈺",
+        "party": "無黨籍",
+        "votes": 6101,
+        "pct": 4.34,
+        "margin": 61
+       }
+      },
+      {
+       "no": "02",
+       "kind": "area",
+       "name": "第2選舉區",
+       "area": [
+        "龜山鄉"
+       ],
+       "valid": 47951,
+       "invalid": 1013,
+       "ballots": 48964,
+       "electorate": 96982,
+       "population": 129765,
+       "turnout": 50.49,
+       "seats": 4,
+       "candidate_count": 7,
+       "list": [
+        {
+         "no": 6,
+         "name": "林俐玲",
+         "party": "民主進步黨",
+         "gender": "女",
+         "age": 46,
+         "education": "大專",
+         "elected": true,
+         "quota": false,
+         "incumbent": true,
+         "votes": 10568,
+         "pct": 22.04
+        },
+        {
+         "no": 2,
+         "name": "許森能",
+         "party": "民主進步黨",
+         "gender": "男",
+         "age": 46,
+         "education": "高中",
+         "elected": true,
+         "quota": false,
+         "incumbent": false,
+         "votes": 9174,
+         "pct": 19.13
+        },
+        {
+         "no": 4,
+         "name": "李雲強",
+         "party": "中國國民黨",
+         "gender": "男",
+         "age": 50,
+         "education": "大專",
+         "elected": true,
+         "quota": false,
+         "incumbent": false,
+         "votes": 8336,
+         "pct": 17.38
+        },
+        {
+         "no": 5,
+         "name": "李麗珠",
+         "party": "中國國民黨",
+         "gender": "女",
+         "age": 51,
+         "education": "高中",
+         "elected": true,
+         "quota": false,
+         "incumbent": true,
+         "votes": 7979,
+         "pct": 16.64
+        },
+        {
+         "no": 3,
+         "name": "林明義",
+         "party": "中國國民黨",
+         "gender": "男",
+         "age": 41,
+         "education": "大專",
+         "elected": false,
+         "quota": false,
+         "incumbent": false,
+         "votes": 7532,
+         "pct": 15.71
+        },
+        {
+         "no": 1,
+         "name": "蔡炤正",
+         "party": "無黨籍",
+         "gender": "男",
+         "age": 46,
+         "education": "大專",
+         "elected": false,
+         "quota": false,
+         "incumbent": false,
+         "votes": 3313,
+         "pct": 6.91
+        },
+        {
+         "no": 7,
+         "name": "謝章侃",
+         "party": "無黨籍",
+         "gender": "男",
+         "age": 46,
+         "education": "高中",
+         "elected": false,
+         "quota": false,
+         "incumbent": false,
+         "votes": 1049,
+         "pct": 2.19
+        }
+       ],
+       "last_winner": {
+        "name": "李麗珠",
+        "party": "中國國民黨",
+        "votes": 7979,
+        "pct": 16.64
+       },
+       "first_loser": {
+        "name": "林明義",
+        "party": "中國國民黨",
+        "votes": 7532,
+        "pct": 15.71,
+        "margin": 447
+       }
+      },
+      {
+       "no": "03",
+       "kind": "area",
+       "name": "第3選舉區",
+       "area": [
+        "八德市"
+       ],
+       "valid": 64561,
+       "invalid": 1314,
+       "ballots": 65875,
+       "electorate": 125996,
+       "population": 168843,
+       "turnout": 52.28,
+       "seats": 5,
+       "candidate_count": 7,
+       "list": [
+        {
+         "no": 1,
+         "name": "呂林小鳳",
+         "party": "民主進步黨",
+         "gender": "女",
+         "age": 45,
+         "education": "大專",
+         "elected": true,
+         "quota": false,
+         "incumbent": true,
+         "votes": 12633,
+         "pct": 19.57
+        },
+        {
+         "no": 7,
+         "name": "趙正宇",
+         "party": "中國國民黨",
+         "gender": "男",
+         "age": 43,
+         "education": "碩士",
+         "elected": true,
+         "quota": false,
+         "incumbent": true,
+         "votes": 10818,
+         "pct": 16.76
+        },
+        {
+         "no": 5,
+         "name": "張文瑜",
+         "party": "民主進步黨",
+         "gender": "女",
+         "age": 44,
+         "education": "高中",
+         "elected": true,
+         "quota": false,
+         "incumbent": true,
+         "votes": 10520,
+         "pct": 16.29
+        },
+        {
+         "no": 4,
+         "name": "呂淑真",
+         "party": "中國國民黨",
+         "gender": "女",
+         "age": 54,
+         "education": "大專",
+         "elected": true,
+         "quota": false,
+         "incumbent": true,
+         "votes": 10045,
+         "pct": 15.56
+        },
+        {
+         "no": 3,
+         "name": "劉茂羣",
+         "party": "中國國民黨",
+         "gender": "女",
+         "age": 53,
+         "education": "碩士",
+         "elected": true,
+         "quota": false,
+         "incumbent": true,
+         "votes": 9005,
+         "pct": 13.95
+        },
+        {
+         "no": 6,
+         "name": "鄭銀福",
+         "party": "中國國民黨",
+         "gender": "男",
+         "age": 52,
+         "education": "大專",
+         "elected": false,
+         "quota": false,
+         "incumbent": false,
+         "votes": 7291,
+         "pct": 11.29
+        },
+        {
+         "no": 2,
+         "name": "邱奕澄",
+         "party": "無黨籍",
+         "gender": "男",
+         "age": 33,
+         "education": "碩士",
+         "elected": false,
+         "quota": false,
+         "incumbent": false,
+         "votes": 4249,
+         "pct": 6.58
+        }
+       ],
+       "last_winner": {
+        "name": "劉茂羣",
+        "party": "中國國民黨",
+        "votes": 9005,
+        "pct": 13.95
+       },
+       "first_loser": {
+        "name": "鄭銀福",
+        "party": "中國國民黨",
+        "votes": 7291,
+        "pct": 11.29,
+        "margin": 1714
+       }
+      },
+      {
+       "no": "04",
+       "kind": "area",
+       "name": "第4選舉區",
+       "area": [
+        "蘆竹鄉"
+       ],
+       "valid": 49248,
+       "invalid": 1406,
+       "ballots": 50654,
+       "electorate": 93615,
+       "population": 134639,
+       "turnout": 54.11,
+       "seats": 4,
+       "candidate_count": 7,
+       "list": [
+        {
+         "no": 3,
+         "name": "許清順",
+         "party": "民主進步黨",
+         "gender": "男",
+         "age": 44,
+         "education": "大專",
+         "elected": true,
+         "quota": false,
+         "incumbent": false,
+         "votes": 14542,
+         "pct": 29.53
+        },
+        {
+         "no": 6,
+         "name": "李訓求",
+         "party": "無黨籍",
+         "gender": "男",
+         "age": 54,
+         "education": "高中",
+         "elected": true,
+         "quota": false,
+         "incumbent": false,
+         "votes": 9183,
+         "pct": 18.65
+        },
+        {
+         "no": 8,
+         "name": "陳麗莉",
+         "party": "中國國民黨",
+         "gender": "女",
+         "age": 52,
+         "education": "大專",
+         "elected": true,
+         "quota": false,
+         "incumbent": true,
+         "votes": 8985,
+         "pct": 18.24
+        },
+        {
+         "no": 5,
+         "name": "呂宏仁",
+         "party": "中國國民黨",
+         "gender": "男",
+         "age": 52,
+         "education": "大專",
+         "elected": true,
+         "quota": false,
+         "incumbent": false,
+         "votes": 6265,
+         "pct": 12.72
+        },
+        {
+         "no": 2,
+         "name": "黃淑芬",
+         "party": "無黨籍",
+         "gender": "女",
+         "age": 51,
+         "education": "高中",
+         "elected": false,
+         "quota": false,
+         "incumbent": false,
+         "votes": 3661,
+         "pct": 7.43
+        },
+        {
+         "no": 1,
+         "name": "郭麗華",
+         "party": "無黨籍",
+         "gender": "女",
+         "age": 44,
+         "education": "高中",
+         "elected": false,
+         "quota": false,
+         "incumbent": false,
+         "votes": 3481,
+         "pct": 7.07
+        },
+        {
+         "no": 7,
+         "name": "陳宇桓",
+         "party": "無黨籍",
+         "gender": "男",
+         "age": 46,
+         "education": "大專",
+         "elected": false,
+         "quota": false,
+         "incumbent": false,
+         "votes": 3131,
+         "pct": 6.36
+        }
+       ],
+       "last_winner": {
+        "name": "呂宏仁",
+        "party": "中國國民黨",
+        "votes": 6265,
+        "pct": 12.72
+       },
+       "first_loser": {
+        "name": "黃淑芬",
+        "party": "無黨籍",
+        "votes": 3661,
+        "pct": 7.43,
+        "margin": 2604
+       }
+      },
+      {
+       "no": "05",
+       "kind": "area",
+       "name": "第5選舉區",
+       "area": [
+        "大園鄉"
+       ],
+       "valid": 34837,
+       "invalid": 511,
+       "ballots": 35348,
+       "electorate": 56695,
+       "population": 78184,
+       "turnout": 62.35,
+       "seats": 2,
+       "candidate_count": 4,
+       "list": [
+        {
+         "no": 1,
+         "name": "徐其萬",
+         "party": "中國國民黨",
+         "gender": "男",
+         "age": 51,
+         "education": "高中",
+         "elected": true,
+         "quota": false,
+         "incumbent": false,
+         "votes": 10032,
+         "pct": 28.8
+        },
+        {
+         "no": 4,
+         "name": "王淳長",
+         "party": "無黨籍",
+         "gender": "男",
+         "age": 52,
+         "education": "高中",
+         "elected": true,
+         "quota": false,
+         "incumbent": true,
+         "votes": 10004,
+         "pct": 28.72
+        },
+        {
+         "no": 2,
+         "name": "陳瑞昌",
+         "party": "中國國民黨",
+         "gender": "男",
+         "age": 52,
+         "education": "大專",
+         "elected": false,
+         "quota": false,
+         "incumbent": false,
+         "votes": 8509,
+         "pct": 24.43
+        },
+        {
+         "no": 3,
+         "name": "楊謙讓",
+         "party": "民主進步黨",
+         "gender": "男",
+         "age": 38,
+         "education": "高中",
+         "elected": false,
+         "quota": false,
+         "incumbent": false,
+         "votes": 6292,
+         "pct": 18.06
+        }
+       ],
+       "last_winner": {
+        "name": "王淳長",
+        "party": "無黨籍",
+        "votes": 10004,
+        "pct": 28.72
+       },
+       "first_loser": {
+        "name": "陳瑞昌",
+        "party": "中國國民黨",
+        "votes": 8509,
+        "pct": 24.43,
+        "margin": 1495
+       }
+      },
+      {
+       "no": "06",
+       "kind": "area",
+       "name": "第6選舉區",
+       "area": [
+        "大溪鎮",
+        "復興鄉"
+       ],
+       "valid": 39797,
+       "invalid": 486,
+       "ballots": 40283,
+       "electorate": 66096,
+       "population": 88003,
+       "turnout": 60.95,
+       "seats": 3,
+       "candidate_count": 5,
+       "list": [
+        {
+         "no": 2,
+         "name": "陳治文",
+         "party": "民主進步黨",
+         "gender": "女",
+         "age": 39,
+         "education": "大專",
+         "elected": true,
+         "quota": false,
+         "incumbent": false,
+         "votes": 14816,
+         "pct": 37.23
+        },
+        {
+         "no": 4,
+         "name": "李柏坊",
+         "party": "中國國民黨",
+         "gender": "男",
+         "age": 51,
+         "education": "大專",
+         "elected": true,
+         "quota": false,
+         "incumbent": true,
+         "votes": 9571,
+         "pct": 24.05
+        },
+        {
+         "no": 3,
+         "name": "楊朝偉",
+         "party": "中國國民黨",
+         "gender": "男",
+         "age": 42,
+         "education": "碩士",
+         "elected": true,
+         "quota": false,
+         "incumbent": true,
+         "votes": 8571,
+         "pct": 21.54
+        },
+        {
+         "no": 5,
+         "name": "黃德隆",
+         "party": "民主進步黨",
+         "gender": "男",
+         "age": 59,
+         "education": "博士",
+         "elected": false,
+         "quota": false,
+         "incumbent": false,
+         "votes": 4476,
+         "pct": 11.25
+        },
+        {
+         "no": 1,
+         "name": "邱伶樺",
+         "party": "無黨籍",
+         "gender": "女",
+         "age": 27,
+         "education": "大專",
+         "elected": false,
+         "quota": false,
+         "incumbent": false,
+         "votes": 2363,
+         "pct": 5.94
+        }
+       ],
+       "last_winner": {
+        "name": "楊朝偉",
+        "party": "中國國民黨",
+        "votes": 8571,
+        "pct": 21.54
+       },
+       "first_loser": {
+        "name": "黃德隆",
+        "party": "民主進步黨",
+        "votes": 4476,
+        "pct": 11.25,
+        "margin": 4095
+       }
+      },
+      {
+       "no": "07",
+       "kind": "area",
+       "name": "第7選舉區",
+       "area": [
+        "中壢市"
+       ],
+       "valid": 141873,
+       "invalid": 2270,
+       "ballots": 144143,
+       "electorate": 263468,
+       "population": 358015,
+       "turnout": 54.71,
+       "seats": 10,
+       "candidate_count": 16,
+       "list": [
+        {
+         "no": 9,
+         "name": "傅淑香",
+         "party": "民主進步黨",
+         "gender": "女",
+         "age": 51,
+         "education": "高中",
+         "elected": true,
+         "quota": false,
+         "incumbent": false,
+         "votes": 13736,
+         "pct": 9.68
+        },
+        {
+         "no": 14,
+         "name": "劉曾玉春",
+         "party": "無黨籍",
+         "gender": "女",
+         "age": 55,
+         "education": "高中",
+         "elected": true,
+         "quota": false,
+         "incumbent": false,
+         "votes": 12820,
+         "pct": 9.04
+        },
+        {
+         "no": 12,
+         "name": "邱奕勝",
+         "party": "中國國民黨",
+         "gender": "男",
+         "age": 49,
+         "education": "高中",
+         "elected": true,
+         "quota": false,
+         "incumbent": true,
+         "votes": 11875,
+         "pct": 8.37
+        },
+        {
+         "no": 4,
+         "name": "徐景文",
+         "party": "民主進步黨",
+         "gender": "男",
+         "age": 47,
+         "education": "碩士",
+         "elected": true,
+         "quota": false,
+         "incumbent": true,
+         "votes": 11539,
+         "pct": 8.13
+        },
+        {
+         "no": 16,
+         "name": "沐平波",
+         "party": "中國國民黨",
+         "gender": "女",
+         "age": 57,
+         "education": "碩士",
+         "elected": true,
+         "quota": false,
+         "incumbent": true,
+         "votes": 11441,
+         "pct": 8.06
+        },
+        {
+         "no": 15,
+         "name": "梁為超",
+         "party": "中國國民黨",
+         "gender": "男",
+         "age": 35,
+         "education": "大專",
+         "elected": true,
+         "quota": false,
+         "incumbent": false,
+         "votes": 10837,
+         "pct": 7.64
+        },
+        {
+         "no": 2,
+         "name": "梁新武",
+         "party": "民主進步黨",
+         "gender": "男",
+         "age": 54,
+         "education": "大專",
+         "elected": true,
+         "quota": false,
+         "incumbent": true,
+         "votes": 10766,
+         "pct": 7.59
+        },
+        {
+         "no": 1,
+         "name": "張運炳",
+         "party": "無黨籍",
+         "gender": "男",
+         "age": 54,
+         "education": "大專",
+         "elected": true,
+         "quota": false,
+         "incumbent": true,
+         "votes": 10510,
+         "pct": 7.41
+        },
+        {
+         "no": 3,
+         "name": "葉明月",
+         "party": "中國國民黨",
+         "gender": "女",
+         "age": 49,
+         "education": "高中",
+         "elected": true,
+         "quota": false,
+         "incumbent": true,
+         "votes": 9160,
+         "pct": 6.46
+        },
+        {
+         "no": 7,
+         "name": "蔣中千",
+         "party": "無黨籍",
+         "gender": "男",
+         "age": 53,
+         "education": "大專",
+         "elected": true,
+         "quota": false,
+         "incumbent": false,
+         "votes": 7460,
+         "pct": 5.26
+        },
+        {
+         "no": 13,
+         "name": "洪奕巔",
+         "party": "中國國民黨",
+         "gender": "男",
+         "age": 57,
+         "education": "大專",
+         "elected": false,
+         "quota": false,
+         "incumbent": true,
+         "votes": 7279,
+         "pct": 5.13
+        },
+        {
+         "no": 8,
+         "name": "王興業",
+         "party": "無黨籍",
+         "gender": "男",
+         "age": 41,
+         "education": "大專",
+         "elected": false,
+         "quota": false,
+         "incumbent": false,
+         "votes": 7132,
+         "pct": 5.03
+        },
+        {
+         "no": 11,
+         "name": "鍾和貴",
+         "party": "中國國民黨",
+         "gender": "男",
+         "age": 54,
+         "education": "高中",
+         "elected": false,
+         "quota": false,
+         "incumbent": false,
+         "votes": 6407,
+         "pct": 4.52
+        },
+        {
+         "no": 5,
+         "name": "陳富豐",
+         "party": "無黨籍",
+         "gender": "男",
+         "age": 53,
+         "education": "高中",
+         "elected": false,
+         "quota": false,
+         "incumbent": false,
+         "votes": 5173,
+         "pct": 3.65
+        },
+        {
+         "no": 6,
+         "name": "蔡勝烘",
+         "party": "中國國民黨",
+         "gender": "男",
+         "age": 47,
+         "education": "碩士",
+         "elected": false,
+         "quota": false,
+         "incumbent": false,
+         "votes": 4684,
+         "pct": 3.3
+        },
+        {
+         "no": 10,
+         "name": "葉連燈",
+         "party": "親民黨",
+         "gender": "男",
+         "age": 57,
+         "education": "其他",
+         "elected": false,
+         "quota": false,
+         "incumbent": false,
+         "votes": 1054,
+         "pct": 0.74
+        }
+       ],
+       "last_winner": {
+        "name": "蔣中千",
+        "party": "無黨籍",
+        "votes": 7460,
+        "pct": 5.26
+       },
+       "first_loser": {
+        "name": "洪奕巔",
+        "party": "中國國民黨",
+        "votes": 7279,
+        "pct": 5.13,
+        "margin": 181
+       }
+      },
+      {
+       "no": "08",
+       "kind": "area",
+       "name": "第8選舉區",
+       "area": [
+        "平鎮市"
+       ],
+       "valid": 73985,
+       "invalid": 1151,
+       "ballots": 75136,
+       "electorate": 145821,
+       "population": 201058,
+       "turnout": 51.53,
+       "seats": 6,
+       "candidate_count": 10,
+       "list": [
+        {
+         "no": 7,
+         "name": "羅文欽",
+         "party": "民主進步黨",
+         "gender": "男",
+         "age": 39,
+         "education": "大專",
+         "elected": true,
+         "quota": false,
+         "incumbent": true,
+         "votes": 11352,
+         "pct": 15.34
+        },
+        {
+         "no": 5,
+         "name": "謝彰文",
+         "party": "中國國民黨",
+         "gender": "女",
+         "age": 51,
+         "education": "碩士",
+         "elected": true,
+         "quota": false,
+         "incumbent": true,
+         "votes": 10032,
+         "pct": 13.56
+        },
+        {
+         "no": 1,
+         "name": "舒翠玲",
+         "party": "中國國民黨",
+         "gender": "女",
+         "age": 45,
+         "education": "碩士",
+         "elected": true,
+         "quota": false,
+         "incumbent": true,
+         "votes": 9088,
+         "pct": 12.28
+        },
+        {
+         "no": 9,
+         "name": "莊玉輝",
+         "party": "無黨籍",
+         "gender": "男",
+         "age": 50,
+         "education": "大專",
+         "elected": true,
+         "quota": false,
+         "incumbent": true,
+         "votes": 8740,
+         "pct": 11.81
+        },
+        {
+         "no": 3,
+         "name": "鄧仁艾",
+         "party": "中國國民黨",
+         "gender": "男",
+         "age": 53,
+         "education": "大專",
+         "elected": true,
+         "quota": false,
+         "incumbent": false,
+         "votes": 7389,
+         "pct": 9.99
+        },
+        {
+         "no": 2,
+         "name": "劉邦鉉",
+         "party": "中國國民黨",
+         "gender": "男",
+         "age": 41,
+         "education": "大專",
+         "elected": true,
+         "quota": false,
+         "incumbent": true,
+         "votes": 6979,
+         "pct": 9.43
+        },
+        {
+         "no": 8,
+         "name": "李月琴",
+         "party": "無黨籍",
+         "gender": "女",
+         "age": 49,
+         "education": "碩士",
+         "elected": false,
+         "quota": false,
+         "incumbent": false,
+         "votes": 6802,
+         "pct": 9.19
+        },
+        {
+         "no": 6,
+         "name": "林德忠",
+         "party": "中國國民黨",
+         "gender": "男",
+         "age": 48,
+         "education": "大專",
+         "elected": false,
+         "quota": false,
+         "incumbent": false,
+         "votes": 5774,
+         "pct": 7.8
+        },
+        {
+         "no": 10,
+         "name": "陳美玉",
+         "party": "無黨籍",
+         "gender": "女",
+         "age": 35,
+         "education": "高中",
+         "elected": false,
+         "quota": false,
+         "incumbent": false,
+         "votes": 3981,
+         "pct": 5.38
+        },
+        {
+         "no": 4,
+         "name": "劉俊儀",
+         "party": "無黨籍",
+         "gender": "男",
+         "age": 38,
+         "education": "博士",
+         "elected": false,
+         "quota": false,
+         "incumbent": true,
+         "votes": 3848,
+         "pct": 5.2
+        }
+       ],
+       "last_winner": {
+        "name": "劉邦鉉",
+        "party": "中國國民黨",
+        "votes": 6979,
+        "pct": 9.43
+       },
+       "first_loser": {
+        "name": "李月琴",
+        "party": "無黨籍",
+        "votes": 6802,
+        "pct": 9.19,
+        "margin": 177
+       }
+      },
+      {
+       "no": "09",
+       "kind": "area",
+       "name": "第9選舉區",
+       "area": [
+        "楊梅鎮"
+       ],
+       "valid": 54859,
+       "invalid": 853,
+       "ballots": 55712,
+       "electorate": 103999,
+       "population": 144630,
+       "turnout": 53.57,
+       "seats": 4,
+       "candidate_count": 6,
+       "list": [
+        {
+         "no": 2,
+         "name": "陳賴素美",
+         "party": "民主進步黨",
+         "gender": "女",
+         "age": 45,
+         "education": "高中",
+         "elected": true,
+         "quota": false,
+         "incumbent": true,
+         "votes": 13078,
+         "pct": 23.84
+        },
+        {
+         "no": 6,
+         "name": "周玉琴",
+         "party": "中國國民黨",
+         "gender": "女",
+         "age": 51,
+         "education": "大專",
+         "elected": true,
+         "quota": false,
+         "incumbent": true,
+         "votes": 12371,
+         "pct": 22.55
+        },
+        {
+         "no": 3,
+         "name": "張火爐",
+         "party": "民主進步黨",
+         "gender": "男",
+         "age": 51,
+         "education": "高中",
+         "elected": true,
+         "quota": false,
+         "incumbent": false,
+         "votes": 11019,
+         "pct": 20.09
+        },
+        {
+         "no": 4,
+         "name": "李家興",
+         "party": "中國國民黨",
+         "gender": "男",
+         "age": 52,
+         "education": "高中",
+         "elected": true,
+         "quota": false,
+         "incumbent": true,
+         "votes": 9692,
+         "pct": 17.67
+        },
+        {
+         "no": 1,
+         "name": "彭盛山",
+         "party": "無黨籍",
+         "gender": "男",
+         "age": 50,
+         "education": "高中",
+         "elected": false,
+         "quota": false,
+         "incumbent": false,
+         "votes": 5893,
+         "pct": 10.74
+        },
+        {
+         "no": 5,
+         "name": "古秀烽",
+         "party": "無黨籍",
+         "gender": "男",
+         "age": 56,
+         "education": "碩士",
+         "elected": false,
+         "quota": false,
+         "incumbent": false,
+         "votes": 2806,
+         "pct": 5.11
+        }
+       ],
+       "last_winner": {
+        "name": "李家興",
+        "party": "中國國民黨",
+        "votes": 9692,
+        "pct": 17.67
+       },
+       "first_loser": {
+        "name": "彭盛山",
+        "party": "無黨籍",
+        "votes": 5893,
+        "pct": 10.74,
+        "margin": 3799
+       }
+      },
+      {
+       "no": "10",
+       "kind": "area",
+       "name": "第10選舉區",
+       "area": [
+        "龍潭鄉"
+       ],
+       "valid": 43884,
+       "invalid": 685,
+       "ballots": 44569,
+       "electorate": 81590,
+       "population": 110947,
+       "turnout": 54.63,
+       "seats": 3,
+       "candidate_count": 4,
+       "list": [
+        {
+         "no": 2,
+         "name": "張肇良",
+         "party": "民主進步黨",
+         "gender": "男",
+         "age": 45,
+         "education": "大專",
+         "elected": true,
+         "quota": false,
+         "incumbent": true,
+         "votes": 15178,
+         "pct": 34.59
+        },
+        {
+         "no": 4,
+         "name": "閻中傑",
+         "party": "中國國民黨",
+         "gender": "男",
+         "age": 53,
+         "education": "大專",
+         "elected": true,
+         "quota": false,
+         "incumbent": true,
+         "votes": 10608,
+         "pct": 24.17
+        },
+        {
+         "no": 1,
+         "name": "魏雪卿",
+         "party": "中國國民黨",
+         "gender": "女",
+         "age": 53,
+         "education": "大專",
+         "elected": true,
+         "quota": false,
+         "incumbent": true,
+         "votes": 10088,
+         "pct": 22.99
+        },
+        {
+         "no": 3,
+         "name": "徐玉樹",
+         "party": "無黨籍",
+         "gender": "男",
+         "age": 45,
+         "education": "大專",
+         "elected": false,
+         "quota": false,
+         "incumbent": false,
+         "votes": 8010,
+         "pct": 18.25
+        }
+       ],
+       "last_winner": {
+        "name": "魏雪卿",
+        "party": "中國國民黨",
+        "votes": 10088,
+        "pct": 22.99
+       },
+       "first_loser": {
+        "name": "徐玉樹",
+        "party": "無黨籍",
+        "votes": 8010,
+        "pct": 18.25,
+        "margin": 2078
+       }
+      },
+      {
+       "no": "11",
+       "kind": "area",
+       "name": "第11選舉區",
+       "area": [
+        "新屋鄉"
+       ],
+       "valid": 23802,
+       "invalid": 517,
+       "ballots": 24319,
+       "electorate": 36717,
+       "population": 48999,
+       "turnout": 66.23,
+       "seats": 1,
+       "candidate_count": 3,
+       "list": [
+        {
+         "no": 2,
+         "name": "邱佳亮",
+         "party": "無黨籍",
+         "gender": "男",
+         "age": 41,
+         "education": "大專",
+         "elected": true,
+         "quota": false,
+         "incumbent": false,
+         "votes": 9367,
+         "pct": 39.35
+        },
+        {
+         "no": 3,
+         "name": "許國楣",
+         "party": "無黨籍",
+         "gender": "男",
+         "age": 50,
+         "education": "大專",
+         "elected": false,
+         "quota": false,
+         "incumbent": false,
+         "votes": 8912,
+         "pct": 37.44
+        },
+        {
+         "no": 1,
+         "name": "謝浩來",
+         "party": "無黨籍",
+         "gender": "男",
+         "age": 50,
+         "education": "高中",
+         "elected": false,
+         "quota": false,
+         "incumbent": false,
+         "votes": 5523,
+         "pct": 23.2
+        }
+       ],
+       "last_winner": {
+        "name": "邱佳亮",
+        "party": "無黨籍",
+        "votes": 9367,
+        "pct": 39.35
+       },
+       "first_loser": {
+        "name": "許國楣",
+        "party": "無黨籍",
+        "votes": 8912,
+        "pct": 37.44,
+        "margin": 455
+       }
+      },
+      {
+       "no": "12",
+       "kind": "area",
+       "name": "第12選舉區",
+       "area": [
+        "觀音鄉"
+       ],
+       "valid": 26131,
+       "invalid": 513,
+       "ballots": 26644,
+       "electorate": 43275,
+       "population": 59590,
+       "turnout": 61.57,
+       "seats": 2,
+       "candidate_count": 3,
+       "list": [
+        {
+         "no": 2,
+         "name": "吳宗憲",
+         "party": "中國國民黨",
+         "gender": "男",
+         "age": 50,
+         "education": "高中",
+         "elected": true,
+         "quota": false,
+         "incumbent": true,
+         "votes": 10199,
+         "pct": 39.03
+        },
+        {
+         "no": 3,
+         "name": "郭蔡美英",
+         "party": "民主進步黨",
+         "gender": "女",
+         "age": 56,
+         "education": "高中",
+         "elected": true,
+         "quota": false,
+         "incumbent": false,
+         "votes": 8762,
+         "pct": 33.53
+        },
+        {
+         "no": 1,
+         "name": "莊阿松",
+         "party": "無黨籍",
+         "gender": "男",
+         "age": 61,
+         "education": "其他",
+         "elected": false,
+         "quota": false,
+         "incumbent": false,
+         "votes": 7170,
+         "pct": 27.44
+        }
+       ],
+       "last_winner": {
+        "name": "郭蔡美英",
+        "party": "民主進步黨",
+        "votes": 8762,
+        "pct": 33.53
+       },
+       "first_loser": {
+        "name": "莊阿松",
+        "party": "無黨籍",
+        "votes": 7170,
+        "pct": 27.44,
+        "margin": 1592
+       }
+      },
+      {
+       "no": "13",
+       "kind": "plain",
+       "name": "平地原住民選舉區",
+       "area": [],
+       "valid": 8743,
+       "invalid": 169,
+       "ballots": 8912,
+       "electorate": 19250,
+       "population": 31388,
+       "turnout": 46.3,
+       "seats": 3,
+       "candidate_count": 5,
+       "list": [
+        {
+         "no": 1,
+         "name": "陳泰宇",
+         "party": "無黨籍",
+         "gender": "男",
+         "age": 52,
+         "education": "其他",
+         "elected": true,
+         "quota": false,
+         "incumbent": false,
+         "votes": 2076,
+         "pct": 23.74
+        },
+        {
+         "no": 4,
+         "name": "吳春芳",
+         "party": "中國國民黨",
+         "gender": "女",
+         "age": 52,
+         "education": "大專",
+         "elected": true,
+         "quota": false,
+         "incumbent": true,
+         "votes": 2005,
+         "pct": 22.93
+        },
+        {
+         "no": 3,
+         "name": "洪國治",
+         "party": "中國國民黨",
+         "gender": "男",
+         "age": 47,
+         "education": "碩士",
+         "elected": true,
+         "quota": false,
+         "incumbent": true,
+         "votes": 1851,
+         "pct": 21.17
+        },
+        {
+         "no": 2,
+         "name": "楊進福",
+         "party": "中國國民黨",
+         "gender": "男",
+         "age": 52,
+         "education": "大專",
+         "elected": false,
+         "quota": false,
+         "incumbent": false,
+         "votes": 1680,
+         "pct": 19.22
+        },
+        {
+         "no": 5,
+         "name": "林志強",
+         "party": "無黨籍",
+         "gender": "男",
+         "age": 35,
+         "education": "其他",
+         "elected": false,
+         "quota": false,
+         "incumbent": false,
+         "votes": 1131,
+         "pct": 12.94
+        }
+       ],
+       "last_winner": {
+        "name": "洪國治",
+        "party": "中國國民黨",
+        "votes": 1851,
+        "pct": 21.17
+       },
+       "first_loser": {
+        "name": "楊進福",
+        "party": "中國國民黨",
+        "votes": 1680,
+        "pct": 19.22,
+        "margin": 171
+       }
+      },
+      {
+       "no": "14",
+       "kind": "mountain",
+       "name": "山地原住民選舉區",
+       "area": [],
+       "valid": 7228,
+       "invalid": 184,
+       "ballots": 7412,
+       "electorate": 15282,
+       "population": 26010,
+       "turnout": 48.5,
+       "seats": 1,
+       "candidate_count": 3,
+       "list": [
+        {
+         "no": 1,
+         "name": "陳瑛",
+         "party": "中國國民黨",
+         "gender": "女",
+         "age": 42,
+         "education": "大專",
+         "elected": true,
+         "quota": false,
+         "incumbent": false,
+         "votes": 2766,
+         "pct": 38.27
+        },
+        {
+         "no": 3,
+         "name": "蘇志強",
+         "party": "中國國民黨",
+         "gender": "男",
+         "age": 43,
+         "education": "碩士",
+         "elected": false,
+         "quota": false,
+         "incumbent": false,
+         "votes": 2445,
+         "pct": 33.83
+        },
+        {
+         "no": 2,
+         "name": "張廷晟",
+         "party": "無黨籍",
+         "gender": "男",
+         "age": 66,
+         "education": "高中",
+         "elected": false,
+         "quota": false,
+         "incumbent": true,
+         "votes": 2017,
+         "pct": 27.91
+        }
+       ],
+       "last_winner": {
+        "name": "陳瑛",
+        "party": "中國國民黨",
+        "votes": 2766,
+        "pct": 38.27
+       },
+       "first_loser": {
+        "name": "蘇志強",
+        "party": "中國國民黨",
+        "votes": 2445,
+        "pct": 33.83,
+        "margin": 321
+       }
+      }
+     ],
+     "parties": [
+      {
+       "party": "中國國民黨",
+       "seats": 30,
+       "votes": 327531,
+       "candidates": 41,
+       "pct": 43.24,
+       "seat_pct": 50
+      },
+      {
+       "party": "民主進步黨",
+       "seats": 17,
+       "votes": 212324,
+       "candidates": 19,
+       "pct": 28.03,
+       "seat_pct": 28.33
+      },
+      {
+       "party": "無黨籍",
+       "seats": 13,
+       "votes": 216425,
+       "candidates": 37,
+       "pct": 28.57,
+       "seat_pct": 21.67
+      },
+      {
+       "party": "親民黨",
+       "seats": 0,
+       "votes": 1054,
+       "candidates": 1,
+       "pct": 0.14,
+       "seat_pct": 0
+      },
+      {
+       "party": "台灣國民黨",
+       "seats": 0,
+       "votes": 208,
+       "candidates": 1,
+       "pct": 0.03,
+       "seat_pct": 0
+      }
+     ],
+     "valid": 757542,
+     "stats": {
+      "candidates": 99,
+      "top": {
+       "no": 2,
+       "name": "張肇良",
+       "party": "民主進步黨",
+       "gender": "男",
+       "age": 45,
+       "education": "大專",
+       "elected": true,
+       "quota": false,
+       "incumbent": true,
+       "votes": 15178,
+       "pct": 34.59,
+       "district": "第10選舉區"
+      },
+      "lowest_winner": {
+       "no": 3,
+       "name": "洪國治",
+       "party": "中國國民黨",
+       "gender": "男",
+       "age": 47,
+       "education": "碩士",
+       "elected": true,
+       "quota": false,
+       "incumbent": true,
+       "votes": 1851,
+       "pct": 21.17
+      },
+      "highest_loser": {
+       "no": 3,
+       "name": "許國楣",
+       "party": "無黨籍",
+       "gender": "男",
+       "age": 50,
+       "education": "大專",
+       "elected": false,
+       "quota": false,
+       "incumbent": false,
+       "votes": 8912,
+       "pct": 37.44
+      },
+      "area_electorate": 1397759,
+      "area_turnout": 53.97
+     },
+     "body": "桃園縣議會",
      "compare": null
     }
    ]
@@ -28133,6 +30258,7 @@
       "area_electorate": 2239866,
       "area_turnout": 60.21
      },
+     "body": "臺中市議會",
      "compare": {
       "year": 2018,
       "label": "第3屆",
@@ -30753,6 +32879,7 @@
       "area_electorate": 2183237,
       "area_turnout": 67.58
      },
+     "body": "臺中市議會",
      "compare": {
       "year": 2014,
       "label": "第2屆",
@@ -33091,6 +35218,7 @@
       "area_electorate": 2064231,
       "area_turnout": 72.09
      },
+     "body": "臺中市議會",
      "compare": {
       "year": 2010,
       "label": "第1屆",
@@ -35686,6 +37814,7 @@
       "area_electorate": 1953742,
       "area_turnout": 73.26
      },
+     "body": "臺中市議會",
      "compare": null
     }
    ]
@@ -37662,6 +39791,7 @@
       "area_electorate": 1537261,
       "area_turnout": 58.79
      },
+     "body": "臺南市議會",
      "compare": {
       "year": 2018,
       "label": "第3屆",
@@ -39902,6 +42032,7 @@
       "area_electorate": 1536857,
       "area_turnout": 64.09
      },
+     "body": "臺南市議會",
      "compare": {
       "year": 2014,
       "label": "第2屆",
@@ -41958,6 +44089,7 @@
       "area_electorate": 1502665,
       "area_turnout": 66
      },
+     "body": "臺南市議會",
      "compare": {
       "year": 2010,
       "label": "第1屆",
@@ -44540,6 +46672,7 @@
       "area_electorate": 1459320,
       "area_turnout": 71.1
      },
+     "body": "臺南市議會",
      "compare": null
     }
    ]
@@ -46869,6 +49002,7 @@
       "area_electorate": 2247530,
       "area_turnout": 58.73
      },
+     "body": "高雄市議會",
      "compare": {
       "year": 2018,
       "label": "第3屆",
@@ -49424,6 +51558,7 @@
       "area_electorate": 2249166,
       "area_turnout": 73.55
      },
+     "body": "高雄市議會",
      "compare": {
       "year": 2014,
       "label": "第2屆",
@@ -51887,6 +54022,7 @@
       "area_electorate": 2199771,
       "area_turnout": 66.57
      },
+     "body": "高雄市議會",
      "compare": {
       "year": 2010,
       "label": "第1屆",
@@ -54469,6 +56605,7 @@
       "area_electorate": 2138910,
       "area_turnout": 72.63
      },
+     "body": "高雄市議會",
      "compare": null
     }
    ]

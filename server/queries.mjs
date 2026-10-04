@@ -1039,7 +1039,7 @@ const staticDatasetDefs = () => [
     key: 'council',
     label: '議員選舉結果',
     load: loadCouncilStats,
-    // 筆數＝各縣市屆次加總（目前六都共 23 屆，桃園 2014 才升格只有 3 屆）；資料截止取最新一屆的投票日
+    // 筆數＝各縣市屆次加總（目前六都共 24 屆：桃園 2014 才升格、另有升格前的 2009 桃園縣議員）；資料截止取最新一屆的投票日
     count: (d) => d.counties?.reduce((sum, c) => sum + c.terms.length, 0) ?? 0,
     asOf: (d) => d.counties?.[0]?.terms?.[0]?.date ?? null,
     stale: false,

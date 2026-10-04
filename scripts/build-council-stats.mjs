@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * 產生「議員」分頁用的靜態資料 server/council-stats.json：直轄市議員選舉結果。
+ * 產生「議員」分頁用的靜態資料 server/council-stats.json：直轄市議員選舉結果，
+ * 外加桃園升格前的 2009 年桃園縣議員（縣市議員目錄）。
  *
  * 這些資料幾年到一次，不放進每日同步流程，需要更新時手動重跑（同 county-stats.json 的做法）：
  *
@@ -8,10 +9,8 @@
  *   node scripts/build-council-stats.mjs            # 預設做 COUNTY_META 裡的所有縣市（目前六都）
  *   node scripts/build-council-stats.mjs --county 臺北市   # 只做指定縣市（可重複 --county）
  *
- * 來源：中選會選舉資料庫（kiang/db.cec.gov.tw 轉存）。只涵蓋直轄市議員；縣市議員在另一個目錄，
- * 尚未納入（見 README「資料限制」）。
- *
- * 目前納入 2010／2014／2018／2022 四次選舉（桃園市 2014 才升格，只有後三次）。
+ * 來源：中選會選舉資料庫（kiang/db.cec.gov.tw 轉存）。主體是直轄市議員（2010／2014／2018／2022）；
+ * 縣市議員在另一個目錄，目前只納入桃園升格前的那一屆（2009 桃園縣議員，見 COUNTY_META 的 桃園市）。
  * 各縣市的屆次編號與席次不同，見下方 COUNTY_META。
  */
 import { readFileSync, renameSync, writeFileSync } from 'node:fs';
@@ -53,7 +52,9 @@ const PROF_FIELDS = (year) => (year === 2022 ? { candidates: 13, seats: 16 } : {
  * - 新北市：四屆皆 66 席（區域 62、平地原住民 3、山地原住民 1）。維基百科「新北市議會第四屆議員列表」。
  * - 臺北市：第 11 屆（2010）62 席、第 12／13 屆（2014／2018）63 席、第 14 屆（2022）起 61 席。
  *   維基百科「臺北市議員列表」的政黨席次變化表。
- * - 桃園市：第 1 屆（2014）60 席、第 2／3 屆（2018／2022）63 席。維基百科「桃園市議會」歷史章。
+ * - 桃園市：升格前的第 17 屆（2009，桃園縣議員）60 席；第 1 屆（2014）60 席、第 2／3 屆（2018／2022）63 席。
+ *   維基百科「桃園市議會」歷史章與「桃園縣議會」；2009 那一屆的 60 席另外逐選舉區對過中選會 elprof
+ *   （區域 56＋平地原住民 3＋山地原住民 1，12＋1＋1 個選舉區）。
  * - 臺中市：第 1／2 屆 63 席、第 3／4 屆 65 席。維基百科「臺中市議會」歷屆議員席次。
  * - 臺南市：四屆皆 57 席。維基百科「臺南市議員列表」（第 1／2／3 屆各 57 席）
  *   與 2022 年報導「台南市議員 106 人搶 57 席」。
@@ -82,10 +83,18 @@ export const COUNTY_META = {
       2022: { area: 59, plain: 1, mountain: 1 },
     },
   },
-  // 桃園 2014 才升格（2010 還是桃園縣），所以只有三屆
+  // 桃園 2014 年底才升格。2010–2014 那一任是**桃園縣議會第 17 屆**（2009-12-05 選出，60 席），
+  // 來源在「縣市議員」目錄而不是直轄市議員目錄，縣市名也還是「桃園縣」，所以那一屆寫成物件
+  // （屆次編號沿用桃園縣自己的第 17 屆，標籤與議會名都照實寫，不要讓它看起來像直轄市的一屆）。
   桃園市: {
-    terms: { 2014: 1, 2018: 2, 2022: 3 },
+    terms: {
+      2009: { no: 17, source: '桃園縣', label: '桃園縣第17屆', body: '桃園縣議會' },
+      2014: 1,
+      2018: 2,
+      2022: 3,
+    },
     seats: {
+      2009: { area: 56, plain: 3, mountain: 1 },
       2014: { area: 55, plain: 3, mountain: 2 },
       2018: { area: 56, plain: 4, mountain: 3 },
       2022: { area: 56, plain: 4, mountain: 3 },
@@ -133,6 +142,14 @@ const rows = (file) =>
 /** 臺／台 混用是各年檔案的老問題，統一成「臺」 */
 const fixName = (name) => String(name ?? '').replace(/^台/, '臺');
 
+/**
+ * 一列資料屬於哪個縣市。直轄市議員的檔案第一欄就是縣市代碼（`63` 臺北市），
+ * **2009 縣市議員的檔案前面多一層「省市別」**（`03` 臺灣省／`04` 福建省），縣市在第二欄
+ * （`03`＋`003`＝桃園縣），所以取前兩個欄位。取錯的話篩出來的會是整個「臺灣省」的 16 個縣市加在一起，
+ * 席次與得票都會看起來很合理卻是錯的，所以這一層由 `ELECTIONS[].countyFields` 明確指定。
+ */
+const countyKey = (election, r) => r.slice(0, election.countyFields ?? 1).join('/');
+
 const round2 = (n) => Math.round(n * 100) / 100;
 /**
  * 姓名比對用的鍵：原住民姓名的分隔符號各屆寫法不一，一律去掉。
@@ -144,6 +161,7 @@ const round2 = (n) => Math.round(n * 100) / 100;
 const NAME_ALIASES = [
   [/姗/g, '姍'], // 新北市 戴瑋姗（2018 寫「戴瑋姍」）
   [/鎭/g, '鎮'], // 臺南市 林慶鎭（2010 寫「林慶鎮」，同選舉區、2014 現任欄位 Y）
+  [/\u{28D92}/gu, '閻'], // 桃園市 龍潭 閻中傑：2009 桃園縣議員檔寫成異體字「𨶒」（U+28D92），2014 起寫「閻」
   [/Istanba/g, 'Istanda'], // 高雄市 柯路加 Istanba／Istanda Ciban 的族語名羅馬拼音
 ];
 const nameKey = (name) => NAME_ALIASES.reduce((key, [pattern, to]) => key.replace(pattern, to), String(name).replace(/[\s‧·・．.]/g, ''));
@@ -157,13 +175,17 @@ const hasPua = (name) => PUA.test(name);
  * 其中一個含私用區字元時，把那些位置當成萬用字元，其餘字元必須完全相同。
  * （實測 2014 高雄市的「周鍾㴴」被寫成「周鍾」＋U+E003，2010 檔則是 U+3D34；
  *   不能直接把 U+E003 對到某個字，因為 2022 新北市的另一個候選人用了同一個字元。）
+ *
+ * 逐字比較一律用 `[...key]`（依字碼點切）而不是 `key[i]`：**基本平面以外的字是代理對**
+ * （UTF-16 佔兩個單位），用索引比會讓「𨶒中傑」這種名字的長度與別人不同而永遠對不上 ——
+ * 實測桃園 2009 的「𨶒中傑」（U+28D92）就是這樣躲過字形差異檢查的。
  */
 function sameName(a, b) {
-  const x = nameKey(a);
-  const y = nameKey(b);
-  if (x === y) return true;
+  const x = [...nameKey(a)];
+  const y = [...nameKey(b)];
+  if (x.join('') === y.join('')) return true;
   if (x.length !== y.length) return false;
-  const withPua = hasPua(x) ? x : hasPua(y) ? y : null;
+  const withPua = x.some((ch) => PUA.test(ch)) ? x : y.some((ch) => PUA.test(ch)) ? y : null;
   if (!withPua) return false;
   const other = withPua === x ? y : x;
   for (let i = 0; i < withPua.length; i += 1) {
@@ -176,10 +198,10 @@ function sameName(a, b) {
 function variantSuspects(prevWinners, currentNames) {
   const out = [];
   for (const name of prevWinners) {
-    const key = nameKey(name);
+    const key = [...nameKey(name)];
     if (key.length < 2 || currentNames.some((other) => sameName(other, name))) continue;
     for (const other of currentNames) {
-      const otherKey = nameKey(other);
+      const otherKey = [...nameKey(other)];
       if (otherKey.length !== key.length) continue;
       let diff = 0;
       for (let i = 0; i < key.length && diff <= 1; i += 1) if (key[i] !== otherKey[i]) diff += 1;
@@ -203,15 +225,22 @@ function makePartyLookup(parties, missing) {
 }
 
 /** 讀一組中選會 el* 原始檔 */
-function loadElection(dir) {
+function loadElection(dir, election) {
   const files = new Map(FILES.map((prefix) => [prefix, join(dir, `${prefix}.csv`)]));
+  const base = rows(files.get('elbase'));
   return {
-    names: new Map(rows(files.get('elbase')).map((r) => [r.slice(0, 5).join(''), fixName(r[5])])),
+    // 縣市代碼 → 名稱。只取「縣市層級」的列（選舉區／鄉鎮／村里都是 0）：
+    // 村里層級的列同名會把縣市那一列蓋掉，所以不能整份放進來。
+    names: new Map(
+      base
+        .filter((r) => Number(r[2]) === 0 && Number(r[3]) === 0 && Number(r[4]) === 0)
+        .map((r) => [countyKey(election, r), fixName(r[5])]),
+    ),
     parties: new Map(rows(files.get('elpaty')).map((r) => [r[0], r[1]])),
     cands: rows(files.get('elcand')),
     totals: rows(files.get('elctks')).filter((r) => Number(r[3]) === 0 && Number(r[4]) === 0 && Number(r[5]) === 0),
     prof: rows(files.get('elprof')).filter((r) => Number(r[3]) === 0 && Number(r[4]) === 0 && Number(r[5]) === 0),
-    base: rows(files.get('elbase')),
+    base,
   };
 }
 
@@ -231,11 +260,11 @@ const profStats = (r) => ({
  * 注意：`elctks` 的選區合計列帶著候選人的選區別，2010–2018 的原住民選舉區編在 11／12，
  * 2022 因為新北市區域選區由 10 個分成 11 個而變成 12／13 —— 一律以檔內的號碼為準，不寫死。
  */
-function buildKind(data, countyCode, countyName, kind, districtNumbers, year) {
-  const fields = PROF_FIELDS(year);
+function buildKind(data, countyCode, countyName, kind, districtNumbers, election) {
+  const fields = PROF_FIELDS(election.year);
   const { names, cands, totals, prof } = data;
-  // 這幾個檔包含所有直轄市，key 一定要帶縣市代碼：只用「選區#號次」會讓不同縣市的同號候選人互相蓋掉
-  const mine = (r) => r[0] === countyCode;
+  // 這幾個檔包含所有縣市，key 一定要帶縣市代碼：只用「選區#號次」會讓不同縣市的同號候選人互相蓋掉
+  const mine = (r) => countyKey(election, r) === countyCode;
   const cityTotals = totals.filter(mine);
   const cityProf = prof.filter(mine);
   const byNo = new Map(cityTotals.map((r) => [`${r[2]}#${Number(r[6])}`, { votes: Number(r[7]), pct: Number(r[8]), elected: ELECTED_MARKS.has(r[9]) }]));
@@ -317,16 +346,22 @@ function buildKind(data, countyCode, countyName, kind, districtNumbers, year) {
   return { kind, label: KIND_LABEL[kind], seats, districts, ...(kindTotals ?? {}), candidate_count: candidates.length };
 }
 
+/**
+ * 一個縣市在一屆選舉的完整結果。
+ *
+ * `countyName` 是**來源檔裡的縣市名**，不一定等於現在的名字：桃園 2009 那一屆在檔案裡是「桃園縣」，
+ * 但資料掛在「桃園市」底下（見 buildCounty 的 meta.terms）。
+ */
 function build(yearDir, election, countyName, termNo) {
   const kinds = {};
   for (const [kind, dir] of Object.entries(election.dirs)) {
-    const data = loadElection(join(yearDir, kind));
-    const countyCode = [...data.names].find(([, name]) => name === countyName)?.[0].slice(0, 2);
+    const data = loadElection(join(yearDir, kind), election);
+    const countyCode = [...data.names].find(([, name]) => name === countyName)?.[0];
     if (!countyCode) throw new Error(`${election.year} ${kind}：找不到縣市「${countyName}」`);
     data.partyOf = makePartyLookup(data.parties, build.missingParties);
     // 候選人的選區別就是這份檔案的選舉區；不要自己假設 01..N
-    const numbers = new Set(data.cands.filter((r) => r[0] === countyCode).map((r) => r[2]));
-    kinds[kind] = buildKind(data, countyCode, countyName, kind, numbers, election.year);
+    const numbers = new Set(data.cands.filter((r) => countyKey(election, r) === countyCode).map((r) => r[2]));
+    kinds[kind] = buildKind(data, countyCode, countyName, kind, numbers, election);
   }
   const districts = Object.values(kinds).flatMap((k) => k.districts);
   const all = districts.flatMap((d) => d.list);
@@ -387,8 +422,9 @@ function duplicateNames(terms) {
 /**
  * 與前一屆比較：政黨席次消長、現任連任／落馬、新人當選。
  *
- * 「現任」優先用中選會 elcand 的現任欄位（2014 起才有），2010 那一屆整欄都是 N，
- * 只能退回「前一屆的當選名單」。兩者不一致時一律採用中選會欄位並留下警告 ——
+ * 「現任」優先用中選會 elcand 的現任欄位，但**整欄都是 N 時**（2010 那一屆、桃園市 2014）
+ * 那個欄位等於沒有資訊，只能退回「前一屆的當選名單」比對（見下面 hasFlag 的說明）。
+ * 有可用的中選會欄位時，兩者不一致一律採用中選會欄位並留下警告 ——
  * 姓名的字形差異會讓比對失準，實測 2018 的「戴瑋姍」在 2022 的檔案裡寫成「戴瑋姗」，
  * 用姓名比對會把她算成新任，而她其實是連任（還換了選區）。
  */
@@ -412,7 +448,11 @@ function compare(term, prev) {
     .sort((a, b) => b.seats - a.seats || b.votes - a.votes);
   const winners = term.districts.flatMap((d) => d.list.filter((c) => c.elected).map((c) => ({ ...c, district: d.name, kind: d.kind })));
   const all = term.districts.flatMap((d) => d.list.map((c) => ({ ...c, district: d.name, kind: d.kind })));
-  const hasFlag = all.some((c) => c.incumbent !== null);
+  // 「現任」欄位只有在**真的有人被標成 Y** 時才算可用。整欄都是 N 的情形實測有兩處：
+  // 2010 那一屆（五都）與桃園市 2014（升格後第一屆 —— 中選會的紀錄裡大家都還不是「桃園市議員」）。
+  // 只看「欄位存不存在」（`c.incumbent !== null`）會把這兩屆讀成「連任 0 人、新任 60 人」，
+  // 而桃園 2014 的當選人裡有一大半是 2009 的桃園縣議員 —— 那是看起來很合理的錯數字，一定要退回姓名比對。
+  const hasFlag = all.some((c) => c.incumbent === true);
   const wasIncumbent = (c) => (hasFlag ? c.incumbent === true : Boolean(wasWinner(c.name)));
   // 兩個方法不一致時採用中選會欄位，並把差異數記下來（D63：先記錄、不強修）。
   // 不一致有正常理由：遞補當選、補選、換選區，所以不是錯誤，只是要讓人看得見認定依據。
@@ -436,16 +476,25 @@ function compare(term, prev) {
   };
 }
 
-/** 一個縣市的完整資料：四屆的結果與跨屆比較 */
+/** 一個縣市的完整資料：各屆的結果與跨屆比較 */
 function buildCounty(countyName) {
   const meta = COUNTY_META[countyName];
   if (!meta) throw new Error(`沒有「${countyName}」的屆次與席次設定，請先在 COUNTY_META 補上再重跑`);
   const terms = [];
   for (const election of [...ELECTIONS].sort((a, b) => b.year - a.year)) {
-    // 該縣市那一年還沒有議員選舉（例如桃園 2010 還是桃園縣）就跳過，不要當成錯誤
-    const termNo = meta.terms[election.year];
-    if (!termNo) continue;
-    terms.push(build(join(args.cache, String(election.year)), election, countyName, termNo));
+    const spec = meta.terms[election.year];
+    // 該縣市那一年還沒有議員選舉（例如新北市 2009、桃園 2010）就跳過，不要當成錯誤
+    if (!spec) continue;
+    // 屆次通常是單純的數字；升格前那一屆要另外指定來源縣市名、屆次標籤與議會名（桃園 2009 桃園縣第 17 屆）
+    const { no, source, label, body } = typeof spec === 'number' ? { no: spec } : spec;
+    const term = build(join(args.cache, String(election.year)), election, source ?? countyName, no);
+    terms.push({
+      ...term,
+      label: label ?? `第${no}屆`,
+      // 議會名：桃園市議員是「桃園市議會」，但 2009 那一屆是「桃園縣議會」——
+      // 頁面上要看得出來哪一屆不是現在的議會，不然會把桃園縣議員的數字當成桃園市議員的。
+      body: body ?? `${countyName}議會`,
+    });
   }
   // 席次是這個功能的骨幹，錯了整個分析都會歪 —— 直接擋下來
   for (const t of terms) {
@@ -457,9 +506,21 @@ function buildCounty(countyName) {
     const total = Object.values(expected).reduce((a, b) => a + b, 0);
     if (t.seats !== total) throw new Error(`${countyName} ${t.year} 總席次 ${t.seats}，預期 ${total}`);
   }
-  const withCompare = terms.map((t) => ({ ...t, compare: compare(t, terms.find((p) => p.year === t.year - 4) ?? null) }));
+  // 前一屆＝清單裡的下一筆（terms 已由新到舊）。**不要用「同一年減 4」**：
+  // 桃園升格前那一屆是 2009（任期 2010–2014），減 4 會找不到，2014 與 2009 之間就沒有比較了。
+  const withCompare = terms.map((t, i) => ({ ...t, compare: compare(t, terms[i + 1] ?? null) }));
   return { county: countyName, terms: withCompare, duplicates: duplicateNames(terms) };
 }
+
+/**
+ * 出貨前要換成標準字形的字。和 `NAME_ALIASES` 的差別是：這裡的字**確定是同一個字的不同寫法**，
+ * 換掉不損失資訊，只是為了讓畫面顯示得出來。目前只有一個 ——
+ * 桃園 2009 的「𨶒」（U+28D92，基本平面以外；多數字型沒有這個字，瀏覽器只會畫一個空白框）。
+ * 它與「閻」是同一個人已用三項證據確認：同一個選舉區（第10選區 龍潭）、同黨籍（國民黨）、
+ * 同得票數（10,608），而且外部來源（選舉黃頁）也寫成「閻中傑」。跨屆比對另外由 `NAME_ALIASES`
+ * 處理，兩者互不影響。
+ */
+const DISPLAY_ALIASES = [[/\u{28D92}/gu, '閻']];
 
 /**
  * 來源檔的姓名有兩個含私用區字元（PUA，編碼缺陷）：2014 高雄市「周鍾㴴」寫成「周鍾」＋U+E003、
@@ -472,9 +533,11 @@ function buildCounty(countyName) {
 function sanitizeNames(payload) {
   const affected = new Set();
   const fix = (value, where) => {
-    if (typeof value !== 'string' || !hasPua(value)) return value;
-    affected.add(`${where}：${value.replace(PUA, '□')}（來源檔含私用區字元）`);
-    return value.replace(new RegExp(PUA.source, 'g'), '□');
+    if (typeof value !== 'string') return value;
+    const out = DISPLAY_ALIASES.reduce((name, [pattern, to]) => name.replace(pattern, to), value);
+    if (!hasPua(out)) return out;
+    affected.add(`${where}：${out.replace(PUA, '□')}（來源檔含私用區字元）`);
+    return out.replace(new RegExp(PUA.source, 'g'), '□');
   };
   const fixList = (list, where) => {
     for (const c of list ?? []) if (c?.name) c.name = fix(c.name, where);
@@ -508,7 +571,7 @@ function main() {
   const payload = {
     built_at: new Date().toISOString(),
     source: { label: '中選會選舉資料庫（kiang/db.cec.gov.tw 轉存）', url: 'https://github.com/kiang/db.cec.gov.tw' },
-    note: '直轄市議員選舉。屆次編號各縣市不同（新北市 2010 升格後為第 1 屆，臺北市同一年是第 11 屆）。區域議員選舉人數不含原住民選舉人（原住民另有選舉區）。',
+    note: '直轄市議員選舉；桃園另有升格前的 2009 年桃園縣議員（桃園縣議會第 17 屆，2014 年底才升格）。屆次編號各縣市不同（新北市 2010 升格後為第 1 屆，臺北市同一年是第 11 屆，桃園縣 2009 是第 17 屆）。區域議員選舉人數不含原住民選舉人（原住民另有選舉區）。',
     counties: built.map(({ county, terms }) => ({ county, terms })),
     warnings: built.flatMap(({ county, duplicates }) => duplicates.map((d) => `${county} 同屆同名不同選區：${d}`)),
   };
