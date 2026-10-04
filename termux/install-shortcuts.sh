@@ -14,5 +14,6 @@ make() { # 名稱 腳本
 
 make "立委觀測站" launch.sh
 make "更新立委觀測站" update.sh
+make "回補新聞" backfill.sh
 
 echo "完成。到桌面長按 → 小工具 → Termux:Widget，把捷徑拖到桌面。"
