@@ -1044,7 +1044,11 @@ let currentCouncilorsCache = null;
 export function currentCouncilors() {
   if (currentCouncilorsCache) return currentCouncilorsCache;
   const stats = loadCouncilStats();
-  const { links = {}, extra = [] } = loadCouncilFacebook();
+  const { links = {}, extra = [], unmatched = [] } = loadCouncilFacebook();
+  // 已被遞補的當選人：粉專對照表沒有他的列（unmatched），而同一選區列了遞補／補選的人（extra）。
+  // 例：「新北市 第5選區 黃俊哲」沒有列、同區有「石一佑（現任（遞補））」→ 黃俊哲已不在議會
+  const replacedDistricts = new Set(extra.filter((line) => /遞補|補選/.test(line)).map((line) => line.split(' ').slice(0, 2).join(' ')));
+  const replaced = new Set(unmatched.filter((line) => replacedDistricts.has(line.split(' ').slice(0, 2).join(' '))));
   const out = [];
   for (const c of stats.counties) {
     const term = c.terms[0];
@@ -1054,6 +1058,7 @@ export function currentCouncilors() {
         const id = `${c.county}|${Number(d.no)}|${p.name}`;
         const hit = links[id];
         if (hit && COUNCIL_DEPARTED.test(hit.status)) continue;
+        if (!hit && replaced.has(`${c.county} 第${Number(d.no)}選區 ${p.name}`)) continue;
         out.push({ id, name: p.name, county: c.county, district: d.name, party: p.party, facebook: hit?.url ?? null, status: hit?.status ?? null });
       }
     }

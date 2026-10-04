@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { openDb, applyDataset, applyBills, applySocial, applyCommitteeRecords, applyCommitteeMeets, upsertNews, upsertArticles, pruneNews, pruneLogs, getMeta, setMeta, migrate } from '../server/db.mjs';
-import { buildDataset, normalizeBills, normalizeCommitteeRecords, normalizeMeetings, normalizeSocial, normalizeCouncilSocial, newsName, rocDate, DataValidationError } from '../server/normalize.mjs';
+import { buildDataset, normalizeBills, normalizeCommitteeRecords, normalizeMeetings, normalizeSocial, normalizeCouncilSocial, sheetDate, newsName, rocDate, DataValidationError } from '../server/normalize.mjs';
 import { CONFIG } from '../server/config.mjs';
 import { entityFeedUrl, guardShrink, runIngest, runBillsIngest, runRecordsIngest, runBudgetIngest, runBudgetReportsIngest, runMeetingsIngest, budgetPageUrl, runNewsIngest, runOutletNews, runOutletPoll, retagOutletArticles, runNewsBackfill, backfillTargets, rangeFeedUrl, BACKFILL_CAP, runNewsFeedImport, runCouncilNews, runCouncilSocialIngest, runSocialIngest, runAll } from '../server/ingest.mjs';
 import { entityNewsTerms, listFunds, getHealth, listBills, listBudget, listBudgetMeetings, listBudgetReports, budgetState, listChanges, listCounties, listLegislatorVotes, listRankings, compareLegislators, listRegions, listSplitTicket, listDemographics, listPopulationTrend, getTownMap, listLegislators, listNews, listNewsArticles, newsCsv, listCouncilActivity, currentCouncilors, socialFreshness, listSyncRuns } from '../server/queries.mjs';
@@ -1731,6 +1731,7 @@ test('議員名單：最新一屆當選人扣掉轉任立委／病逝／解職�
   const all = currentCouncilors();
   assert.ok(all.length > 350 && all.length < 380, `六都現任議員約 360 多位，實際 ${all.length}`);
   assert.ok(all.some((c) => c.id === '新北市|5|石一佑' && c.status.includes('遞補')), '遞補者有列');
+  assert.ok(!all.some((c) => c.id === '新北市|5|黃俊哲'), '被遞補的原當選人不算現任');
   assert.equal(new Set(all.map((c) => c.id)).size, all.length, 'id 不重複');
 });
 
@@ -1923,7 +1924,8 @@ test('議員臉書整理表：照規格解析；縣市＋姓名比對（同名�
     edit: (rows) =>
       rows.map((r) => {
         if (r[2] === '秦慧珠') return [...r.slice(0, 6), '2026-10-04', '關心北市交通'];
-        if (r[2] === '許淑華') return ['台北市', r[1], r[2], r[3], r[4], r[5], '2026/10/4', '日期格式錯'];
+        if (r[2] === '許淑華') return ['台北市', r[1], r[2], r[3], r[4], r[5], '10月4日', '日期格式錯'];
+        if (r[2] === '侯漢廷') return [...r.slice(0, 6), '2026/10/4', 'Google 試算表自動轉成的日期'];
         return r;
       }),
   });
@@ -1934,6 +1936,12 @@ test('議員臉書整理表：照規格解析；縣市＋姓名比對（同名�
   const xu = rows.find((r) => r.councilor_id === '臺北市|3|許淑華');
   assert.ok(xu, '「台北市」也對得到');
   assert.equal(xu.latest_post_date, '', '日期格式不對當空白');
+  assert.equal(rows.find((r) => r.councilor_id.endsWith('|侯漢廷')).latest_post_date, '2026-10-04', '2026/10/4 統一成 YYYY-MM-DD');
+  // 原住民議員：中選會姓名含族語拼音，整理表只寫漢名也要對得到
+  const indigenous = currentCouncilors().find((c) => /[A-Za-z]/.test(c.name));
+  const han = indigenous.name.replace(/[^\u4e00-\u9fff].*$/, '');
+  const onlyHan = normalizeCouncilSocial(councilSheet({ edit: (rs) => rs.map((r) => (r[2] === indigenous.name ? [r[0], r[1], han, ...r.slice(3)] : r)) }), currentCouncilors());
+  assert.ok(onlyHan.rows.some((r) => r.councilor_id === indigenous.id), `${han} 要對到 ${indigenous.name}`);
   assert.throws(() => normalizeCouncilSocial('直轄市,姓名\n臺北市,某', currentCouncilors()), /缺少欄位：選區、Facebook 粉專網址/);
   assert.throws(() => normalizeCouncilSocial(councilSheet({ edit: (r) => r.slice(0, 150) }), currentCouncilors()), /筆數異常/);
   assert.throws(() => normalizeCouncilSocial(councilSheet({ edit: (r) => r.map((x, i) => (i < 60 ? [x[0], x[1], `不存在${i}`, ...x.slice(3)] : x)) }), currentCouncilors()), /對不到現任議員/);
@@ -1968,4 +1976,11 @@ test('議員臉書整理表同步：沒設網址就跳過；成功時覆寫並�
   } finally {
     CONFIG.social.councilUrl = url;
   }
+});
+
+test('整理表日期：YYYY-MM-DD 為準，也接受 Google 試算表自動轉成的 2026/10/5；其他寫法當空白', () => {
+  assert.equal(sheetDate('2026-10-05'), '2026-10-05');
+  assert.equal(sheetDate('2026/10/5'), '2026-10-05');
+  assert.equal(sheetDate(' 2026.1.9 '), '2026-01-09');
+  for (const bad of ['10月5日', '2026/13/1', '2026/10', '', null, '昨天']) assert.equal(sheetDate(bad), '', String(bad));
 });

@@ -659,6 +659,18 @@ export function parseNewsRss(xml, { name, match, source: defaultSource = '' } = 
   return items;
 }
 
+/**
+ * 整理表的日期：標準是 YYYY-MM-DD，但 Google 試算表常把它自動轉成日期、匯出成 2026/10/5，
+ * 所以 `/`、`.`、`-` 分隔、月日不補零的都接受，統一成 YYYY-MM-DD；其他寫法（10月5日、只有月日）當空白。
+ */
+export function sheetDate(value) {
+  const m = /^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/.exec(String(value ?? '').trim());
+  if (!m) return '';
+  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  if (mo < 1 || mo > 12 || d < 1 || d > 31) return '';
+  return `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+}
+
 /** RFC 4180 CSV（含引號、跳脫引號、欄位內換行）。ponytail: 資料來源只有這一份試算表，不引入 CSV 套件。 */
 export function parseCsv(text) {
   const rows = [];
@@ -686,13 +698,20 @@ export function parseCsv(text) {
 /**
  * 議員臉書整理表（docs/social-sheet-spec.md「議員分頁」）→ [{ councilor_id, url, status, latest_post_date, latest_post_summary }]。
  * councilors 是現任議員名單（queries.mjs currentCouncilors，id＝「縣市|選區號|姓名」）。
- * 比對：同縣市、姓名相同（去括號、統一異體字）；同縣市同名才用「第N選區」的 N 分辨。
+ * 比對：同縣市、姓名開頭的漢字相同（去括號、統一異體字、族語拼音不比）；同縣市同名才用「第N選區」的 N 分辨。
  * fail closed：缺必要欄位、少於 200 列、對不到議員的列超過 10% → 整份拒收（網站保留上一版）。
  */
 const COUNCIL_SOCIAL_COLUMNS = { county: '直轄市', district: '選區', name: '姓名', url: 'Facebook 粉專網址' };
 const COUNCIL_SOCIAL_OPTIONAL = { status: '現任狀態', latestDate: '最新貼文日期', summary: '最新貼文主題摘要' };
 const NAME_VARIANT = { 杰: '傑', 姗: '姍', 啓: '啟', 釆: '采', 椿: '樁', 黄: '黃' };
-const councilNameKey = (s) => String(s ?? '').replace(/[(（].*?[)）]/g, '').replace(/\s+/g, '').replace(/./g, (ch) => NAME_VARIANT[ch] ?? ch);
+// 只取開頭的漢字：中選會登記的原住民議員姓名含族語拼音（「宋雨蓁 Nikar．Falong」），整理表通常只寫漢名
+//（同 scripts/build-council-facebook.mjs 的 norm）；括號註記先拿掉，異體字統一
+const councilNameKey = (s) =>
+  String(s ?? '')
+    .replace(/[(（].*?[)）]/g, '')
+    .trim()
+    .replace(/[^\u4e00-\u9fff].*$/, '')
+    .replace(/./g, (ch) => NAME_VARIANT[ch] ?? ch);
 
 export function normalizeCouncilSocial(csvText, councilors) {
   const [header = [], ...rows] = parseCsv(csvText);
@@ -724,12 +743,12 @@ export function normalizeCouncilSocial(csvText, councilors) {
     }
     const url = cell(row, col.url);
     if (!/^https:\/\/(www\.|m\.)?facebook\.com\//.test(url)) continue; // 只收臉書網址，擋掉空白與誤貼
-    const date = cell(row, opt.latestDate);
+    const date = sheetDate(cell(row, opt.latestDate));
     out.set(hits[0].id, {
       councilor_id: hits[0].id,
       url,
       status: cell(row, opt.status) || null,
-      latest_post_date: /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : '',
+      latest_post_date: date,
       latest_post_summary: cell(row, opt.summary),
     });
   }
@@ -777,24 +796,24 @@ export function normalizeSocial(csvText, legislatorIdByNewsName, { overrides = [
     }
     const threadsUrl = (row[threadsCol.url] ?? '').trim();
     if (SOCIAL_URL_PATTERNS.threads.test(threadsUrl)) {
-      const threadsDate = (row[threadsCol.latestDate] ?? '').trim();
+      const threadsDate = sheetDate(row[threadsCol.latestDate]);
       accounts.push({
         legislator_id: legislatorId,
         platform: 'threads',
         page_name: '',
         url: threadsUrl,
-        latest_post_date: /^\d{4}-\d{2}-\d{2}$/.test(threadsDate) ? threadsDate : '',
+        latest_post_date: threadsDate,
         latest_post_summary: (row[threadsCol.summary] ?? '').trim(),
       });
     }
     if (!/^https:\/\/(www\.|m\.)?facebook\.com\//.test(url)) continue; // 只收臉書網址，擋掉空白與誤貼
-    const date = (row[col.latestDate] ?? '').trim();
+    const date = sheetDate(row[col.latestDate]);
     accounts.push({
       legislator_id: legislatorId,
       platform: 'facebook',
       page_name: (row[col.pageName] ?? '').trim(),
       url,
-      latest_post_date: /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : '',
+      latest_post_date: date,
       latest_post_summary: (row[col.summary] ?? '').trim(),
     });
   }
