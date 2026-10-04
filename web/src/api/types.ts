@@ -427,6 +427,8 @@ export interface NewsArticle {
   title: string;
   source: string;
   published_at: string;
+  /** 只有 scope=all 才有：提到的現任直轄市議員 */
+  councilors?: CouncilorBrief[];
   /** 只有 scope=agencies 才有：標題提到的中央機關 */
   agencies?: string[];
   /** 只有 scope=all 才有：這則被分派到哪些類別（都沒有＝只在原始新聞庫裡的「其他」新聞） */
@@ -436,7 +438,7 @@ export interface NewsArticle {
 }
 
 /** 全部新聞的類別：委員、機關首長、基金／機關、主計總處、地方主計處 */
-export type NewsKind = 'legislator' | 'official' | 'entity' | 'dgbas' | 'local_accounting';
+export type NewsKind = 'legislator' | 'official' | 'entity' | 'dgbas' | 'local_accounting' | 'councilor';
 
 export interface NewsArticlesResponse {
   meta: Meta & { news_fetched_at: string | null; news_outlets_fetched_at?: string | null };

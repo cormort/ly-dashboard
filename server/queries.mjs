@@ -1055,6 +1055,39 @@ export function ambiguousCouncilorNames(db) {
 }
 
 /**
+ * 全部新聞裡提到現任議員的報導（議員近期動態與全部新聞的「議員」類別共用）。規則見 listCouncilActivity 上方說明；
+ * 每日同步／回補對議員查的 Google 新聞（topic 'councilor:<id>'）直接算在該議員名下。
+ * 結果掛在全部新聞的快取上（entry.councilGroups 陣列＋entry.councilByGroup 對照），資料沒變就不重算。
+ */
+function ensureCouncilGroups(db, entry) {
+  if (entry.councilGroups) return entry;
+  const all = currentCouncilors();
+  const byName = new Map();
+  for (const c of all) if (!c.name.includes('□')) (byName.get(c.name) ?? byName.set(c.name, []).get(c.name)).push(c);
+  const re = new RegExp([...byName.keys()].sort((a, b) => b.length - a.length).map(escapeRe).join('|'), 'g');
+  const ambiguous = ambiguousCouncilorNames(db);
+  const byId = new Map(all.map((c) => [c.id, c]));
+  entry.councilGroups = [];
+  entry.councilByGroup = new Map();
+  for (const g of entry.groups) {
+    const names = new Set(
+      [...g.title.matchAll(re)]
+        .filter((m) => !OTHER_OFFICE_BEFORE.test(g.title.slice(0, m.index)))
+        .map((m) => m[0])
+        .filter((n) => (n.length > 2 && !ambiguous.has(n)) || g.title.includes('議員')),
+    );
+    const matched = new Map([...names].flatMap((n) => byName.get(n)).map((c) => [c.id, c]));
+    for (const id of g.councilorIds ?? []) if (byId.has(id)) matched.set(id, byId.get(id));
+    if (matched.size) {
+      const councilors = [...matched.values()];
+      entry.councilGroups.push({ group: g, councilors });
+      entry.councilByGroup.set(g, councilors);
+    }
+  }
+  return entry;
+}
+
+/**
  * 議員近期動態（議員頁「近期動態」）：全部新聞（allNewsGroups）裡，標題提到現任議員的報導。
  * 比對規則同委員新聞：標題含姓名；兩個字的名字另需標題含「議員」（沒有查詢條件把關，「黃仁」這種會撞到一般用語）。
  * 姓名前面緊接著別的職稱（「南投縣長許淑華」「立委某某」）不算；議員和縣市長、在職立委、部會首長同名時
@@ -1070,26 +1103,7 @@ export function listCouncilActivity(db, { county = '', councilor = '', q = '', s
   const counties = [...new Set(all.map((c) => c.county))];
   const wantedCounty = counties.includes(fixCountyName(county)) ? fixCountyName(county) : '';
   const entry = allNewsGroups(db);
-  if (!entry.councilGroups) {
-    const byName = new Map();
-    for (const c of all) if (!c.name.includes('□')) (byName.get(c.name) ?? byName.set(c.name, []).get(c.name)).push(c);
-    const re = new RegExp([...byName.keys()].sort((a, b) => b.length - a.length).map(escapeRe).join('|'), 'g');
-    const ambiguous = ambiguousCouncilorNames(db);
-    const byId = new Map(all.map((c) => [c.id, c]));
-    entry.councilGroups = [];
-    for (const g of entry.groups) {
-      const names = new Set(
-        [...g.title.matchAll(re)]
-          .filter((m) => !OTHER_OFFICE_BEFORE.test(g.title.slice(0, m.index)))
-          .map((m) => m[0])
-          .filter((n) => (n.length > 2 && !ambiguous.has(n)) || g.title.includes('議員')),
-      );
-      // 每日同步對議員逐位查的 Google 新聞（topic 'councilor:<id>'）直接算在該議員名下：查詢已帶縣市與「議員」，同名也不會誤標
-      const matched = new Map([...names].flatMap((n) => byName.get(n)).map((c) => [c.id, c]));
-      for (const id of g.councilorIds ?? []) if (byId.has(id)) matched.set(id, byId.get(id));
-      if (matched.size) entry.councilGroups.push({ group: g, councilors: [...matched.values()] });
-    }
-  }
+  ensureCouncilGroups(db, entry);
   const inCounty = (c) => !wantedCounty || c.county === wantedCounty;
   const perCouncilor = new Map();
   const scoped = [];
@@ -1509,7 +1523,7 @@ export function listNewsArticles(db, { q = '', source = '', legislator = '', sco
 }
 
 /** 全部新聞的類別：由「這則新聞被分派到哪裡」推出（news → 委員、topic_news 的 topic → 其餘） */
-export const NEWS_KINDS = ['legislator', 'official', 'entity', 'dgbas', 'local_accounting'];
+export const NEWS_KINDS = ['legislator', 'official', 'entity', 'dgbas', 'local_accounting', 'councilor'];
 /**
  * 主計新聞（topic 'dgbas'）再依標題分兩類，規則同主計總處專頁（dgbasOf）：提到主計總處／主計長 → dgbas，
  * 縣市政府主計處 → local_accounting；只說「主計」的（主計局、泛稱）不歸類（沒有別的類別就是「其他」）。
@@ -1617,7 +1631,10 @@ function listAgencyNewsArticles(db, { keyword, source, agency, limit, offset }) 
 
 function listAllNewsArticles(db, { keyword, source, kind, limit, offset }) {
   const words = keyword.split(/\s+/).filter(Boolean);
-  const { groups, first, last } = allNewsGroups(db);
+  const entry = ensureCouncilGroups(db, allNewsGroups(db));
+  const { first, last } = entry;
+  // 議員類別：提到現任議員的（標記結果在快取上，不改快取裡的 kinds，每次查詢另外組）
+  const groups = entry.groups.map((g) => (entry.councilByGroup.has(g) ? { ...g, kinds: [...g.kinds, 'councilor'], councilors: entry.councilByGroup.get(g) } : g));
   const searched = words.length ? groups.filter((a) => words.every((w) => a.text.includes(w))) : groups;
   const kindCounts = { all: searched.length, other: 0, ...Object.fromEntries(NEWS_KINDS.map((k) => [k, 0])) };
   for (const a of searched) {
@@ -1640,7 +1657,10 @@ function listAllNewsArticles(db, { keyword, source, kind, limit, offset }) {
     kind_counts: kindCounts,
     sources: [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 30).map(([name, count]) => ({ name, count })),
     // 摘要只拿來搜尋，不回傳（text 是內部用的搜尋字串）
-    items: matching.slice(offset, offset + limit).map(({ text: _text, councilorIds: _ids, ...item }) => item),
+    items: matching.slice(offset, offset + limit).map(({ text: _text, councilorIds: _ids, councilors, ...item }) => ({
+      ...item,
+      ...(councilors ? { councilors: councilors.map(({ id, name, county, district, party }) => ({ id, name, county, district, party })) } : {}),
+    })),
   };
 }
 
@@ -2157,7 +2177,7 @@ export function compareLegislators(db, { ids = '' } = {}) {
 /** RFC 4180：含逗號、引號、換行的欄位加引號，引號重複 */
 export const csvRow = (cells) => cells.map((c) => (/[",\n\r]/.test(String(c ?? '')) ? `"${String(c).replace(/"/g, '""')}"` : String(c ?? ''))).join(',');
 
-const NEWS_KIND_LABEL = { legislator: '委員', official: '首長', entity: '機關／基金', dgbas: '主計總處', local_accounting: '地方主計' };
+const NEWS_KIND_LABEL = { legislator: '委員', official: '首長', entity: '機關／基金', dgbas: '主計總處', local_accounting: '地方主計', councilor: '議員' };
 const SCOPE_KIND_LABEL = { legislators: '委員', officials: '首長', agencies: '機關' };
 
 /**
@@ -2168,12 +2188,12 @@ const SCOPE_KIND_LABEL = { legislators: '委員', officials: '首長', agencies:
 export function newsCsv(items, scope = 'legislators') {
   // 機關新聞多一欄「提到的機關」
   const agencies = scope === 'agencies';
-  const header = ['發布時間', '媒體', '標題', '類別', ...(agencies ? ['提到的機關'] : []), '提到的委員／首長', '連結'];
+  const header = ['發布時間', '媒體', '標題', '類別', ...(agencies ? ['提到的機關'] : []), '提到的委員／首長／議員', '連結'];
   const taipei = (iso) => new Date(Date.parse(iso) + 8 * 3_600_000).toISOString().slice(0, 16).replace('T', ' ');
   const kindOf = (a) => (scope === 'all' ? (a.kinds?.length ? a.kinds.map((k) => NEWS_KIND_LABEL[k]).join('、') : '其他') : SCOPE_KIND_LABEL[scope] ?? '');
-  const lines = items.map((a) =>
-    csvRow([taipei(a.published_at), a.source, a.title, kindOf(a), ...(agencies ? [(a.agencies ?? []).join('、')] : []), a.legislators.map((p) => p.name).join('、'), a.url]),
-  );
+  // 提到的人：委員／首長，加上議員（標縣市，例如「臺北市議員秦慧珠」）
+  const people = (a) => [...a.legislators.map((p) => p.name), ...(a.councilors ?? []).map((c) => `${c.county}議員${c.name}`)].join('、');
+  const lines = items.map((a) => csvRow([taipei(a.published_at), a.source, a.title, kindOf(a), ...(agencies ? [(a.agencies ?? []).join('、')] : []), people(a), a.url]));
   return [csvRow(header), ...lines].join('\r\n');
 }
 

@@ -5,6 +5,7 @@ import type { LegislatorsResponse, NewsArticlesResponse, NewsKind } from '../api
 import { EmptyState, ErrorState, LoadingState } from '../components/DataStates';
 import { useApi } from '../hooks/useApi';
 import { pathFor } from '../hooks/useRoute';
+import { RouteLink } from '../components/RouteLink';
 import { formatDateTime } from '../lib/format';
 import { partyStyle } from '../lib/parties';
 
@@ -13,6 +14,8 @@ export interface NewsPageProps {
   onOpenId: (id: string) => void;
   /** officials＝機關首長新聞（server/officials.json）、agencies＝機關新聞（標題提到中央機關）、all＝全部新聞（四類合併、不限期間），預設看委員新聞 */
   scope?: 'legislators' | 'officials' | 'agencies' | 'all';
+  /** 站內導覽（點議員名字到議員近期動態）；沒給就整頁跳轉 */
+  onNavigate?: (href: string) => void;
 }
 
 const PAGE = 30;
@@ -38,13 +41,14 @@ const KINDS: { key: NewsKind | 'all' | 'other'; label: string }[] = [
   { key: 'entity', label: '機關／基金' },
   { key: 'dgbas', label: '主計總處' },
   { key: 'local_accounting', label: '地方主計' },
+  { key: 'councilor', label: '議員' },
   { key: 'other', label: '其他' },
 ];
 /** 每則新聞旁的類別標示：委員與首長已經列出人名，只標沒有人名的兩類 */
 const KIND_TAG: Partial<Record<NewsKind, string>> = { entity: '機關／基金', dgbas: '主計總處', local_accounting: '地方主計' };
 
 /** 新聞：所有委員的新聞合併成一份（同一篇只列一次），可依關鍵字與媒體篩選，並看各媒體的報導量。 */
-export function NewsPage({ refreshToken, onOpenId, scope = 'legislators' }: NewsPageProps) {
+export function NewsPage({ refreshToken, onOpenId, scope = 'legislators', onNavigate = (href) => window.location.assign(href) }: NewsPageProps) {
   const officials = scope === 'officials';
   const everything = scope === 'all';
   const agencies = scope === 'agencies';
@@ -189,6 +193,13 @@ export function NewsPage({ refreshToken, onOpenId, scope = 'legislators' }: News
                     <button type="button" className="link-button" onClick={() => change({ source: a.source })}>
                       {a.source}
                     </button>
+                    {/* 提到的議員：點了到議員近期動態，只看這位議員 */}
+                    {(a.councilors ?? []).map((c) => (
+                      <RouteLink key={c.id} href={pathFor('councilactivity', { councilor: c.id })} onNavigate={onNavigate} className="name-button" title={`${c.county}${c.district}議員`} style={{ color: partyStyle(c.party).color }}>
+                        {c.county.slice(0, 2)}
+                        {c.name}
+                      </RouteLink>
+                    ))}
                     {a.legislators.map((l) =>
                       l.kind === 'official' ? (
                         <span key={l.id} className="muted" title={l.party}>

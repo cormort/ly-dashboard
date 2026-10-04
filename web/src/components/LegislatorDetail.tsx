@@ -1,5 +1,5 @@
 import { Portrait } from './Portrait';
-import { useEffect, useId, useRef, type CSSProperties, type KeyboardEvent } from 'react';
+import { useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
 import { ExternalLink, GitCompareArrows, MapPin, Star, X } from 'lucide-react';
 import type { Legislator, SourceInfo } from '../api/types';
 import { useEscapeKey } from '../hooks/useEscapeKey';
@@ -9,6 +9,7 @@ import { LegislatorBills } from './LegislatorBills';
 import { LegislatorCosponsors } from './LegislatorCosponsors';
 import { LegislatorElectionHistory } from './LegislatorElectionHistory';
 import { LegislatorNews } from './LegislatorNews';
+import { FacebookEmbed } from './FacebookEmbed';
 
 export interface LegislatorDetailProps {
   legislator: Legislator;
@@ -39,6 +40,8 @@ export function LegislatorDetail({
   const panelRef = useRef<HTMLElement | null>(null);
   const closeRef = useRef<HTMLButtonElement | null>(null);
   const titleId = useId();
+  // 正在看貼文的臉書帳號（一次只開一個嵌入框）
+  const [openPosts, setOpenPosts] = useState<string | null>(null);
 
   useEscapeKey(true, onClose);
 
@@ -167,6 +170,13 @@ export function LegislatorDetail({
                       {account.latest_post_summary ? `：${account.latest_post_summary}` : ''}
                     </small>
                   ) : null}
+                  {/* 臉書可以直接看最近的貼文（官方嵌入框，點了才載入）；Threads 沒有官方嵌入框 */}
+                  {account.platform === 'facebook' ? (
+                    <button type="button" className="link-button" aria-expanded={openPosts === account.url} onClick={() => setOpenPosts(openPosts === account.url ? null : account.url)}>
+                      {openPosts === account.url ? '收起貼文' : '看貼文'}
+                    </button>
+                  ) : null}
+                  {account.platform === 'facebook' && openPosts === account.url ? <FacebookEmbed url={account.url} name={legislator.name} /> : null}
                 </li>
               ))}
             </ul>

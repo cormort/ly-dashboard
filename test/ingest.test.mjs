@@ -1303,7 +1303,7 @@ test('全部新聞：搜得到沒提到任何人的新聞、關鍵字也比對�
 
   const all = listNewsArticles(db, { scope: 'all' });
   assert.equal(all.total, 2, '颱風那則沒提到任何人也在');
-  assert.deepEqual(all.kind_counts, { all: 2, other: 1, legislator: 1, official: 0, entity: 0, dgbas: 0, local_accounting: 0 });
+  assert.deepEqual(all.kind_counts, { all: 2, other: 1, legislator: 1, official: 0, entity: 0, dgbas: 0, local_accounting: 0, councilor: 0 });
   assert.ok(all.items.every((a) => !('summary' in a) && !('text' in a)), '摘要只拿來搜尋，不回傳');
 
   const budget = listNewsArticles(db, { scope: 'all', q: '預算' });
@@ -1554,7 +1554,7 @@ test('新聞 CSV：全部符合的都匯出（不分頁）、臺灣時間、類�
   const all = listNewsArticles(db, { scope: 'all', all: true });
   assert.equal(all.items.length, 36, 'all：不受每頁 100 筆上限影響');
   const rows = newsCsv(all.items, 'all').split('\r\n');
-  assert.equal(rows[0], '發布時間,媒體,標題,類別,提到的委員／首長,連結');
+  assert.equal(rows[0], '發布時間,媒體,標題,類別,提到的委員／首長／議員,連結');
   assert.equal(rows.length, 37);
   const name = listLegislators(db, { q: '丁學忠' }).items[0].name;
   assert.equal(rows[1], `2026-09-30 00:30,中央社,"丁學忠質詢, ""國防""預算",委員,${name},https://cna.example/t`, '臺灣時間、逗號與引號要跳脫');
@@ -1595,7 +1595,7 @@ test('機關新聞：只列標題提到中央機關的（含委員新聞與「�
   assert.equal(listNewsArticles(db, { scope: 'agencies', q: '物價' }).total, 1);
 
   const rows = newsCsv(listNewsArticles(db, { scope: 'agencies', all: true }).items, 'agencies').split('\r\n');
-  assert.equal(rows[0], '發布時間,媒體,標題,類別,提到的機關,提到的委員／首長,連結');
+  assert.equal(rows[0], '發布時間,媒體,標題,類別,提到的機關,提到的委員／首長／議員,連結');
   assert.ok(rows[3].includes(',機關,交通部、衛生福利部,'));
 });
 
@@ -1849,4 +1849,34 @@ test('回補：直轄市議員排在最後；已做完前面各組的進度，�
   assert.equal(result.stopped, null);
   assert.ok(asked.every((q) => q.endsWith('議員')), '只查議員');
   assert.equal(asked.length, (targets.length - firstCouncilor) * 6, '每位議員 6 個月');
+});
+
+test('全部新聞「議員」類別：Google 議員查詢與標題提到議員的都算；附上議員；CSV 類別寫議員', () => {
+  const db = seeded();
+  const at = (d) => `2026-09-${d}T08:00:00.000Z`;
+  upsertArticles(
+    db,
+    [
+      { url: 'https://n/1', title: '秦慧珠質詢北市預算', source: '自由時報', published_at: at(29) }, // 標題比對
+      { url: 'https://g/2', title: '北市許淑華談台語', source: '民視', published_at: at(28) }, // 只有 Google 議員查詢記在她名下
+      { url: 'https://n/3', title: '颱風明天登陸', source: '中央社', published_at: at(27) },
+    ],
+    { origin: 'outlet', fetchedAt: 'x' },
+  );
+  db.prepare("INSERT INTO topic_news(topic, url, title, source, published_at, fetched_at, title_key) VALUES('councilor:臺北市|3|許淑華', 'https://g/2', '北市許淑華談台語', '民視', ?, 'x', '北市許淑華談台語')").run(at(28));
+  const all = listNewsArticles(db, { scope: 'all' });
+  assert.equal(all.kind_counts.councilor, 2);
+  assert.equal(all.kind_counts.other, 1, '議員新聞不再算進「其他」');
+  const councilor = listNewsArticles(db, { scope: 'all', kind: 'councilor' });
+  assert.deepEqual(
+    councilor.items.map((i) => [i.title, i.kinds, i.councilors.map((c) => `${c.county}${c.name}`)]),
+    [
+      ['秦慧珠質詢北市預算', ['councilor'], ['臺北市秦慧珠']],
+      ['北市許淑華談台語', ['councilor'], ['臺北市許淑華']],
+    ],
+  );
+  const rows = newsCsv(listNewsArticles(db, { scope: 'all', kind: 'councilor', all: true }).items, 'all').split('\r\n');
+  assert.ok(rows[1].includes(',議員,臺北市議員秦慧珠,'), rows[1]);
+  // 快取裡的資料沒有被改到：再查一次結果一樣
+  assert.equal(listNewsArticles(db, { scope: 'all' }).kind_counts.councilor, 2);
 });

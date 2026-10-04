@@ -472,9 +472,9 @@ Query 參數（全部可選）：
   加上 Google 新聞的結果與四類分派表（`news`、`topic_news`）。不限期間（資料庫保存的都在內）；同一則以**標題去掉空白**合併（不同來源可能是不同網址）。
   - `q`：比對標題**與摘要**（媒體 RSS 的 description／summary；摘要只拿來搜尋，**不回傳**），空白分隔、**全部**符合才列出。不支援 `legislator`。
   - `kind`：`legislator`（委員）、`official`（首長）、`entity`（基金／機關）、`dgbas`（主計總處：標題提到主計總處／主計長）、
-    `local_accounting`（地方主計：縣市政府主計處）、`other`（沒歸到任何類別；只說「主計」的如主計局也在這裡），省略或未知值＝全部。
-  - 另回 `first_date`／`last_date`（資料庫裡最早／最新一則，不受篩選影響）、`kind_counts`（`{ all, other, legislator, official, entity, dgbas, local_accounting }`，套用 `q` 之後、`kind` 與 `source` 之前），
-    `meta.news_outlets_fetched_at`（媒體 RSS 最近一次抓到的時間，每小時輪詢）。`items[].kinds` 是這則的類別，`items[].legislators` 每人多一個 `kind: 'legislator'|'official'`。
+    `local_accounting`（地方主計：縣市政府主計處）、`councilor`（議員：同 `/council/activity` 的規則，含每日／回補的議員 Google 查詢）、`other`（沒歸到任何類別；只說「主計」的如主計局也在這裡），省略或未知值＝全部。
+  - 另回 `first_date`／`last_date`（資料庫裡最早／最新一則，不受篩選影響）、`kind_counts`（`{ all, other, legislator, official, entity, dgbas, local_accounting, councilor }`，套用 `q` 之後、`kind` 與 `source` 之前），
+    `meta.news_outlets_fetched_at`（媒體 RSS 最近一次抓到的時間，每小時輪詢）。`items[].kinds` 是這則的類別，`items[].councilors` 是提到的議員（`{ id, name, county, district, party }`），`items[].legislators` 每人多一個 `kind: 'legislator'|'official'`。
   - `sources` 在 `kind` 之後、`source` 之前統計。
 - `scope=agencies`（新聞頁「機關新聞」`/news/agencies`）：`scope=all` 的全部新聞裡，標題提到**中央機關**（fund-config 的 agencies，同「機關」頁的定義；
   基金、財團法人、行政法人不算）的報導。`items[].agencies` 是提到的機關（簡稱對到全名，例如「主計總處」→「行政院主計總處」）；

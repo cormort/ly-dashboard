@@ -169,7 +169,7 @@ export default function App() {
         {route === 'committees' ? <CommitteesPage refreshToken={refreshToken} onOpenId={setPendingId} /> : null}
         {route === 'news' ? <NewsPage refreshToken={refreshToken} onOpenId={setPendingId} /> : null}
         {route === 'agencynews' ? <NewsPage scope="agencies" refreshToken={refreshToken} onOpenId={setPendingId} /> : null}
-        {route === 'allnews' ? <NewsPage scope="all" refreshToken={refreshToken} onOpenId={setPendingId} /> : null}
+        {route === 'allnews' ? <NewsPage scope="all" refreshToken={refreshToken} onOpenId={setPendingId} onNavigate={navigate} /> : null}
         {route === 'officials' ? <NewsPage scope="officials" refreshToken={refreshToken} onOpenId={setPendingId} /> : null}
         {route === 'compare' ? <ComparePage refreshToken={refreshToken} onOpenId={setPendingId} onNavigate={navigate} /> : null}        {route === 'rankings' ? <RankingsPage refreshToken={refreshToken} onOpenId={setPendingId} onNavigate={navigate} /> : null}
       </AppShell>

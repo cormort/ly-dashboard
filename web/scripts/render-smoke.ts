@@ -715,6 +715,7 @@ const detailHtml = render(
     },
   ),
 );
+check('詳情側欄：臉書帳號旁有「看貼文」（官方嵌入框點了才載入，預設不載入）', detailHtml.includes('看貼文') && !detailHtml.includes('facebook.com/plugins/page.php'));
 expectAll('詳情側欄有 dialog 語意、學經歷、會期與來源連結', detailHtml, [
   'role="dialog"',
   'aria-modal="true"',

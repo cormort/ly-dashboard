@@ -7,20 +7,13 @@ import { useApi } from '../hooks/useApi';
 import { useParam } from '../hooks/useParam';
 import { formatDateTime } from '../lib/format';
 import { partyStyle } from '../lib/parties';
+import { FacebookEmbed } from '../components/FacebookEmbed';
 
 export interface CouncilActivityPageProps {
   refreshToken: number;
 }
 
 const PAGE = 30;
-
-/**
- * Facebook 官方的粉專嵌入框（Page Plugin）：不需要 API 金鑰、不違反條款，直接顯示粉專最近的貼文。
- * 只對「粉絲專頁」有效；`profile.php?id=` 的個人檔案顯示不出來（只能點連結）。
- * 點了才載入：一次載入幾十個嵌入框會很慢，而且每一個都會讓瀏覽器連到 Facebook。
- */
-const pluginUrl = (page: string) =>
-  `https://www.facebook.com/plugins/page.php?${new URLSearchParams({ href: page, tabs: 'timeline', width: '340', height: '520', small_header: 'true', hide_cover: 'true', adapt_container_width: 'true' })}`;
 
 function FacebookRow({ c, open, onToggle }: { c: Councilor; open: boolean; onToggle: () => void }) {
   return (
@@ -48,17 +41,7 @@ function FacebookRow({ c, open, onToggle }: { c: Councilor; open: boolean; onTog
           <small className="muted">（沒有粉專資料）</small>
         )}
       </div>
-      {open && c.facebook ? (
-        <iframe
-          className="council-fb-embed"
-          title={`${c.name} 的 Facebook 貼文`}
-          src={pluginUrl(c.facebook)}
-          width={340}
-          height={520}
-          loading="lazy"
-          allow="encrypted-media"
-        />
-      ) : null}
+      {open && c.facebook ? <FacebookEmbed url={c.facebook} name={c.name} /> : null}
     </li>
   );
 }
