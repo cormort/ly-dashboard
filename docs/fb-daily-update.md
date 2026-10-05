@@ -49,9 +49,54 @@ node scripts/fetch-fb-posts.mjs --write-sheet --key service_account.json
 前置需求：`npm i -D playwright-core`（用系統安裝的 Chrome，不會下載瀏覽器）。
 需要 `playwright` 而不是 `playwright-core` 只有一個情況：你想用 Playwright 自己下載的 Chromium。
 
-## 三、排程：DSH 內建排程的真實行為
+### 沒有畫面時怎麼登入：從已登入的瀏覽器匯入 cookies
 
-目前這一輪是設在 **DSH 應用程式內的排程**（不是 Windows 工作排程器），內容是
+`--login` 要開**有畫面**的瀏覽器，在只能遠端／無螢幕的機器上跑不到。替代做法是把任何一個
+**已經登入 Facebook 的瀏覽器**的 cookies 匯進排程用的設定檔：
+
+```bash
+# 1) 從已登入 facebook.com 的瀏覽器匯出 cookies 成 JSON（ego-browser 之類有 CDP 的瀏覽器）：
+#      const ck = await page.cdp('Network.getCookies', { urls: ['https://www.facebook.com'] });
+#      fs.writeFileSync('/tmp/fb-cookies.json', JSON.stringify(ck.cookies));
+#    瀏覽器擴充套件（Cookie-Editor／EditThisCookie）的 JSON 匯出也可以。
+# 2) 匯入設定檔（會當場開一次 facebook.com 驗「腳本會不會判定為已登入」，只印筆數與名稱、不印值）
+node scripts/import-fb-cookies.mjs --from /tmp/fb-cookies.json
+# 3) 驗收：這一行要出現「已登入 Facebook（設定檔：…）」
+node scripts/fetch-fb-posts.mjs --ids 1 --min-delay 0 --max-delay 0
+```
+
+匯入的 cookies **會留在設定檔裡**（實測：重新開一次瀏覽器仍判定已登入），所以排程照樣用得到；
+登入失效時（`rec._status` 出現「登入失效」）再匯一次即可。
+用完請刪掉那份 dump（等同帳號憑證）：`rm /tmp/fb-cookies.json`。
+
+## 三、排程：現在掛在 macOS launchd
+
+2026-10-06 起，排程改掛 **macOS LaunchAgent**（`~/Library/LaunchAgents/com.hermes.ly-dashboard-fb-daily.plist`，
+每天 08:00 執行 `scripts/fb-daily.sh`；安裝腳本 `scripts/launchd/install.sh`，決策見 `DECISIONS.md` D172–D173）。
+比 DSH 內建排程好在：launchd 由系統帶起，**dsh 沒開、電腦重開機後照跑**，而且不必每次都要一次
+`danger-full-access` 審批。缺點是 plist 要用一次 `launchctl bootstrap` 載入（那一步得在受監督的
+gateway 之外的終端做）。
+
+```bash
+scripts/launchd/install.sh            # 安裝並載入（先 bootout 再 bootstrap，才會吃到新設定）
+scripts/launchd/install.sh --status   # 目前狀態與最近一次執行
+scripts/launchd/install.sh --uninstall
+launchctl kickstart -k "gui/$(id -u)/com.hermes.ly-dashboard-fb-daily"   # 不等時間到、立刻試跑一次
+```
+
+wrapper（`scripts/fb-daily.sh`）自己補 PATH（launchd 的 PATH 只有 `/usr/bin:/bin:/usr/sbin:/sbin`，
+找不到 Homebrew 的 node）、把輸出收進 `.cache/`，並在「一列都沒抓到」時以 **exit 2** 明確失敗
+（最常見原因是設定檔沒登入 Facebook）。log 在 `.cache/fb-daily.log`。
+
+> ⚠️ **舊的 DSH 內建排程要確認有沒有還在**：先前記在 D171 與本文的「立委粉專每日更新」
+> （`task-d69bbc90-60df-45bd-8cae-17353e439b26`，也是 08:00）。**本機 grep 不到這個 task 的定義**
+> （`grep -rl d69bbc90 ~/.dsh` 沒有命中，可能當初是建在 Windows 那台或別的 profile），
+> 所以不確定它還在不在。若在 dsh 的排程清單還看得到它，**請二選一**（刪掉或錯開時間），
+> 否則 08:00 會對 Facebook 抓兩輪。下面的段落保留給還沒刪掉時參考。
+
+### DSH 內建排程的真實行為（歷史紀錄）
+
+先前設在 **DSH 應用程式內的排程**，內容是
 「每天 08:00 執行 `scripts/fetch-fb-posts.mjs --verify`，若服務帳號金鑰存在就再寫回試算表」。
 （DSH 排程清單裡的任務名稱：**立委粉專每日更新**、`task-d69bbc90-60df-45bd-8cae-17353e439b26`，權限 `danger-full-access`。）
 

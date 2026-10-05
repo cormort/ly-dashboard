@@ -495,7 +495,8 @@ D144 的「先不查」使用者決定要查。
 | D174 | 粉專牆預設顯示幾位 | 沒套條件時只回**最近更新的 5 位**（依整理表的 `latest_post_date`，沒日期的排最後）；選了黨籍或縣市才展開整面牆（`limit` 上限 500） | 需求明講預設 5 位。展開靠 facet chips，兩維互相交叉（選了黨籍時縣市只列該黨真有的人），否則會出現「點了變空牆」的選項 |
 | D175 | 瀑布流怎麼排 | **CSS multi-column**（`columns: 3 300px` ＋ `break-inside: avoid`），不用 JS 量高度 | 卡片高度不一致（有無人像、摘要長短、有沒有展開嵌入框）時，multi-column 會自動把下一張補進最短的一欄；寬度不足自動減欄，不必另寫 media query |
 | D176 | Facebook 嵌入框什麼時候載入 | **按需**：按「看貼文」才掛 iframe（`FacebookEmbed`），一面牆不預先載入幾十個 | 每個嵌入框都會讓瀏覽器連到 Facebook，一次載入整面牆會很慢；`render-smoke` 直接驗「沒展開時不得出現 `plugins/page.php`」 |
+| D177 | 無螢幕的機器怎麼登入 Facebook | 新增 `scripts/import-fb-cookies.mjs`：把**已登入 Facebook 的瀏覽器**（ego-browser／擴充套件匯出）的 cookies 匯進排程用的設定檔 `~/.ly-dashboard/fb-profile` | `--login` 要開有畫面的瀏覽器，這台跑不到（先前兩次試跑都停在「這個設定檔沒登入 Facebook」）。實測匯入後 `fetch-fb-posts.mjs` 判定已登入、抓得到貼文（吳思瑤 2026-10-05），且 cookies 會留在設定檔裡、下次開瀏覽器仍有效。腳本只印筆數與名稱、不印值 |
 
-**已驗證**：`npm test` 177 項全過（含 10 項粉專牆後端測試）、`npm --prefix web run test` 137 項全過（含 8 項粉專牆渲染測試）、`npm --prefix web run build` 成功；`launchctl kickstart` 實測能帶起 wrapper（log 看到 `/opt/homebrew/bin/node` 被解析到）。
+**已驗證**：`npm test` 177 項全過（含 10 項粉專牆後端測試）、`npm --prefix web run test` 137 項全過（含 8 項粉專牆渲染測試）、`npm --prefix web run build` 成功；`launchctl kickstart` 實測能帶起 wrapper（log 看到 `/opt/homebrew/bin/node` 被解析到）；API 實測預設回 5 筆／總數 113、`?party=民主進步黨` 回 51 筆且縣市 facet 只列該黨的人；cookies 匯入後 `fetch-fb-posts.mjs --ids 1` 抓到「OK 2026-10-05」兩次（第二次是重開瀏覽器，證明登入狀態留在設定檔裡）。
 
-**待辦（2026-10-06 現況）**：`~/.ly-dashboard/fb-profile` **還沒登入 Facebook**，所以排程跑起來會是 0 列、exit 2（要人工在有畫面的終端機跑一次 `node scripts/fetch-fb-posts.mjs --login`）；沒有 `service_account.json`，所以只產生本機 CSV、不寫回試算表。
+**待辦**：`service_account.json` 還沒放（沒有它就只產生本機 CSV、不寫回試算表，要寫回得放金鑰）；舊的 DSH 內建排程「立委粉專每日更新」（`task-d69bbc90…`）在本機 grep 不到定義，若 dsh 排程清單還看得到它就得與 launchd 這條二選一。
