@@ -199,6 +199,20 @@ async function httpPageTitle(url, attempt = 0) {
   }
 }
 
+/**
+ * 日期合理性檢查：貼文日期不可能早於 2000 年，也不可能在今天之後（臺灣時間）。
+ * 為什麼需要：粉專版面有時會把「內文提到的日期」或留言的時間戳也放進 aria-label，
+ * 實測就抓到過「1966年12月6日」「1956年12月16日」這種明顯不是貼文發布日的值。
+ * 不合理就換下一個候選，全部不合理才留空（依規格：寧可空白，不要錯的日期）。
+ */
+function saneDate(ymd) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return false;
+  const t = Date.parse(`${ymd}T00:00:00+08:00`);
+  if (Number.isNaN(t)) return false;
+  const now = Date.now() + 8 * 3600 * 1000; // 以臺灣時間的「今天」為上限
+  return t >= Date.parse('2000-01-01T00:00:00+08:00') && ymd <= new Date(now).toISOString().slice(0, 10);
+}
+
 /** 把一次 evaluate 的結果整理成 { date, summary, rel }（日期最大者為最新） */
 export function pickLatest(dump) {
   const texts = new Map();
@@ -312,13 +326,17 @@ async function collect(rows, opts) {
         //   - 頁面上的貼文日期（已排除留言）
         //   - 頁面內嵌 JSON 的 creation_time（版面改到抓不到日期時的最後防線）
         // 只取其中一個都會錯：DOM 可能只渲染到舊貼文，creation_time 可能是置頂或分享來源的時間。
-        let date = best?.date ?? '';
-        let source = date ? '網頁日期' : '';
+        // 每個候選都要通過 saneDate（見上），不合理的就換下一個。
         const stamps = [...(await page.content()).matchAll(CREATION_TIME)].map((m) => Number(m[1]));
-        if (stamps.length) {
-          const byJson = epochToDate(Math.max(...stamps));
-          if (!date || byJson > date) { date = byJson; source = '內嵌 creation_time'; }
-        }
+        const candidates = [
+          ...pickLatest(dump).posts.filter((p) => p.date).map((p) => p.date),
+          ...(stamps.length ? [epochToDate(Math.max(...stamps))] : []),
+        ]
+          .map((d) => toSheetDate(d))
+          .filter((d) => d && saneDate(d))
+          .sort((a, b) => (a < b ? 1 : -1));
+        let date = candidates[0] ?? '';
+        let source = date ? '網頁日期' : '';
         // 備援：開那一則貼文的永久連結（首頁只給相對時間時，從貼文頁拿日期）
         if (!date) {
           const href = best?.href || (dump.dates ?? []).find((d) => d.href)?.href;
@@ -326,7 +344,8 @@ async function collect(rows, opts) {
             await page.goto(href, { waitUntil: 'domcontentloaded', timeout: 60000 });
             await page.waitForTimeout(5000);
             const second = pickLatest(await page.evaluate(`(${EXTRACT})()`));
-            if (second.best?.date) { date = second.best.date; source = '貼文永久連結'; }
+            const secondDate = toSheetDate(second.best?.date ?? '');
+            if (secondDate && saneDate(secondDate)) { date = secondDate; source = '貼文永久連結'; }
             if (!summary) summary = second.summary;
           }
         }
@@ -342,8 +361,11 @@ async function collect(rows, opts) {
           await page.waitForTimeout(10000);
           const again = pickLatest(await page.evaluate(`(${EXTRACT})()`));
           const stamps2 = [...(await page.content()).matchAll(CREATION_TIME)].map((m) => Number(m[1]));
-          const d2 = again.best?.date || (stamps2.length ? epochToDate(Math.max(...stamps2)) : '');
-          rec.最新貼文日期 = toSheetDate(d2) ?? '';
+          const retryCandidates = [
+            ...again.posts.filter((p) => p.date).map((p) => toSheetDate(p.date)),
+            ...(stamps2.length ? [epochToDate(Math.max(...stamps2))] : []),
+          ].filter((d) => d && saneDate(d)).sort((a, b) => (a < b ? 1 : -1));
+          rec.最新貼文日期 = retryCandidates[0] ?? '';
           rec.最新貼文主題摘要 = cleanSummary(again.summary);
           if (rec.最新貼文日期) rec._status = 'OK（重載後取得）';
           else if (rec.最新貼文主題摘要) rec._status = '有內容但沒有日期（重載後）';
