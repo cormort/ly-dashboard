@@ -1,0 +1,178 @@
+# 臉書每日貼文更新：運維說明與實戰經驗
+
+這份文件講「每天抓 113 位在職立委粉專最新貼文，填進整理表（或直接寫回 Google 試算表）」這件事怎麼跑、
+排程的真實行為、以及這次做完踩到的坑。**範圍只含立委分頁**；議員分頁（`LY_COUNCIL_SOCIAL_CSV`）2026-10-06 起先不執行，
+原因見最後一節。
+
+相關文件：`docs/social-sheet-spec.md`（試算表格式與填寫規則，最重要）、
+`docs/fb-verification-2026-10-06.md`（113 筆連結的第二輪驗證）、`scripts/fetch-fb-posts.mjs`（程式本體）。
+
+---
+
+## 一、一輪更新做了什麼
+
+```
+Google 試算表（立委分頁，gid 1325033898）
+        │  ①  讀 CSV（LY_SOCIAL_CSV，沒設就用內建試算表網址）
+        ▼
+scripts/fetch-fb-posts.mjs
+        │  ②  用「已登入的 Chrome 設定檔」逐頁開粉專，抓最新一則貼文
+        │      → .cache/posts-YYYY-MM-DD.csv（整理表欄位格式，可直接貼回）
+        │      → docs/fb-verification-YYYY-MM-DD.csv（--verify：頁面顯示名稱／追蹤者／比對結果）
+        ▼
+       ③  （選用）--write-sheet --key service_account.json → 只寫回 F／G 兩欄
+```
+
+- 一次跑 113 位，每位間隔隨機 4–9 秒，約 **25–35 分鐘**。
+- 只讀「最新一則」：取日期最大的那一則，所以置頂的舊貼文不會被當成最新。
+- 抓到什麼寫什麼，**抓不到就留空**。這一條是硬規則，理由見 `docs/social-sheet-spec.md`：
+  網站用「所有人最新貼文日期中最新的那一天」判斷整理表有沒有在更新，填今天會讓警示失效。
+
+## 二、怎麼執行
+
+```bash
+# 第一次（或 FB 登入失效）時：開有畫面的瀏覽器登入一次，狀態存在設定檔裡
+node scripts/fetch-fb-posts.mjs --login
+#   預設設定檔：~/.ly-dashboard/fb-profile（可用 --profile 或 LY_FB_PROFILE 改）
+
+# 每天這樣跑
+node scripts/fetch-fb-posts.mjs                 # → .cache/posts-YYYY-MM-DD.csv
+node scripts/fetch-fb-posts.mjs --verify        # 另外輸出 docs/fb-verification-YYYY-MM-DD.csv
+node scripts/fetch-fb-posts.mjs --limit 5       # 試跑前 5 位
+node scripts/fetch-fb-posts.mjs --ids 1,18,91   # 只跑指定編號
+node scripts/fetch-fb-posts.mjs --headful       # 開畫面跑（被 FB 擋自動化時比較不容易失敗）
+
+# 直接寫回試算表（服務帳號需對試算表有「編輯者」權限）
+node scripts/fetch-fb-posts.mjs --write-sheet --key service_account.json
+```
+
+前置需求：`npm i -D playwright-core`（用系統安裝的 Chrome，不會下載瀏覽器）。
+需要 `playwright` 而不是 `playwright-core` 只有一個情況：你想用 Playwright 自己下載的 Chromium。
+
+## 三、排程：DSH 內建排程的真實行為
+
+目前這一輪是設在 **DSH 應用程式內的排程**（不是 Windows 工作排程器），內容是
+「每天 08:00 執行 `scripts/fetch-fb-posts.mjs --verify`，若服務帳號金鑰存在就再寫回試算表」。
+（DSH 排程清單裡的任務名稱：**立委粉專每日更新**、`task-d69bbc90-60df-45bd-8cae-17353e439b26`，權限 `danger-full-access`。）
+
+| 情境 | 會不會跑 | 說明 |
+| --- | --- | --- |
+| 08:00 時電腦開著、DSH 也開著 | ✅ 會 | 正常執行 |
+| 08:00 時電腦關機／休眠，之後才開機並啟動 DSH | ⚠️ **會補跑一次** | DSH 下次啟動時，以「最近一次到期」的決策時間補跑 |
+| 關機好幾天（DSH 都沒開） | ⚠️ 只補跑**最近一次** | 中間漏掉的那幾天**不會**逐日補 |
+| 電腦開著但 DSH 沒開 | ❌ 不會 | 排程在 DSH 行程內，DSH 沒跑就沒有排程 |
+
+補跑行為來自排程模組的設計（`@deepseek-ai/dsh-schedule` 的型別註解）：
+daily 是「Resolve a daily decision near the decision's local date, **not across its missed history**」、
+fixed-rate 是「advances directly past missed occurrences」——也就是**追上最近一次**，不是把漏掉的都補一遍。
+（這一項是讀原始碼與型別註解得到的結論，沒有做「關機三天」的實測。）
+
+### 如果不希望「關機就不跑」，有三個選擇
+
+1. **維持 DSH 排程**：適合電腦早上通常開著、DSH 常駐。關機的日子會在下次開 DSH 時補跑一次。
+2. **改用 Windows 工作排程器**：不管 DSH 有沒有開都會跑（只要電腦是開的），
+   勾「**錯過開始時間後盡快執行**」＝開機後自動補跑。限制：
+   - Chrome 要讀你已登入的設定檔，所以工作要設成「只在使用者登入時執行」（`/IT`）；
+   - 電腦要醒著（睡眠要允許喚醒計時器，或用 `powercfg` 開）；
+   - 指令（輸出檔名不要用 `%DATE%`，那是地區格式、會產生含 `/` 的非法檔名；用固定名稱即可）：
+
+     ```bat
+     schtasks /Create /TN "ly-dashboard-fb-daily" /SC DAILY /ST 08:05 /IT /F ^
+       /TR "node C:\path\to\ly-dashboard\scripts\fetch-fb-posts.mjs --profile C:\Users\<你>\.ly-dashboard\fb-profile --verify --out C:\path\to\ly-dashboard\.cache\posts-latest.csv"
+     ```
+     （`--verify-out` 不給就用預設的 `docs/fb-verification-<今天>.csv`，日期由腳本自己算。）
+3. **兩者並存**：Windows 排程負責「時間到一定跑」，DSH 排程負責「跑完回報／寫回試算表」。
+   但同一天會抓兩次，除非把時間錯開，或改成只由其中一個驅動。
+
+### 其他排程注意事項
+
+- 排程執行時需要較高權限（Chromium 的具名管道在某些沙箱模式下會被擋），所以目前設成 `danger-full-access`。
+- 一次跑 25–35 分鐘，**不要排在上線或備份的同一時段**；期間會持續打 Facebook（這是被限流的主因）。
+- 排程跑完的結果會記在 `.cache/node_run_log.txt` 與 `docs/fb-verification-*.csv`。
+
+## 四、立委這一輪的實戰經驗（踩到的坑）
+
+### 1. Facebook 只有「已登入的瀏覽器」看得到內容
+
+- `curl`／`fetch`：HTTP 400，或只回登入頁；連續請求後連 400 都會一直出現（限流）。
+- 未登入的瀏覽器：**多數**粉專的 `<title>` 還是會回人名，可以當第一層粗略篩選
+  （失效代稱只回泛用「Facebook」）。113 筆裡 111 筆可用這招判斷。
+- 但**未登入不是結論**：吳思瑤的 `taipeineedyou` 未登入時就是泛用標題，登入後才看得到
+  （頁面有效、最新貼文 2026-10-05）。第一輪驗證文件把它記成「目前無法查看」就是這個原因。
+- 登入之後 `document.title` 會變成「(3) Facebook」（通知數），**不能用來判斷頁面是誰的**；
+  驗證模式的頁面名稱改用「未登入的 HTTP `<title>`／`og:title`」為主。
+
+### 2. 「最新貼文日期」要用三個來源互補，並且要設防呆
+
+| 來源 | 什麼時候用 | 陷阱 |
+| --- | --- | --- |
+| 頁面上帶 `aria-label` 的貼文日期 | 首選 | 留言也有日期；留言時間戳會讓舊貼文看起來像今天 |
+| 貼文永久連結頁 | 首頁只給相對時間（「3天」）時 | 多一次開啟，速度慢 |
+| 頁面內嵌 JSON 的 `creation_time` | 版面改到抓不到日期時的最後防線 | 可能包含置頂／分享來源的時間 |
+
+實作上的三個決定（`scripts/fetch-fb-posts.mjs`）：
+
+1. **排除帶 `comment_id` 的連結**：那是留言時間，不是貼文時間。這是實際踩到的坑。
+2. **取兩個來源中較新的那一個**：只取 DOM 會漏（FB 有時只先渲染舊貼文），
+   只取 `creation_time` 會被置頂影響。
+3. **`saneDate()` 防呆**：貼文日期不可能早於 2000 年、也不可能在今天之後。
+   實測就抓到過「1966年12月6日」「1956年12月16日」這種內文提到的年份被當成貼文日期。
+
+另外：抓到頁面後**先往下捲一下再回到頂端**，FB 才會把最上面的新貼文補進 DOM。
+
+### 3. 粉專網址的三種「看起來對、其實不對」
+
+| 類型 | 例子 | 怎麼判斷 |
+| --- | --- | --- |
+| 服務處／辦公室頁 | 吳琪銘的「吳琪銘 委員服務處」（追蹤數約 1,300） | 追蹤數明顯偏少、頁面名稱帶「服務處」 |
+| 競選臨時頁 | 王義川的「搶救王義川大兵」（選後就沒更新） | 名稱是競選口號、貼文停在選舉期間 |
+| 後援會／粉絲頁 | 「王義川後援會」（`ChuanFans`） | 規格明寫不要用（不是本人或團隊經營） |
+
+代稱（slug）**可以隨時改**，數值 ID 不變；維基百科／Wikidata 常常還記著舊代稱，
+點進去會自動導向，**這種不算錯誤**（例如陳秀寳的 `陳秀寳-2213635748884193` 會導向 `showpowerchen`）。
+
+### 4. 異體字與姓名
+
+- 立法院登記姓名與粉專自用字可能不同：陳秀**寳**（官方）／陳秀**寶**（粉專顯示）——同一人，不要當成錯誤改掉。
+- 族語名：粉專顯示「伍麗華｜Saidai / Reseres」、「黃仁-kin cyang」等，比對要用「包含漢名」而不是完全相等。
+
+### 5. 填表的格式細節（會決定整份資料有沒有被讀進去）
+
+- 日期一定要 `YYYY-MM-DD`；`2026年10月5日`、`昨天` 這種寫法**會被當成空白**，而且不會有錯誤訊息。
+- 摘要**單行、60 字內**，不要換行、不要寫成新聞稿。
+- 不要改姓名／選區／表頭、不要增刪列；真的要改網址，走 `server/social-overrides.json`（可逆、有 `reason` 與 `verified_at`）。
+
+### 6. 環境本身也會咬人
+
+- Playwright 會在系統 Temp 建 `playwright-artifacts-*`；受管環境（例如 DSH 的檔案沙箱）只允許寫專案目錄時會 EPERM。
+  腳本因此把這個行程的 `TEMP`／`TMP` 指到 `.cache/tmp`（已 gitignore）。
+- `git`／`curl` 走 Windows 憑證存放區時，某些沙箱模式會回 `schannel: SEC_E_NO_CREDENTIALS`；
+  但 Python `requests`、Node `fetch` 不受影響（這也是驗證腳本用 HTTP 標題可行的原因之一）。
+- 連續 HTTP 請求太快時，Facebook 會回 HTTP 400（頁面標題就一個「Error」）。腳本把它當限流處理：等 5 秒重試一次。
+
+### 7. 順手查到的事實錯誤（改了程式不會修的那種）
+
+- **許忠信**的註記「原任張啓楷」應是「**遞補李貞秀**」：張啓楷 2026-02-01 辭職 → 李貞秀遞補 →
+  李貞秀 2026-04-13 被開除黨籍 → 許忠信 2026-04-22 遞補（中選會 115-04-15 公告）。
+- **陳超明**黨籍：2025-09-15 已恢復中國國民黨（2024 年是以無政黨推薦身分參選當選）。
+- **陳永康**：查無官方粉專（2024 年報導指他與陳雪生是全院唯二沒有粉絲團的立委；陳雪生後來有）。
+  整理表的錯誤連結已在 `server/social-overrides.json` 用 `action: "deny"` 移除。
+
+## 五、每天／每次同步的檢查清單
+
+- [ ] `--verify` 的 CSV 有沒有出現大量「⚠️ 拿不到頁面名稱」→ 可能是被限流，拉長 `--min-delay`
+- [ ] 執行紀錄有沒有「登入失效」→ 跑一次 `--login` 重新登入
+- [ ] 有日期的列數是不是和平常差不多（驟降通常是 FB 版面變動或限流）
+- [ ] 有沒有明顯不合理的日期（腳本已用 `saneDate` 擋，但換版後要重新確認）
+- [ ] 新抓到的網址與更正表有沒有衝突（更正表優先，且會清掉舊網址的貼文摘要）
+
+## 六、為什麼議員分頁先不做（2026-10-06 決定）
+
+- 議員分頁約 360 位，是立委的 3 倍多：一輪 25–35 分鐘會變成 1.5 小時以上，限流風險也跟著放大。
+- 議員的粉專對照表（`scripts/council-facebook.csv`）本身還有 40 條連結是壞的（D133–D137），
+  先修連結再談每日貼文比較合理。
+- 立委這一輪先把「腳本、驗證方法、排程與防呆」定下來；議員分頁之後直接沿用同一支腳本，
+  只要把來源 CSV 換成議員分頁（`--csv`）並確認欄位對應（`Facebook 粉專網址` 而不是 `貼文或粉專連結`）。
+
+要恢復議員分頁的步驟：把議員分頁的 CSV 匯出網址設成 `LY_COUNCIL_SOCIAL_CSV`，
+確認腳本支援議員分頁的欄位名稱後再開排程。

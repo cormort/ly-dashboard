@@ -94,6 +94,7 @@ node scripts/fetch-fb-posts.mjs             # 抓 113 位委員粉專的「最�
 node scripts/fetch-fb-posts.mjs --login     # 第一次用（或登入失效）時先跑這個：開有畫面的瀏覽器登入一次，狀態存進 ~/.ly-dashboard/fb-profile
 node scripts/fetch-fb-posts.mjs --verify    # 另外輸出 docs/fb-verification-<日期>.csv（頁面顯示名稱／追蹤者／比對結果）
 node scripts/fetch-fb-posts.mjs --write-sheet --key service_account.json   # 直接把日期與摘要寫回試算表（服務帳號需對試算表有編輯權）
+# 執行方式、排程的真實行為（關機不跑、補跑規則）與這一輪踩到的坑：docs/fb-daily-update.md
 npm --prefix web test                       # 前端 tsc -b＋煙霧／渲染煙霧，58 項全過
 node server/ingest.mjs                      # 123 位委員 / 783 席次 / 5 會期 / 113 本會期名錄 + 議案／社群／新聞
 node server/ingest.mjs                      # 第二次：名錄 status=skipped（sha256 + 正規化版本未變）
@@ -174,7 +175,8 @@ curl -X POST -H "x-sync-token: <隨機字串>" localhost:8787/api/v1/sync?scope=
 | --- | --- | --- |
 | **伺服器沒在跑** | 排程在伺服器程式內（不是系統 cron），關機或程式停止就不會更新 | 放在常開的機器上；或改用系統 cron 定時跑 `node server/ingest.mjs` |
 | **外部來源改版** | 該資料集持續同步失敗，畫面標示資料過期。g0v 立法院 API 是社群維護的非官方 API，改版機率高於官方 | 看 `/api/v1/sync-runs` 的錯誤訊息，改 `server/normalize.mjs` 或 `server/config.mjs` |
-| **社群帳號整理表** | 人工維護的 Google 試算表；委員換帳號、遞補時不會自動更新 | 有人定期更新表格（網址可用 `LY_SOCIAL_CSV` 覆寫）。已知錯誤的網址放在版本控管的更正表 `server/social-overrides.json`（19 筆：17 筆 facebook 覆蓋＋1 筆 threads＋1 筆 deny）。每日貼文可以用 `scripts/fetch-fb-posts.mjs` 抓（需要一個已登入的 Chrome 設定檔，第一次用 `--login`） |
+| **社群帳號整理表** | 人工維護的 Google 試算表；委員換帳號、遞補時不會自動更新 | 有人定期更新表格（網址可用 `LY_SOCIAL_CSV` 覆寫）。已知錯誤的網址放在版本控管的更正表 `server/social-overrides.json`（19 筆：17 筆 facebook 覆蓋＋1 筆 threads＋1 筆 deny）。每日貼文可以用 `scripts/fetch-fb-posts.mjs` 抓（需要一個已登入的 Chrome 設定檔，第一次用 `--login`）；**議員分頁 2026-10-06 起先不執行**，見 `docs/fb-daily-update.md` |
+| **每日貼文的排程** | 排程在 **DSH 應用程式內**（不是 Windows 工作排程器）：電腦關機時不會跑，之後啟動 DSH 只會補跑「最近一次」，不會逐日補 | 需要「關機也照跑」就改用 Windows 工作排程器並勾「錯過開始時間後盡快執行」；兩者的取捨與實際行為見 `docs/fb-daily-update.md` |
 | **分類規則遇到新寫法** | 新的議案狀態或名稱寫法對不到規則：落到「其他」、不顯示流程條或預算類型，不會壞掉 | 偶爾檢查，補 `web/src/lib/billStage.ts`、`server/normalize.mjs` 的 `budgetTypes()`、`server/queries.mjs` 的 `BUDGET_PENDING` |
 | **換屆（第 12 屆）** | 會依名錄切換屆次；合成測試已涵蓋（屆次／會期／席次整組切換、舊屆次查不到、`?session=舊會期` 退回最新會期），但**真實換屆當下仍然沒有跑過** | 換屆後手動同步一次並檢查各頁 |
 | **來源回應被截斷**（回了一半、分頁壞掉） | 整批覆寫的表（名錄／席次／公報紀錄／會議附件／ID223）會比對上次成功的筆數，掉超過 20% 就 **fail closed** 保留舊資料，並寫入 `sync_runs` 的 failed | 看 `/api/v1/sync-runs` 的錯誤；若確認是來源合法縮減，用 `LY_ALLOW_SHRINK=1 node server/ingest.mjs` 強制覆寫一次 |
