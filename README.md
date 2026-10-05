@@ -138,7 +138,8 @@ bash termux/install-shortcuts.sh     # 建立三個桌面捷徑（只需一次�
 | `termux/launch.sh` | 結束舊伺服器 → 啟動 → 就緒後自動開瀏覽器（伺服器留在視窗前景，關視窗即停止） |
 | `termux/update.sh` | `git pull` 後執行 `launch.sh` |
 | `termux/backfill.sh` | 回補近半年新聞：防休眠、跑 60 分鐘（`BACKFILL_MINUTES` 可改）、前後顯示進度，再點一次接續 |
-| `termux/install-shortcuts.sh` | 在 `~/.shortcuts` 建立「立委觀測站」「更新立委觀測站」「回補新聞」三個捷徑（只轉呼叫上面的腳本，更新腳本不必重裝捷徑） |
+| `termux/antigravity.sh` | 在專案資料夾開 Antigravity CLI（`agy`／`antigravity`，先補上常見安裝位置到 PATH；找不到會提示怎麼裝） |
+| `termux/install-shortcuts.sh` | 在 `~/.shortcuts` 建立「立委觀測站」「更新立委觀測站」「回補新聞」「Antigravity」四個捷徑（只轉呼叫上面的腳本，更新腳本不必重裝捷徑） |
 
 注意：伺服器要保持執行，每日排程才會跑；`git pull` 需要 GitHub Token（私有儲存庫），可用 `git config --global credential.helper store` 記住。
 捷徑視窗可能帶 `NODE_ENV=production`，`launch.sh` 已明確覆寫，否則 npm 會略過 `tsc`/`vite` 導致 build 失敗。
