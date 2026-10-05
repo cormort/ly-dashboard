@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  每日抓取立委臉書粉專最新貼文（macOS launchd）。
+
+  這是「樣板」：__REPO_ROOT__ 由 scripts/launchd/install.sh 換成本專案的實際路徑後，
+  安裝到 ~/Library/LaunchAgents/。不要直接手動改這個檔案就期待生效 —— 改完要重跑 install.sh。
+
+  為什麼用 launchd 而不是伺服器內的排程：
+  - 伺服器沒開也要跑（launchd 由使用者工作階段管理，開機登入後就在）。
+  - StartCalendarInterval 在時間到時機器睡著的話，**喚醒後會補跑**；伺服器內的 setInterval 不會。
+  - 抓貼文需要「已登入的 Chrome」，跟 API 伺服器的生命週期無關。
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.hermes.ly-dashboard-fb-daily</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>__REPO_ROOT__/scripts/fb-daily.sh</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>__REPO_ROOT__</string>
+
+    <!-- 每天 08:00。機器睡著時錯過的話，喚醒後補跑一次。 -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>8</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <!-- 登入時不自動補跑一次：這個工作要 25–35 分鐘，登入當下跑會讓 Chrome 突然被搶走。 -->
+    <key>RunAtLoad</key>
+    <false/>
+
+    <!-- 一次跑 25–35 分鐘且會持續打 Facebook，不重試、不 KeepAlive（失敗看 log 與退出碼）。 -->
+    <key>KeepAlive</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>__REPO_ROOT__/.cache/fb-daily.launchd.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>__REPO_ROOT__/.cache/fb-daily.launchd.err.log</string>
+
+    <key>ProcessType</key>
+    <string>Background</string>
+</dict>
+</plist>
