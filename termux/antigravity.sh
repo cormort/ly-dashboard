@@ -1,7 +1,8 @@
 #!/data/data/com.termux/files/usr/bin/bash
-# 在專案資料夾開 Antigravity CLI（curl -fsSL https://antigravity.google/cli/install.sh | bash 安裝的那支）。
+# 開 Antigravity CLI（curl -fsSL https://antigravity.google/cli/install.sh | bash 安裝的那支）。
+# 從家目錄（~）開，不限定在這個專案，可以處理手機上任何資料夾。
 # 安裝程式放的位置不一定在捷徑的 PATH 裡，所以先補上常見的安裝位置；指令名稱 agy／antigravity 都試。
-cd "$(dirname "$0")/.." || exit 1
+cd "$HOME" || exit 1
 export PATH="$HOME/.local/bin:$HOME/bin:$HOME/.antigravity/bin:$HOME/.antigravity/cli/bin:$PATH"
 
 for cmd in agy antigravity; do
