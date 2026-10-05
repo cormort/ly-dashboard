@@ -77,7 +77,7 @@ const NAV: NavGroup[] = [
       { route: 'councilactivity', label: '近期動態' },
     ],
   },
-  { id: 'map', label: '地圖人口', home: 'counties', routes: [{ route: 'counties', label: '地圖人口' }] },
+  { id: 'map', label: '縣市地圖', home: 'counties', routes: [{ route: 'counties', label: '縣市地圖' }] },
   {
     id: 'news',
     label: '新聞',
