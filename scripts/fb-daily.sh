@@ -41,11 +41,11 @@ OUT_LATEST="$LOG_DIR/posts-latest.csv"
 
 log() { printf '%s %s\n' "$(date '+%Y-%m-%dT%H:%M:%S%z')" "$*" >>"$LOG"; }
 
-log "=== 開始（profile=$PROFILE）==="
+log "=== 開始（profile=${PROFILE}）==="
 
 NODE="$(command -v node || true)"
 if [ -z "$NODE" ]; then
-  log "找不到 node（PATH=$PATH）；中止"
+  log "找不到 node（PATH=${PATH}）；中止"
   exit 1
 fi
 
@@ -63,7 +63,7 @@ if [ -f "$KEY" ]; then
   ARGS+=(--write-sheet --key "$KEY")
   WRITE_SHEET=1
 else
-  log "沒有服務帳號金鑰（$KEY）→ 只產生本機 CSV，不寫回試算表"
+  log "沒有服務帳號金鑰（${KEY}）→ 只產生本機 CSV，不寫回試算表"
 fi
 
 # 呼叫端給的參數（例如手動試跑的 --ids）一律優先，方便縮小範圍
@@ -77,7 +77,7 @@ STATUS=$?
 printf '%s\n' "$OUTPUT" >>"$LOG"
 
 if [ "$STATUS" -ne 0 ]; then
-  log "抓取失敗（exit $STATUS）；中止"
+  log "抓取失敗（exit ${STATUS}）；中止"
   exit 1
 fi
 
@@ -90,7 +90,7 @@ if [ -z "$FILLED" ]; then
 fi
 
 cp -f "$OUT_DATED" "$OUT_LATEST"
-log "完成：$FILLED 列有日期（$OUT_DATED，另存一份 $OUT_LATEST）"
+log "完成：$FILLED 列有日期（${OUT_DATED}，另存一份 ${OUT_LATEST}）"
 
 if [ "$FILLED" -eq 0 ]; then
   # 抓不到任何日期最常見的原因就是設定檔沒登入：Facebook 對未登入的請求只回登入頁。
@@ -108,9 +108,9 @@ if [ "$WRITE_SHEET" -eq 1 ]; then
     CURL_ARGS+=(-H "x-sync-token: $LY_SYNC_TOKEN")
   fi
   if curl "${CURL_ARGS[@]}" >/dev/null 2>&1; then
-    log "已觸發本機伺服器（:$PORT）重新同步，畫面會拿到剛寫回試算表的貼文"
+    log "已觸發本機伺服器（:${PORT}）重新同步，畫面會拿到剛寫回試算表的貼文"
   else
-    log "本機伺服器（:$PORT）沒有回應，略過觸發同步；它下次同步時會讀到同一份試算表"
+    log "本機伺服器（:${PORT}）沒有回應，略過觸發同步；它下次同步時會讀到同一份試算表"
   fi
 fi
 
