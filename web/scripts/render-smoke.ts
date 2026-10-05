@@ -207,14 +207,14 @@ expectAll('最近動態（/activity）：站名、導覽、動態／議題／新
 const topNav = homeHtml.match(/<nav aria-label="主要頁面">([\s\S]*?)<\/nav>/)?.[1] ?? '';
 expectNone('最上層導覽不該再把所有子頁面平鋪出來', topNav, ['排行榜', '法案查詢', '委員比較', '縣市', '最近動態', '機關首長新聞']);
 check('首頁初始不顯示任何委員', !homeHtml.includes('查看檔案'));
-// 上層導覽順序（機關首長視角）：總覽 → 我的機關 → 議事 → 委員 → 議員 → 新聞 → 機關／基金；
-// 縣市、最近動態收進「委員」，首長新聞收進「新聞」，議員自成一個頁籤（2026-10-04 起）
+// 上層導覽順序（機關首長視角）：總覽 → 我的機關 → 議事 → 委員 → 議員 → 地圖人口 → 新聞 → 機關／基金；
+// 最近動態收進「委員」，首長新聞收進「新聞」，議員（2026-10-04 起）與縣市地圖人口分析（2026-10-05 起）各自成一個頁籤
 check(
-  '上層導覽的順序是 總覽→我的機關→議事→委員→議員→新聞→機關／基金',
+  '上層導覽的順序是 總覽→我的機關→議事→委員→議員→地圖人口→新聞→機關／基金',
   (() => {
     const nav = dashboardHtml.match(/<nav aria-label="主要頁面">([\s\S]*?)<\/nav>/)?.[1] ?? '';
     const labels = [...nav.matchAll(/>([^<>]+)<\/a>/g)].map((m) => m[1].trim()).filter(Boolean);
-    return labels.join('→') === '總覽→我的機關→議事→委員→議員→新聞→機關／基金';
+    return labels.join('→') === '總覽→我的機關→議事→委員→議員→地圖人口→新聞→機關／基金';
   })(),
 );
 check('不含示範／假資料字串', !/甲黨|示範資料|林怡安|陳宏宇|乙黨/.test(homeHtml));
@@ -300,7 +300,7 @@ check(
 
 // 子頁也依首長與幕僚的使用頻率排，主題的預設頁就是第一個子頁
 check(
-  '子頁順序：議事 預算→委員會→法案、新聞 首長→機關→委員→全部、機關／基金 機關在前，委員含縣市，議員自成一個頁籤（總覽→近期動態）',
+  '子頁順序：議事 預算→委員會→法案、新聞 首長→機關→委員→全部、機關／基金 機關在前，議員自成一個頁籤（總覽→近期動態），縣市地圖獨立成「地圖人口」',
   (() => {
     const subOf = (route: Route) => {
       const sub = render(createElement(Header, { ...headerProps, route })).match(/<nav class="subnav"[^>]*>([\s\S]*?)<\/nav>/)?.[1] ?? '';
@@ -311,12 +311,14 @@ check(
       subOf('budget') === '預算審議→委員會→法案查詢' &&
       subOf('officials') === '機關首長新聞→機關新聞→委員新聞→全部新聞' &&
       subOf('agencies') === '機關→基金→財團法人→行政法人' &&
-      subOf('legislators') === '委員查詢→最近動態→排行榜→委員比較→縣市' &&
+      subOf('legislators') === '委員查詢→最近動態→排行榜→委員比較' &&
       // 議員自成一個頁籤，子頁是總覽（選舉結果）與近期動態（新聞＋臉書）；委員的次級導覽不該再出現「議員」
       subOf('council') === '總覽→近期動態' &&
       subOf('councilactivity') === '總覽→近期動態' &&
       !subOf('legislators').includes('議員') &&
-      ['href="/budget"', 'href="/officials"', 'href="/agencies"', 'href="/council"'].every((h) => top.includes(h))
+      // 地圖人口是單頁主題：沒有次級導覽
+      subOf('counties') === '' &&
+      ['href="/budget"', 'href="/officials"', 'href="/agencies"', 'href="/council"', 'href="/counties"'].every((h) => top.includes(h))
     );
   })(),
 );
