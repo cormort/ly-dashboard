@@ -1126,6 +1126,78 @@ function ensureCouncilGroups(db, entry) {
  * 同名的議員（不同縣市）都會標上，選了縣市就只算那個縣市的。標記結果掛在全部新聞的快取上，資料沒變就不重算。
  */
 const OTHER_OFFICE_BEFORE = /(縣長|市長|立委|委員|部長|院長|總統|主委|署長|局長|區長|鄉長|鎮長)$/;
+/** 粉專牆沒給 limit 時只回最近更新的這幾位（需求：預設 5 位） */
+export const SOCIAL_WALL_DEFAULT_LIMIT = 5;
+const SOCIAL_WALL_MAX_LIMIT = 500;
+
+/**
+ * 委員粉專牆（`/api/v1/social/wall`）：把在職委員的 Facebook 粉專攤成一面牆。
+ *
+ * - 預設只回**最近更新**的前 5 位（依 `latest_post_date` 新到舊，沒有日期的排最後）；
+ *   套了黨籍／縣市條件才把整個篩選結果展開（limit 由呼叫端決定，上限 500）。
+ * - 兩組 facet 互相交叉：選了黨籍時縣市只列該黨真的有的人（反之亦然），
+ *   否則會出現「點了變成空牆」的選項。
+ * - 沒有粉專的委員不會出現（社群整理表沒有他的臉書網址），所以牆上的總數會小於委員總數。
+ * - 這裡只讀整理表已經填好的日期，不猜、不補：抓不到貼文的委員就是沒有日期、排在最後。
+ */
+export function listSocialWall(db, { party = '', region = '', limit = SOCIAL_WALL_DEFAULT_LIMIT, offset = 0 } = {}) {
+  const resolvedLimit = Math.max(1, Math.min(Number(limit) || SOCIAL_WALL_DEFAULT_LIMIT, SOCIAL_WALL_MAX_LIMIT));
+  const resolvedOffset = Math.max(0, Math.trunc(Number(offset) || 0));
+  const wantedParty = String(party ?? '').trim();
+  const wantedRegion = String(region ?? '').trim();
+
+  const all = db
+    .prepare(
+      `SELECT s.legislator_id, s.page_name, s.url, s.latest_post_date, s.latest_post_summary, s.source,
+              l.name, l.party, l.area_name, l.photo_url
+       FROM social_accounts s JOIN legislators l ON l.id = s.legislator_id
+       WHERE s.platform = 'facebook' AND l.leave_flag = 0`,
+    )
+    .all()
+    .map((row) => ({
+      id: row.legislator_id,
+      name: row.name,
+      party: row.party ?? '',
+      region: regionOf(row.area_name),
+      area_name: row.area_name ?? '',
+      photo_url: row.photo_url ?? null,
+      page_name: row.page_name ?? '',
+      url: row.url,
+      latest_post_date: row.latest_post_date || null,
+      latest_post_summary: row.latest_post_summary ?? '',
+      source: row.source ?? 'sheet',
+    }))
+    // 新到舊；沒有日期的（整理表還沒抓到貼文）一律排最後
+    .sort(
+      (a, b) =>
+        Number(Boolean(b.latest_post_date)) - Number(Boolean(a.latest_post_date)) ||
+        String(b.latest_post_date ?? '').localeCompare(String(a.latest_post_date ?? '')) ||
+        a.name.localeCompare(b.name, 'zh-Hant'),
+    );
+
+  const countBy = (rows, key) => {
+    const counts = new Map();
+    for (const row of rows) counts.set(row[key], (counts.get(row[key]) ?? 0) + 1);
+    return [...counts].map(([name, count]) => ({ name, count }));
+  };
+  const matched = all.filter((row) => (!wantedParty || row.party === wantedParty) && (!wantedRegion || row.region === wantedRegion));
+
+  return {
+    meta: envelope(db, { term: currentTerm(db), session: currentSession(db) }),
+    count: Math.max(0, Math.min(resolvedLimit, matched.length - resolvedOffset)),
+    total: matched.length,
+    default_limit: SOCIAL_WALL_DEFAULT_LIMIT,
+    party: wantedParty,
+    region: wantedRegion,
+    // 交叉 facet：各自排除自己那一維，只套用另一維
+    parties: countBy(all.filter((row) => !wantedRegion || row.region === wantedRegion), 'party').sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'zh-Hant')),
+    regions: countBy(all.filter((row) => !wantedParty || row.party === wantedParty), 'region').sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'zh-Hant')),
+    // 整理表是人工／AI 維護的：過期時前端要標出來，否則舊日期看起來像最新
+    social: socialFreshness(db),
+    items: matched.slice(resolvedOffset, resolvedOffset + resolvedLimit),
+  };
+}
+
 export function listCouncilActivity(db, { county = '', councilor = '', q = '', source = '', limit = 30, offset = 0 } = {}) {
   const resolvedLimit = Math.max(1, Math.min(Number(limit) || 30, 100));
   const resolvedOffset = Math.max(0, Math.trunc(Number(offset) || 0));

@@ -29,6 +29,7 @@ import { HomePage } from './pages/HomePage';
 import { LegislatorsPage } from './pages/LegislatorsPage';
 import { MyAgencyPage } from './pages/MyAgencyPage';
 import { RankingsPage } from './pages/RankingsPage';
+import { SocialWallPage } from './pages/SocialWallPage';
 
 /**
  * 只有 id 時（首頁動態、法案提案人、排行榜）先抓完整資料再開檔案。
@@ -157,6 +158,7 @@ export default function App() {
         {route === 'legislators' ? (
           <LegislatorsPage query={query} meta={meta} tracked={tracked} refreshToken={refreshToken} onOpen={setSelected} />
         ) : null}
+        {route === 'socialwall' ? <SocialWallPage refreshToken={refreshToken} onOpenId={setPendingId} /> : null}
         {route === 'bills' ? <BillsPage refreshToken={refreshToken} onOpenId={setPendingId} /> : null}
         {route === 'dashboard' ? <DashboardPage refreshToken={refreshToken} onOpenId={setPendingId} onNavigate={navigate} /> : null}
         {route === 'budget' ? <BudgetPage refreshToken={refreshToken} onOpenId={setPendingId} /> : null}

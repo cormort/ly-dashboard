@@ -926,6 +926,46 @@ export interface CouncilActivityResponse {
   items: { url: string; title: string; source: string; published_at: string; councilors: CouncilorBrief[] }[];
 }
 
+/* ---------- /social/wall ---------- */
+
+/** 粉專牆上的一張卡（一位在職委員的 Facebook 粉專） */
+export interface SocialWallItem {
+  id: string;
+  name: string;
+  party: string;
+  /** 選區歸併後的縣市層級（「雲林縣」「全國不分區」「山地原住民」） */
+  region: string;
+  area_name: string;
+  photo_url: string | null;
+  /** 粉專名稱（整理表的「臉書專頁名稱」） */
+  page_name: string;
+  url: string;
+  /** 整理表記錄的最新貼文；還沒有抓到貼文時為 null（排序會排到最後） */
+  latest_post_date: string | null;
+  latest_post_summary: string;
+  /** 'sheet'＝整理表、'override'＝人工更正表 */
+  source: 'sheet' | 'override';
+}
+
+export interface SocialWallResponse {
+  meta: Meta;
+  /** 這一頁的筆數 */
+  count: number;
+  /** 符合條件的全部筆數（套用黨籍／縣市條件之後） */
+  total: number;
+  /** 沒有給 limit 時後端用的預設值（5＝最近更新的 5 位） */
+  default_limit: number;
+  party: string;
+  region: string;
+  /** 黨籍 facet（已套用縣市條件），給篩選 chips 用 */
+  parties: { name: string; count: number }[];
+  /** 縣市 facet（已套用黨籍條件），給篩選 chips 用 */
+  regions: { name: string; count: number }[];
+  /** 整理表的新鮮度（as_of 為 null＝還沒有整理表） */
+  social: SocialFreshness;
+  items: SocialWallItem[];
+}
+
 /* ---------- /legislator-votes ---------- */
 
 export interface LegislatorRace {

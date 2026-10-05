@@ -45,6 +45,7 @@ import { BillStageBar } from '../src/components/BillStage';
 import { CountiesPage } from '../src/pages/CountiesPage';
 import { CouncilPage, marginText, upgradedNotes } from '../src/pages/CouncilPage';
 import { NewsPage } from '../src/pages/NewsPage';
+import { WallCard } from '../src/pages/SocialWallPage';
 import { ChoroplethMap } from '../src/components/ChoroplethMap';
 import { bbox, countyViewBoxFor } from '../src/components/TownMap';
 import { resolveCounty } from '../src/pages/CountiesPage';
@@ -235,6 +236,62 @@ expectAll('委員查詢頁：屆次、篩選、名錄、委員會、異動骨架
 ]);
 (window as unknown as { location: { pathname: string } }).location.pathname = '/';
 
+console.log('\n— 委員 › 粉專牆 —');
+check(
+  '/legislators/wall 對應粉專牆（不被 /legislators 吃掉）',
+  routeOf('/legislators/wall') === 'socialwall' && routeOf('/legislators') === 'legislators' && pathFor('socialwall') === '/legislators/wall',
+);
+(window as unknown as { location: { pathname: string } }).location.pathname = '/legislators/wall';
+const wallHtml = render(createElement(App));
+expectAll('粉專牆頁：站名、子頁籤高亮、載入狀態', wallHtml, [
+  '立委觀測站',
+  '粉專牆',
+  'aria-current="page"',
+  '載入粉專牆',
+]);
+// 注意：頁面說明（ⓘ）本身就會出現「看貼文」「委員檔案」等字，所以只能用卡片專屬的標記來驗
+check(
+  '粉專牆：未取得資料前不編造任何一張卡（沒有卡片骨架、沒有嵌入框）',
+  !wallHtml.includes('fb-embed') && !wallHtml.includes('粉專：') && !wallHtml.includes('堅持正向選舉'),
+);
+// 嵌入框是按需載入的：沒展開時不得出現 iframe，展開了才出現 Facebook 的 plugin URL
+const wallItem = {
+  id: '00014',
+  name: '吳思瑤',
+  party: '民主進步黨',
+  region: '臺北市',
+  area_name: '臺北市第1選舉區',
+  photo_url: null,
+  page_name: '吳思瑤',
+  url: 'https://www.facebook.com/taipeineedyou',
+  latest_post_date: '2026-09-27',
+  latest_post_summary: '堅持正向選舉、不贊成選戰負面操作',
+  source: 'sheet' as const,
+};
+const wallCardClosed = render(createElement(WallCard, { item: wallItem, open: false, onToggle: () => undefined, onOpenId: () => undefined }));
+expectAll('粉專牆卡片：黨籍短名、選區、粉專名稱、貼文日期與摘要', wallCardClosed, [
+  '吳思瑤',
+  '民進黨',
+  '臺北市第1選舉區',
+  '粉專：吳思瑤',
+  'dateTime="2026-09-27"',
+  '堅持正向選舉',
+  'aria-expanded="false"',
+  '委員檔案',
+]);
+expectNone('粉專牆卡片：沒按「看貼文」就不載入 Facebook 嵌入框', wallCardClosed, ['fb-embed', 'plugins/page.php']);
+expectAll('粉專牆卡片：展開後才載入官方嵌入框（並顯示「收起貼文」）', render(createElement(WallCard, { item: wallItem, open: true, onToggle: () => undefined })), [
+  'fb-embed',
+  'plugins/page.php',
+  '收起貼文',
+  'aria-expanded="true"',
+]);
+expectAll('粉專牆卡片：沒有貼文日期時明講，不會填上今天的日期', render(createElement(WallCard, { item: { ...wallItem, latest_post_date: null, latest_post_summary: '' }, open: false, onToggle: () => undefined })), [
+  '整理表還沒有這一位的貼文日期',
+]);
+(window as unknown as { location: { pathname: string } }).location.pathname = '/';
+
+
 console.log('\n— 我的機關 —');
 check('/my 對應我的機關頁', routeOf('/my') === 'my' && routeOf('/my?agency=%E8%B2%A1%E6%94%BF%E9%83%A8') === 'my');
 const myAgencyHtml = render(createElement(MyAgencyPage, { refreshToken: 0, onOpenId: () => undefined, onNavigate: () => undefined }));
@@ -311,7 +368,7 @@ check(
       subOf('budget') === '預算審議→委員會→法案查詢' &&
       subOf('officials') === '機關首長新聞→機關新聞→委員新聞→全部新聞' &&
       subOf('agencies') === '機關→基金→財團法人→行政法人' &&
-      subOf('legislators') === '委員查詢→最近動態→排行榜→委員比較' &&
+      subOf('legislators') === '委員查詢→粉專牆→最近動態→排行榜→委員比較' &&
       // 議員自成一個頁籤，子頁是總覽（選舉結果）與近期動態（新聞＋臉書）；委員的次級導覽不該再出現「議員」
       subOf('council') === '總覽→近期動態' &&
       subOf('councilactivity') === '總覽→近期動態' &&

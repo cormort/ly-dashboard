@@ -63,6 +63,7 @@ const NAV: NavGroup[] = [
     home: 'legislators',
     routes: [
       { route: 'legislators', label: '委員查詢' },
+      { route: 'socialwall', label: '粉專牆' },
       { route: 'home', label: '最近動態' },
       { route: 'rankings', label: '排行榜' },
       { route: 'compare', label: '委員比較' },

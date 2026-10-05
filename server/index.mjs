@@ -8,6 +8,7 @@ import { openDb, getMeta } from './db.mjs';
 import {
   billsCsv, budgetCsv, newsCsv, compareLegislators, listBudget, listCounties, listLegislatorVotes, listSplitTicket, listDemographics, listPopulationTrend, getTownMap, listRegions, listFunds, getAgencyHome, listCommitteeActivity, listBudgetMeetings, listBudgetReports, getHealth, getMetaPayload, listActivity, listBills, listCosponsors, listNews, listNewsArticles, listTopics, listChanges,
   listCommittees, listLegislators, listRankings, listSyncRuns, listRecalls, listCouncil, listCouncilActivity, councilCounties,
+  listSocialWall,
 } from './queries.mjs';
 import { runAll, runIngest, runOutletPoll } from './ingest.mjs';
 
@@ -176,6 +177,9 @@ export function createServer(db) {
             return sendJson(res, 200, listCounties(db));
           case '/api/v1/council/activity':
             return sendJson(res, 200, listCouncilActivity(db, { county: q.county, councilor: q.councilor, q: q.q, source: q.source, limit: q.limit, offset: q.offset }));
+          case '/api/v1/social/wall':
+            // 沒給 limit 時只回最近更新的 5 位（見 listSocialWall）
+            return sendJson(res, 200, listSocialWall(db, { party: q.party, region: q.region, limit: q.limit, offset: q.offset }));
           case '/api/v1/council': {
             // 沒有建置的縣市回 404 而不是空殼，前端才分得出「沒這個縣市」與「沒資料」；
             // 訊息要列出真的有哪些，否則使用者只知道錯、不知道能查什麼

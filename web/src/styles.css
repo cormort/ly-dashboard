@@ -1263,3 +1263,34 @@ a.stat-tile:hover { border-color: #98a2b3; box-shadow: var(--card-base-hover); t
 /* 社群整理表過期提醒（人工維護的資料停更時，不要讓舊日期看起來像最新） */
 .social-stale { display: block; color: var(--warn); }
 .council-fb-latest { display: block; margin-top: 2px; font-size: var(--fs-sm); color: var(--muted); }
+
+/* ---------- 委員 › 粉專牆 ---------- */
+/* 篩選列：標籤固定寬度，chips 自己換行（重用 .chip 與 .law-facets） */
+.wall-filters { display: grid; gap: 6px; margin-top: var(--space-2); }
+.wall-filter-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.wall-filter-label { flex: none; min-width: 4em; font-size: var(--fs-sm); color: var(--muted); }
+.wall-bulk { margin: var(--space-2) 0 0; }
+
+/*
+ * 全站唯一的瀑布流：CSS multi-column。卡片高度不一致（有沒有人像、摘要長短、
+ * 有沒有展開嵌入框）時，multi-column 會自動把下一張補進最短的那一欄，不必用 JS 量高度。
+ * `columns: 3 300px`＝最多 3 欄、每欄理想寬度 300px，寬度不足時自動減欄，所以不用另外寫 media query。
+ */
+.fb-wall {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  columns: 3 300px;
+  column-gap: var(--space-3);
+}
+.fb-wall > li {
+  /* 沒有 break-inside: avoid 的話，卡片會被從中間切到下一個直欄 */
+  break-inside: avoid;
+  margin: 0 0 var(--space-3);
+}
+/* .member-card 在格線裡是 height:100%（等高）；瀑布流裡要各自依內容高，否則會留一大塊空白 */
+.fb-wall .member-card { height: auto; }
+.wall-page { margin: 0; color: var(--muted); font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.wall-actions { display: inline-flex; align-items: center; gap: var(--space-2); }
+.wall-card footer a { display: inline-flex; align-items: center; gap: 2px; font-size: var(--fs-sm); }
+.wall-card footer a svg { width: 12px; height: 12px; }

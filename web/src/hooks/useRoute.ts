@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 
-export type Route = 'home' | 'dashboard' | 'legislators' | 'bills' | 'budget' | 'rankings' | 'compare' | 'funds' | 'agencies' | 'foundations' | 'administrative' | 'dgbas' | 'committees' | 'news' | 'allnews' | 'agencynews' | 'officials' | 'counties' | 'council' | 'councilactivity' | 'my';
+export type Route = 'home' | 'dashboard' | 'legislators' | 'socialwall' | 'bills' | 'budget' | 'rankings' | 'compare' | 'funds' | 'agencies' | 'foundations' | 'administrative' | 'dgbas' | 'committees' | 'news' | 'allnews' | 'agencynews' | 'officials' | 'counties' | 'council' | 'councilactivity' | 'my';
 
 const PATHS: Record<Route, string> = {
   // 預設首頁是總覽；最近動態移到 /activity
   home: '/activity',
   dashboard: '/',
   legislators: '/legislators',
+  socialwall: '/legislators/wall',
   bills: '/bills',
   budget: '/budget',
   rankings: '/rankings',
@@ -28,6 +29,8 @@ const PATHS: Record<Route, string> = {
 };
 
 export function routeOf(pathname: string): Route {
+  // `/legislators/wall`（粉專牆）要排在 `/legislators` 前面，否則會被當成委員查詢
+  if (pathname.startsWith('/legislators/wall')) return 'socialwall';
   if (pathname.startsWith('/legislators')) return 'legislators';
   if (pathname.startsWith('/activity')) return 'home';
   if (pathname.startsWith('/bills')) return 'bills';
