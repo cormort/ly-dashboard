@@ -483,3 +483,19 @@ D144 的「先不查」使用者決定要查。
 | D169 | 順手查到的事實錯誤要不要動整理表 | 不改，只寫進驗證文件 | 例：許忠信的「原任張啓楷」應是「遞補李貞秀」（張啓楷 2026-02-01 辭職→李貞秀 2026-04-13 開除黨籍→許忠信 2026-04-22 遞補，中選會 115-04-15 公告）；陳超明 2025-09-15 已恢復國民黨籍。整理表是人工維護的，等維護者更新 |
 | D170 | 每日更新的範圍 | 只做**立委分頁**；議員分頁先不執行 | 議員約 360 位，一輪會從 25–35 分鐘變成 1.5 小時以上、限流風險放大；而且議員粉專對照表還有 40 條壞連結（D133–D137），先修連結再談每日貼文。恢復步驟寫在 `docs/fb-daily-update.md` |
 | D171 | 每日更新放哪裡排程 | 用 **DSH 應用程式內建的排程**（每天 08:00，`danger-full-access`），不是 Windows 工作排程器 | 排程要驅動「已登入的 Chrome」抓 FB，放在使用者自己的機器最單純，也順便能做寫回試算表與回報。已知代價：電腦關機／DSH 沒開時不會跑；下次啟動只補跑「最近一次」，不逐日補（依 `@deepseek-ai/dsh-schedule` 的 daily 決策註解：resolves near the decision's local date, not across its missed history）。要「關機也照跑」的替代方案與 `schtasks` 指令寫在 `docs/fb-daily-update.md` |
+
+## 委員粉專牆與每日排程改掛 launchd（2026-10-06）
+
+使用者要求「委員 tab 下方加一個子 tab，依黨籍／縣市展開粉專牆（瀑布流），預設最近更新的 5 位」，並把每日抓取排程裝起來。
+
+| # | 岔路 | 選擇 | 理由 |
+| --- | --- | --- | --- |
+| D172 | 每日排程放哪裡（改寫 D171） | 改用 **macOS launchd**（LaunchAgent `com.hermes.ly-dashboard-fb-daily`，每天 08:00），不用 DSH 應用程式內建的排程 | launchd 是系統層：dsh 沒開、電腦重開機後照跑，且不需要每次都要一次 `danger-full-access` 審批才能註冊。代價是 plist 得用一次 `launchctl bootstrap` 載入（那一步要在 gateway 外的終端做） |
+| D173 | 排程為什麼要多一層 wrapper | `scripts/fb-daily.sh`（＋`scripts/launchd/install.sh` 安裝腳本），不讓 launchd 直接跑 `fetch-fb-posts.mjs` | launchd 的 PATH 只有 `/usr/bin:/bin:/usr/sbin:/sbin`，找不到 Homebrew 的 node；wrapper 自己補 PATH、把輸出收進 `.cache/`、並在「一列都沒抓到」時用 exit 2 明確失敗（最常見原因是設定檔沒登入 Facebook） |
+| D174 | 粉專牆預設顯示幾位 | 沒套條件時只回**最近更新的 5 位**（依整理表的 `latest_post_date`，沒日期的排最後）；選了黨籍或縣市才展開整面牆（`limit` 上限 500） | 需求明講預設 5 位。展開靠 facet chips，兩維互相交叉（選了黨籍時縣市只列該黨真有的人），否則會出現「點了變空牆」的選項 |
+| D175 | 瀑布流怎麼排 | **CSS multi-column**（`columns: 3 300px` ＋ `break-inside: avoid`），不用 JS 量高度 | 卡片高度不一致（有無人像、摘要長短、有沒有展開嵌入框）時，multi-column 會自動把下一張補進最短的一欄；寬度不足自動減欄，不必另寫 media query |
+| D176 | Facebook 嵌入框什麼時候載入 | **按需**：按「看貼文」才掛 iframe（`FacebookEmbed`），一面牆不預先載入幾十個 | 每個嵌入框都會讓瀏覽器連到 Facebook，一次載入整面牆會很慢；`render-smoke` 直接驗「沒展開時不得出現 `plugins/page.php`」 |
+
+**已驗證**：`npm test` 177 項全過（含 10 項粉專牆後端測試）、`npm --prefix web run test` 137 項全過（含 8 項粉專牆渲染測試）、`npm --prefix web run build` 成功；`launchctl kickstart` 實測能帶起 wrapper（log 看到 `/opt/homebrew/bin/node` 被解析到）。
+
+**待辦（2026-10-06 現況）**：`~/.ly-dashboard/fb-profile` **還沒登入 Facebook**，所以排程跑起來會是 0 列、exit 2（要人工在有畫面的終端機跑一次 `node scripts/fetch-fb-posts.mjs --login`）；沒有 `service_account.json`，所以只產生本機 CSV、不寫回試算表。
