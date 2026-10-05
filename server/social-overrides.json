@@ -140,6 +140,22 @@
       "page_name": "中國國民黨 KMT",
       "verified_at": "2026-10-02",
       "reason": "整理表原網址指向中國國民黨 KMT 政黨粉專（64 萬追蹤），不是委員粉專；兩批更正都沒有替代網址。移除連結而不是連到錯的人（見 docs/fb-verification-2026-09-30.md）"
+    },
+    {
+      "legislator": "吳琪銘",
+      "url": "https://www.facebook.com/wuqiming519",
+      "page_name": "吳琪銘",
+      "followers": "",
+      "verified_at": "2026-10-06",
+      "reason": "整理表原網址是「吳琪銘 委員服務處」（page id 100057143873265，追蹤數僅約 1,300），服務處頁不是本人主要粉專。本人粉專在維基百科外部連結、Wikidata Q19849414 與 Facebook 站內搜尋「吳琪銘」三方一致為 wuqiming519（見 docs/fb-verification-2026-10-06.md）"
+    },
+    {
+      "legislator": "王義川",
+      "url": "https://www.facebook.com/ariver1972",
+      "page_name": "王義川",
+      "followers": "",
+      "verified_at": "2026-10-06",
+      "reason": "整理表原網址是 2024 競選期間的臨時頁「搶救王義川大兵」（page id 61553414626406，選後就沒再更新）。Facebook 站內搜尋「王義川」與維基百科官方連結都指向 ariver1972；注意這頁版面也只看到 2023 年的貼文，所以貼文欄位會留空（寧可空白，不要填錯日期）"
     }
   ]
 }

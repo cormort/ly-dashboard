@@ -664,15 +664,15 @@ test('社群更正表：支援 threads（整理表沒有這個平台，只能由
   assert.equal(Number(db.prepare('SELECT COUNT(*) AS n FROM social_accounts WHERE legislator_id = ?').get(target.id).n), 2);
 });
 
-test('真實更正表檔案：17 筆（含 1 筆 threads、1 筆 deny）、平台與網址格式一致、沒有重複', async () => {
+test('真實更正表檔案：19 筆（含 1 筆 threads、1 筆 deny）、平台與網址格式一致、沒有重複', async () => {
   const file = JSON.parse(readFileSync(fileURLToPath(new URL('../server/social-overrides.json', import.meta.url)), 'utf8'));
   const db = seeded();
   const dataset = buildDataset(fixture('id9.json'), fixture('id14.json'));
   const idByName = new Map(dataset.legislators.map((l) => [newsName(l.name), l.id]));
   const result = normalizeSocial(fixtureText('social.csv'), idByName, { overrides: file.overrides });
 
-  assert.equal(file.overrides.length, 17);
-  assert.equal(result.overridesApplied.length, 17, '每一筆都要生效（含 deny 的移除）');
+  assert.equal(file.overrides.length, 19, '2026-10-06 追加吳琪銘、王義川兩筆');
+  assert.equal(result.overridesApplied.length, 19, '每一筆都要生效（含 deny 的移除）');
   assert.equal(file.overrides.filter((o) => o.platform === 'threads').length, 1);
   assert.equal(file.overrides.filter((o) => o.action === 'deny').length, 1);
   for (const o of file.overrides) {

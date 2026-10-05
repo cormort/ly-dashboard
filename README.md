@@ -90,6 +90,10 @@ node scripts/verify-news-rss.mjs            # 媒體官方 RSS 打真網路逐�
 node scripts/verify-news-rss.mjs <url>      # 試別的 feed（例如比較 udn 的分類 id，見 DECISIONS D101）
 node scripts/import-news-csv.mjs --csv news-all.csv --out ../news-data   # 把「下載 CSV」的歷史新聞併進 news-data 分支的收集檔（只補還沒有的網址），推上去後任何伺服器第一次啟動都會匯入
 node scripts/backfill-news.mjs              # 一次性回補近 180 天的委員／首長／主計／機關新聞（Google 日期區間查詢）；預設跑 30 分鐘、可中斷接續（--minutes、--delay-ms、--reset、--status）
+node scripts/fetch-fb-posts.mjs             # 抓 113 位委員粉專的「最新一則貼文」→ .cache/posts-YYYY-MM-DD.csv（整理表的欄位格式，可直接貼回試算表）
+node scripts/fetch-fb-posts.mjs --login     # 第一次用（或登入失效）時先跑這個：開有畫面的瀏覽器登入一次，狀態存進 ~/.ly-dashboard/fb-profile
+node scripts/fetch-fb-posts.mjs --verify    # 另外輸出 docs/fb-verification-<日期>.csv（頁面顯示名稱／追蹤者／比對結果）
+node scripts/fetch-fb-posts.mjs --write-sheet --key service_account.json   # 直接把日期與摘要寫回試算表（服務帳號需對試算表有編輯權）
 npm --prefix web test                       # 前端 tsc -b＋煙霧／渲染煙霧，58 項全過
 node server/ingest.mjs                      # 123 位委員 / 783 席次 / 5 會期 / 113 本會期名錄 + 議案／社群／新聞
 node server/ingest.mjs                      # 第二次：名錄 status=skipped（sha256 + 正規化版本未變）
@@ -170,7 +174,7 @@ curl -X POST -H "x-sync-token: <隨機字串>" localhost:8787/api/v1/sync?scope=
 | --- | --- | --- |
 | **伺服器沒在跑** | 排程在伺服器程式內（不是系統 cron），關機或程式停止就不會更新 | 放在常開的機器上；或改用系統 cron 定時跑 `node server/ingest.mjs` |
 | **外部來源改版** | 該資料集持續同步失敗，畫面標示資料過期。g0v 立法院 API 是社群維護的非官方 API，改版機率高於官方 | 看 `/api/v1/sync-runs` 的錯誤訊息，改 `server/normalize.mjs` 或 `server/config.mjs` |
-| **社群帳號整理表** | 人工維護的 Google 試算表；委員換帳號、遞補時不會自動更新 | 有人定期更新表格（網址可用 `LY_SOCIAL_CSV` 覆寫）。已知錯誤的網址放在版本控管的更正表 `server/social-overrides.json`（17 筆：15 筆 facebook 覆蓋＋1 筆 threads＋1 筆 deny） |
+| **社群帳號整理表** | 人工維護的 Google 試算表；委員換帳號、遞補時不會自動更新 | 有人定期更新表格（網址可用 `LY_SOCIAL_CSV` 覆寫）。已知錯誤的網址放在版本控管的更正表 `server/social-overrides.json`（19 筆：17 筆 facebook 覆蓋＋1 筆 threads＋1 筆 deny）。每日貼文可以用 `scripts/fetch-fb-posts.mjs` 抓（需要一個已登入的 Chrome 設定檔，第一次用 `--login`） |
 | **分類規則遇到新寫法** | 新的議案狀態或名稱寫法對不到規則：落到「其他」、不顯示流程條或預算類型，不會壞掉 | 偶爾檢查，補 `web/src/lib/billStage.ts`、`server/normalize.mjs` 的 `budgetTypes()`、`server/queries.mjs` 的 `BUDGET_PENDING` |
 | **換屆（第 12 屆）** | 會依名錄切換屆次；合成測試已涵蓋（屆次／會期／席次整組切換、舊屆次查不到、`?session=舊會期` 退回最新會期），但**真實換屆當下仍然沒有跑過** | 換屆後手動同步一次並檢查各頁 |
 | **來源回應被截斷**（回了一半、分頁壞掉） | 整批覆寫的表（名錄／席次／公報紀錄／會議附件／ID223）會比對上次成功的筆數，掉超過 20% 就 **fail closed** 保留舊資料，並寫入 `sync_runs` 的 failed | 看 `/api/v1/sync-runs` 的錯誤；若確認是來源合法縮減，用 `LY_ALLOW_SHRINK=1 node server/ingest.mjs` 強制覆寫一次 |
@@ -665,6 +669,7 @@ build 腳本會用「候選人數對不對」確認自己抓對欄位，對不�
 | 同名不同人的 join（`D-4`） | 需要 build 端輸出中選會候選人 id 才能正確解；已在「資料限制」寫明並用測試鎖住「在職委員不可同名」 |
 | 2025 罷免、tw_statistic_map 未移植的功能、鄉鎮層級的得票趨勢 | 需要新資料來源或較大的改寫，見上面「尚未做的功能」 |
 | 議員粉專連結的存活驗證與修正 | **2026-10-04 已做**：373 條驗完（147 條打不開、42 條開到別人），並換掉 149 條壞連結（改完全部重開確認過）。**剩 40 條還是壞的**（34 條搜尋找不到、6 條只找到非官方頁面），見 `DECISIONS.md` D133–D137 |
+| 委員粉專的第二輪驗證與每日貼文腳本 | **2026-10-06 已做**：113 筆全部重驗（112 筆名稱相符、陳永康查無粉專、吳琪銘與王義川改用本人粉專），並把「每日抓最新貼文」做成可重跑的 `scripts/fetch-fb-posts.mjs`（Node＋已登入的 Chrome，含寫回試算表）。卡片式的每日填寫規則仍以 `docs/social-sheet-spec.md` 為準，見 `docs/fb-verification-2026-10-06.md` |
 
 ## 授權與資料來源
 
