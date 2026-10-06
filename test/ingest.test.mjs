@@ -2315,12 +2315,17 @@ test('預算清單：勘誤表這類附件預設排除、要看得到筆數、�
   insert('legal2', '法人預(決)算案', '函送財團法人臺灣亞洲交流基金會115年度營運及資金運用計畫，請查照案。', '交付處理');
   // 但「決算書案」（法人決算送件）不在規則裡 → 照列，不要掃到
   insert('legal3', '法人預(決)算案', '函送財團法人國防安全研究院113年度決算書案。', '交付查照');
-  const after = listBudget(db, { merge: 'none', limit: 200 });
-  const ids = after.items.map((i) => i.id);
+  // 法人預(決)算案現在不算「預算案本身」（只算中央政府總預算案），所以這些要在含報告類的範圍看
+  const allAfter = listBudget(db, { scope: 'all', merge: 'none', limit: 200 });
+  const ids = allAfter.items.map((i) => i.id);
   assert.ok(!ids.includes('legal1'), '預算書案不列');
   assert.ok(!ids.includes('legal2'), '營運及資金運用計畫不列');
   assert.ok(ids.includes('legal3'), '決算書案不在排除規則內，要照列');
   // 新增的預算書案 ＋ 營運及資金運用計畫都要被算進來（決算書案不算）
-  assert.equal(after.attachment_count, without.attachment_count + 2, '勘誤 ＋ 預算書案 ＋ 營運及資金運用計畫');
-  assert.equal(after.attachment_label, '勘誤表、預算書案、營運及資金運用計畫');
+  assert.equal(allAfter.attachment_count, allScope.attachment_count + 2, '勘誤 ＋ 預算書案 ＋ 營運及資金運用計畫');
+  // 預設範圍（只算中央政府總預算案）看不到法人預算的東西
+  const billsAfter = listBudget(db, { merge: 'none', limit: 200 });
+  assert.ok(billsAfter.items.every((i) => i.category === '中央政府總預算案'), '預設範圍只有中央政府總預算案');
+  assert.ok(!billsAfter.items.some((i) => i.id === 'legal3'));
+  assert.equal(allAfter.attachment_label, '勘誤表、預算書案、營運及資金運用計畫');
 });

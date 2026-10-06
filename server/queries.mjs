@@ -1958,9 +1958,11 @@ export function listBudget(
 ) {
   const resolvedLimit = all ? Infinity : Math.max(1, Math.min(Number(limit) || 30, 200));
   const resolvedOffset = Math.max(0, Math.trunc(Number(offset) || 0));
-  // 「議案本身」的類別（中央政府總預算案、法人預(決)算案）；其餘是決議案／定期報告（回覆決議的函件）
+  // 會標預算類型的類別（中央政府總預算案、法人預(決)算案；法人預算／決算的類型標籤要留著）
   const billCats = new Set(CONFIG.budget.billCategories ?? []);
-  const isBill = (r) => billCats.has(r.category);
+  // 算「預算案本身」的類別（只有中央政府總預算案）；其餘歸報告類，見 CONFIG.budget.scopeCategories
+  const scopeCats = new Set(CONFIG.budget.scopeCategories ?? CONFIG.budget.billCategories ?? []);
+  const isBill = (r) => scopeCats.has(r.category);
   const allRows = budgetBillsByProgress(db).map((r) => ({ ...r, types: budgetTypes(r.name, { billCategory: isBill(r) }) }));
   /**
    * 統計範圍：`bills`（預設）只算**預算案本身**，`all` 連決議案／定期報告一起算。
@@ -2079,7 +2081,7 @@ export function listBudget(
     scope,
     scope_note:
       scope === 'bills'
-        ? '統計只算預算案本身（總預算案、法人預決算案）；決議書面報告等報告類另計'
+        ? `統計只算預算案本身（${CONFIG.budget.scopeLabel ?? '預算案'}）；其他類別（法人預決算、決議書面報告等）另計`
         : '統計含決議案／定期報告（函送…請查照案的報告）',
     all_scope_total: mergeUnits ? allMatching.length : sumRecords(allMatching),
     bills_scope_total: mergeUnits ? billsMatching.length : sumRecords(billsMatching),
@@ -2100,7 +2102,7 @@ export function listBudget(
     total: matching.length,
     count: Math.min(resolvedLimit, Math.max(0, matching.length - resolvedOffset)),
     // is_bills：這一類是不是「議案本身」（前端點到報告類的類別時要自動把範圍切到 all，不然會是空的）
-    categories: CONFIG.budget.categories.map((name) => ({ name, count: categories.get(name) ?? 0, is_bills: billCats.has(name) })),
+    categories: CONFIG.budget.categories.map((name) => ({ name, count: categories.get(name) ?? 0, is_bills: scopeCats.has(name) })),
     years,
     proposers: ranked(proposers, 15),
     // 審議進度統計：總件數／已審竣／審議中／待審查／函件／退回（見 budgetProgress 的定義）
