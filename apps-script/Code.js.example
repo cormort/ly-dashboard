@@ -1,0 +1,81 @@
+/**
+ * 這是範本：複製成 Code.js、把 TOKEN 換成自己產生的隨機字串（跟本機 ~/.ly-dashboard/sheet.env 一致）再 clasp push。
+ *
+ * ly-dashboard：接收本機每日抓取的「最新貼文日期／摘要」，寫回臉書整理表（立委）的 F／G 欄。
+ * 呼叫端：scripts/push-posts-to-sheet.mjs（POST JSON {token, rows:[{id,date,summary}]}）
+ * 規則（見 docs/social-sheet-spec.md）：抓不到就留空、不填今天；只更新本來就有對應編號的列。
+ */
+var TOKEN = 'REPLACE_WITH_YOUR_OWN_RANDOM_TOKEN';
+var SHEET_ID = '11XrvNGMKZb_8rekFdGIg5VsXcV8rdJkZjyzd1I4gAMM';
+
+function doGet() {
+  return reply({ ok: true, hint: 'POST JSON {token, rows:[{id,date,summary}]}' });
+}
+
+function doPost(e) {
+  var payload;
+  try {
+    payload = JSON.parse((e && e.postData && e.postData.contents) || '{}');
+  } catch (err) {
+    return reply({ ok: false, error: 'bad-json' });
+  }
+  if (payload.token !== TOKEN) return reply({ ok: false, error: 'bad-token' });
+  var rows = payload.rows && payload.rows.length ? payload.rows : [];
+  if (!rows.length) return reply({ ok: false, error: 'no-rows' });
+
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var sheet = (payload.sheetName && ss.getSheetByName(payload.sheetName)) || ss.getSheets()[0];
+  var range = sheet.getDataRange();
+  var values = range.getValues();
+  var header = values[0].map(function (v) { return String(v).trim(); });
+  var idCol = header.indexOf('編號');
+  var dateCol = header.indexOf('最新貼文日期');
+  var sumCol = header.indexOf('最新貼文主題摘要');
+  if (idCol < 0 || dateCol < 0 || sumCol < 0) {
+    return reply({ ok: false, error: 'missing-columns', header: header });
+  }
+  // 日期欄維持純文字：否則 Sheets 會把 2026-10-05 轉成日期格式，匯出的 CSV 變成 2026/10/5
+  sheet.getRange(1, dateCol + 1, Math.max(1, values.length), 1).setNumberFormat('@');
+
+  var byId = {};
+  rows.forEach(function (r) {
+    if (r && r.id !== undefined && r.id !== null && String(r.id).trim()) byId[String(r.id).trim()] = r;
+  });
+
+  var updated = 0, unchanged = 0, blank = 0;
+  var sample = null;
+  for (var i = 1; i < values.length; i++) {
+    var id = String(values[i][idCol]).trim();
+    var row = byId[id];
+    if (!row) continue;
+    delete byId[id];
+    var date = String(row.date || '').trim();
+    var summary = String(row.summary || '').trim();
+    if (!date) { blank++; continue; }          // 沒抓到就留空，不動舊值
+    if (String(values[i][dateCol]).trim() === date && String(values[i][sumCol]).trim() === summary) {
+      unchanged++;
+      continue;
+    }
+    sheet.getRange(i + 1, dateCol + 1).setValue(date);
+    sheet.getRange(i + 1, sumCol + 1).setValue(summary);
+    if (!sample) sample = { id: id, date: String(sheet.getRange(i + 1, dateCol + 1).getDisplayValue()) };
+    updated++;
+  }
+
+  var notFound = Object.keys(byId);
+  return reply({
+    ok: true,
+    sheet: sheet.getName(),
+    updated: updated,
+    unchanged: unchanged,
+    blank: blank,
+    notFound: notFound.length,
+    notFoundIds: notFound.slice(0, 20),
+    sample: sample,
+    at: new Date().toISOString()
+  });
+}
+
+function reply(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
+}

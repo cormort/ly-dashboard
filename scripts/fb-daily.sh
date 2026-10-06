@@ -19,12 +19,24 @@
 #
 # 環境變數：
 #   LY_FB_PROFILE           Chrome 設定檔（預設 ~/.ly-dashboard/fb-profile）
-#   LY_FB_SERVICE_ACCOUNT   服務帳號金鑰；檔案存在才會 --write-sheet 寫回試算表
+#   LY_SHEET_WEBAPP_URL     Apps Script Web App 的 /exec 網址（寫回試算表用；見 apps-script/）
+#   LY_SHEET_TOKEN          同一個 Web App 的共享密鑰（兩者都有才會寫回）
+#   LY_FB_SERVICE_ACCOUNT   服務帳號金鑰；沒有 Web App 設定時才用這條（檔案存在才會 --write-sheet）
 #   LY_SYNC_TOKEN           本機伺服器有設 token 時，觸發同步要帶同一組
+#
+# 寫回用的網址與密鑰放在 ~/.ly-dashboard/sheet.env（repo 外、權限 600），下面會自動載入。
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT" || exit 1
+
+# 寫回試算表的密鑰檔（不在版控裡；沒有這個檔就只產生本機 CSV）
+if [ -f "$HOME/.ly-dashboard/sheet.env" ]; then
+  set -a
+  # shellcheck disable=SC1090
+  . "$HOME/.ly-dashboard/sheet.env"
+  set +a
+fi
 
 # launchd 不會載入使用者的 shell 設定，把常見的 node 位置補進 PATH
 export PATH="/opt/homebrew/bin:/usr/local/bin:$HOME/.local/bin:$PATH"
@@ -100,8 +112,23 @@ if [ "$FILLED" -eq 0 ]; then
   exit 2
 fi
 
+# 寫回試算表：優先用 Apps Script Web App（LY_SHEET_WEBAPP_URL＋LY_SHEET_TOKEN），
+# 其次是抓取腳本自己的服務帳號模式（--write-sheet --key，需要有金鑰檔）。
+WRITTEN=0
+if [ -n "${LY_SHEET_WEBAPP_URL:-}" ] && [ -n "${LY_SHEET_TOKEN:-}" ]; then
+  if PUSH_OUT="$("$NODE" scripts/push-posts-to-sheet.mjs "$OUT_DATED" 2>&1)"; then
+    printf '%s\n' "$PUSH_OUT" >>"$LOG"
+    WRITTEN=1
+  else
+    printf '%s\n' "$PUSH_OUT" >>"$LOG"
+    log "Web App 寫回失敗（見上面幾行）；本機 CSV 仍在 ${OUT_DATED}，可手動重跑：node scripts/push-posts-to-sheet.mjs \"$OUT_DATED\""
+  fi
+elif [ "$WRITE_SHEET" -eq 1 ]; then
+  WRITTEN=1
+fi
+
 # 只有真的把新資料寫回試算表時才觸發同步：沒寫回的話，伺服器重讀試算表也不會有新東西。
-if [ "$WRITE_SHEET" -eq 1 ]; then
+if [ "$WRITTEN" -eq 1 ]; then
   PORT="${PORT:-8787}"
   CURL_ARGS=(-sf -m 10 -X POST "http://127.0.0.1:$PORT/api/v1/sync")
   if [ -n "${LY_SYNC_TOKEN:-}" ]; then

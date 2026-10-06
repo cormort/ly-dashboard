@@ -8,3 +8,6 @@ web/tsconfig.tsbuildinfo
 *.tsbuildinfo
 .cache/
 posts-*.csv
+# Apps Script 專案：Code.js 內含寫回用的共享密鑰（token），不進公開 repo；
+# 要用的人自己複製 Code.js.example 填自己的 token 再 clasp push（見 docs/fb-daily-update.md）
+apps-script/Code.js

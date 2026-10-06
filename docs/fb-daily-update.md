@@ -20,7 +20,11 @@ scripts/fetch-fb-posts.mjs
         │      → .cache/posts-YYYY-MM-DD.csv（整理表欄位格式，可直接貼回）
         │      → docs/fb-verification-YYYY-MM-DD.csv（--verify：頁面顯示名稱／追蹤者／比對結果）
         ▼
-       ③  （選用）--write-sheet --key service_account.json → 只寫回 F／G 兩欄
+       ③  寫回試算表（兩種路徑，有設定就自動做）
+              · Apps Script Web App（目前用這條）：node scripts/push-posts-to-sheet.mjs
+                → POST 到 apps-script/ 部署的 Web App，只更新 F／G 兩欄
+              · 服務帳號（有 service_account.json 時）：--write-sheet --key
+              → 寫回成功後，wrapper 會叫本機伺服器重新同步，畫面不用等下一個 24 小時
 ```
 
 - 一次跑 113 位，每位間隔隨機 4–9 秒，約 **25–35 分鐘**。
@@ -42,7 +46,9 @@ node scripts/fetch-fb-posts.mjs --limit 5       # 試跑前 5 位
 node scripts/fetch-fb-posts.mjs --ids 1,18,91   # 只跑指定編號
 node scripts/fetch-fb-posts.mjs --headful       # 開畫面跑（被 FB 擋自動化時比較不容易失敗）
 
-# 直接寫回試算表（服務帳號需對試算表有「編輯者」權限）
+# 寫回試算表：預設走 Apps Script Web App（見第五節；url/token 在 ~/.ly-dashboard/sheet.env）
+node scripts/push-posts-to-sheet.mjs .cache/posts-2026-10-06.csv
+# 另一條路：服務帳號（需對試算表有「編輯者」權限）
 node scripts/fetch-fb-posts.mjs --write-sheet --key service_account.json
 ```
 
@@ -203,7 +209,26 @@ fixed-rate 是「advances directly past missed occurrences」——也就是**�
 - **陳永康**：查無官方粉專（2024 年報導指他與陳雪生是全院唯二沒有粉絲團的立委；陳雪生後來有）。
   整理表的錯誤連結已在 `server/social-overrides.json` 用 `action: "deny"` 移除。
 
-## 五、每天／每次同步的檢查清單
+## 五、寫回試算表：Apps Script Web App
+
+抓完之後要有人把 F／G 欄填上去。2026-10-06 前只能人工貼（另有一條服務帳號路線 `--write-sheet --key`，但要 GCP 金鑰），
+之後改用 **Apps Script Web App**：不需要 GCP、不需要金鑰檔，只有一組共享 token。
+
+- 程式在 `apps-script/`：`Code.js`（真的內容，**不進版控**，內含 token）、`Code.js.example`（範本）、`appsscript.json`（宣告 `webapp` 區塊）。
+- 部署（一次就好，用 clasp）：`cd apps-script && npx @google/clasp create --type standalone --title "…" && npx @google/clasp push && npx @google/clasp deploy`。
+  前置：Google 帳號要先到 <https://script.google.com/home/usersettings> 開啟 Apps Script API。
+- 授權（一次就好）：**Web App 第一次被呼叫前，必須先在 Apps Script 編輯器按一次「執行」完成授權**，
+  否則 `/exec` 一律回 403「存取遭拒」——`executeAs: USER_DEPLOYING` 需要使用者先同意這個指令碼的權限。
+- 網址與密鑰放 `~/.ly-dashboard/sheet.env`（權限 600、repo 外）：`LY_SHEET_WEBAPP_URL=…/exec`、`LY_SHEET_TOKEN=…`
+  （跟 `Code.js` 裡那組一致）。`scripts/fb-daily.sh` 會自動載入這個檔。
+- 手動寫回：`node scripts/push-posts-to-sheet.mjs .cache/posts-2026-10-06.csv`（加 `--dry-run` 只預演不送出）。
+  這支只送「有日期」的列；Web App 那一端也只動本來就有對應編號的列，沒抓到的列留空、不覆蓋舊值。
+- Web App 會先把日期欄設成純文字格式，免得 Sheets 把 `2026-10-05` 轉成日期、匯出變成 `2026/10/5`。
+
+**為什麼不走服務帳號**：要 GCP 專案＋金鑰檔＋把試算表分享給那個帳號，對「一個人維運的儀表板」太重；
+Web App 的權限邊界反而更清楚（一組 token、只能寫那一張表的 F／G 欄、寫入端在對方帳號下執行）。
+
+## 六、每天／每次同步的檢查清單
 
 - [ ] `--verify` 的 CSV 有沒有出現大量「⚠️ 拿不到頁面名稱」→ 可能是被限流，拉長 `--min-delay`
 - [ ] 執行紀錄有沒有「登入失效」→ 跑一次 `--login` 重新登入
@@ -211,7 +236,7 @@ fixed-rate 是「advances directly past missed occurrences」——也就是**�
 - [ ] 有沒有明顯不合理的日期（腳本已用 `saneDate` 擋，但換版後要重新確認）
 - [ ] 新抓到的網址與更正表有沒有衝突（更正表優先，且會清掉舊網址的貼文摘要）
 
-## 六、為什麼議員分頁先不做（2026-10-06 決定）
+## 七、為什麼議員分頁先不做（2026-10-06 決定）
 
 - 議員分頁約 360 位，是立委的 3 倍多：一輪 25–35 分鐘會變成 1.5 小時以上，限流風險也跟著放大。
 - 議員的粉專對照表（`scripts/council-facebook.csv`）本身還有 40 條連結是壞的（D133–D137），
