@@ -134,6 +134,12 @@ function BudgetItemRow({
         <button type="button" className="link-button" onClick={() => onPickProposer(item.proposer)}>
           {item.proposer}
         </button>
+        {/* 交付哪個委員會：同一個預算案會有多筆議案紀錄（分別交付不同委員會），這是區分它們的關鍵 */}
+        {item.committees.map((c) => (
+          <span key={c} className="committee-tag">
+            {c}
+          </span>
+        ))}
         {showCategory ? <span>{CATEGORY_LABEL[item.category] ?? item.category}</span> : null}
       </p>
     </li>

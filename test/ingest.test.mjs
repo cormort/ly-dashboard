@@ -2,10 +2,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { openDb, applyDataset, applyBills, applySocial, applyCommitteeRecords, applyCommitteeMeets, upsertNews, upsertArticles, pruneNews, pruneLogs, getMeta, setMeta, migrate } from '../server/db.mjs';
+import { openDb, applyDataset, upsertBudgetCommittees, getBudgetCommittees, applyBills, applySocial, applyCommitteeRecords, applyCommitteeMeets, upsertNews, upsertArticles, pruneNews, pruneLogs, getMeta, setMeta, migrate } from '../server/db.mjs';
 import { buildDataset, normalizeBills, normalizeCommitteeRecords, normalizeMeetings, normalizeSocial, normalizeCouncilSocial, sameSocialPage, sheetDate, newsName, rocDate, DataValidationError } from '../server/normalize.mjs';
 import { CONFIG } from '../server/config.mjs';
-import { entityFeedUrl, guardShrink, runIngest, runBillsIngest, runRecordsIngest, runBudgetIngest, runBudgetReportsIngest, runMeetingsIngest, budgetPageUrl, runNewsIngest, runOutletNews, runOutletPoll, retagOutletArticles, runNewsBackfill, backfillTargets, rangeFeedUrl, BACKFILL_CAP, runNewsFeedImport, runCouncilNews, runCouncilSocialIngest, runSocialIngest, runAll } from '../server/ingest.mjs';
+import { entityFeedUrl, guardShrink, runIngest, runBillsIngest, runRecordsIngest, runBudgetIngest, runBudgetReportsIngest, runMeetingsIngest, budgetPageUrl, runNewsIngest, runOutletNews, runOutletPoll, retagOutletArticles, runNewsBackfill, backfillTargets, rangeFeedUrl, BACKFILL_CAP, runNewsFeedImport, runCouncilNews, runCouncilSocialIngest, runSocialIngest, runBudgetCommittees, runAll } from '../server/ingest.mjs';
 import { entityNewsTerms, listFunds, getHealth, listBills, listBudget, listBudgetMeetings, listBudgetReports, budgetState, budgetUnitState, mergeBudgetUnits, listChanges, listCounties, listLegislatorVotes, listRankings, compareLegislators, listRegions, listSplitTicket, listDemographics, listPopulationTrend, getTownMap, listLegislators, listNews, listNewsArticles, newsCsv, listCouncilActivity, currentCouncilors, socialFreshness, listSyncRuns } from '../server/queries.mjs';
 import { FetchError } from '../server/fetch-ly.mjs';
 import { csvRowsToFeedItems, feedDate, feedFileUrl, mergeFeedFile, parseFeedFile } from '../server/news-feed.mjs';
@@ -2193,5 +2193,67 @@ test('一案一列：查詢預設合併，merge=none 才逐筆列', async () => 
   // 合併後每一列的狀態都要跟 record_states 一致（不會出現整列說已審竣、但裡面還有交付審查）
   for (const b of merged.items) {
     if (b.state === 'reviewed') assert.ok(!b.record_states.in_review && !b.record_states.pending && !b.record_states.returned, '說已審竣就不能還有未審完的紀錄');
+  }
+});
+
+test('委員會同步：只做議案本身、做過不重打、失敗不動舊值', async () => {
+  const db = seeded();
+  await runBudgetIngest(db, { logger: silent, fetchImpl: budgetOk });
+  const billCats = new Set(CONFIG.budget.billCategories);
+  const billRows = db.prepare('SELECT id, category FROM budget_bills').all().filter((r) => billCats.has(r.category));
+  const reportRows = db.prepare('SELECT id, category FROM budget_bills').all().filter((r) => !billCats.has(r.category));
+  assert.ok(billRows.length > 0 && reportRows.length > 0, 'fixture 要有議案本身與報告類');
+
+  const calls = [];
+  const fetchImpl = async (url) => {
+    calls.push(url);
+    if (url.includes(reportRows[0].id)) throw new Error('報告類不該被查');
+    return { json: { data: { 議案狀態: '交付審查', '會議代碼:str': '第11屆第5會期第7次會議', 議案流程: [{ 狀態: '排入院會 (交交通委員會)' }] } } };
+  };
+  const first = await runBudgetCommittees(db, { logger: silent, fetchImpl });
+  assert.equal(first.status, 'success');
+  assert.equal(first.checked, billRows.length, '只查議案本身那幾類');
+  assert.equal(first.records, billRows.length, '每一筆都抓到委員會');
+  assert.equal(calls.length, billRows.length);
+  assert.ok(!calls.some((u) => reportRows.some((r) => u.includes(r.id))), '報告類不查（10,801 筆太多且委員會意義不大）');
+  const map = getBudgetCommittees(db);
+  assert.deepEqual(map.get(billRows[0].id).committees, ['交通委員會']);
+
+  // 剛抓過 → 不再重打（refreshHours 預設 30 天）
+  const again = await runBudgetCommittees(db, { logger: silent, fetchImpl });
+  assert.equal(again.checked, 0, '抓過的不重打');
+  assert.equal(calls.length, billRows.length);
+
+  // 失敗時不要蓋掉舊值、也不要留下半筆
+  const failing = async () => {
+    throw new Error('boom');
+  };
+  const stale = new Date(Date.now() - 100 * 24 * 3600 * 1000).toISOString();
+  for (const row of billRows) upsertBudgetCommittees(db, { id: row.id, committees: ['內政委員會'], status: '交付審查', meeting: 'x', fetchedAt: stale });
+  const failed = await runBudgetCommittees(db, { logger: silent, fetchImpl: failing });
+  assert.equal(failed.failed, billRows.length);
+  assert.deepEqual(getBudgetCommittees(db).get(billRows[0].id).committees, ['內政委員會'], '失敗要保留舊值');
+});
+
+test('預算查詢：每一列帶委員會；一案一列時取成員紀錄的聯集', async () => {
+  const db = seeded();
+  await runBudgetIngest(db, { logger: silent, fetchImpl: budgetOk });
+  const rows = db.prepare('SELECT id, name, category FROM budget_bills').all();
+  upsertBudgetCommittees(db, { id: rows[0].id, committees: ['內政委員會'], status: '交付審查', meeting: null, fetchedAt: new Date().toISOString() });
+  upsertBudgetCommittees(db, { id: rows[1].id, committees: ['交通委員會'], status: '交付審查', meeting: null, fetchedAt: new Date().toISOString() });
+  const items = listBudget(db, { merge: 'none', limit: 200 }).items;
+  assert.deepEqual(items.find((i) => i.id === rows[0].id).committees, ['內政委員會']);
+  const merged = listBudget(db, { merge: 'name', limit: 200 }).items;
+  // 沒有同名紀錄的案子：委員會要跟著那一筆
+  const one = merged.find((i) => i.records === 1 && i.id === rows[0].id);
+  if (one) assert.deepEqual(one.committees, ['內政委員會']);
+  // 合併的案子：把成員紀錄的委員會聯集起來（順序照紀錄順序、去重）
+  const sameName = rows.filter((r) => r.name === rows[0].name).map((r) => r.id);
+  if (sameName.length > 1) {
+    const unit = merged.find((i) => i.name === rows[0].name);
+    for (const id of sameName) {
+      const c = db.prepare('SELECT committees FROM budget_committees WHERE id = ?').get(id);
+      if (c) for (const name of JSON.parse(c.committees)) assert.ok(unit.committees.includes(name), `${name} 應該在聯集裡`);
+    }
   }
 });

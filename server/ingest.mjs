@@ -1,13 +1,14 @@
 import { pathToFileURL } from 'node:url';
 import { readFileSync } from 'node:fs';
 import { CONFIG } from './config.mjs';
-import { openDb, recordSyncRun, saveSnapshot, applyDataset, applyBills, applyBudget, applyBudgetReports, applyCommitteeMeets, applyCommitteeRecords, applyMeetings, applySocial, applyCouncilSocial, upsertNews, upsertTopicNews, upsertArticles, pruneNews, pruneLogs, getMeta, setMeta, upsertProgressOverride, getProgressOverrides, applyProgressOverrides } from './db.mjs';
+import { openDb, recordSyncRun, saveSnapshot, applyDataset, applyBills, applyBudget, applyBudgetReports, applyCommitteeMeets, applyCommitteeRecords, applyMeetings, applySocial, applyCouncilSocial, upsertNews, upsertTopicNews, upsertArticles, pruneNews, pruneLogs, getMeta, setMeta, upsertProgressOverride, getProgressOverrides, applyProgressOverrides, upsertBudgetCommittees, getBudgetCommittees } from './db.mjs';
 import { buildDataset, normalizeCouncilSocial, normalizeBills, normalizeBudget, normalizeBudgetReports, normalizeCommitteeMeets, normalizeCommitteeRecords, normalizeMeetings, normalizeSocial, newsName, parseNewsRss, DataValidationError, NORMALIZER_VERSION } from './normalize.mjs';
 import { fetchJson, FetchError, sha256 } from './fetch-ly.mjs';
 import { ambiguousCouncilorNames, currentCouncilors, entityNewsTerms, makeTagger, mentionsKnownEntity } from './queries.mjs';
 import { feedDate, feedFileUrl, outletLabel, parseFeedFile } from './news-feed.mjs';
 import { SYNC_STAGES } from './sync-scopes.mjs';
 import { fetchBillProgress } from './ppg-progress.mjs';
+import { fetchBillCommittees } from './budget-committees.mjs';
 import { reportProgress } from './sync-progress.mjs';
 
 /**
@@ -1115,6 +1116,48 @@ export async function runProgressDates(db, { logger = console, fetchImpl = fetch
   });
 }
 
+/**
+ * 預算議案的委員會：同一個預算案會有多筆議案紀錄（實測 115 年度總預算案 24 筆），差別就在交付哪個委員會。
+ * 議案列表 API 沒有這一欄，要逐筆打 `/bill/{id}`，所以只在「議案本身」那兩類做（實測 491 筆，
+ * 第一次約 10 分鐘；做過的隔 `refreshHours`（預設 30 天）才重查，之後只補新案）。
+ * 抓到的寫進 `budget_committees`（同步會重寫 budget_bills，所以要存別張表，讀取時再套用）。
+ */
+export async function runBudgetCommittees(db, { logger = console, fetchImpl = fetchJson, now = () => new Date() } = {}) {
+  return runStage(db, 'bill_committees', { logger, now }, async () => {
+    const known = getBudgetCommittees(db);
+    const staleBefore = new Date(now().getTime() - CONFIG.budget.committees.refreshHours * 3600_000).toISOString();
+    const billCats = new Set(CONFIG.budget.billCategories ?? []);
+    const rows = db
+      .prepare('SELECT id, category FROM budget_bills')
+      .all()
+      .filter((r) => billCats.has(r.category));
+    const todo = rows
+      .filter((r) => {
+        const hit = known.get(r.id);
+        return !hit || hit.fetched_at < staleBefore;
+      })
+      .slice(0, CONFIG.budget.committees.maxPerRun);
+    let withCommittee = 0;
+    let noCommittee = 0;
+    let failed = 0;
+    for (const [index, row] of todo.entries()) {
+      reportProgress({ stage: 'committees', phase: '預算議案委員會', done: index, total: todo.length });
+      try {
+        const { committees, status, meeting } = await fetchBillCommittees(row.id, { fetchImpl });
+        upsertBudgetCommittees(db, { id: row.id, committees, status, meeting, fetchedAt: now().toISOString() });
+        if (committees.length) withCommittee += 1;
+        else noCommittee += 1;
+      } catch (error) {
+        failed += 1;
+        logger.warn(`[bill_committees] ${row.id} 抓取失敗，保留原值：${String(error?.message || error)}`);
+      }
+    }
+    reportProgress({ stage: 'committees', phase: '預算議案委員會', done: todo.length, total: todo.length });
+    logger.log(`[bill_committees] 檢查 ${todo.length} 筆、有委員會 ${withCommittee} 筆、流程沒有委員會 ${noCommittee} 筆、失敗 ${failed} 筆`);
+    return { records: withCommittee, checked: todo.length, no_committee: noCommittee, failed };
+  });
+}
+
 export async function runAll(db, options = {}) {
   const skipped = (stage) => ({ status: 'skipped', reason: `${stage} 已由環境變數停用` });
   const runners = {
@@ -1128,6 +1171,7 @@ export async function runAll(db, options = {}) {
     council_social: () => (CONFIG.skip.social ? skipped('council_social') : runCouncilSocialIngest(db, options)),
     news: () => (CONFIG.skip.news ? skipped('news') : runNewsIngest(db, options)),
     progress: () => runProgressDates(db, options),
+    committees: () => runBudgetCommittees(db, options),
   };
   // options.stages 由 server/sync-scopes.mjs 決定（例如只同步社群粉專）；沒給就跑全部。
   const requested = options.stages ?? SYNC_STAGES;

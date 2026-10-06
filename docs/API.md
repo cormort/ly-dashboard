@@ -293,6 +293,10 @@ Query 參數（全部可選）：
 - `merge`／`merged_total`／`records_total`：目前模式、目前篩選下合併後件數、逐筆件數
 - `scope_totals`：目前篩選下兩個範圍各幾件（依 `merge` 決定是單位或紀錄），給「只算預算案／含報告類」開關
 - `items[].records`／`items[].record_states`：這一列合併了幾筆、各狀態各幾筆
+- `items[].committees`：交付哪個委員會（例：`["交通委員會"]`）。同一個預算案的多筆議案紀錄差別就在這裡，
+  由同步階段 `committees`（dataset `bill_committees`）逐筆打 g0v `/bill/{id}` 取得，
+  只做「議案本身」那兩類（實測 491 筆；報告類 10,801 筆太多且委員會意義不大），做過隔 30 天才重查。
+  一案一列時是成員紀錄的**聯集**
 - `scope`／`scope_note`／`bills_scope_total`／`all_scope_total`：目前範圍、一句話說明、兩個範圍各幾件
 - `categories[].is_bills`：這個類別是不是「議案本身」（前端點到報告類要自動切範圍）
 - `group_by=year`：分年度呈現，回 `groups: [{ name, total, progress, items }]`（每年只列 `per_group` 筆，

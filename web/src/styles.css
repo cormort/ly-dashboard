@@ -1359,3 +1359,5 @@ a.stat-tile:hover { border-color: #98a2b3; box-shadow: var(--card-base-hover); t
 
 .scope-note { margin: 0 0 var(--space-3); font-size: var(--fs-sm); }
 .scope-switch button { white-space: nowrap; }
+
+.committee-tag { font-size: var(--fs-xs, 0.75rem); color: var(--ink-2); border: 1px dashed var(--rule); border-radius: var(--radius-pill); padding: 0 8px; }

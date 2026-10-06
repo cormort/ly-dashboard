@@ -4,7 +4,7 @@ import { CONFIG } from './config.mjs';
  * 同步階段（canonical 順序）。`runAll` 認得的就是這幾個代號，
  * server/ingest.mjs 的 runner 表與這裡必須一一對應（測試會檢查）。
  */
-export const SYNC_STAGES = ['roster', 'bills', 'budget', 'budget_reports', 'meetings', 'records', 'social', 'council_social', 'news', 'progress'];
+export const SYNC_STAGES = ['roster', 'bills', 'budget', 'budget_reports', 'meetings', 'records', 'social', 'council_social', 'news', 'progress', 'committees'];
 
 /**
  * 同步範圍（下拉選單的選項）。`stages` 是 `runAll` 認得的階段代號；
@@ -26,7 +26,7 @@ export const SYNC_SCOPES = [
   { id: 'social', label: '只重讀社群粉專', stages: ['social', 'council_social'], cooldownMinutes: 5, cadence: '委員粉專是本機每天 08:00 抓取後寫回整理表，一天只有一輪' },
   { id: 'news', label: '只同步新聞', stages: ['news'], cooldownMinutes: 10, cadence: '新聞來源雖然持續更新，但這麼短時間內再抓通常還是同一批' },
   { id: 'roster', label: '只同步名錄', stages: ['roster'], cooldownMinutes: 30, cadence: '名錄（立法院開放資料 id9／id14）一天更新一次' },
-  { id: 'legislative', label: '議事與預算', stages: ['bills', 'budget', 'budget_reports', 'meetings', 'records', 'progress'], cooldownMinutes: 30, cadence: '議事資料一天更新一次（g0v 與立法院開放資料都是每日更新）' },
+  { id: 'legislative', label: '議事與預算', stages: ['bills', 'budget', 'budget_reports', 'meetings', 'records', 'progress', 'committees'], cooldownMinutes: 30, cadence: '議事資料一天更新一次（g0v 與立法院開放資料都是每日更新）' },
 ];
 
 export const DEFAULT_SCOPE = 'all';
@@ -43,6 +43,7 @@ export const STAGE_DATASETS = {
   council_social: ['council_social'],
   news: ['news'],
   progress: ['ppg_progress'],
+  committees: ['bill_committees'],
 };
 
 /** 認不得的 scope 一律退回預設（前端舊版沒帶參數的情況也走這條） */
@@ -76,6 +77,7 @@ const DATASET_LABELS = {
   council_social: '議員粉專',
   news: '新聞',
   ppg_progress: '議事進度（補日期）',
+  bill_committees: '預算議案委員會',
 };
 
 export function datasetLabel(dataset) {

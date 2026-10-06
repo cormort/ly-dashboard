@@ -1,5 +1,5 @@
 import { CONFIG } from './config.mjs';
-import { getMeta } from './db.mjs';
+import { getMeta , getBudgetCommittees } from './db.mjs';
 import { readFileSync } from 'node:fs';
 import { budgetTypes, committeesOf, newsName, regionOf } from './normalize.mjs';
 import { SYNC_SCOPES, datasetLabel, scopeDatasets } from './sync-scopes.mjs';
@@ -1882,11 +1882,13 @@ export const mergeBudgetUnits = (list) => {
     const key = `${r.category}\u0000${r.name}`;
     const hit = map.get(key);
     if (!hit) {
-      map.set(key, { ...r, state, records: 1, states: { [state]: 1 } });
+      map.set(key, { ...r, state, records: 1, states: { [state]: 1 }, ids: [r.id] });
       continue;
     }
     hit.records += 1;
     hit.states[state] = (hit.states[state] ?? 0) + 1;
+    if (!hit.ids) hit.ids = [hit.id];
+    hit.ids.push(r.id);
     if (String(r.latest_date ?? '') > String(hit.latest_date ?? '')) hit.latest_date = r.latest_date;
     const better =
       BUDGET_STATE_RANK[state] > BUDGET_STATE_RANK[hit.state] ||
@@ -2021,6 +2023,16 @@ export function listBudget(
   const allMatching = applyFilters(allUnits);
   const sumRecords = (list) => list.reduce((n, r) => n + (r.records ?? 1), 0);
   const resolvedPerGroup = Math.max(1, Math.min(Number(perGroup) || 5, 50));
+  // 委員會存在另一張表（同步會重寫 budget_bills），讀取時套用；合併的列取成員紀錄的聯集
+  const committeeMap = getBudgetCommittees(db);
+  const committeesOfUnit = (unit) => {
+    const ids = unit.ids ?? [unit.id];
+    const out = [];
+    for (const id of ids) {
+      for (const name of committeeMap.get(id)?.committees ?? []) if (!out.includes(name)) out.push(name);
+    }
+    return out;
+  };
 
   const itemOf = (r) => ({
     id: r.id,
@@ -2038,6 +2050,8 @@ export function listBudget(
     session: r.session,
     latest_date: r.latest_date,
     url: r.url,
+    /** 交付哪個委員會（逐筆抓 /bill/{id}，見 runBudgetCommittees）；合併的列是聯集 */
+    committees: committeesOfUnit(r),
   });
   // `group_by=year`：分年度呈現用。每一組給統計與前幾筆（其餘用「看這一年全部」帶 year 條件再查）
   const groups =

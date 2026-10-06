@@ -198,6 +198,13 @@ CREATE TABLE IF NOT EXISTS progress_overrides (
   fetched_at TEXT NOT NULL,
   PRIMARY KEY (dataset, id)
 );
+CREATE TABLE IF NOT EXISTS budget_committees (
+  id TEXT PRIMARY KEY,
+  committees TEXT NOT NULL DEFAULT '[]',
+  status TEXT,
+  meeting TEXT,
+  fetched_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS committee_records (
   id TEXT PRIMARY KEY,
   date TEXT,
@@ -471,6 +478,30 @@ export function applyDataset(db, dataset, { fetchedAt, sourceUrl }) {
  * （ppg.ly.gov.tw）自己抓。抓到的日期存在這張表，因為每次同步都會 DELETE + INSERT
  * 重寫 bills／budget_bills（見 applyBills／applyBudget），存這裡才活得下來。
  */
+/** 預算議案的委員會（存另一張表：同步會 DELETE + INSERT 重寫 budget_bills） */
+export function upsertBudgetCommittees(db, { id, committees, status = null, meeting = null, fetchedAt }) {
+  if (!id) return;
+  db.prepare(
+    `INSERT INTO budget_committees(id, committees, status, meeting, fetched_at) VALUES(?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET committees = excluded.committees, status = excluded.status, meeting = excluded.meeting, fetched_at = excluded.fetched_at`,
+  ).run(id, JSON.stringify(committees ?? []), status, meeting, fetchedAt);
+}
+
+/** key 為議案編號 */
+export function getBudgetCommittees(db) {
+  const map = new Map();
+  for (const row of db.prepare('SELECT * FROM budget_committees').all()) {
+    let committees = [];
+    try {
+      committees = JSON.parse(row.committees);
+    } catch {
+      committees = [];
+    }
+    map.set(row.id, { ...row, committees: Array.isArray(committees) ? committees : [] });
+  }
+  return map;
+}
+
 export function upsertProgressOverride(db, { dataset, id, date, status = null, source = 'ppg', fetchedAt }) {
   if (!dataset || !id) return;
   db.prepare(

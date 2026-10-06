@@ -684,6 +684,8 @@ export interface BudgetItem {
   records: number;
   /** 各狀態各有幾筆紀錄（合併後顯示「9 筆已審查完畢、13 筆交付審查」用） */
   record_states: Partial<Record<BudgetState, number>>;
+  /** 交付哪個委員會（逐筆抓 /bill/{id}）；一案一列時為成員紀錄的聯集 */
+  committees: string[];
   /** 提案單位（機關或委員會） */
   proposer: string;
   /** 從名稱抽出的預算年度（民國），抽不到為 null */
