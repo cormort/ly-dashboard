@@ -24,7 +24,7 @@ test('同步範圍：只重讀社群粉專＝委員粉專＋議員粉專，不�
 
 test('同步範圍：名錄這一項涵蓋官方兩個資料集（id9／id14）', () => {
   assert.deepEqual(scopeDatasets('roster'), ['id9', 'id14']);
-  assert.deepEqual(scopeDatasets('legislative'), ['bills', 'budget', 'budget_reports', 'meetings', 'records']);
+  assert.deepEqual(scopeDatasets('legislative'), ['bills', 'budget', 'budget_reports', 'meetings', 'records', 'ppg_progress']);
 });
 
 test('同步範圍：每個階段都要有 runner 對應的 dataset（少一個就會查不到上次同步時間）', () => {

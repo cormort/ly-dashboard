@@ -1,12 +1,13 @@
 import { pathToFileURL } from 'node:url';
 import { readFileSync } from 'node:fs';
 import { CONFIG } from './config.mjs';
-import { openDb, recordSyncRun, saveSnapshot, applyDataset, applyBills, applyBudget, applyBudgetReports, applyCommitteeMeets, applyCommitteeRecords, applyMeetings, applySocial, applyCouncilSocial, upsertNews, upsertTopicNews, upsertArticles, pruneNews, pruneLogs, getMeta, setMeta } from './db.mjs';
+import { openDb, recordSyncRun, saveSnapshot, applyDataset, applyBills, applyBudget, applyBudgetReports, applyCommitteeMeets, applyCommitteeRecords, applyMeetings, applySocial, applyCouncilSocial, upsertNews, upsertTopicNews, upsertArticles, pruneNews, pruneLogs, getMeta, setMeta, upsertProgressOverride, getProgressOverrides, applyProgressOverrides } from './db.mjs';
 import { buildDataset, normalizeCouncilSocial, normalizeBills, normalizeBudget, normalizeBudgetReports, normalizeCommitteeMeets, normalizeCommitteeRecords, normalizeMeetings, normalizeSocial, newsName, parseNewsRss, DataValidationError, NORMALIZER_VERSION } from './normalize.mjs';
 import { fetchJson, FetchError, sha256 } from './fetch-ly.mjs';
 import { ambiguousCouncilorNames, currentCouncilors, entityNewsTerms, makeTagger, mentionsKnownEntity } from './queries.mjs';
 import { feedDate, feedFileUrl, outletLabel, parseFeedFile } from './news-feed.mjs';
 import { SYNC_STAGES } from './sync-scopes.mjs';
+import { fetchBillProgress } from './ppg-progress.mjs';
 
 /**
  * Ingestion 管線：FETCH → VALIDATE → NORMALIZE → PERSIST。
@@ -1032,6 +1033,56 @@ export async function runCouncilSocialIngest(db, { logger = console, fetchImpl =
  * 名錄 → 議案 → 預算 → 社群 → 新聞；名錄失敗就不跑其餘（沒有名錄就對不到人）。
  * `LY_SKIP_BILLS` / `LY_SKIP_NEWS` / `LY_SKIP_SOCIAL` 可跳過外部來源（測試與離線驗證用）。
  */
+/**
+ * 議案進度日期補完：來源是**立法院議事暨公報資訊網**（官方）的議案頁。
+ *
+ * 為什麼需要：g0v 的 LYAPI 在 `議案流程[].日期` 對本會期議案常常留空
+ * （實測 2026-10-06：本會期 199 筆預算議案全部沒有日期，含 115 年度追加預算案），
+ * 沒有日期就排不出「最新進度」的順序，畫面上也只能顯示「尚無進度日期」。
+ * 同一筆議案在官方議案頁上是有日期的（`排入院會 → 院會 11-06-02 → 115年10月02日`）。
+ *
+ * 只處理「本會期且沒有日期」以及「日期是我們自己補的（要刷新）」的議案；
+ * 抓到的日期寫進 progress_overrides，並套用到 bills／budget_bills
+ * （同步會 DELETE + INSERT 重寫那兩張表，所以覆蓋要存在另一張表）。
+ */
+export async function runProgressDates(db, { logger = console, fetchImpl = fetchJson, now = () => new Date() } = {}) {
+  return runStage(db, 'ppg_progress', { logger, now }, async () => {
+    const overrides = getProgressOverrides(db);
+    const staleBefore = new Date(now().getTime() - CONFIG.progress.refreshHours * 3600_000).toISOString();
+    const candidates = [];
+    for (const [table, dataset] of [['bills', 'bills'], ['budget_bills', 'budget_bills']]) {
+      const rows = db.prepare(`SELECT id, latest_date, session FROM ${table} WHERE session = (SELECT MAX(session) FROM ${table})`).all();
+      for (const row of rows) {
+        const override = overrides.get(`${dataset}:${row.id}`);
+        // 已經有日期的（g0v 給的）不動；日期是我們補的，隔一段時間要回頭刷新，因為案子會繼續跑進度
+        const usesOurs = Boolean(override?.date) && override.date === row.latest_date;
+        if (row.latest_date && !usesOurs) continue;
+        if (override && override.fetched_at >= staleBefore) continue; // 這輪已經查過
+        candidates.push({ dataset, id: row.id });
+      }
+    }
+    const todo = candidates.slice(0, CONFIG.progress.maxPerRun);
+    let filled = 0;
+    let noDate = 0;
+    let failed = 0;
+    for (const item of todo) {
+      try {
+        const { date, status } = await fetchBillProgress(item.id, { fetchImpl, now: now() });
+        // 抓不到日期也記一筆（date=''），才知道查過了，不會每天重打同一批
+        upsertProgressOverride(db, { dataset: item.dataset, id: item.id, date: date ?? '', status, fetchedAt: now().toISOString() });
+        if (date) filled += 1;
+        else noDate += 1;
+      } catch (error) {
+        failed += 1;
+        logger.warn(`[ppg_progress] ${item.id} 抓取失敗，保留空白：${String(error?.message || error)}`);
+      }
+    }
+    const applied = applyProgressOverrides(db);
+    logger.log(`[ppg_progress] 本會期議案：檢查 ${todo.length} 筆、補到日期 ${filled} 筆、官方也還沒日期 ${noDate} 筆、失敗 ${failed} 筆（套用 ${applied} 列）`);
+    return { records: applied, checked: todo.length, filled, no_date: noDate, failed };
+  });
+}
+
 export async function runAll(db, options = {}) {
   const skipped = (stage) => ({ status: 'skipped', reason: `${stage} 已由環境變數停用` });
   const runners = {
@@ -1044,6 +1095,7 @@ export async function runAll(db, options = {}) {
     social: () => (CONFIG.skip.social ? skipped('social') : runSocialIngest(db, options)),
     council_social: () => (CONFIG.skip.social ? skipped('council_social') : runCouncilSocialIngest(db, options)),
     news: () => (CONFIG.skip.news ? skipped('news') : runNewsIngest(db, options)),
+    progress: () => runProgressDates(db, options),
   };
   // options.stages 由 server/sync-scopes.mjs 決定（例如只同步社群粉專）；沒給就跑全部。
   const requested = options.stages ?? SYNC_STAGES;

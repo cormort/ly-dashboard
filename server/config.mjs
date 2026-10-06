@@ -116,6 +116,14 @@ export const CONFIG = {
     syncRuns: Number(process.env.LY_SYNC_RUNS_KEEP ?? 0),
     changeLog: Number(process.env.LY_CHANGE_LOG_KEEP ?? 0),
   },
+  // 補「議案進度日期」的來源：立法院議事暨公報資訊網（ppg.ly.gov.tw）的議案頁。
+  // g0v 的 LYAPI 對本會期的議案常常沒給日期（見 server/ppg-progress.mjs），這裡自己向官方補。
+  progress: {
+    // 一輪最多抓幾筆（本會期通常兩百多筆；一天一輪就夠）
+    maxPerRun: Number(process.env.LY_PROGRESS_MAX ?? 400),
+    // 同一個議案幾小時內不重複查（一天一次即可，免得對官方網站太頻繁）
+    refreshHours: Number(process.env.LY_PROGRESS_REFRESH_HOURS ?? 20),
+  },
   staleAfterHours: Number(process.env.LY_STALE_HOURS || 36),
   // 靜態資料（人口／選舉／鄉鎮圖資，由 scripts/build-county-stats.mjs 產生）不在同步流程內，
   // 來源是月報與選舉年，不會天天變；超過這個月數就在 /health 的 warnings 提醒重跑 build。

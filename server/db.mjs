@@ -189,6 +189,15 @@ CREATE TABLE IF NOT EXISTS committee_meetings (
   content TEXT,
   speakers TEXT NOT NULL DEFAULT '[]'
 );
+CREATE TABLE IF NOT EXISTS progress_overrides (
+  dataset TEXT NOT NULL,
+  id TEXT NOT NULL,
+  date TEXT NOT NULL,
+  status TEXT,
+  source TEXT NOT NULL DEFAULT 'ppg',
+  fetched_at TEXT NOT NULL,
+  PRIMARY KEY (dataset, id)
+);
 CREATE TABLE IF NOT EXISTS committee_records (
   id TEXT PRIMARY KEY,
   date TEXT,
@@ -456,6 +465,44 @@ export function applyDataset(db, dataset, { fetchedAt, sourceUrl }) {
 }
 
 /** 議案整批覆寫（單一交易）；bill_sponsors.legislator_id 不設 FK，名錄重建時不必連動刪議案。 */
+/**
+ * 「進度日期覆蓋」：g0v 的 LYAPI 對本會期的議案常常沒給 `議案流程[].日期`
+ * （實測 2026-10-06：本會期 199 筆預算議案全部沒有），我們改從立法院議事暨公報資訊網
+ * （ppg.ly.gov.tw）自己抓。抓到的日期存在這張表，因為每次同步都會 DELETE + INSERT
+ * 重寫 bills／budget_bills（見 applyBills／applyBudget），存這裡才活得下來。
+ */
+export function upsertProgressOverride(db, { dataset, id, date, status = null, source = 'ppg', fetchedAt }) {
+  if (!dataset || !id) return;
+  db.prepare(
+    `INSERT INTO progress_overrides(dataset, id, date, status, source, fetched_at) VALUES(?, ?, ?, ?, ?, ?)
+     ON CONFLICT(dataset, id) DO UPDATE SET date = excluded.date, status = excluded.status, source = excluded.source, fetched_at = excluded.fetched_at`,
+  ).run(dataset, id, date ?? '', status, source, fetchedAt);
+}
+
+/** 全部覆蓋記錄（key 為 `dataset:id`） */
+export function getProgressOverrides(db) {
+  return new Map(db.prepare('SELECT * FROM progress_overrides').all().map((r) => [`${r.dataset}:${r.id}`, r]));
+}
+
+/**
+ * 把覆蓋日期套用到資料表：**只補空的**（g0v 有給日期時以 g0v 為準，我們不覆蓋它）。
+ * 每次同步寫完 bills／budget_bills 後呼叫，讓補過的日期不會因為同步被清掉。
+ */
+export function applyProgressOverrides(db) {
+  const rows = db.prepare("SELECT dataset, id, date, status FROM progress_overrides WHERE date <> ''").all();
+  const update = {
+    bills: db.prepare("UPDATE bills SET latest_date = ? WHERE id = ? AND (latest_date = '' OR latest_date IS NULL)"),
+    budget_bills: db.prepare("UPDATE budget_bills SET latest_date = ? WHERE id = ? AND (latest_date = '' OR latest_date IS NULL)"),
+  };
+  let applied = 0;
+  for (const row of rows) {
+    const stmt = update[row.dataset];
+    if (!stmt) continue;
+    applied += stmt.run(row.date, row.id).changes;
+  }
+  return applied;
+}
+
 export function applyBills(db, { bills, sponsors }, { fetchedAt }) {
   const previous = new Map(db.prepare('SELECT id, status FROM bills').all().map((r) => [r.id, r.status]));
   db.exec('BEGIN');
@@ -485,6 +532,7 @@ export function applyBills(db, { bills, sponsors }, { fetchedAt }) {
       }
     }
 
+    applyProgressOverrides(db);
     setMeta(db, 'bills_fetched_at', fetchedAt);
     setMeta(db, 'bills_count', String(bills.length));
     db.exec('COMMIT');
@@ -515,6 +563,7 @@ export function applyBudget(db, items, { fetchedAt }) {
         changes += 1;
       }
     }
+    applyProgressOverrides(db);
     setMeta(db, 'budget_fetched_at', fetchedAt);
     db.exec('COMMIT');
     return { changes };

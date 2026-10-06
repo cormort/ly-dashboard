@@ -4,7 +4,7 @@ import { CONFIG } from './config.mjs';
  * 同步階段（canonical 順序）。`runAll` 認得的就是這幾個代號，
  * server/ingest.mjs 的 runner 表與這裡必須一一對應（測試會檢查）。
  */
-export const SYNC_STAGES = ['roster', 'bills', 'budget', 'budget_reports', 'meetings', 'records', 'social', 'council_social', 'news'];
+export const SYNC_STAGES = ['roster', 'bills', 'budget', 'budget_reports', 'meetings', 'records', 'social', 'council_social', 'news', 'progress'];
 
 /**
  * 同步範圍（下拉選單的選項）。`stages` 是 `runAll` 認得的階段代號；
@@ -22,7 +22,7 @@ export const SYNC_SCOPES = [
   { id: 'social', label: '只重讀社群粉專', stages: ['social', 'council_social'] },
   { id: 'news', label: '只同步新聞', stages: ['news'] },
   { id: 'roster', label: '只同步名錄', stages: ['roster'] },
-  { id: 'legislative', label: '議事與預算', stages: ['bills', 'budget', 'budget_reports', 'meetings', 'records'] },
+  { id: 'legislative', label: '議事與預算', stages: ['bills', 'budget', 'budget_reports', 'meetings', 'records', 'progress'] },
 ];
 
 export const DEFAULT_SCOPE = 'all';
@@ -38,6 +38,7 @@ export const STAGE_DATASETS = {
   social: ['social'],
   council_social: ['council_social'],
   news: ['news'],
+  progress: ['ppg_progress'],
 };
 
 /** 認不得的 scope 一律退回預設（前端舊版沒帶參數的情況也走這條） */
@@ -70,6 +71,7 @@ const DATASET_LABELS = {
   social: '委員粉專',
   council_social: '議員粉專',
   news: '新聞',
+  ppg_progress: '議事進度（補日期）',
 };
 
 export function datasetLabel(dataset) {
