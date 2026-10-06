@@ -1260,6 +1260,24 @@ a.stat-tile:hover { border-color: #98a2b3; box-shadow: var(--card-base-hover); t
 .council-fb-head a svg { width: 12px; height: 12px; }
 .fb-embed { display: block; width: 100%; max-width: 340px; margin-top: 8px; border: 0; overflow: hidden; }
 
+/*
+ * 粉專牆卡片上的嵌入框佔位：FacebookEmbed 是「捲進畫面才掛上去」的，
+ * 所以先佔好跟 iframe 一樣高的位子（520px）—— 不佔位的話，載入瞬間卡片會長高，
+ * CSS multi-column 的瀑布流會整面重新平衡，捲動中的畫面會跳掉。
+ * 使用者自己按「收起貼文」時就讓他收（卡片變短是他要的）。
+ */
+.fb-embed-hint {
+  display: grid;
+  place-items: center;
+  min-height: 520px;
+  margin: 8px 0 0;
+  border: 1px dashed var(--rule);
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-sm);
+  text-align: center;
+}
+.fb-embed-slot.is-collapsed .fb-embed-hint { min-height: 0; padding: 6px 0; border: 0; }
+
 /* 社群整理表過期提醒（人工維護的資料停更時，不要讓舊日期看起來像最新） */
 .social-stale { display: block; color: var(--warn); }
 .council-fb-latest { display: block; margin-top: 2px; font-size: var(--fs-sm); color: var(--muted); }

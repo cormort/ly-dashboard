@@ -46,6 +46,8 @@ import { CountiesPage } from '../src/pages/CountiesPage';
 import { CouncilPage, marginText, upgradedNotes } from '../src/pages/CouncilPage';
 import { NewsPage } from '../src/pages/NewsPage';
 import { WallCard } from '../src/pages/SocialWallPage';
+import { FacebookEmbed } from '../src/components/FacebookEmbed';
+import { embedButtonLabel, shouldMountEmbed } from '../src/lib/embedPolicy';
 import { ChoroplethMap } from '../src/components/ChoroplethMap';
 import { bbox, countyViewBoxFor } from '../src/components/TownMap';
 import { resolveCounty } from '../src/pages/CountiesPage';
@@ -268,7 +270,7 @@ const wallItem = {
   latest_post_summary: '堅持正向選舉、不贊成選戰負面操作',
   source: 'sheet' as const,
 };
-const wallCardClosed = render(createElement(WallCard, { item: wallItem, open: false, onToggle: () => undefined, onOpenId: () => undefined }));
+const wallCardClosed = render(createElement(WallCard, { item: wallItem, onOpenId: () => undefined }));
 expectAll('粉專牆卡片：黨籍短名、選區、粉專名稱、貼文日期與摘要', wallCardClosed, [
   '吳思瑤',
   '民進黨',
@@ -279,14 +281,28 @@ expectAll('粉專牆卡片：黨籍短名、選區、粉專名稱、貼文日期
   'aria-expanded="false"',
   '委員檔案',
 ]);
-expectNone('粉專牆卡片：沒按「看貼文」就不載入 Facebook 嵌入框', wallCardClosed, ['fb-embed', 'plugins/page.php']);
-expectAll('粉專牆卡片：展開後才載入官方嵌入框（並顯示「收起貼文」）', render(createElement(WallCard, { item: wallItem, open: true, onToggle: () => undefined })), [
+// server render 不執行 useEffect，所以這裡看到的是「還沒捲進畫面」的狀態：
+// 不得有 iframe，但要先把嵌入框的位置佔好（載入時瀑布流才不會跳）
+expectNone('粉專牆卡片：還沒捲進畫面時不載入 Facebook 嵌入框（iframe 不出現，佔位不算）', wallCardClosed, ['<iframe', 'plugins/page.php']);
+expectAll('粉專牆卡片：嵌入框先佔好位置，捲到才載入', wallCardClosed, ['fb-embed-slot', '捲到這裡就會載入 Facebook 貼文']);
+// 自動載入的規則抽成純函式，直接驗真值表（不受 server render 不跑 effect 的限制）
+check(
+  '嵌入框載入規則：捲進畫面→載入；按過「收起」→不載入；手動按「看貼文」→載入',
+  shouldMountEmbed({ collapsed: false, inView: true, forced: false }) === true &&
+    shouldMountEmbed({ collapsed: false, inView: false, forced: false }) === false &&
+    shouldMountEmbed({ collapsed: false, inView: false, forced: true }) === true &&
+    shouldMountEmbed({ collapsed: true, inView: true, forced: false }) === false &&
+    shouldMountEmbed({ collapsed: true, inView: true, forced: true }) === false,
+);
+check('嵌入框按鈕文字：掛上去＝可以收起、還沒掛＝看貼文', embedButtonLabel(true) === '收起貼文' && embedButtonLabel(false) === '看貼文');
+// 嵌入框掛上去之後的內容（iframe 只在 mounted 時出現，所以直接驗元件）
+expectAll('嵌入框：連到 Facebook 官方的粉專 plugin URL、lazy 載入', render(createElement(FacebookEmbed, { url: wallItem.url, name: wallItem.name })), [
   'fb-embed',
   'plugins/page.php',
-  '收起貼文',
-  'aria-expanded="true"',
+  'taipeineedyou',
+  'loading="lazy"',
 ]);
-expectAll('粉專牆卡片：沒有貼文日期時明講，不會填上今天的日期', render(createElement(WallCard, { item: { ...wallItem, latest_post_date: null, latest_post_summary: '' }, open: false, onToggle: () => undefined })), [
+expectAll('粉專牆卡片：沒有貼文日期時明講，不會填上今天的日期', render(createElement(WallCard, { item: { ...wallItem, latest_post_date: null, latest_post_summary: '' } })), [
   '整理表還沒有這一位的貼文日期',
 ]);
 (window as unknown as { location: { pathname: string } }).location.pathname = '/';

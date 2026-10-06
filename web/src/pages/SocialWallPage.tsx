@@ -7,7 +7,9 @@ import { FacebookEmbed } from '../components/FacebookEmbed';
 import { PartyTag } from '../components/PartyTag';
 import { Portrait } from '../components/Portrait';
 import { useApi } from '../hooks/useApi';
+import { useInView } from '../hooks/useInView';
 import { useParam } from '../hooks/useParam';
+import { shouldMountEmbed, embedButtonLabel } from '../lib/embedPolicy';
 import { formatRelative, text } from '../lib/format';
 import { partyStyle } from '../lib/parties';
 
@@ -56,23 +58,36 @@ function ChipRow({
 }
 
 /**
- * 牆上的一張卡。嵌入框一律按需載入（FacebookEmbed 的說明）：
- * 一面牆同時開幾十個 iframe 會很慢，而且每一個都會讓瀏覽器連到 Facebook。
- * 匯出只是為了讓 render-smoke 能直接驗「沒展開時沒有 iframe」這條規則。
+ * 牆上的一張卡。Facebook 嵌入框**捲進畫面就自動載入**（見 `shouldMountEmbed`）：
+ * 一面牆同時開幾十個 iframe 會很慢，而且每一個都會讓瀏覽器連到 Facebook，
+ * 所以只在卡片進到畫面（或使用者手動按「看貼文」）時才掛上去；按「收起貼文」可以關掉。
+ * 嵌入框的高度一開始就預留（`.fb-embed-slot`）—— 不預留的話，載入時卡片會突然長高，
+ * 瀑布流（CSS multi-column）會整面重新平衡、畫面在捲動中跳掉。
  */
 export function WallCard({
   item,
-  open,
-  onToggle,
   onOpenId,
 }: {
   item: SocialWallItem;
-  open: boolean;
-  onToggle: () => void;
   onOpenId?: (id: string) => void;
 }) {
+  const { ref, inView } = useInView<HTMLElement>('200px');
+  const [collapsed, setCollapsed] = useState(false);
+  const [forced, setForced] = useState(false);
+  const mounted = shouldMountEmbed({ collapsed, inView, forced });
+
+  const toggle = () => {
+    if (mounted) {
+      setCollapsed(true);
+      setForced(false);
+    } else {
+      setCollapsed(false);
+      setForced(true);
+    }
+  };
+
   return (
-    <article className="member-card wall-card" style={{ '--party': partyStyle(item.party).color } as CSSProperties}>
+    <article ref={ref} className="member-card wall-card" style={{ '--party': partyStyle(item.party).color } as CSSProperties}>
       <div className="membertop">
         <Portrait legislator={{ name: item.name, photo_url: item.photo_url }} />
         <div>
@@ -107,13 +122,21 @@ export function WallCard({
               委員檔案
             </button>
           ) : null}
-          <button type="button" className="link-button" aria-expanded={open} onClick={onToggle}>
-            {open ? '收起貼文' : '看貼文'}
+          <button type="button" className="link-button" aria-expanded={mounted} onClick={toggle}>
+            {embedButtonLabel(mounted)}
           </button>
         </span>
       </footer>
 
-      {open ? <FacebookEmbed url={item.url} name={item.name} /> : null}
+      <div className={collapsed ? 'fb-embed-slot is-collapsed' : 'fb-embed-slot'}>
+        {mounted ? (
+          <FacebookEmbed url={item.url} name={item.name} />
+        ) : (
+          <p className="muted fb-embed-hint">
+            {collapsed ? '已收起貼文' : '捲到這裡就會載入 Facebook 貼文'}
+          </p>
+        )}
+      </div>
     </article>
   );
 }
@@ -128,7 +151,6 @@ export function SocialWallPage({ refreshToken, onOpenId }: SocialWallPageProps) 
   const [region, setRegion] = useParam<string>('region', '');
   // 網址參數是使用者可以隨手改的：不認識的值一律落回 compact（見 useParam 的說明）
   const [view, setView] = useParam<'compact' | 'all'>('view', 'compact', ['compact', 'all']);
-  const [openFb, setOpenFb] = useState<string | null>(null);
 
   // 沒套條件也沒按「展開」時不送 limit，讓後端用它自己的預設值（最近更新的 5 位）
   const expanded = Boolean(party || region) || view === 'all';
@@ -143,15 +165,12 @@ export function SocialWallPage({ refreshToken, onOpenId }: SocialWallPageProps) 
   if (!data) return <EmptyState message="沒有粉專資料" />;
 
   const filtered = Boolean(party || region);
-  const pick = (setter: (value: string) => void) => (value: string) => {
-    setter(value);
-    setOpenFb(null); // 篩選後原本展開的那張卡可能已經不在牆上
-  };
+  // 篩選／展開會讓卡片整批換掉（key 不同＝各自重新掛載），卡片自己的展開狀態也跟著重來
+  const pick = (setter: (value: string) => void) => (value: string) => setter(value);
   const clear = () => {
     setParty('');
     setRegion('');
     setView('compact');
-    setOpenFb(null);
   };
 
   return (
@@ -166,13 +185,13 @@ export function SocialWallPage({ refreshToken, onOpenId }: SocialWallPageProps) 
 
         <p className="muted">
           {expanded
-            ? '依黨籍或縣市展開的粉專牆，新的貼文排在前面。點「看貼文」載入 Facebook 官方的粉專嵌入框（只對粉絲專頁有效，個人檔案請點「粉專」連結）。'
-            : `預設只顯示最近更新的 ${data.default_limit} 位委員；選黨籍或縣市就會展開整個粉專牆。點「看貼文」載入 Facebook 官方的粉專嵌入框。`}
+            ? '依黨籍或縣市展開的粉專牆，新的貼文排在前面。卡片捲進畫面就會自動載入 Facebook 官方的粉專嵌入框（只對粉絲專頁有效，個人檔案請點「粉專」連結）。'
+            : `預設只顯示最近更新的 ${data.default_limit} 位委員；選黨籍或縣市就會展開整個粉專牆。卡片捲進畫面就會自動載入 Facebook 官方的粉專嵌入框。`}
           {data.social.as_of ? `「最新貼文」來自委員臉書整理表，資料截至 ${data.social.as_of}。` : ''}
         </p>
         {data.social.stale ? (
           <p className="social-stale" role="note">
-            委員臉書整理表已 {data.social.age_days} 天沒有新的貼文日期，「最新貼文」可能不是最新；請按「看貼文」看臉書上的最新貼文。
+            委員臉書整理表已 {data.social.age_days} 天沒有新的貼文日期，「最新貼文」可能不是最新；請看卡片上的 Facebook 嵌入框（會自動載入臉書上的最新貼文）。
           </p>
         ) : null}
 
@@ -205,12 +224,7 @@ export function SocialWallPage({ refreshToken, onOpenId }: SocialWallPageProps) 
         <ul className="fb-wall" role="list">
           {data.items.map((item) => (
             <li key={item.id}>
-              <WallCard
-                item={item}
-                open={openFb === item.id}
-                onToggle={() => setOpenFb(openFb === item.id ? null : item.id)}
-                onOpenId={onOpenId}
-              />
+              <WallCard item={item} onOpenId={onOpenId} />
             </li>
           ))}
         </ul>
