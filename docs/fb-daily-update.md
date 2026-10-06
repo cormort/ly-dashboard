@@ -24,7 +24,9 @@ scripts/fetch-fb-posts.mjs
               · Apps Script Web App（目前用這條）：node scripts/push-posts-to-sheet.mjs
                 → POST 到 apps-script/ 部署的 Web App，只更新 F／G 兩欄
               · 服務帳號（有 service_account.json 時）：--write-sheet --key
-              → 寫回成功後，wrapper 會叫本機伺服器重新同步，畫面不用等下一個 24 小時
+              → 寫回成功後叫本機伺服器重新同步，畫面不用等下一個 24 小時
+       ④  推一份到遠端資料分支（fb-data，見第六節）：node scripts/push-fb-data.mjs
+              → posts/YYYY-MM-DD.csv ＋ posts/latest.csv（沒有變動就不 commit）
 ```
 
 - 一次跑 113 位，每位間隔隨機 4–9 秒，約 **25–35 分鐘**。
@@ -228,7 +230,20 @@ fixed-rate 是「advances directly past missed occurrences」——也就是**�
 **為什麼不走服務帳號**：要 GCP 專案＋金鑰檔＋把試算表分享給那個帳號，對「一個人維運的儀表板」太重；
 Web App 的權限邊界反而更清楚（一組 token、只能寫那一張表的 F／G 欄、寫入端在對方帳號下執行）。
 
-## 六、每天／每次同步的檢查清單
+## 六、遠端資料分支：fb-data
+
+`main` 只放程式；抓取結果（每天一份 CSV）推到 **`fb-data` 分支**，比照 `news-data` 的做法：
+
+- `posts/YYYY-MM-DD.csv`：當天抓取的整理表格式 CSV；`posts/latest.csv`：同一份內容（遠端讀最新的抓這個就好）。
+- 推的動作在 `scripts/fb-daily.sh` 收尾（`node scripts/push-fb-data.mjs "$OUT_DATED"`），
+  **沒有變動就不 commit**（比對 staged 差異），所以每天跑不會長出一堆空 commit。
+- 工作目錄在 `.cache/fb-data`（gitignore，不會混進主 repo）；第一次執行時若分支不存在會自己建一個。
+- 失敗只記 log、不讓每日排程失敗（本機 CSV 還在）；`LY_FB_DATA_PUSH=0` 可整段關掉。
+- 手動補推：`node scripts/push-fb-data.mjs .cache/posts-2026-10-06.csv`（加 `--dry-run` 只在本機預演）。
+
+**為什麼要這一份**：遠端（GitHub）讀得到、也多一份備份；試算表那條線是給人看的、這條是給程式與備份用的。
+
+## 七、每天／每次同步的檢查清單
 
 - [ ] `--verify` 的 CSV 有沒有出現大量「⚠️ 拿不到頁面名稱」→ 可能是被限流，拉長 `--min-delay`
 - [ ] 執行紀錄有沒有「登入失效」→ 跑一次 `--login` 重新登入
@@ -236,7 +251,7 @@ Web App 的權限邊界反而更清楚（一組 token、只能寫那一張表的
 - [ ] 有沒有明顯不合理的日期（腳本已用 `saneDate` 擋，但換版後要重新確認）
 - [ ] 新抓到的網址與更正表有沒有衝突（更正表優先，且會清掉舊網址的貼文摘要）
 
-## 七、為什麼議員分頁先不做（2026-10-06 決定）
+## 八、為什麼議員分頁先不做（2026-10-06 決定）
 
 - 議員分頁約 360 位，是立委的 3 倍多：一輪 25–35 分鐘會變成 1.5 小時以上，限流風險也跟著放大。
 - 議員的粉專對照表（`scripts/council-facebook.csv`）本身還有 40 條連結是壞的（D133–D137），

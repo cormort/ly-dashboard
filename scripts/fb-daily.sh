@@ -22,6 +22,8 @@
 #   LY_SHEET_WEBAPP_URL     Apps Script Web App 的 /exec 網址（寫回試算表用；見 apps-script/）
 #   LY_SHEET_TOKEN          同一個 Web App 的共享密鑰（兩者都有才會寫回）
 #   LY_FB_SERVICE_ACCOUNT   服務帳號金鑰；沒有 Web App 設定時才用這條（檔案存在才會 --write-sheet）
+#   LY_FB_DATA_PUSH         要不要把抓取結果推上遠端資料分支（預設 1；設 0 關掉）
+#   LY_FB_DATA_BRANCH       資料分支名稱（預設 fb-data）
 #   LY_SYNC_TOKEN           本機伺服器有設 token 時，觸發同步要帶同一組
 #
 # 寫回用的網址與密鑰放在 ~/.ly-dashboard/sheet.env（repo 外、權限 600），下面會自動載入。
@@ -125,6 +127,17 @@ if [ -n "${LY_SHEET_WEBAPP_URL:-}" ] && [ -n "${LY_SHEET_TOKEN:-}" ]; then
   fi
 elif [ "$WRITE_SHEET" -eq 1 ]; then
   WRITTEN=1
+fi
+
+# 資料也推一份到遠端資料分支（預設 fb-data，比照 news-data）：遠端讀得到、也多一份備份。
+# 失敗只記 log，不讓每日排程整個失敗（本機 CSV 還在）。設 LY_FB_DATA_PUSH=0 可關掉。
+if [ "${LY_FB_DATA_PUSH:-1}" = "1" ]; then
+  if DATA_OUT="$("$NODE" scripts/push-fb-data.mjs "$OUT_DATED" 2>&1)"; then
+    printf '%s\n' "$DATA_OUT" >>"$LOG"
+  else
+    printf '%s\n' "$DATA_OUT" >>"$LOG"
+    log "推 ${LY_FB_DATA_BRANCH:-fb-data} 分支失敗（見上面幾行）；本機 CSV 仍在 ${OUT_DATED}"
+  fi
 fi
 
 # 只有真的把新資料寫回試算表時才觸發同步：沒寫回的話，伺服器重讀試算表也不會有新東西。
