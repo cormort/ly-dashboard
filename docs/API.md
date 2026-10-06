@@ -263,15 +263,29 @@ Query 參數（全部可選）：
 | `q` | 比對名稱或提案單位 |
 | `year` | 預算年度（民國，從名稱「115年度」抽出） |
 | `proposer` | 精確比對提案單位（機關或委員會） |
-| `state` | `pending`（審議中）／`done`（已結案）／`returned`（退回） |
+| `state` | 審議狀態：`reviewed`（已審竣）／`in_review`（審議中）／`pending`（待審查）／`letter`（函件處理）／`returned`（退回） |
 | `limit` / `offset` | 分頁，limit 1–200，預設 30 |
 | `format=csv` | 全部符合結果的 CSV |
 
-回應：`total`、`categories`（全部資料的類別件數）、`types`（四種預算類型件數，在類型條件前算）、`items[].types`、`years`、`proposers`（前 15）、`states`（三類件數）、`items[]`（含後端分好的 `state`）。
+回應：`total`、`categories`（全部資料的類別件數）、`types`（四種預算類型件數，在類型條件前算）、`items[].types`、`years`（每年件數＋審議進度）、`proposers`（前 15）、`progress`（審議進度統計）、`groups`（`group_by=year` 時）、`items[]`（含後端分好的 `state`）。
 統計依序在套用各自條件**之前**計算：選了某機關，機關清單仍列出其他機關。
-定期報告多半「交付查照」即結案、不經審查，所以不套委員提案的五階段流程。
+定期報告多半「交付查照」（函件處理，見 `letter`）即完成程序、不經審查，所以不套委員提案的五階段流程。
 
 **排序**：依「最新進度日期」新→舊；**沒有日期的案子**（上游 g0v 對本會期的預算議案常常不給日期，實測本會期 199 筆全無）若屬最新會期，會排在最前面（它們是剛送進來、還沒有人會進度的案子），若屬舊會期則排最後。畫面把空日期顯示成「尚無進度日期」。
+
+**審議狀態（2026-10-06 起分五級）**：`reviewed` 已審竣（審查完畢／三讀／視同審議通過）、
+`in_review` 審議中（交付審查／協商／復議）、`pending` 待審查（已排入院會）、
+`letter` 函件處理（交付查照／函復機關／復請查照，不經審查）、`returned` 退回程序委員會。
+舊版只有 審議中／已結案／退回 三級，會把 6 千多筆函件算成「已結案」。
+
+**審議進度統計**：回應多了
+
+- `progress`：目前條件下的 `{ total, reviewed, in_review, pending, letter, returned, awaiting }`
+  （`awaiting`＝尚未審竣＝審議中＋待審查＋退回，不含函件）
+- `years[].progress`：每個年度一份同樣的統計（`years[].name` 為 `unknown` 表示上游沒給年度）
+- `year=unknown`：只查沒有年度的案子
+- `group_by=year`：分年度呈現，回 `groups: [{ name, total, progress, items }]`（每年只列 `per_group` 筆，
+  預設 5、上限 50；其餘用 `year=<年度>` 再查），並回 `group_by`／`per_group`
 
 ## GET /api/v1/budget/reports
 

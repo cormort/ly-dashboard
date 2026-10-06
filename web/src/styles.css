@@ -1327,3 +1327,30 @@ a.stat-tile:hover { border-color: #98a2b3; box-shadow: var(--card-base-hover); t
 .wall-actions { display: inline-flex; align-items: center; gap: var(--space-2); }
 .wall-card footer a { display: inline-flex; align-items: center; gap: 2px; font-size: var(--fs-sm); }
 .wall-card footer a svg { width: 12px; height: 12px; }
+
+/* ---------- 預算：各年度審議進度 ---------- */
+.year-panel { margin-bottom: var(--space-4); }
+.year-summary { margin: 0 0 var(--space-3); font-size: var(--fs-sm); }
+.year-progress { display: grid; gap: 6px; }
+.year-progress-row {
+  display: grid; grid-template-columns: 9rem minmax(60px, 1fr) 14rem; align-items: center; gap: var(--space-3);
+  padding: 6px 10px; border: 1px solid var(--rule-soft); border-radius: var(--radius-md);
+  background: var(--surface); color: inherit; text-align: left; font: inherit; cursor: pointer;
+}
+.year-progress-row:hover { border-color: var(--rule); }
+.year-progress-row[aria-pressed='true'] { border-color: var(--accent); background: var(--accent-soft, rgba(37, 99, 235, 0.06)); }
+.year-progress-name { font-size: var(--fs-sm); font-weight: 600; }
+.year-progress-numbers { font-size: var(--fs-sm); color: var(--ink-2); text-align: right; white-space: nowrap; }
+.year-bar { display: flex; height: 10px; border-radius: var(--radius-pill); overflow: hidden; background: var(--rule-soft); }
+.year-bar-part.reviewed { background: var(--success, #16a34a); }
+.year-bar-part.in_review { background: var(--accent, #2563eb); }
+.year-bar-part.pending { background: var(--warning, #d97706); }
+@media (max-width: 760px) {
+  .year-progress-row { grid-template-columns: 7rem 1fr; }
+  .year-progress-numbers { grid-column: 1 / -1; text-align: left; }
+}
+
+/* 分年度呈現：每年一段 */
+.budget-group { margin-bottom: var(--space-5); }
+.budget-group-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-3); margin: 0 0 var(--space-2); }
+.budget-group-head h3 { margin: 0; font-size: var(--fs-lg); }

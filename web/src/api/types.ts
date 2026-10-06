@@ -638,7 +638,37 @@ export interface RankingsResponse {
 
 /* ---------- /budget ---------- */
 
-export type BudgetState = 'pending' | 'done' | 'returned';
+/**
+ * 預算議案的審議狀態（後端由 g0v 的議案狀態字串歸類，見 server/queries.mjs）：
+ * reviewed 已審竣／in_review 審議中／pending 待審查／letter 函件處理（不經審查）／returned 退回
+ */
+export type BudgetState = 'reviewed' | 'in_review' | 'pending' | 'letter' | 'returned';
+
+/** 一組預算議案的審議進度統計；awaiting＝尚未審竣（審議中＋待審查＋退回） */
+export interface BudgetProgress {
+  total: number;
+  reviewed: number;
+  in_review: number;
+  pending: number;
+  letter: number;
+  returned: number;
+  awaiting: number;
+}
+
+export interface BudgetYear {
+  /** 預算年度（`unknown`＝上游沒給年度） */
+  name: string;
+  count: number;
+  progress: BudgetProgress;
+}
+
+/** 分年度呈現時的一組：該年統計＋前幾筆（其餘用年度條件再查） */
+export interface BudgetGroup {
+  name: string;
+  total: number;
+  progress: BudgetProgress;
+  items: BudgetItem[];
+}
 /** 預算類型：總預算／附屬單位預算／特別預算／追加預算（後端由名稱主旨判斷，可複選） */
 export type BudgetType = 'general' | 'subsidiary' | 'special' | 'supplementary';
 
@@ -648,7 +678,7 @@ export interface BudgetItem {
   types: BudgetType[];
   name: string;
   status: string;
-  /** 後端分好的審議狀態：審議中／已結案／退回 */
+  /** 後端分好的審議狀態：已審竣／審議中／待審查／函件處理／退回 */
   state: BudgetState;
   /** 提案單位（機關或委員會） */
   proposer: string;
@@ -664,10 +694,16 @@ export interface BudgetResponse {
   total: number;
   count: number;
   categories: BillLawCount[];
-  years: BillLawCount[];
+  /** 各年度的件數與審議進度（`unknown`＝上游沒給年度） */
+  years: BudgetYear[];
   proposers: BillLawCount[];
-  states: Record<BudgetState, number>;
+  /** 目前條件下的整體審議進度（總件數／已審竣／尚未審竣…） */
+  progress: BudgetProgress;
   types: Record<BudgetType, number>;
+  /** 分年度呈現（`group_by=year`）時才有 */
+  group_by: 'year' | null;
+  per_group: number;
+  groups: BudgetGroup[];
   items: BudgetItem[];
 }
 

@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Download, ExternalLink, FileText, X } from 'lucide-react';
 import { buildUrl } from '../api/client';
-import type { BudgetMeetingsResponse, BudgetReportsResponse, BudgetResponse, BudgetState, BudgetType } from '../api/types';
+import type { BudgetItem, BudgetMeetingsResponse, BudgetReportsResponse, BudgetResponse, BudgetState, BudgetType } from '../api/types';
 import { EmptyState, ErrorState, LoadingState } from '../components/DataStates';
+import { InfoTip } from '../components/InfoTip';
+import { YearProgressList, budgetProgressText, yearLabel } from '../components/BudgetProgress';
 import { SearchField } from '../components/SearchField';
 import { useApi } from '../hooks/useApi';
 import { pathFor } from '../hooks/useRoute';
@@ -20,7 +22,19 @@ const CATEGORY_LABEL: Record<string, string> = {
   '法人預(決)算案': '法人預算',
   '預(決) 算決議案、定期報告': '決議書面報告',
 };
-const STATE_LABEL: Record<BudgetState, string> = { pending: '審議中', done: '已結案', returned: '退回' };
+const STATE_LABEL: Record<BudgetState, string> = {
+  reviewed: '已審竣',
+  in_review: '審議中',
+  pending: '待審查',
+  letter: '函件處理',
+  returned: '退回',
+};
+/** 狀態的定義要寫給使用者看（數字是我們由 g0v 的狀態字串歸類出來的） */
+const STATE_HINT = `「已審竣」＝審查完畢（含逾審查期限）、三讀、視同審議通過；
+「審議中」＝已交付審查／協商、復議、排入院會（討論事項）；
+「待審查」＝已排入院會但還沒進審查程序；
+「函件處理」＝交付查照／函復機關／復請查照，不經審查，所以不算審竣也不算待審查；
+「退回」＝退回程序委員會。資料來源是立法院議案狀態（g0v LYAPI），每日同步。`;
 const TYPE_LABEL: Record<BudgetType, string> = { general: '總預算', subsidiary: '附屬單位預算', special: '特別預算', supplementary: '追加預算' };
 /**
  * 進度日期欄的文字。上游（g0v）對本會期的預算議案常常沒有「最新進度日期」（實測本會期 199/199
@@ -32,6 +46,8 @@ export const progressDateText = (value: string | null | undefined): string => (v
 const DEFAULT_CATEGORY = '中央政府總預算案';
 const ALL = 'all';
 const PAGE = 30;
+/** 分年度呈現時，每個年度先列幾筆（其餘用「看這一年全部」再查） */
+const GROUP_PREVIEW = 4;
 
 interface Filters {
   category: string;
@@ -47,6 +63,41 @@ const readFilters = (): Filters => {
   const get = (k: string) => p.get(k) ?? '';
   return { category: get('category') || DEFAULT_CATEGORY, type: get('type'), q: get('q'), year: get('year'), proposer: get('proposer'), state: get('state') };
 };
+
+/** 單筆預算議案（清單與分年度檢視共用） */
+function BudgetItemRow({
+  item,
+  showCategory,
+  onPickProposer,
+}: {
+  item: BudgetItem;
+  showCategory: boolean;
+  onPickProposer: (proposer: string) => void;
+}) {
+  return (
+    <li>
+      <a href={item.url} target="_blank" rel="noreferrer noopener" className="bill-title" title={item.name}>
+        {item.name}
+        <ExternalLink aria-hidden="true" />
+      </a>
+      <p className="bill-meta">
+        <span className={`state-tag ${item.state}`}>{STATE_LABEL[item.state]}</span>
+        {item.types.map((t) => (
+          <span key={t} className={`type-tag ${t}`}>
+            {TYPE_LABEL[t]}
+          </span>
+        ))}
+        <span className="status-tag">{item.status}</span>
+        {/* 上游（g0v）對本會期的預算議案常沒有「最新進度日期」，留白會像壞掉 */}
+        {item.latest_date ? <span>{progressDateText(item.latest_date)}</span> : <span className="muted">{progressDateText(item.latest_date)}</span>}
+        <button type="button" className="link-button" onClick={() => onPickProposer(item.proposer)}>
+          {item.proposer}
+        </button>
+        {showCategory ? <span>{CATEGORY_LABEL[item.category] ?? item.category}</span> : null}
+      </p>
+    </li>
+  );
+}
 
 /**
  * 預算審議：總預算案、法人預算、預算決議書面報告的審議狀態（g0v 立法院 API），
@@ -78,7 +129,12 @@ export function BudgetPage({ refreshToken, onOpenId }: BudgetPageProps) {
     proposer: filters.proposer,
     state: filters.state,
   };
-  const budget = useApi<BudgetResponse>(buildUrl('/budget', { ...query, limit: PAGE, offset: page * PAGE }), { refreshToken });
+  // 全部年度時請後端分年度呈現（每年統計＋前幾筆）；選了某一年就用一般清單分頁
+  const grouped = !filters.year;
+  const budget = useApi<BudgetResponse>(
+    buildUrl('/budget', { ...query, limit: PAGE, offset: page * PAGE, group_by: grouped ? 'year' : '', per_group: GROUP_PREVIEW }),
+    { refreshToken },
+  );
   const data = budget.data;
   const pages = data ? Math.max(1, Math.ceil(data.total / PAGE)) : 1;
   const allCount = data?.categories.reduce((sum, c) => sum + c.count, 0) ?? 0;
@@ -107,6 +163,26 @@ export function BudgetPage({ refreshToken, onOpenId }: BudgetPageProps) {
         ))}
       </div>
 
+      {data && data.years.length > 1 ? (
+        <section className="panel year-panel" aria-label="各年度審議進度">
+          <div className="sectionhead">
+            <h2>各年度審議進度</h2>
+            <InfoTip align="inline-end" label="審議狀態的定義">
+              {STATE_HINT}
+            </InfoTip>
+          </div>
+          <p className="muted year-summary">
+            {budgetProgressText(filters.year ? data.years.find((y) => y.name === filters.year)?.progress : data.progress)}
+          </p>
+          <YearProgressList
+            years={data.years}
+            active={filters.year}
+            progress={data.progress}
+            onPick={(year) => change({ year, state: filters.state })}
+          />
+        </section>
+      ) : null}
+
       <div className="filters bill-filters" role="group" aria-label="預算篩選條件">
         <SearchField value={filters.q} onChange={(q) => change({ q })} ariaLabel="搜尋名稱或提案單位" placeholder="搜尋名稱或機關，例如：國防部、特別預算" />
         <label>
@@ -115,7 +191,7 @@ export function BudgetPage({ refreshToken, onOpenId }: BudgetPageProps) {
             <option value="">全部年度</option>
             {(data?.years ?? []).map((y) => (
               <option key={y.name} value={y.name}>
-                {y.name} 年度（{y.count}）
+                {yearLabel(y.name)}（{y.count}）
               </option>
             ))}
           </select>
@@ -126,7 +202,7 @@ export function BudgetPage({ refreshToken, onOpenId }: BudgetPageProps) {
           </button>
           {(Object.keys(STATE_LABEL) as BudgetState[]).map((s) => (
             <button key={s} type="button" aria-pressed={filters.state === s} onClick={() => change({ state: s })}>
-              {STATE_LABEL[s]} {data ? data.states[s] : ''}
+              {STATE_LABEL[s]} {data ? data.progress[s].toLocaleString() : ''}
             </button>
           ))}
         </div>
@@ -155,31 +231,42 @@ export function BudgetPage({ refreshToken, onOpenId }: BudgetPageProps) {
           {budget.phase === 'loading' && !data ? <LoadingState label="讀取預算審議…" /> : null}
           {budget.phase === 'error' ? <ErrorState title="無法取得預算資料（/api/v1/budget）" error={budget.error} onRetry={budget.reload} /> : null}
           {data && data.items.length === 0 ? <EmptyState message="沒有符合的項目" hint="換個關鍵字，或清除年度、機關、狀態條件。" /> : null}
-          {data && data.items.length > 0 ? (
+          {/* 全部年度：分年度呈現（每年一段，附該年統計與前幾筆） */}
+          {data && data.groups.length > 0
+            ? data.groups.map((group) => (
+                <section key={group.name} className="budget-group" aria-label={yearLabel(group.name)}>
+                  <div className="budget-group-head">
+                    <h3>{yearLabel(group.name)}</h3>
+                    <span className="muted">{budgetProgressText(group.progress)}</span>
+                    {group.total > group.items.length ? (
+                      <button type="button" className="link-button" onClick={() => change({ year: group.name })}>
+                        看這一年全部 {group.total} 件
+                      </button>
+                    ) : null}
+                  </div>
+                  <ol className="bill-results">
+                    {group.items.map((item) => (
+                      <BudgetItemRow
+                        key={item.id}
+                        item={item}
+                        showCategory={filters.category === ALL}
+                        onPickProposer={(proposer) => change({ proposer })}
+                      />
+                    ))}
+                  </ol>
+                </section>
+              ))
+            : null}
+          {data && data.groups.length === 0 && data.items.length > 0 ? (
             <>
               <ol className="bill-results">
                 {data.items.map((item) => (
-                  <li key={item.id}>
-                    <a href={item.url} target="_blank" rel="noreferrer noopener" className="bill-title" title={item.name}>
-                      {item.name}
-                      <ExternalLink aria-hidden="true" />
-                    </a>
-                    <p className="bill-meta">
-                      <span className={`state-tag ${item.state}`}>{STATE_LABEL[item.state]}</span>
-                      {item.types.map((t) => (
-                        <span key={t} className={`type-tag ${t}`}>
-                          {TYPE_LABEL[t]}
-                        </span>
-                      ))}
-                      <span className="status-tag">{item.status}</span>
-                      {/* 上游（g0v）對本會期的預算議案常沒有「最新進度日期」，留白會像壞掉 */}
-                      {item.latest_date ? <span>{progressDateText(item.latest_date)}</span> : <span className="muted">{progressDateText(item.latest_date)}</span>}
-                      <button type="button" className="link-button" onClick={() => change({ proposer: item.proposer })}>
-                        {item.proposer}
-                      </button>
-                      {filters.category === ALL ? <span>{CATEGORY_LABEL[item.category] ?? item.category}</span> : null}
-                    </p>
-                  </li>
+                  <BudgetItemRow
+                    key={item.id}
+                    item={item}
+                    showCategory={filters.category === ALL}
+                    onPickProposer={(proposer) => change({ proposer })}
+                  />
                 ))}
               </ol>
               {pages > 1 ? (

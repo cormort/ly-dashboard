@@ -40,6 +40,7 @@ import { RankingsPage, RankingBoardView } from '../src/pages/RankingsPage';
 import { TopicsPanel, tagTier } from '../src/components/TopicsPanel';
 import { ComparePage } from '../src/pages/ComparePage';
 import { BudgetPage, progressDateText } from '../src/pages/BudgetPage';
+import { YearProgressList, budgetProgressBar, budgetProgressText, yearLabel } from '../src/components/BudgetProgress';
 import { syncProgressText, syncRunningText } from '../src/lib/format';
 import { DashboardPage } from '../src/pages/DashboardPage';
 import { CommitteesPage } from '../src/pages/CommitteesPage';
@@ -938,6 +939,33 @@ check('流程條：未知狀態不畫', render(createElement(BillStageBar, { sta
 // 上游對本會期的預算議案沒有日期（實測 199/199），留白會像壞掉；排序上這種案子當成最新
 check('預算頁：沒有進度日期時明講「尚無進度日期」，不是空白', progressDateText('') === '尚無進度日期' && progressDateText(null) === '尚無進度日期');
 check('預算頁：有進度日期就照原樣顯示', progressDateText('2026-04-14') === '2026-04-14');
+
+// 預算進度：審竣／總件數／待審查（數字來自後端五級分類，畫面只負責呈現）
+const progress115 = { total: 366, reviewed: 24, in_review: 61, pending: 280, letter: 1, returned: 0, awaiting: 341 };
+check('預算進度文字：總件數、已審竣、尚未審竣都要有', budgetProgressText(progress115).startsWith('總 366 件・已審竣 24・尚未審竣 341'));
+check('預算進度文字：細分審議中／待審查', budgetProgressText(progress115).includes('審議中 61、待審查 280'));
+check('預算進度文字：函件處理要講明不列入審查', budgetProgressText(progress115).includes('函件處理 1 件不列入審查'));
+check('預算進度文字：沒有案子時不要吐出 0/0/0', budgetProgressText({ ...progress115, total: 0 }) === '沒有符合的案子');
+check('預算進度長條：只畫審查相關的三段（函件不畫），比例加總 100%', (() => {
+  const parts = budgetProgressBar(progress115);
+  return parts.length === 3 && Math.round(parts.reduce((sum, p) => sum + p.width, 0)) === 100 && parts.every((p) => p.key !== 'letter');
+})());
+check('預算年度名稱：上游沒給年度時講「年度不明」', yearLabel('unknown') === '年度不明' && yearLabel('115') === '115 年度');
+expectAll(
+  '各年度審議進度：每一列顯示「已審竣／總件數・剩幾件」並可點選',
+  render(
+    createElement(YearProgressList, {
+      years: [
+        { name: '115', count: 40, progress: { total: 40, reviewed: 15, in_review: 22, pending: 3, letter: 0, returned: 0, awaiting: 25 } },
+        { name: 'unknown', count: 8, progress: { total: 8, reviewed: 6, in_review: 2, pending: 0, letter: 0, returned: 0, awaiting: 2 } },
+      ],
+      active: '115',
+      progress: null,
+      onPick: () => undefined,
+    }),
+  ),
+  ['各年度審議進度', '115 年度', '年度不明', '<b>15</b>', '/ 40 已審竣', '剩 25', '/ 8 已審竣'],
+);
 
 expectAll('預算頁：loading 態有類別、篩選與三個區塊骨架', render(createElement(BudgetPage, { refreshToken: 0, onOpenId: () => undefined })), [
   '預算審議',

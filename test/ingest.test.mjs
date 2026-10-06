@@ -446,7 +446,10 @@ test('預算同步：三種類別一次抓、寫入、抽出預算年度', async
   assert.equal(all.total, 80);
   assert.deepEqual(all.categories.map((c) => c.count), [20, 20, 40]);
   assert.ok(all.items.some((b) => b.fiscal_year >= 113), '名稱含「115年度」要抽出年度');
-  assert.equal(all.states.pending + all.states.done + all.states.returned, 80);
+  const p = all.progress;
+  assert.equal(p.reviewed + p.in_review + p.pending + p.letter + p.returned, 80, '五級加起來要是全部');
+  assert.equal(p.total, 80);
+  assert.equal(p.awaiting, p.in_review + p.pending + p.returned, '尚未審竣＝審議中＋待審查＋退回');
 });
 
 test('預算查詢：類別、機關、狀態可組合，統計在各自條件前算', async () => {
@@ -460,9 +463,16 @@ test('預算查詢：類別、機關、狀態可組合，統計在各自條件�
   assert.ok(byAgency.proposers.length > 1, '選了機關，機關清單不該只剩一個');
   const pending = listBudget(db, { state: 'pending', limit: 200 });
   assert.ok(pending.items.every((b) => b.state === 'pending'));
-  assert.equal(budgetState('交付查照'), 'done');
-  assert.equal(budgetState('交付審查'), 'pending');
+  // 五級：舊版把「交付查照」這種函件也算成「已結案」，會讓人以為大部分都審完了
+  assert.equal(budgetState('交付查照'), 'letter');
+  assert.equal(budgetState('函復機關'), 'letter');
+  assert.equal(budgetState('交付審查'), 'in_review');
+  assert.equal(budgetState('排入院會'), 'pending');
+  assert.equal(budgetState('審查完畢'), 'reviewed');
+  assert.equal(budgetState('三讀'), 'reviewed');
+  assert.equal(budgetState('審查完畢(逾審查期限)'), 'reviewed');
   assert.equal(budgetState('退回程序委員會'), 'returned');
+  assert.equal(budgetState('從來沒見過的狀態'), 'pending', '認不得的狀態不可以謊稱審竣');
 });
 
 test('預算同步：失敗保留舊資料；筆數不足 fail closed', async () => {
@@ -2066,4 +2076,49 @@ test('同步範圍：runAll 收到不認識的階段要直接丟錯，不要靜�
     () => runAll(db, { logger: silent, fetchImpl: async () => assert.fail('不該抓'), stages: ['sosial'] }),
     /未知的同步階段：sosial/,
   );
+});
+
+test('預算進度：分年度的件數統計（含沒有年度的）', async () => {
+  const db = seeded();
+  await runBudgetIngest(db, { logger: silent, fetchImpl: budgetOk });
+  const all = listBudget(db, { limit: 200 });
+  // 每年都要有完整的進度統計
+  for (const y of all.years) {
+    assert.ok(y.progress, `${y.name} 要有 progress`);
+    assert.equal(y.progress.total, y.count);
+    assert.equal(
+      y.progress.reviewed + y.progress.in_review + y.progress.pending + y.progress.letter + y.progress.returned,
+      y.count,
+      `${y.name} 的五級加總要等於件數`,
+    );
+  }
+  // 年度遞減排序、unknown 最後
+  const names = all.years.map((y) => y.name);
+  assert.deepEqual(names, [...names].sort((a, b) => (a === 'unknown' ? 1 : b === 'unknown' ? -1 : Number(b) - Number(a))));
+});
+
+test('預算進度：分年度呈現（group_by=year）每組都有統計與前幾筆', async () => {
+  const db = seeded();
+  await runBudgetIngest(db, { logger: silent, fetchImpl: budgetOk });
+  const grouped = listBudget(db, { limit: 5, groupBy: 'year', perGroup: 3 });
+  assert.equal(grouped.group_by, 'year');
+  assert.equal(grouped.per_group, 3);
+  assert.ok(grouped.groups.length > 0, '要有分組');
+  const sum = grouped.groups.reduce((n, g) => n + g.total, 0);
+  assert.equal(sum, grouped.total, '各組件數加起來要是總件數');
+  for (const g of grouped.groups) {
+    assert.ok(g.items.length <= 3, '每組最多只列 perGroup 筆（其餘用年度條件再查）');
+    assert.equal(g.progress.total, g.total);
+  }
+  // 不分年度時不給 groups（前端才不會誤用）
+  assert.deepEqual(listBudget(db, { limit: 5 }).groups, []);
+});
+
+test('預算進度：年度不明的案子可以單獨查（不要被藏起來）', async () => {
+  const db = seeded();
+  await runBudgetIngest(db, { logger: silent, fetchImpl: budgetOk });
+  const unknown = listBudget(db, { year: 'unknown', limit: 200 });
+  assert.ok(unknown.items.every((b) => b.fiscal_year === null || b.fiscal_year === undefined), '年度不明＝上游沒給年度');
+  const all = listBudget(db, { limit: 200 });
+  assert.equal(unknown.total, all.years.find((y) => y.name === 'unknown')?.count ?? 0);
 });

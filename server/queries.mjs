@@ -1825,13 +1825,38 @@ function listAllNewsArticles(db, { keyword, source, kind, limit, offset }) {
 }
 
 /**
- * 預算類議案的審議狀態分三類。定期報告多半「交付查照」即結案（不經審查），
- * 所以不套委員提案的五階段流程，只分審議中／已結案／退回。
+ * 預算類議案的審議狀態。**由 g0v 的議案狀態字串歸類**，畫面上要把定義寫出來（不能只給數字）。
+ *
+ * 分成五級而不是原來的三級（審議中／已結案／退回）：舊分類把「交付查照」這種**函件處理**
+ * 也當成「已結案」，但立法院的預算議案裡這種函件是最大宗（實測 6,104 筆 vs 真的審查完畢 2,017 筆），
+ * 混在一起會讓人以為「大部分都審完了」。
+ *
+ *   reviewed   已審竣：審查完畢（含逾審查期限）／三讀／視同審議通過
+ *   in_review  審議中：已交付審查或協商、復議、排入院會（討論事項）
+ *   pending    待審查：已排入院會但還沒進審查程序
+ *   letter     函件處理：交付查照／函復機關／復請查照（不經審查，不算審竣也不算待審查）
+ *   returned   退回：退回程序委員會
+ *
+ * 認不得的狀態一律算 pending（保守：不謊稱審竣）。
  */
 const BUDGET_TYPES = ['general', 'subsidiary', 'special', 'supplementary'];
-const BUDGET_PENDING = new Set(['交付審查', '交付處理', '排入院會', '排入院會(討論事項)', '交付協商', '復議', '中央政府總預算流程']);
-export const budgetState = (status) =>
-  BUDGET_PENDING.has(status) ? 'pending' : status === '退回程序委員會' ? 'returned' : 'done';
+const BUDGET_STATE = new Map([
+  ...['審查完畢', '審查完畢(逾審查期限)', '審查完畢(三讀)', '三讀', '三讀 (//通過)', '視同審議通過'].map((s) => [s, 'reviewed']),
+  ...['交付審查', '交付處理', '交付協商', '復議', '排入院會(討論事項)'].map((s) => [s, 'in_review']),
+  ...['排入院會', '中央政府總預算流程'].map((s) => [s, 'pending']),
+  ...['交付查照', '函復機關', '復請查照'].map((s) => [s, 'letter']),
+  ['退回程序委員會', 'returned'],
+]);
+export const BUDGET_STATES = ['reviewed', 'in_review', 'pending', 'letter', 'returned'];
+export const budgetState = (status) => BUDGET_STATE.get(status) ?? 'pending';
+
+/** 一組預算議案的審議進度統計：總件數／已審竣／審議中／待審查／函件／退回，另給「尚未審竣」 */
+export const budgetProgress = (list) => {
+  const out = { total: list.length, reviewed: 0, in_review: 0, pending: 0, letter: 0, returned: 0, awaiting: 0 };
+  for (const r of list) out[budgetState(r.status)] += 1;
+  out.awaiting = out.in_review + out.pending + out.returned;
+  return out;
+};
 
 /**
  * 預算議案排序：主要以「最新進度日期」降冪，但**沒有日期的不可以一律塞到最後**。
@@ -1877,7 +1902,10 @@ export function budgetBillsByProgress(db) {
  * 預算審議：`category`、`q`（名稱或提案單位關鍵字）、`year`（預算年度）、`proposer`、`state`、分頁。
  * 統計依序在套用各自條件「之前」算（同 listBills 的 L8），選了某機關後機關清單不會只剩一個。
  */
-export function listBudget(db, { category = '', type = '', q = '', year = '', proposer = '', state = '', limit = 30, offset = 0, all = false } = {}) {
+export function listBudget(
+  db,
+  { category = '', type = '', q = '', year = '', proposer = '', state = '', limit = 30, offset = 0, all = false, groupBy = '', perGroup = 5 } = {},
+) {
   const resolvedLimit = all ? Infinity : Math.max(1, Math.min(Number(limit) || 30, 200));
   const resolvedOffset = Math.max(0, Math.trunc(Number(offset) || 0));
   // 預算類型在讀取時由名稱判斷（規則見 budgetTypes），改規則不必重新同步
@@ -1896,35 +1924,58 @@ export function listBudget(db, { category = '', type = '', q = '', year = '', pr
   );
   const typeCounts = Object.fromEntries(BUDGET_TYPES.map((t) => [t, base.filter((r) => r.types.includes(t)).length]));
   const byType = BUDGET_TYPES.includes(type) ? base.filter((r) => r.types.includes(type)) : base;
-  const years = count(byType, (r) => r.fiscal_year);
-  const byYear = year ? byType.filter((r) => String(r.fiscal_year) === String(year)) : byType;
+  // 年度：`unknown` 代表上游沒給年度（實測 1,565 筆，多半是決議函），要看得見而不是被藏起來
+  const yearKey = (r) => (r.fiscal_year === null || r.fiscal_year === undefined || r.fiscal_year === '' ? 'unknown' : String(r.fiscal_year));
+  const byYearOrder = (a, b) => (a === 'unknown' ? 1 : b === 'unknown' ? -1 : Number(b) - Number(a));
+  const yearKeys = [...new Set(byType.map(yearKey))].sort(byYearOrder);
+  const years = yearKeys.map((name) => {
+    const list = byType.filter((r) => yearKey(r) === name);
+    return { name, count: list.length, progress: budgetProgress(list) };
+  });
+  const byYear = year ? byType.filter((r) => yearKey(r) === String(year)) : byType;
   const proposers = count(byYear, (r) => r.proposer);
   const byProposer = proposer ? byYear.filter((r) => r.proposer === proposer) : byYear;
-  const states = count(byProposer, (r) => budgetState(r.status));
   const matching = state ? byProposer.filter((r) => budgetState(r.status) === state) : byProposer;
+  const resolvedPerGroup = Math.max(1, Math.min(Number(perGroup) || 5, 50));
+
+  const itemOf = (r) => ({
+    id: r.id,
+    category: r.category,
+    types: r.types,
+    name: r.name,
+    status: r.status,
+    state: budgetState(r.status),
+    proposer: r.proposer,
+    fiscal_year: r.fiscal_year,
+    session: r.session,
+    latest_date: r.latest_date,
+    url: r.url,
+  });
+  // `group_by=year`：分年度呈現用。每一組給統計與前幾筆（其餘用「看這一年全部」帶 year 條件再查）
+  const groups =
+    groupBy === 'year'
+      ? yearKeys
+          .map((name) => {
+            const list = matching.filter((r) => yearKey(r) === name);
+            return { name, total: list.length, progress: budgetProgress(list), items: list.slice(0, resolvedPerGroup).map(itemOf) };
+          })
+          .filter((group) => group.total > 0)
+      : [];
 
   return {
     meta: { ...envelope(db), budget_fetched_at: getMeta(db, 'budget_fetched_at'), source: { name: CONFIG.bills.name, url: CONFIG.bills.homepage } },
     total: matching.length,
     count: Math.min(resolvedLimit, Math.max(0, matching.length - resolvedOffset)),
     categories: CONFIG.budget.categories.map((name) => ({ name, count: categories.get(name) ?? 0 })),
-    years: [...years].filter(([y]) => y).sort((a, b) => b[0] - a[0]).map(([name, n]) => ({ name: String(name), count: n })),
+    years,
     proposers: ranked(proposers, 15),
-    states: { pending: states.get('pending') ?? 0, done: states.get('done') ?? 0, returned: states.get('returned') ?? 0 },
+    // 審議進度統計：總件數／已審竣／審議中／待審查／函件／退回（見 budgetProgress 的定義）
+    progress: budgetProgress(matching),
     types: typeCounts,
-    items: matching.slice(resolvedOffset, resolvedOffset + resolvedLimit).map((r) => ({
-      id: r.id,
-      category: r.category,
-      types: r.types,
-      name: r.name,
-      status: r.status,
-      state: budgetState(r.status),
-      proposer: r.proposer,
-      fiscal_year: r.fiscal_year,
-      session: r.session,
-      latest_date: r.latest_date,
-      url: r.url,
-    })),
+    group_by: groupBy === 'year' ? 'year' : null,
+    per_group: resolvedPerGroup,
+    groups,
+    items: matching.slice(resolvedOffset, resolvedOffset + resolvedLimit).map(itemOf),
   };
 }
 

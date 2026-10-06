@@ -103,7 +103,8 @@ export function DashboardPage({ refreshToken, onOpenId, onNavigate }: DashboardP
   const link = (route: Route, params?: Record<string, string>) => pathFor(route, params);
   const passedCount = bills.data?.statuses.filter((s) => PASSED_STATUSES.has(s.name)).reduce((sum, s) => sum + s.count, 0);
   const tiles: { label: string; value: number | undefined; href: string }[] = [
-    { label: '預算審議中', value: budget.data?.states.pending, href: link('budget', { category: 'all', state: 'pending' }) },
+    // 舊版是「預算審議中」用舊的三級狀態（把 6 千多筆「交付查照」的函件也算進去）；改成尚未審竣
+    { label: '預算尚未審竣', value: budget.data?.progress.awaiting, href: link('budget', { category: 'all' }) },
     { label: '本屆委員提案', value: bills.data?.total, href: link('bills') },
     { label: '已三讀', value: passedCount, href: link('bills', { status: '三讀' }) },
     // 原本是「在職委員 113」，數字幾乎不變；換成首長每天會看的輿情量
