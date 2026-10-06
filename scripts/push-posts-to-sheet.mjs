@@ -63,6 +63,11 @@ export async function pushRows({ url, token, rows, fetchImpl = fetch, attempts =
       const body = await res.json().catch(() => null);
       if (!body) throw new Error('Web App 回應不是 JSON');
       if (!body.ok) throw new Error(`Web App 回報失敗：${body.error ?? 'unknown'}`);
+      // 只認 doPost 的回應。踩過的坑：/exec 的 302 有時會讓 POST 被當成 GET 轉到 echo 端點，
+      // 那時會拿回 doGet 的 {ok:true,hint:…} —— 只看 ok 就會把「根本沒寫入」當成成功。
+      if (!Number.isFinite(body.updated)) {
+        throw new Error(`Web App 回的不是寫入結果（${JSON.stringify(body).slice(0, 80)}）`);
+      }
       return body;
     } catch (error) {
       lastError = error;

@@ -24,6 +24,8 @@
 #   LY_FB_SERVICE_ACCOUNT   服務帳號金鑰；沒有 Web App 設定時才用這條（檔案存在才會 --write-sheet）
 #   LY_FB_DATA_PUSH         要不要把抓取結果推上遠端資料分支（預設 1；設 0 關掉）
 #   LY_FB_DATA_BRANCH       資料分支名稱（預設 fb-data）
+#   LY_NOTIFY               要不要送 Telegram 成敗通知（預設 1；設 0 關掉）
+#   LY_NOTIFY_ENV           通知憑證檔（預設 ~/.ly-dashboard/notify.env）
 #   LY_SYNC_TOKEN           本機伺服器有設 token 時，觸發同步要帶同一組
 #
 # 寫回用的網址與密鑰放在 ~/.ly-dashboard/sheet.env（repo 外、權限 600），下面會自動載入。
@@ -55,17 +57,33 @@ OUT_LATEST="$LOG_DIR/posts-latest.csv"
 
 log() { printf '%s %s\n' "$(date '+%Y-%m-%dT%H:%M:%S%z')" "$*" >>"$LOG"; }
 
+# 成敗通知（Telegram）：成功、失敗都送一則，設定見 scripts/notify-telegram.sh。
+# 通知失敗只記 log —— 通知不該讓每日排程失敗。LY_NOTIFY=0 可整段關掉。
+STARTED_AT="$(date '+%Y-%m-%d %H:%M')"
+notify() {
+  [ "${LY_NOTIFY:-1}" = "1" ] || { log "（LY_NOTIFY=0，不送通知）"; return 0; }
+  "$ROOT/scripts/notify-telegram.sh" "$1" >>"$LOG" 2>&1 || log "（通知送出失敗，不影響本輪）"
+}
+notify_fail() {
+  notify "❌ 立委粉專每日更新失敗（${STARTED_AT}）
+原因：$1
+修復：$2
+log：${LOG}"
+}
+
 log "=== 開始（profile=${PROFILE}）==="
 
 NODE="$(command -v node || true)"
 if [ -z "$NODE" ]; then
   log "找不到 node（PATH=${PATH}）；中止"
+  notify_fail "找不到 node（PATH=${PATH}）" "在 launchd 的 wrapper 裡補 PATH（見本檔第 30 行附近）"
   exit 1
 fi
 
 # 先檢查 playwright-core，省下「跑了半小時才發現沒裝」這種事
 if ! "$NODE" -e "import('playwright-core').then(()=>{},()=>process.exit(1))" >/dev/null 2>&1; then
   log "找不到 playwright-core：請先在 $ROOT 執行 npm i -D playwright-core；中止"
+  notify_fail "找不到 playwright-core" "cd $ROOT && npm i -D playwright-core"
   exit 1
 fi
 
@@ -92,6 +110,7 @@ printf '%s\n' "$OUTPUT" >>"$LOG"
 
 if [ "$STATUS" -ne 0 ]; then
   log "抓取失敗（exit ${STATUS}）；中止"
+  notify_fail "抓取腳本失敗（exit ${STATUS}）" "看 ${LOG} 最後幾行；常見原因是 Chrome 設定檔被另一輪佔用"
   exit 1
 fi
 
@@ -100,6 +119,7 @@ fi
 FILLED="$(printf '%s\n' "$OUTPUT" | sed -n 's/.*完成：\([0-9][0-9]*\) 列有日期.*/\1/p' | tail -1)"
 if [ -z "$FILLED" ]; then
   log "抓不到「完成：…列有日期」的統計，無法確認結果；視為失敗"
+  notify_fail "抓不到「完成：…列有日期」的統計" "看 ${LOG} 最後幾行"
   exit 1
 fi
 
@@ -111,6 +131,7 @@ if [ "$FILLED" -eq 0 ]; then
   # 這裡一定要留下可照著做的指令，否則排程只會安靜地每天產生一份空檔。
   log "0 列有日期 → 幾乎一定是這個設定檔沒登入 Facebook。請在有畫面的終端機跑一次："
   log "    node scripts/fetch-fb-posts.mjs --login --profile \"$PROFILE\""
+  notify_fail "0 列有日期 → 幾乎一定是這個設定檔沒登入 Facebook" "node scripts/fetch-fb-posts.mjs --login --profile \"$PROFILE\"（要在有畫面的終端機跑）"
   exit 2
 fi
 
@@ -141,6 +162,7 @@ if [ "${LY_FB_DATA_PUSH:-1}" = "1" ]; then
 fi
 
 # 只有真的把新資料寫回試算表時才觸發同步：沒寫回的話，伺服器重讀試算表也不會有新東西。
+SYNC_LINE="未觸發（沒有寫回試算表）"
 if [ "$WRITTEN" -eq 1 ]; then
   PORT="${PORT:-8787}"
   CURL_ARGS=(-sf -m 10 -X POST "http://127.0.0.1:$PORT/api/v1/sync")
@@ -149,10 +171,37 @@ if [ "$WRITTEN" -eq 1 ]; then
   fi
   if curl "${CURL_ARGS[@]}" >/dev/null 2>&1; then
     log "已觸發本機伺服器（:${PORT}）重新同步，畫面會拿到剛寫回試算表的貼文"
+    SYNC_LINE="已觸發（:${PORT}）"
   else
     log "本機伺服器（:${PORT}）沒有回應，略過觸發同步；它下次同步時會讀到同一份試算表"
+    SYNC_LINE="伺服器沒回應（:${PORT}），下次同步會讀到"
   fi
 fi
+
+# 收尾通知：把「抓到幾列／寫回結果／資料分支／同步」一次講完，成功失敗都送。
+WRITE_LINE="$(printf '%s\n' "${PUSH_OUT:-}" | sed -n 's/^\[寫回\] 工作表[^：]*：//p' | tail -1)"
+if [ -z "$WRITE_LINE" ]; then
+  if [ -n "${LY_SHEET_WEBAPP_URL:-}" ] && [ -n "${LY_SHEET_TOKEN:-}" ]; then
+    WRITE_LINE="❌ 寫回失敗（看 log）"
+  else
+    WRITE_LINE="（沒設定 Web App，只產生本機 CSV）"
+  fi
+fi
+DATA_LINE="$(printf '%s\n' "${DATA_OUT:-}" | sed -n 's/^\[fb-data\] //p' | tail -1 | sed -E 's/^(已推上 )?[A-Za-z0-9._-]+：//')"
+if [ -z "$DATA_LINE" ]; then
+  if [ "${LY_FB_DATA_PUSH:-1}" = "1" ]; then
+    DATA_LINE="❌ 推送失敗（看 log）"
+  else
+    DATA_LINE="（已用 LY_FB_DATA_PUSH=0 關掉）"
+  fi
+fi
+TOTAL_ROWS="$(awk 'END { print NR - 1 }' "$OUT_DATED" 2>/dev/null)"
+MINUTES=$(( SECONDS / 60 ))
+notify "✅ 立委粉專每日更新完成（${STARTED_AT}，約 ${MINUTES} 分）
+· 有日期 ${FILLED}${TOTAL_ROWS:+ / ${TOTAL_ROWS}} 列
+· 寫回整理表：${WRITE_LINE:-（未設定 Web App，只產生本機 CSV）}
+· 資料分支 ${LY_FB_DATA_BRANCH:-fb-data}：${DATA_LINE:-（未推，設定 LY_FB_DATA_PUSH=0？）}
+· 本機同步：${SYNC_LINE}"
 
 log "=== 結束 ==="
 exit 0

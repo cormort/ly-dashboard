@@ -102,6 +102,16 @@ wrapper（`scripts/fb-daily.sh`）自己補 PATH（launchd 的 PATH 只有 `/usr
 > 所以不確定它還在不在。若在 dsh 的排程清單還看得到它，**請二選一**（刪掉或錯開時間），
 > 否則 08:00 會對 Facebook 抓兩輪。下面的段落保留給還沒刪掉時參考。
 
+### 成敗通知（Telegram）
+
+排程跑完會送一則訊息（成功失敗都送），內容是「有日期幾列／寫回結果／資料分支／同步狀態」；
+失敗那則會帶原因與可以照著做的修復指令（例如「請在有畫面的終端機跑一次 --login」）。
+
+- 送訊息：`scripts/notify-telegram.sh "訊息"`（`--dry-run` 只印不送）。
+- 憑證：`~/.ly-dashboard/notify.env`（`LY_TELEGRAM_BOT_TOKEN`、`LY_TELEGRAM_CHAT_ID`，權限 600、repo 外）。
+  用的是跟 Hermes 同一個 bot，訊息會出現在你原本跟它對話的聊天室。
+- 通知送不出去只記 log，**不會讓每日排程失敗**；`LY_NOTIFY=0` 可以關掉。
+
 ### DSH 內建排程的真實行為（歷史紀錄）
 
 先前設在 **DSH 應用程式內的排程**，內容是

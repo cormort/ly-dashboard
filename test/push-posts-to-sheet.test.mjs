@@ -37,6 +37,19 @@ test('寫回：Apps Script 轉址鏈偶發失敗會自動重試（寫入是冪�
   assert.equal(out.updated, 1);
 });
 
+test('寫回：拿回 doGet 的提示（{ok:true,hint:…}）不算成功——那代表 POST 被轉成 GET、根本沒寫入', async () => {
+  let calls = 0;
+  const hintOnly = async () => {
+    calls++;
+    return { ok: true, json: async () => ({ ok: true, hint: 'POST JSON {token, rows:[…]}' }) };
+  };
+  await assert.rejects(
+    () => pushRows({ url: 'https://example.test/exec', token: 'x', rows: [{ id: '1', date: '2026-10-06', summary: '' }], fetchImpl: hintOnly, sleep: async () => {} }),
+    /不是寫入結果/,
+  );
+  assert.equal(calls, 3, '要重試到次數用完才回報失敗');
+});
+
 test('寫回：token 錯這種再送也不會好的，不重試（避免無謂等待）', async () => {
   let calls = 0;
   const badToken = async () => {
