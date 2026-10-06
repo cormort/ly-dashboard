@@ -14,6 +14,7 @@ import {
 import { runAll, runOutletPoll } from './ingest.mjs';
 import { resolveScope, scopeStages } from './sync-scopes.mjs';
 import { checkSyncGuard } from './sync-guard.mjs';
+import { getProgress, clearProgress } from './sync-progress.mjs';
 
 let inflight = null;
 let inflightScope = null;
@@ -35,6 +36,7 @@ export function syncOnce(db, options = {}) {
     inflight = runAll(db, { ...options, stages: scopeStages(scope) }).finally(() => {
       inflight = null;
       inflightScope = null;
+      clearProgress();
     });
   }
   return inflight;
@@ -154,7 +156,9 @@ export function createServer(db) {
         }
         switch (path) {
           case '/api/v1/health':
-            return sendJson(res, 200, { ...getHealth(db), syncing: getInflightScope() });
+            // progress：現在跑到哪（例如新聞 137/601）。單一資料集內部一大串請求時，
+            // 只靠 sync_runs 會十幾分鐘都是「已完成 0 個來源」，所以另外回報細部進度。
+            return sendJson(res, 200, { ...getHealth(db), syncing: getInflightScope(), progress: getProgress() });
           case '/api/v1/meta':
             return sendJson(res, 200, getMetaPayload(db));
           case '/api/v1/legislators':

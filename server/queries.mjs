@@ -308,6 +308,9 @@ export function listSyncSources(db) {
       label: scope.label,
       stages: scope.stages,
       datasets,
+      // 更新頻率與冷卻時間：給下拉選單的說明用（見 server/sync-scopes.mjs 與 sync-guard.mjs）
+      cadence: scope.cadence ?? null,
+      cooldown_minutes: scope.cooldownMinutes ?? null,
       sources,
       last_run_at: sources.some((source) => !source.finished_at) ? null : finished.reduce((oldest, at) => (oldest < at ? oldest : at), finished[0]),
       last_duration_ms: duration || null,

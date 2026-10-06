@@ -119,3 +119,37 @@ export const SYNC_STATUS_LABELS: Record<string, string> = {
 export function billTitle(name: string): string {
   return name.replace(/[，,]?\s*請審議案。?$/, '').trim() || name;
 }
+
+/**
+ * 同步進行中的細部進度字串，例如 `新聞 137/601`。
+ * 單一資料集內部有幾百個請求（新聞就是），只靠 sync_runs 會十幾分鐘都停在「已完成 0 個來源」，
+ * 看起來像卡住，所以畫面上要顯示這種「跑到哪」的數字。
+ */
+export function syncProgressText(progress: { phase?: string; done?: number; total?: number } | null | undefined): string | null {
+  if (!progress) return null;
+  const total = Number(progress.total) || 0;
+  const done = Number(progress.done) || 0;
+  const phase = progress.phase ? `${progress.phase} ` : '';
+  if (total > 0) return `${phase}${done}/${total}`;
+  return progress.phase || null;
+}
+
+/**
+ * 頁首的「同步中…」文字。`detail` 是有細部進度時要顯示的內容（例如 `新聞 137/601`），
+ * 沒有的話退回已完成幾個來源；後面一律補上「已跑多久」，讓使用者知道它還活著。
+ */
+export function syncRunningText({
+  scopeLabel = null,
+  detail = null,
+  finished = 0,
+  elapsedMs = 0,
+}: {
+  scopeLabel?: string | null;
+  detail?: string | null;
+  finished?: number;
+  elapsedMs?: number;
+}): string {
+  const where = scopeLabel ? `（${scopeLabel}）` : '';
+  const what = detail ? `（${detail}・已跑 ${formatDuration(elapsedMs)}）` : `（已完成 ${finished} 個來源・已跑 ${formatDuration(elapsedMs)}）`;
+  return `同步中…${where}${what}`;
+}

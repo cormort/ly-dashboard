@@ -23,7 +23,7 @@ import { AppShell } from '../src/components/AppShell';
 import { ChangesPanel } from '../src/components/ChangesPanel';
 import { CommitteeChart } from '../src/components/CommitteeChart';
 import { FacetChips } from '../src/components/FacetChips';
-import { Header, scopeDetailText, scopeOptionLabel } from '../src/components/Header';
+import { Header, scopeCadenceText, scopeDetailText, scopeOptionLabel } from '../src/components/Header';
 import { formatDuration } from '../src/lib/format';
 import type { SyncScope } from '../src/api/types';
 import { MyAgencyPage } from '../src/pages/MyAgencyPage';
@@ -40,6 +40,7 @@ import { RankingsPage, RankingBoardView } from '../src/pages/RankingsPage';
 import { TopicsPanel, tagTier } from '../src/components/TopicsPanel';
 import { ComparePage } from '../src/pages/ComparePage';
 import { BudgetPage, progressDateText } from '../src/pages/BudgetPage';
+import { syncProgressText, syncRunningText } from '../src/lib/format';
 import { DashboardPage } from '../src/pages/DashboardPage';
 import { CommitteesPage } from '../src/pages/CommitteesPage';
 import { legacyRedirect, pathFor, routeOf, type Route } from '../src/hooks/useRoute';
@@ -959,6 +960,45 @@ check('/committees 對應委員會頁', routeOf('/committees') === 'committees')
   ]);
   win.location.search = saved;
 }
+// 下拉選單旁的說明：使用者最常問「為什麼按了沒變」，答案（更新頻率）要在這裡看得到
+const cadenceScope = {
+  id: 'roster',
+  label: '只同步名錄',
+  stages: ['roster'],
+  datasets: ['id9', 'id14'],
+  sources: [{ dataset: 'id9', label: '名錄（id9）', status: 'success' as const, finished_at: '2026-10-06T04:22:00.000Z', duration_ms: 1000 }],
+  last_run_at: '2026-10-06T04:22:00.000Z',
+  last_duration_ms: 1000,
+  failed_sources: [],
+  cadence: '名錄（立法院開放資料 id9／id14）一天更新一次',
+  cooldown_minutes: 30,
+};
+{
+  const lines = scopeCadenceText(cadenceScope).split('\n');
+  check('同步範圍說明：更新頻率、上次同步、冷卻時間三個都要講', lines.length === 3);
+  check('同步範圍說明：第一行就是更新頻率', lines[0] === '更新頻率：名錄（立法院開放資料 id9／id14）一天更新一次');
+  check('同步範圍說明：第二行是上次同步（相對時間）', lines[1].startsWith('上次同步：') && lines[1].includes('前'));
+  check('同步範圍說明：第三行講冷卻時間與怎麼強制重跑', lines[2].startsWith('30 分鐘內再按會被擋下') && lines[2].includes('仍要重跑'));
+}
+check('同步範圍說明：來源沒給更新頻率時要有預設說法', scopeCadenceText({ ...cadenceScope, cadence: null }).startsWith('更新頻率：來源每日更新'));
+expectAll(
+  '頁首：下拉選單旁有更新頻率的說明（點一下就看得到）',
+  render(createElement(Header, { ...headerProps, syncScopes: [cadenceScope, { ...cadenceScope, id: 'news', label: '只同步新聞' }], syncScope: 'roster' })),
+  ['class="info-tip"', '更新頻率：名錄（立法院開放資料 id9／id14）一天更新一次', '30 分鐘內再按會被擋下'],
+);
+
+// 新聞這種「單一資料集、內部幾百個請求」的同步：畫面要顯示跑到哪、跑多久，不然看起來像卡住
+check('進度字串：有階段與總數時顯示「階段 完成/總數」', syncProgressText({ phase: '新聞', done: 137, total: 601 }) === '新聞 137/601');
+check('進度字串：沒有細部進度時回 null（畫面改顯示已完成幾個來源）', syncProgressText(null) === null && syncProgressText({}) === null);
+check(
+  '同步中字串：有細部進度時顯示進度與已跑時間',
+  syncRunningText({ scopeLabel: '只同步新聞', detail: '新聞 137/601', elapsedMs: 200_000 }) === '同步中…（只同步新聞）（新聞 137/601・已跑 3 分鐘）',
+);
+check(
+  '同步中字串：沒有細部進度時退回已完成幾個來源，還是要看得到時間',
+  syncRunningText({ scopeLabel: null, finished: 3, elapsedMs: 65_000 }) === '同步中…（已完成 3 個來源・已跑 1 分鐘）',
+);
+
 // 更新按鈕的防呆：按了不會有新資料時要直接講原因，並留「仍要重跑」
 expectAll(
   '頁首：防呆擋下來時顯示原因與「仍要重跑」',

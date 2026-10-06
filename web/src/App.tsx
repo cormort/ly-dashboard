@@ -10,6 +10,7 @@ import { SyncStatusBanner } from './components/SyncStatusBanner';
 import { useApi } from './hooks/useApi';
 import { useQueryState } from './hooks/useQueryState';
 import { useSync } from './hooks/useSync';
+import { syncRunningText } from './lib/format';
 import { pathFor, useRoute } from './hooks/useRoute';
 import { useTracked } from './hooks/useTracked';
 import { sessionLabelIndex } from './lib/sessions';
@@ -101,7 +102,12 @@ export default function App() {
             refreshing={sync.state.phase === 'running' || health.phase === 'loading' || meta.phase === 'loading'}
             syncMessage={
               sync.state.phase === 'running'
-                ? `同步中…${scopeLabelOf(sync.state.scope) ? `（${scopeLabelOf(sync.state.scope)}）` : ''}（已完成 ${sync.state.finished} 個來源）`
+                ? syncRunningText({
+                    scopeLabel: scopeLabelOf(sync.state.scope),
+                    detail: sync.state.progress ?? null,
+                    finished: sync.state.finished,
+                    elapsedMs: sync.state.elapsedMs ?? 0,
+                  })
                 : sync.state.message
             }
             syncTone={

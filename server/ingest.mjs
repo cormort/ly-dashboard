@@ -8,6 +8,7 @@ import { ambiguousCouncilorNames, currentCouncilors, entityNewsTerms, makeTagger
 import { feedDate, feedFileUrl, outletLabel, parseFeedFile } from './news-feed.mjs';
 import { SYNC_STAGES } from './sync-scopes.mjs';
 import { fetchBillProgress } from './ppg-progress.mjs';
+import { reportProgress } from './sync-progress.mjs';
 
 /**
  * Ingestion 管線：FETCH → VALIDATE → NORMALIZE → PERSIST。
@@ -425,7 +426,7 @@ const SOCIAL_OVERRIDES = (() => {
  * 存成 topic_news 'entities'（與機關首長新聞同為專屬查詢，所以新舊一致）。
  * 預算用不完時，下輪從上次停下的組別接著抓（meta news_entity_cursor），不會永遠只抓前面幾組。
  */
-export async function runEntityNews(db, { logger = console, fetchImpl = fetchJson, now = () => new Date(), delayMs = 0, budgetMs = CONFIG.news.entityBudgetMs, cutoff }) {
+export async function runEntityNews(db, { logger = console, fetchImpl = fetchJson, now = () => new Date(), delayMs = 0, budgetMs = CONFIG.news.entityBudgetMs, cutoff, onProgress = () => {} }) {
   const terms = entityNewsTerms();
   const size = Math.max(1, CONFIG.news.entityBatch);
   const batches = [];
@@ -446,6 +447,7 @@ export async function runEntityNews(db, { logger = console, fetchImpl = fetchJso
     }
     if (n > 0) await pause(delayMs);
     result.processed += 1;
+    onProgress({ done: result.processed, total: batches.length });
     try {
       const { text } = await fetchImpl(entityFeedUrl(batches[(start + n) % batches.length]), { ua: CONFIG.userAgent, text: true, retries: 2 });
       const items = parseNewsRss(text, { match: (title) => mentionsKnownEntity(tagger, title) }).filter((i) => i.published_at >= cutoff);
@@ -799,7 +801,7 @@ function councilorTitleFilter(c, ambiguous) {
  * 標題要含姓名；兩字名、或與縣市長／立委／部會首長同名的，標題另需含「議員」或縣市簡稱。
  * 有獨立的時間預算（CONFIG.news.councilBudgetMs），用完就停、下輪從停下的議員接續（meta news_council_cursor）。
  */
-export async function runCouncilNews(db, { logger = console, fetchImpl = fetchJson, now = () => new Date(), delayMs = 0, budgetMs = CONFIG.news.councilBudgetMs, cutoff }) {
+export async function runCouncilNews(db, { logger = console, fetchImpl = fetchJson, now = () => new Date(), delayMs = 0, budgetMs = CONFIG.news.councilBudgetMs, cutoff, onProgress = () => {} }) {
   const councilors = currentCouncilors().filter((c) => !c.name.includes('□'));
   const result = { processed: 0, total: councilors.length, added: 0, failures: 0, partial: false };
   if (!councilors.length || budgetMs <= 0) return { ...result, skipped: true };
@@ -817,6 +819,7 @@ export async function runCouncilNews(db, { logger = console, fetchImpl = fetchJs
     if (n > 0) await pause(delayMs);
     const c = councilors[(start + n) % councilors.length];
     result.processed += 1;
+    onProgress({ done: result.processed, total: councilors.length });
     try {
       const { text } = await fetchImpl(newsFeedUrl(c.name, councilorQuery(c)), { ua: CONFIG.userAgent, text: true, retries: 2 });
       const keep = councilorTitleFilter(c, ambiguous);
@@ -859,26 +862,56 @@ export async function runNewsIngest(
   let processed = 0;
   let partial = false;
 
-  for (const [index, l] of legislators.entries()) {
-    // M5：時間預算用完就停，剩下的委員下一輪再抓（新聞是累積寫入，不會遺失）
-    if (Date.now() >= deadline) {
-      partial = true;
-      logger.warn(`[news] 時間預算 ${Math.round(budgetMs / 1000)} 秒用盡，已完成 ${processed}/${legislators.length} 位，其餘留待下次同步`);
-      break;
+  // 進度回報：委員＋基金／機關＋議員三段並行，用同一個計數器讓畫面看到整體進度
+  // （以前「已完成 0 個來源」會停十幾分鐘，看起來就像卡住）
+  const parts = new Map();
+  const reportNewsProgress = () =>
+    reportProgress({
+      stage: 'news',
+      phase: '新聞',
+      done: [...parts.values()].reduce((sum, part) => sum + part.done, 0),
+      total: [...parts.values()].reduce((sum, part) => sum + part.total, 0),
+    });
+  const track = (key, done, total) => {
+    parts.set(key, { done, total });
+    reportNewsProgress();
+  };
+
+  const legislatorPass = async () => {
+    let passAdded = 0;
+    for (const [index, l] of legislators.entries()) {
+      // M5：時間預算用完就停，剩下的委員下一輪再抓（新聞是累積寫入，不會遺失）
+      if (Date.now() >= deadline) {
+        partial = true;
+        logger.warn(`[news] 時間預算 ${Math.round(budgetMs / 1000)} 秒用盡，已完成 ${processed}/${legislators.length} 位，其餘留待下次同步`);
+        break;
+      }
+      if (index > 0) await pause(delayMs);
+      processed += 1;
+      try {
+        const name = newsName(l.name);
+        const { text } = await fetchImpl(newsFeedUrl(name), { ua: CONFIG.userAgent, text: true, retries: 2 });
+        // 先濾掉超過保存期限的，否則會「寫入 → 被 prune → 下次又寫入」反覆循環
+        const fresh = parseNewsRss(text, { name }).filter((n) => n.published_at >= cutoff);
+        passAdded += upsertNews(db, l.id, fresh, { fetchedAt: now().toISOString() });
+        saveGoogleArticles(db, fresh, now);
+      } catch (error) {
+        failures.push(`${l.name}：${error?.message || error}`);
+      }
+      track('legislator', processed, legislators.length);
     }
-    if (index > 0) await pause(delayMs);
-    processed += 1;
-    try {
-      const name = newsName(l.name);
-      const { text } = await fetchImpl(newsFeedUrl(name), { ua: CONFIG.userAgent, text: true, retries: 2 });
-      // 先濾掉超過保存期限的，否則會「寫入 → 被 prune → 下次又寫入」反覆循環
-      const fresh = parseNewsRss(text, { name }).filter((n) => n.published_at >= cutoff);
-      added += upsertNews(db, l.id, fresh, { fetchedAt: now().toISOString() });
-      saveGoogleArticles(db, fresh, now);
-    } catch (error) {
-      failures.push(`${l.name}：${error?.message || error}`);
-    }
-  }
+    return passAdded;
+  };
+
+  // 委員、基金／機關、直轄市議員三段過去是**依序**跑（實測整段 12～14 分鐘）。
+  // 三者互不相干、都打 Google News，而抓取層對同一個 host 已有 400ms 節流——
+  // 所以改成並行：對 Google 的速率不變，牆鐘時間從「相加」變成「取最慢的那一段」。
+  const [legislatorAdded, entity, council] = await Promise.all([
+    legislatorPass(),
+    runEntityNews(db, { logger, fetchImpl, now, delayMs, budgetMs: entityBudgetMs, cutoff, onProgress: (p) => track('entity', p.done, p.total) }),
+    runCouncilNews(db, { logger, fetchImpl, now, delayMs, budgetMs: councilBudgetMs, cutoff, onProgress: (p) => track('council', p.done, p.total) }),
+  ]);
+  added += legislatorAdded;
   // 主計總處專頁：不限委員，主計總處與地方主計處分兩次查（各有自己的約 100 則上限，合查時地方的常被擠掉），
   // 都寫進 'dgbas'；頁面上再依標題分「提及主計總處」「地方主計處」「僅提及主計」（queries.mjs dgbasOf）
   for (const { label, q } of DGBAS_QUERIES) {
@@ -892,7 +925,7 @@ export async function runNewsIngest(
     }
   }
   // 機關首長：逐位抓，標題含姓名才收（兩字姓名另需標題含機關關鍵字）；失敗只記警告
-  for (const o of OFFICIALS) {
+  for (const [index, o] of OFFICIALS.entries()) {
     if (Date.now() >= deadline) break;
     await pause(delayMs);
     try {
@@ -903,11 +936,8 @@ export async function runNewsIngest(
     } catch (error) {
       logger.warn(`[news] ${o.agency}${o.title}${o.name} 新聞抓取失敗：${error?.message || error}`);
     }
+    track('official', index + 1, OFFICIALS.length);
   }
-  // 基金／機關／行政法人：自己的 OR 批次查詢（不依賴委員新聞），有獨立時間預算；失敗只記警告
-  const entity = await runEntityNews(db, { logger, fetchImpl, now, delayMs, budgetMs: entityBudgetMs, cutoff });
-  // 直轄市議員：自己的逐位查詢與時間預算；失敗只記警告
-  const council = await runCouncilNews(db, { logger, fetchImpl, now, delayMs, budgetMs: councilBudgetMs, cutoff });
   // 媒體官方 RSS：只是補充來源，失敗不影響整體成敗，只記在 notes
   const outlet = await runOutletNews(db, { logger, fetchImpl, now, cutoff });
   added += outlet.added;
@@ -1065,7 +1095,8 @@ export async function runProgressDates(db, { logger = console, fetchImpl = fetch
     let filled = 0;
     let noDate = 0;
     let failed = 0;
-    for (const item of todo) {
+    for (const [index, item] of todo.entries()) {
+      reportProgress({ stage: 'progress', phase: '議案進度日期（官方議事網）', done: index, total: todo.length });
       try {
         const { date, status } = await fetchBillProgress(item.id, { fetchImpl, now: now() });
         // 抓不到日期也記一筆（date=''），才知道查過了，不會每天重打同一批
@@ -1077,6 +1108,7 @@ export async function runProgressDates(db, { logger = console, fetchImpl = fetch
         logger.warn(`[ppg_progress] ${item.id} 抓取失敗，保留空白：${String(error?.message || error)}`);
       }
     }
+    reportProgress({ stage: 'progress', phase: '議案進度日期（官方議事網）', done: todo.length, total: todo.length });
     const applied = applyProgressOverrides(db);
     logger.log(`[ppg_progress] 本會期議案：檢查 ${todo.length} 筆、補到日期 ${filled} 筆、官方也還沒日期 ${noDate} 筆、失敗 ${failed} 筆（套用 ${applied} 列）`);
     return { records: applied, checked: todo.length, filled, no_date: noDate, failed };

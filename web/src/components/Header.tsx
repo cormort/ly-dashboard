@@ -48,6 +48,16 @@ export function scopeDetailText(scope: SyncScope): string {
   return scope.sources.map((source) => `${source.label}：${source.finished_at ? formatRelative(source.finished_at) : '尚未同步'}`).join('\n');
 }
 
+/** 下拉選單的說明內容：更新頻率（使用者最常問「為什麼按了沒變」）＋上次同步＋防呆的冷卻時間 */
+export function scopeCadenceText(scope: SyncScope): string {
+  const lines = [`更新頻率：${scope.cadence ?? '來源每日更新'}`];
+  lines.push(`上次同步：${scope.last_run_at ? formatRelative(scope.last_run_at) : '尚未同步'}`);
+  if (scope.cooldown_minutes) {
+    lines.push(`${scope.cooldown_minutes} 分鐘內再按會被擋下（按了也不會有新資料），要重跑請按「仍要重跑」`);
+  }
+  return lines.join('\n');
+}
+
 /**
  * 導覽兩層，順序依「機關首長要面對立法院」的關心程度：
  * 總覽 → 我的機關（選定機關後以它為中心）→ 議事（預算、委員會、法案＝對機關的直接影響）→ 委員（誰在問、誰在動）→ 議員 → 社群（委員與議員的社群貼文）→ 縣市地圖 → 新聞（首長與委員的輿情）→ 機關／基金（查詢工具）。
@@ -152,6 +162,8 @@ export function Header({
   syncScope = 'all',
   onSyncScopeChange,
 }: HeaderProps) {
+  // 目前選的同步範圍（說明與提示都要用同一份）
+  const currentScope = syncScopes.find((scope) => scope.id === syncScope) ?? syncScopes[0] ?? null;
   const tone = failed ? 'error' : stale ? 'warning' : 'ok';
   const statusText = failed ? '同步失敗' : stale ? '可能非最新' : '資料截至';
   // L6：同步面板是條件式 render，只有它存在時 aria-controls 才指得到東西
@@ -232,6 +244,19 @@ export function Header({
         {syncScopes.length > 1 ? (
           <label className="sync-scope">
             <span className="sr-only">同步範圍</span>
+            {/* 點一下（或滑過）就看得到這個範圍的更新頻率——「為什麼按了沒變」的答案在這裡 */}
+            {currentScope ? (
+              <InfoTip align="inline-end" label={`「${currentScope.label}」的更新頻率與上次同步`}>
+                <b>{currentScope.label}</b>
+                {scopeCadenceText(currentScope)
+                  .split('\n')
+                  .map((line) => (
+                    <span key={line} className="info-line">
+                      {line}
+                    </span>
+                  ))}
+              </InfoTip>
+            ) : null}
             <select
               value={syncScope}
               onChange={(event) => onSyncScopeChange?.(event.target.value)}

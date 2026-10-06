@@ -9,6 +9,7 @@ import { billsCsv, compareLegislators, csvRow, makeTagger, listCommitteeActivity
 import { regionOf } from '../server/normalize.mjs';
 import { authorizeSync } from '../server/index.mjs';
 import { runNewsIngest } from '../server/ingest.mjs';
+import { getProgress, clearProgress } from '../server/sync-progress.mjs';
 import { FetchError } from '../server/fetch-ly.mjs';
 const fixture = (name) => JSON.parse(readFileSync(fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url)), 'utf8'));
 const silent = { log() {}, warn() {}, error() {} };
@@ -1442,4 +1443,58 @@ test('機關／基金清單：本會期沒有日期的預算議案不可以沉�
   const year = (title) => (title.includes('115年度') ? '115' : title.includes('114年度') ? '114' : '113');
   assert.deepEqual(items.map((x) => year(x.title)), ['115', '114', '113'], '沒日期但屬本會期者最前面；沒日期又是舊會期者最後');
   assert.equal(items[0].date, '', 'API 仍回空的日期，是畫面負責顯示「尚無進度日期」');
+});
+
+test('新聞同步：委員／基金機關／議員三段並行，不再一段一段排隊', async () => {
+  const { db } = seeded();
+  let inFlight = 0;
+  let maxInFlight = 0;
+  const fetchImpl = async () => {
+    inFlight += 1;
+    maxInFlight = Math.max(maxInFlight, inFlight);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    inFlight -= 1;
+    return { text: '<rss><channel></channel></rss>', status: 200, headers: {}, bytes: 0, sha256: 'x', attempts: 1 };
+  };
+  await runNewsIngest(db, {
+    logger: silent,
+    fetchImpl,
+    delayMs: 0,
+    budgetMs: 60_000,
+    entityBudgetMs: 60_000,
+    councilBudgetMs: 60_000,
+  });
+  // 三段都打 Google News，靠抓取層「同一個 host 400ms」的節流維持禮貌；
+  // 並行之後牆鐘時間取最慢的一段，而不是相加（原本實測 12～14 分鐘）。
+  assert.ok(maxInFlight >= 2, `三段應該同時在跑，實際最大同時請求數 ${maxInFlight}`);
+});
+
+test('新聞同步：過程中會回報細部進度，讓畫面看得到「跑到哪」', async () => {
+  const { db } = seeded();
+  clearProgress();
+  const observed = [];
+  const fetchImpl = async () => {
+    const progress = getProgress();
+    if (progress) observed.push(progress);
+    await new Promise((resolve) => setTimeout(resolve, 2));
+    return { text: '<rss><channel></channel></rss>', status: 200, headers: {}, bytes: 0, sha256: 'x', attempts: 1 };
+  };
+  await runNewsIngest(db, {
+    logger: silent,
+    fetchImpl,
+    delayMs: 0,
+    budgetMs: 60_000,
+    entityBudgetMs: 60_000,
+    councilBudgetMs: 60_000,
+  });
+  assert.ok(observed.length > 0, '抓取期間應該看得到進度');
+  assert.equal(observed[0].stage, 'news');
+  assert.ok(observed[0].total > 0, '要有總數才顯示得出 137/601');
+  const maxDone = Math.max(...observed.map((p) => p.done));
+  assert.ok(maxDone > 0, '完成數要會增加，不是一直 0');
+});
+
+test('同步進度註冊表：沒有同步在跑時是 null（/health 才不會一直顯示舊進度）', () => {
+  clearProgress();
+  assert.equal(getProgress(), null);
 });

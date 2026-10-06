@@ -6,7 +6,20 @@ import { Info } from 'lucide-react';
  * 再點一次、點別處或按 Esc 關閉。說明文字一直在 DOM 裡（只是看不見），讀螢幕程式透過 aria-describedby 讀得到。
  * 提示相對於最近的定位祖先（導覽列）定位，所以放在會捲動的容器之外才不會被裁切。
  */
-export function InfoTip({ children, align = 'start' }: { children: ReactNode; align?: 'start' | 'end' }) {
+export function InfoTip({
+  children,
+  align = 'start',
+  label = '這個頁面的說明',
+}: {
+  children: ReactNode;
+  /**
+   * `start`：靠左；`end`：對齊容器右緣再往內縮（次級導覽用）；
+   * `inline-end`：貼齊按鈕自己的右緣（頁首最右側的說明用，不然會被畫面裁掉）。
+   */
+  align?: 'start' | 'end' | 'inline-end';
+  /** 按鈕的無障礙名稱；同一個頁面有多個說明時要各自講清楚 */
+  label?: string;
+}) {
   const id = useId();
   const root = useRef<HTMLSpanElement>(null);
   const [hover, setHover] = useState(false);
@@ -31,7 +44,7 @@ export function InfoTip({ children, align = 'start' }: { children: ReactNode; al
   return (
     <span
       ref={root}
-      className={align === 'end' ? 'info-wrap end' : 'info-wrap'}
+      className={align === 'start' ? 'info-wrap' : `info-wrap ${align}`}
       onPointerEnter={mouseOnly(true)}
       onPointerLeave={mouseOnly(false)}
       onKeyDown={(event) => {
@@ -46,7 +59,7 @@ export function InfoTip({ children, align = 'start' }: { children: ReactNode; al
       <button
         type="button"
         className="icon-button info-button"
-        aria-label="這個頁面的說明"
+        aria-label={label}
         aria-expanded={open}
         aria-describedby={id}
         onClick={() => setPinned((v) => !v)}

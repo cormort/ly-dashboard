@@ -287,7 +287,14 @@ header nav, .subnav-row { position: relative; }
   visibility: hidden; opacity: 0; pointer-events: none; transition: opacity var(--t-fast);
 }
 .info-wrap.end .info-tip { left: auto; right: var(--space-6); } /* 對齊次級導覽那一列的內距，不貼螢幕邊 */
+/* 頁首最右側（同步範圍）用：貼齊按鈕自己的右緣，說明框往左長，才不會超出畫面被裁掉 */
+.info-wrap.inline-end .info-tip { left: auto; right: 0; }
 .info-tip.open { visibility: visible; opacity: 1; pointer-events: auto; }
+/* 說明內容分行的樣式（例如同步範圍的更新頻率＋上次同步＋冷卻時間） */
+.info-tip .info-line { display: block; }
+/* 頁首的 .header-status 是 nowrap（控制列不換行用），說明框會繼承到而整行被裁掉 → 這裡強制換行 */
+.info-tip { white-space: normal; }
+.info-tip .info-line + .info-line { margin-top: 2px; color: #e2e8f0; }
 .subnav-row { display: flex; align-items: center; gap: var(--space-2); max-width: 1240px; margin: 0 auto; padding: 0 var(--space-6); border-bottom: 1px solid var(--rule); }
 .subnav-row .subnav { flex: 1 1 auto; min-width: 0; max-width: none; margin: 0; padding-left: 0; padding-right: 0; border-bottom: 0; }
 @media (max-width: 760px) { .subnav-row { padding: 0 var(--space-4); } .info-wrap.end .info-tip { right: var(--space-4); } }

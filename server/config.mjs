@@ -53,7 +53,9 @@ export const CONFIG = {
     name: 'Google 新聞',
     windowDays: 30,
     keepDays: 180,
-    delayMs: Number(process.env.LY_NEWS_DELAY_MS ?? 1000),
+    // 逐筆之間**額外**的睡眠。抓取層已經對同一個 host 做 400ms 節流（minRequestIntervalMs），
+    // 這裡再睡 1 秒只是讓 113 位委員多花 2 分鐘（實測新聞整段因此 12～14 分鐘）→ 預設 0。
+    delayMs: Number(process.env.LY_NEWS_DELAY_MS ?? 0),
     // M5：整體時間預算。用完就停止剩餘委員並標記 partial，不讓單一階段拖垮整個同步。
     budgetMs: Number(process.env.LY_NEWS_BUDGET_MS ?? 5 * 60 * 1000),
     // 基金／機關／行政法人新聞：名稱每 entityBatch 個合成一次 OR 查詢（約 600 個名稱 → 約 80 次），

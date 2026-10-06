@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { fetchHealth, fetchSyncRuns, startSync, toApiError } from '../api/client';
+import { syncProgressText } from '../lib/format';
 
 /**
  * 手動同步：POST /sync（202，背景執行）→ 輪詢 /health 的 syncing 與 /sync-runs。
@@ -23,16 +24,23 @@ export interface SyncState {
   scope: string | null;
   /** 被防呆擋下（可以按「仍要重跑」強制執行） */
   blocked?: boolean;
+  /** 細部進度（例如 `新聞 137/601`）；單一資料集內部一大串請求時用 */
+  progress?: string | null;
+  /** 已經跑多久（毫秒） */
+  elapsedMs?: number;
 }
 
 const POLL_MS = 2_000;
-/** 完整同步約 4 分鐘；超過 15 分鐘視為卡住 */
-const MAX_POLLS = (15 * 60 * 1000) / POLL_MS;
+/**
+ * 最長等多久。新聞那段本來就要十幾分鐘（實測 12～14 分鐘，並行化後縮短），
+ * 原本的 15 分鐘會讓「只同步新聞」常常被判成卡住 —— 放寬到 30 分鐘。
+ */
+const MAX_POLLS = (30 * 60 * 1000) / POLL_MS;
 const MESSAGE_MS = 8_000;
 /** 防呆訊息要留久一點，讓使用者看清楚為什麼不給跑（還有「仍要重跑」可按） */
 const BLOCKED_MS = 30_000;
 
-const IDLE: SyncState = { phase: 'idle', finished: 0, message: null, scope: null };
+const IDLE: SyncState = { phase: 'idle', finished: 0, message: null, scope: null, progress: null, elapsedMs: 0 };
 
 export function useSync(onFinished: () => void) {
   const [state, setState] = useState<SyncState>(IDLE);
@@ -62,7 +70,9 @@ export function useSync(onFinished: () => void) {
     const update = (next: SyncState) => {
       if (aliveRef.current) setState(next);
     };
-    update({ phase: 'running', finished: 0, message: null, scope: scope ?? null });
+    const startedMs = Date.now();
+    const elapsed = () => Date.now() - startedMs;
+    update({ phase: 'running', finished: 0, message: null, scope: scope ?? null, progress: null, elapsedMs: 0 });
 
     try {
       const baseline = (await fetchSyncRuns(1)).items[0]?.id ?? 0;
@@ -74,14 +84,21 @@ export function useSync(onFinished: () => void) {
         const fresh = runs.items.filter((run) => run.id > baseline);
         const finished = new Set(fresh.map((run) => run.dataset)).size;
         if (health.syncing) {
-          update({ phase: 'running', finished, message: null, scope: scope ?? null });
+          update({
+            phase: 'running',
+            finished,
+            message: null,
+            scope: scope ?? null,
+            progress: syncProgressText(health.progress ?? null),
+            elapsedMs: elapsed(),
+          });
           continue;
         }
         const failed = new Set(fresh.filter((run) => run.status === 'failed').map((run) => run.dataset)).size;
         update(
           failed > 0
-            ? { phase: 'error', finished, message: `${failed} 個資料來源同步失敗，保留舊資料`, scope: scope ?? null }
-            : { phase: 'done', finished, message: '資料已更新', scope: scope ?? null },
+            ? { phase: 'error', finished, message: `${failed} 個資料來源同步失敗，保留舊資料`, scope: scope ?? null, progress: null, elapsedMs: elapsed() }
+            : { phase: 'done', finished, message: `資料已更新（花了 ${Math.round(elapsed() / 1000)} 秒）`, scope: scope ?? null, progress: null, elapsedMs: elapsed() },
         );
         onFinishedRef.current();
         return;

@@ -80,10 +80,21 @@ export interface SocialFreshness {
   stale_days: number;
 }
 
+/** 同步進行中的細部進度（後端記憶體，沒有同步時是 null；見 server/sync-progress.mjs） */
+export interface SyncProgress {
+  stage: string;
+  phase?: string;
+  done?: number;
+  total?: number;
+  at?: string;
+}
+
 export interface HealthResponse {
   meta: Meta;
   ok: boolean;
   db: HealthDbCounts;
+  /** 目前進行中的同步細部進度；沒有同步在跑時是 null */
+  progress?: SyncProgress | null;
   /** 每個資料集的最後同步時間與筆數（後端 /api/v1/health） */
   datasets: Record<'id9' | 'id14' | 'bills' | 'budget' | 'news' | 'social', DatasetStatus>;
   /** 前端會顯示的兩種紀錄：目前筆數與保留上限 */
@@ -299,6 +310,10 @@ export interface SyncSource {
 }
 
 export interface SyncScope {
+  /** 來源的更新節奏說明（例：「名錄（立法院開放資料 id9／id14）一天更新一次」） */
+  cadence?: string | null;
+  /** 同一個範圍幾分鐘內重按會被防呆擋下 */
+  cooldown_minutes?: number | null;
   id: string;
   /** 下拉選單的文字，例如「只重讀社群粉專」 */
   label: string;
