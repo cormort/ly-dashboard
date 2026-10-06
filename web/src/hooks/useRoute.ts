@@ -7,7 +7,9 @@ const PATHS: Record<Route, string> = {
   home: '/activity',
   dashboard: '/',
   legislators: '/legislators',
-  socialwall: '/legislators/wall',
+  // 臉書（社群）自成一組：委員粉專牆 ＋ 議員近期動態（2026-10-06 由「委員」「議員」底下搬上來）
+  socialwall: '/facebook/wall',
+  councilactivity: '/facebook/council',
   bills: '/bills',
   budget: '/budget',
   rankings: '/rankings',
@@ -24,11 +26,24 @@ const PATHS: Record<Route, string> = {
   officials: '/officials',
   counties: '/counties',
   council: '/council',
-  councilactivity: '/council/activity',
   my: '/my',
 };
 
+/**
+ * 舊網址（書籤、分享過的連結、別人電腦上的最愛）：還是要能用，但位置一律換成新的，
+ * 免得同一個頁面同時存在兩個網址。`/legislators/wall` → 臉書 › 委員粉專牆、
+ * `/council/activity` → 臉書 › 議員近期動態（2026-10-06 搬遷前的網址）。
+ */
+const LEGACY_PATHS: Record<string, Route> = {
+  '/legislators/wall': 'socialwall',
+  '/council/activity': 'councilactivity',
+};
+
 export function routeOf(pathname: string): Route {
+  // 臉書：`/facebook/council` 與 `/facebook/wall` 各自對應一頁（沒有共用前綴頁，所以不必排先後）
+  if (pathname.startsWith('/facebook/wall')) return 'socialwall';
+  if (pathname.startsWith('/facebook/council')) return 'councilactivity';
+  // 舊網址也要進得來（會被 useRoute 換成上面的新網址）
   // `/legislators/wall`（粉專牆）要排在 `/legislators` 前面，否則會被當成委員查詢
   if (pathname.startsWith('/legislators/wall')) return 'socialwall';
   if (pathname.startsWith('/legislators')) return 'legislators';
@@ -65,16 +80,34 @@ export function pathFor(route: Route, params: Record<string, string | undefined>
 }
 
 /**
+ * 舊網址要換成的新網址（連 query string 一起帶過去，例如粉專牆的 `?party=…`）；
+ * 不是舊網址就回 `null`。抽成純函式讓 render-smoke 能直接驗。
+ */
+export function legacyRedirect(pathname: string, search = ''): string | null {
+  const route = LEGACY_PATHS[pathname.replace(/\/+$/, '') || pathname];
+  return route ? `${pathFor(route)}${search}` : null;
+}
+
+/**
  * 三頁式路由（首頁動態／委員查詢／法案查詢），用 pathname 表示，伺服器的 SPA fallback 會接住。
  * 換頁後補發 popstate，讓讀 URL 的 hook（篩選條件）重新解析。
+ * 走舊網址進來時先 replaceState 成新網址（不留歷史紀錄，按上一頁不會卡在舊網址）。
  */
 export function useRoute(): { route: Route; navigate: (href: string) => void } {
   const [route, setRoute] = useState<Route>(() => routeOf(window.location.pathname));
 
   useEffect(() => {
-    const onPop = () => setRoute(routeOf(window.location.pathname));
-    window.addEventListener('popstate', onPop);
-    return () => window.removeEventListener('popstate', onPop);
+    const sync = () => {
+      const canonical = legacyRedirect(window.location.pathname, window.location.search);
+      if (canonical) {
+        window.history.replaceState(null, '', canonical);
+        window.dispatchEvent(new PopStateEvent('popstate'));
+      }
+      setRoute(routeOf(window.location.pathname));
+    };
+    sync();
+    window.addEventListener('popstate', sync);
+    return () => window.removeEventListener('popstate', sync);
   }, []);
 
   const navigate = useCallback((href: string) => {

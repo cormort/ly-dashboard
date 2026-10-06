@@ -40,7 +40,7 @@ import { ComparePage } from '../src/pages/ComparePage';
 import { BudgetPage } from '../src/pages/BudgetPage';
 import { DashboardPage } from '../src/pages/DashboardPage';
 import { CommitteesPage } from '../src/pages/CommitteesPage';
-import { pathFor, routeOf, type Route } from '../src/hooks/useRoute';
+import { legacyRedirect, pathFor, routeOf, type Route } from '../src/hooks/useRoute';
 import { BillStageBar } from '../src/components/BillStage';
 import { CountiesPage } from '../src/pages/CountiesPage';
 import { CouncilPage, marginText, upgradedNotes } from '../src/pages/CouncilPage';
@@ -210,14 +210,15 @@ expectAll('最近動態（/activity）：站名、導覽、動態／議題／新
 const topNav = homeHtml.match(/<nav aria-label="主要頁面">([\s\S]*?)<\/nav>/)?.[1] ?? '';
 expectNone('最上層導覽不該再把所有子頁面平鋪出來', topNav, ['排行榜', '法案查詢', '委員比較', '最近動態', '機關首長新聞']);
 check('首頁初始不顯示任何委員', !homeHtml.includes('查看檔案'));
-// 上層導覽順序（機關首長視角）：總覽 → 我的機關 → 議事 → 委員 → 議員 → 縣市地圖 → 新聞 → 機關／基金；
-// 最近動態收進「委員」，首長新聞收進「新聞」，議員（2026-10-04 起）與縣市縣市地圖分析（2026-10-05 起）各自成一個頁籤
+// 上層導覽順序（機關首長視角）：總覽 → 我的機關 → 議事 → 委員 → 議員 → 臉書 → 縣市地圖 → 新聞 → 機關／基金；
+// 最近動態收進「委員」，首長新聞收進「新聞」，議員（2026-10-04 起）與縣市縣市地圖分析（2026-10-05 起）各自成一個頁籤，
+// 「臉書」（2026-10-06 起）收委員粉專牆與議員近期動態
 check(
-  '上層導覽的順序是 總覽→我的機關→議事→委員→議員→縣市地圖→新聞→機關／基金',
+  '上層導覽的順序是 總覽→我的機關→議事→委員→議員→臉書→縣市地圖→新聞→機關／基金',
   (() => {
     const nav = dashboardHtml.match(/<nav aria-label="主要頁面">([\s\S]*?)<\/nav>/)?.[1] ?? '';
     const labels = [...nav.matchAll(/>([^<>]+)<\/a>/g)].map((m) => m[1].trim()).filter(Boolean);
-    return labels.join('→') === '總覽→我的機關→議事→委員→議員→縣市地圖→新聞→機關／基金';
+    return labels.join('→') === '總覽→我的機關→議事→委員→議員→臉書→縣市地圖→新聞→機關／基金';
   })(),
 );
 check('不含示範／假資料字串', !/甲黨|示範資料|林怡安|陳宏宇|乙黨/.test(homeHtml));
@@ -238,12 +239,18 @@ expectAll('委員查詢頁：屆次、篩選、名錄、委員會、異動骨架
 ]);
 (window as unknown as { location: { pathname: string } }).location.pathname = '/';
 
-console.log('\n— 委員 › 粉專牆 —');
+console.log('\n— 臉書 › 委員粉專牆 —');
 check(
-  '/legislators/wall 對應粉專牆（不被 /legislators 吃掉）',
-  routeOf('/legislators/wall') === 'socialwall' && routeOf('/legislators') === 'legislators' && pathFor('socialwall') === '/legislators/wall',
+  '/facebook/wall 對應粉專牆；舊網址 /legislators/wall 仍可進（會被換成新網址）',
+  routeOf('/facebook/wall') === 'socialwall' &&
+    pathFor('socialwall') === '/facebook/wall' &&
+    routeOf('/legislators/wall') === 'socialwall' &&
+    routeOf('/legislators') === 'legislators' &&
+    legacyRedirect('/legislators/wall') === '/facebook/wall' &&
+    legacyRedirect('/legislators/wall', '?party=民主進步黨') === '/facebook/wall?party=民主進步黨' &&
+    legacyRedirect('/facebook/wall') === null,
 );
-(window as unknown as { location: { pathname: string } }).location.pathname = '/legislators/wall';
+(window as unknown as { location: { pathname: string } }).location.pathname = '/facebook/wall';
 const wallHtml = render(createElement(App));
 expectAll('粉專牆頁：站名、子頁籤高亮、載入狀態', wallHtml, [
   '立委觀測站',
@@ -373,7 +380,7 @@ check(
 
 // 子頁也依首長與幕僚的使用頻率排，主題的預設頁就是第一個子頁
 check(
-  '子頁順序：議事 預算→委員會→法案、新聞 首長→機關→委員→全部、機關／基金 機關在前，議員自成一個頁籤（總覽→近期動態），縣市地圖獨立成「縣市地圖」',
+  '子頁順序：議事 預算→委員會→法案、新聞 首長→機關→委員→全部、機關／基金 機關在前，臉書自成一個頁籤（委員粉專牆→議員近期動態），議員與縣市地圖各自成頁籤',
   (() => {
     const subOf = (route: Route) => {
       const sub = render(createElement(Header, { ...headerProps, route })).match(/<nav class="subnav"[^>]*>([\s\S]*?)<\/nav>/)?.[1] ?? '';
@@ -384,14 +391,16 @@ check(
       subOf('budget') === '預算審議→委員會→法案查詢' &&
       subOf('officials') === '機關首長新聞→機關新聞→委員新聞→全部新聞' &&
       subOf('agencies') === '機關→基金→財團法人→行政法人' &&
-      subOf('legislators') === '委員查詢→粉專牆→最近動態→排行榜→委員比較' &&
-      // 議員自成一個頁籤，子頁是總覽（選舉結果）與近期動態（新聞＋臉書）；委員的次級導覽不該再出現「議員」
-      subOf('council') === '總覽→近期動態' &&
-      subOf('councilactivity') === '總覽→近期動態' &&
+      subOf('legislators') === '委員查詢→最近動態→排行榜→委員比較' &&
+      // 臉書自成一個頁籤（2026-10-06 起）：委員粉專牆與議員近期動態都在這裡；委員的次級導覽不該再出現「議員」
+      subOf('socialwall') === '委員粉專牆→議員近期動態' &&
+      subOf('councilactivity') === '委員粉專牆→議員近期動態' &&
+      // 議員只剩總覽（近期動態已搬到臉書）：單頁主題不顯示次級導覽（同縣市地圖）
+      subOf('council') === '' &&
       !subOf('legislators').includes('議員') &&
       // 縣市地圖是單頁主題：沒有次級導覽
       subOf('counties') === '' &&
-      ['href="/budget"', 'href="/officials"', 'href="/agencies"', 'href="/council"', 'href="/counties"'].every((h) => top.includes(h))
+      ['href="/budget"', 'href="/officials"', 'href="/agencies"', 'href="/council"', 'href="/facebook/wall"', 'href="/counties"'].every((h) => top.includes(h))
     );
   })(),
 );
@@ -1021,7 +1030,13 @@ expectAll(
 check('/counties 對應縣市頁', routeOf('/counties') === 'counties');
 expectAll('議員頁：loading 態有讀取提示（不先畫任何議員資料）', render(createElement(CouncilPage, { refreshToken: 0 })), ['載入議員選舉資料']);
 check('/council 對應議員頁', routeOf('/council') === 'council');
-check('/council/activity 對應議員近期動態（不被 /council 吃掉）', routeOf('/council/activity') === 'councilactivity');
+check(
+  '/facebook/council 對應議員近期動態；舊網址 /council/activity 仍可進（會被換成新網址）',
+  routeOf('/facebook/council') === 'councilactivity' &&
+    pathFor('councilactivity') === '/facebook/council' &&
+    routeOf('/council/activity') === 'councilactivity' &&
+    legacyRedirect('/council/activity') === '/facebook/council',
+);
 check(
   '議員頁：落選頭差距——一般情形印「差 N 票」，保障名額造成負差距時改講「多 N 票」，不印負號',
   marginText({ first_loser: { name: '甲', party: '無黨籍', votes: 9000, pct: 10, margin: 1234 } }) === '｜落選頭 甲（9,000 票，差 1,234 票）' &&

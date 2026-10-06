@@ -33,9 +33,11 @@ export interface HeaderProps {
 
 /**
  * 導覽兩層，順序依「機關首長要面對立法院」的關心程度：
- * 總覽 → 我的機關（選定機關後以它為中心）→ 議事（預算、委員會、法案＝對機關的直接影響）→ 委員（誰在問、誰在動）→ 新聞（首長與委員的輿情）→ 機關／基金（查詢工具）。
+ * 總覽 → 我的機關（選定機關後以它為中心）→ 議事（預算、委員會、法案＝對機關的直接影響）→ 委員（誰在問、誰在動）→ 議員 → 臉書（委員與議員的社群貼文）→ 縣市地圖 → 新聞（首長與委員的輿情）→ 機關／基金（查詢工具）。
  * 每個主題的子頁也依首長與幕僚的使用頻率排，第一個就是點主題時的預設頁（例如「新聞」先開機關首長新聞）。
- * 最近動態是看委員活躍度用的，收進「委員」底下，不佔頂層；六都議員、縣市地圖與人口分析各自成一個頂層頁籤。
+ * 最近動態是看委員活躍度用的，收進「委員」底下，不佔頂層；六都議員與縣市地圖分析各自成一個頂層頁籤。
+ * 「臉書」是 2026-10-06 從「委員」（粉專牆）與「議員」（近期動態）搬上來的：貼文是社群資料，
+ * 跟議事資料性質不同，且立委與議員的粉專本來就該放在一起看。
  */
 interface NavGroup {
   id: string;
@@ -63,7 +65,6 @@ const NAV: NavGroup[] = [
     home: 'legislators',
     routes: [
       { route: 'legislators', label: '委員查詢' },
-      { route: 'socialwall', label: '粉專牆' },
       { route: 'home', label: '最近動態' },
       { route: 'rankings', label: '排行榜' },
       { route: 'compare', label: '委員比較' },
@@ -73,9 +74,15 @@ const NAV: NavGroup[] = [
     id: 'council',
     label: '議員',
     home: 'council',
+    routes: [{ route: 'council', label: '總覽' }],
+  },
+  {
+    id: 'facebook',
+    label: '臉書',
+    home: 'socialwall',
     routes: [
-      { route: 'council', label: '總覽' },
-      { route: 'councilactivity', label: '近期動態' },
+      { route: 'socialwall', label: '委員粉專牆' },
+      { route: 'councilactivity', label: '議員近期動態' },
     ],
   },
   { id: 'map', label: '縣市地圖', home: 'counties', routes: [{ route: 'counties', label: '縣市地圖' }] },
