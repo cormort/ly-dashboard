@@ -261,6 +261,9 @@ header nav a[aria-current='page'], .subnav a[aria-current='page'] { color: var(-
 .sync-progress { font-size: var(--fs-sm); color: var(--muted); }
 .sync-progress:empty { display: none; }
 .sync-progress.error { color: var(--error); }
+/* 防呆訊息：按了不會有新資料時說明原因，並留一個「仍要重跑」 */
+.sync-progress.blocked { color: var(--warning, #b45309); display: inline-flex; align-items: center; gap: 6px; }
+.sync-progress.blocked .link-button { color: inherit; text-decoration: underline; white-space: nowrap; }
 .sync-pill[aria-expanded='true'] { border-color: var(--rule); background: var(--surface); }
 
 /* ---------- 版面 ---------- */

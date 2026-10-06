@@ -197,8 +197,13 @@ export function fetchSyncSources(options?: RequestOptions): Promise<SyncSourcesR
  * 觸發後端背景同步（立刻回 202，進度看 fetchHealth().syncing 與 fetchSyncRuns）。
  * `scope` 決定要跑哪些來源（見 /sync-sources；省略＝全部）。
  */
-export function startSync(scope?: string, options?: RequestOptions): Promise<SyncStartResponse> {
-  return apiRequest<SyncStartResponse>(buildUrl('/sync', { scope }), { ...options, method: 'POST' });
+/**
+ * 觸發同步。`force` 用在防呆擋下來之後使用者仍要重跑的情況
+ * （後端會回 409 `sync_too_soon`／`sync_in_progress` 並說明原因）。
+ */
+export function startSync(scope?: string, options: RequestOptions & { force?: boolean } = {}): Promise<SyncStartResponse> {
+  const { force, ...rest } = options;
+  return apiRequest<SyncStartResponse>(buildUrl('/sync', { scope, force: force ? 1 : undefined }), { ...rest, method: 'POST' });
 }
 
 /** 只為了型別檢查時的自我說明用；實際渲染用不到。 */

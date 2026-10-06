@@ -959,6 +959,24 @@ check('/committees 對應委員會頁', routeOf('/committees') === 'committees')
   ]);
   win.location.search = saved;
 }
+// 更新按鈕的防呆：按了不會有新資料時要直接講原因，並留「仍要重跑」
+expectAll(
+  '頁首：防呆擋下來時顯示原因與「仍要重跑」',
+  render(
+    createElement(Header, {
+      ...headerProps,
+      syncTone: 'blocked' as const,
+      syncMessage: '「只重讀社群粉專」５ 分鐘前（08:12）才同步過。委員粉專是本機每天 08:00 抓取後寫回整理表，一天只有一輪，現在按不會取得更新的資料。要強制重跑請按「仍要重跑」。',
+    }),
+  ),
+  ['class="sync-progress blocked"', '才同步過', '仍要重跑', 'role="status"'],
+);
+expectNone(
+  '頁首：正常狀態不會出現「仍要重跑」',
+  render(createElement(Header, { ...headerProps, syncTone: 'ok' as const, syncMessage: '資料已更新' })),
+  ['仍要重跑'],
+);
+
 expectNone('委員會頁：頁首不放委員搜尋', render(createElement(Header, { ...headerProps, route: 'committees' as const })), ['關鍵字搜尋立法委員']);
 
 const dashboardLoading = render(createElement(DashboardPage, { refreshToken: 0, onOpenId: () => undefined, onNavigate: () => undefined }));

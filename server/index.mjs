@@ -13,6 +13,7 @@ import {
 } from './queries.mjs';
 import { runAll, runOutletPoll } from './ingest.mjs';
 import { resolveScope, scopeStages } from './sync-scopes.mjs';
+import { checkSyncGuard } from './sync-guard.mjs';
 
 let inflight = null;
 let inflightScope = null;
@@ -244,7 +245,12 @@ export function createServer(db) {
             if (denied) return sendError(res, denied.status, denied.code, denied.message);
             // M3：同步可能長達數分鐘，不能在請求裡等。改回 202 並讓它跑在背景，進度看 /sync-runs。
             const scope = resolveScope(q.scope).id;
-            const started = getInflightScope() === null;
+            // 防呆：按下去不會取得更新的資訊（已在同步／剛同步過）就回 409 明講，不要白跑一趟。
+            // 使用者可以用 force=1 強制重跑（見 server/sync-guard.mjs）。
+            const force = q.force === '1' || q.force === 'true';
+            const guard = checkSyncGuard(db, scope, { force, inflight: getInflightScope() });
+            if (!guard.allow) return sendError(res, 409, guard.reason, guard.message);
+            const started = true;
             syncOnce(db, { scope }).catch((error) => console.error('[sync] 背景同步失敗', error));
             return sendJson(
               res,
@@ -254,7 +260,8 @@ export function createServer(db) {
                 started,
                 scope,
                 inflight_scope: getInflightScope(),
-                message: started ? '同步已在背景執行' : '已有同步在進行中，本次請求已合併',
+                forced: force,
+                message: '同步已在背景執行',
                 poll: '/api/v1/sync-runs',
               },
               { 'cache-control': 'no-store' },

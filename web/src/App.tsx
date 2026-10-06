@@ -97,14 +97,22 @@ export default function App() {
             onSyncToggle={() => setSyncOpen((v) => !v)}
             query={route === 'legislators' ? query.filters.q : ''}
             onQueryChange={onQueryChange}
-            onRefresh={() => void sync.start(syncScope)}
+            onRefresh={(force?: boolean) => void sync.start(syncScope, { force })}
             refreshing={sync.state.phase === 'running' || health.phase === 'loading' || meta.phase === 'loading'}
             syncMessage={
               sync.state.phase === 'running'
                 ? `同步中…${scopeLabelOf(sync.state.scope) ? `（${scopeLabelOf(sync.state.scope)}）` : ''}（已完成 ${sync.state.finished} 個來源）`
                 : sync.state.message
             }
-            syncTone={sync.state.phase === 'running' ? 'running' : sync.state.phase === 'error' ? 'error' : 'ok'}
+            syncTone={
+              sync.state.phase === 'running'
+                ? 'running'
+                : sync.state.phase === 'error'
+                  ? 'error'
+                  : sync.state.phase === 'blocked'
+                    ? 'blocked'
+                    : 'ok'
+            }
             syncScopes={syncSources.data?.scopes ?? []}
             syncScope={syncScope}
             onSyncScopeChange={setSyncScope}

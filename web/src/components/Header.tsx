@@ -24,11 +24,12 @@ export interface HeaderProps {
   query: string;
   onQueryChange: (value: string) => void;
   /** 按下去觸發後端同步（同步完才會重新載入畫面資料） */
-  onRefresh: () => void;
+  /** force=true 用在防呆擋下來之後使用者仍要重跑（見 useSync 的 blocked） */
+  onRefresh: (force?: boolean) => void;
   refreshing: boolean;
   /** 同步進度／結果文字（如「同步中…（已完成 2 個來源）」）；無則不顯示 */
   syncMessage?: string | null;
-  syncTone?: 'running' | 'ok' | 'error';
+  syncTone?: 'running' | 'ok' | 'error' | 'blocked';
   /** 可選的同步範圍（/sync-sources）；只有一個或還沒載到時不顯示下拉 */
   syncScopes?: SyncScope[];
   /** 目前選的同步範圍 id（預設 'all'） */
@@ -221,6 +222,12 @@ export function Header({
         <FontSizeControl />
         <span className={`sync-progress ${syncTone}`} role="status" aria-live="polite">
           {syncMessage}
+          {syncTone === 'blocked' ? (
+            // 防呆擋下來時講清楚原因，但要留一條路：使用者真的要重跑就按這裡
+            <button type="button" className="link-button" onClick={() => onRefresh(true)}>
+              仍要重跑
+            </button>
+          ) : null}
         </span>
         {syncScopes.length > 1 ? (
           <label className="sync-scope">
@@ -242,7 +249,7 @@ export function Header({
         <button
           type="button"
           className="icon-button"
-          onClick={onRefresh}
+          onClick={() => onRefresh()}
           disabled={refreshing}
           aria-label={refreshing ? '同步更新中…' : '更新資料'}
           title="從立法院重新同步最新資料"
