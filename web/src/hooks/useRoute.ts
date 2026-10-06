@@ -7,7 +7,7 @@ const PATHS: Record<Route, string> = {
   home: '/activity',
   dashboard: '/',
   legislators: '/legislators',
-  // 臉書（社群）自成一組：委員粉專牆 ＋ 議員近期動態（2026-10-06 由「委員」「議員」底下搬上來）
+  // 社群自成一組（標籤「社群」）：委員粉專牆 ＋ 議員近期動態（2026-10-06 由「委員」「議員」底下搬上來）
   socialwall: '/facebook/wall',
   councilactivity: '/facebook/council',
   bills: '/bills',
@@ -31,8 +31,8 @@ const PATHS: Record<Route, string> = {
 
 /**
  * 舊網址（書籤、分享過的連結、別人電腦上的最愛）：還是要能用，但位置一律換成新的，
- * 免得同一個頁面同時存在兩個網址。`/legislators/wall` → 臉書 › 委員粉專牆、
- * `/council/activity` → 臉書 › 議員近期動態（2026-10-06 搬遷前的網址）。
+ * 免得同一個頁面同時存在兩個網址。`/legislators/wall` → 社群 › 委員粉專牆、
+ * `/council/activity` → 社群 › 議員近期動態（2026-10-06 搬遷前的網址）。
  */
 const LEGACY_PATHS: Record<string, Route> = {
   '/legislators/wall': 'socialwall',
@@ -40,7 +40,7 @@ const LEGACY_PATHS: Record<string, Route> = {
 };
 
 export function routeOf(pathname: string): Route {
-  // 臉書：`/facebook/council` 與 `/facebook/wall` 各自對應一頁（沒有共用前綴頁，所以不必排先後）
+  // 社群：`/facebook/council` 與 `/facebook/wall` 各自對應一頁（沒有共用前綴頁，所以不必排先後）
   if (pathname.startsWith('/facebook/wall')) return 'socialwall';
   if (pathname.startsWith('/facebook/council')) return 'councilactivity';
   // 舊網址也要進得來（會被 useRoute 換成上面的新網址）
