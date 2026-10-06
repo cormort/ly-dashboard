@@ -1,9 +1,9 @@
-import { test } from 'node:test';
-import assert from 'node:assert/strict';
-import { readdirSync, readFileSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
+import { mkdirSync, rmSync, existsSync, readFileSync, readdirSync } from 'node:fs';
+import { spawnSync, execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SCRIPTS = join(ROOT, 'scripts');
@@ -31,4 +31,23 @@ test('shell：$VAR 後面直接接全形字元要寫成 ${VAR}（否則 bash 會
     });
   }
   assert.deepEqual(offenders, [], `要改成 \${VAR} 的寫法：\n${offenders.join('\n')}`);
+});
+
+test('每日抓取腳本：搶不到鎖就跳過（不可以失敗，也不可以刪掉別人的鎖）', async () => {
+  const repo = fileURLToPath(new URL('..', import.meta.url));
+  const lock = join(repo, '.cache', 'fb-daily.lock');
+  mkdirSync(lock, { recursive: true });
+  try {
+    const result = spawnSync('bash', [join(repo, 'scripts/fb-daily.sh'), '--ids', '1'], {
+      cwd: repo,
+      env: { ...process.env, LY_NOTIFY: '0' }, // 測試不送 Telegram
+      encoding: 'utf8',
+    });
+    assert.equal(result.status, 0, '搶不到鎖要乾淨跳過（exit 0），不是失敗');
+    assert.ok(existsSync(lock), '別人的鎖不可以被這次跳過刪掉');
+    const log = readFileSync(join(repo, '.cache', 'fb-daily.log'), 'utf8');
+    assert.match(log, /已有另一輪抓取在跑/);
+  } finally {
+    rmSync(lock, { recursive: true, force: true });
+  }
 });

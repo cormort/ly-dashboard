@@ -131,6 +131,10 @@ export const CONFIG = {
   // 來源是月報與選舉年，不會天天變；超過這個月數就在 /health 的 warnings 提醒重跑 build。
   staticStaleMonths: Number(process.env.LY_STATIC_STALE_MONTHS ?? 3),
   syncIntervalMs: Number(process.env.LY_SYNC_INTERVAL_MS || 24 * 60 * 60 * 1000),
+  // 排程**檢查**的間隔：不是每 24 小時才醒一次，而是每小時檢查「資料是不是超過 syncIntervalMs 沒更新」。
+  // 這樣某輪失敗（fail closed 保留舊資料）會在一小時內自動重試，Mac 睡著／重開機後也會補上；
+  // 資料新鮮時完全不會打政府 API，所以不會增加對方負擔。
+  schedulerCheckMs: Number(process.env.LY_SCHEDULER_CHECK_MS ?? 60 * 60 * 1000),
   fetchTimeoutMs: Number(process.env.LY_FETCH_TIMEOUT_MS || 30_000),
   // 同一個 host 的最小請求間隔：g0v API 連續抓多頁會回 429（實測），溫和一點也保護對方
   minRequestIntervalMs: Number(process.env.LY_MIN_INTERVAL_MS ?? 400),

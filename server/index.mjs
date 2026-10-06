@@ -301,16 +301,32 @@ export function pollOutletsOnce(db, options = {}) {
   return outletInflight;
 }
 
-export function startScheduler(db, { logger = console } = {}) {
+/**
+ * 現在該不該同步？「資料超過 syncIntervalMs（預設 24 小時）沒成功更新，而且沒有同步在跑」才要。
+ *
+ * 原本是固定 24 小時的 setInterval：某輪失敗要再等整整一天才會重試，Mac 睡著時 Node 的 timer
+ * 也不會補跑（只有啟動時檢查一次 fresh）。改成每小時問一次這個問題，就同時解掉這兩個缺口，
+ * 而資料新鮮時一次 API 都不會打。
+ */
+export function shouldSyncNow(db, { inflightScope = getInflightScope(), now = Date.now() } = {}) {
+  if (inflightScope) return false;
   const last = getMeta(db, 'last_success_at');
-  const fresh = last && Date.now() - new Date(last).getTime() < CONFIG.syncIntervalMs;
-  if (!fresh) {
+  if (!last) return true;
+  const at = new Date(last).getTime();
+  return !Number.isFinite(at) || now - at >= CONFIG.syncIntervalMs;
+}
+
+export function startScheduler(db, { logger = console, checkEveryMs = CONFIG.schedulerCheckMs } = {}) {
+  if (shouldSyncNow(db)) {
     logger.log('[scheduler] 資料不存在或已過期，啟動時先同步一次');
     syncOnce(db, { logger }).catch((error) => logger.error('[scheduler] 同步失敗', error));
   }
   const timer = setInterval(() => {
+    if (!shouldSyncNow(db)) return;
+    const hours = Math.round(CONFIG.syncIntervalMs / 3600_000);
+    logger.log(`[scheduler] 資料已超過 ${hours} 小時未成功更新，開始同步`);
     syncOnce(db, { logger }).catch((error) => logger.error('[scheduler] 排程同步失敗', error));
-  }, CONFIG.syncIntervalMs);
+  }, checkEveryMs);
   timer.unref();
   if (CONFIG.news.outletIntervalMs > 0) {
     const outletTimer = setInterval(() => {

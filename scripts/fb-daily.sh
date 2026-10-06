@@ -74,6 +74,33 @@ log：${LOG}"
 
 log "=== 開始（profile=${PROFILE}）==="
 
+# ---- 抓取鎖：同時只允許一輪 ------------------------------------------------------------
+# 每輪 25–35 分鐘且獨佔 Chrome 設定檔（profile）。兩輪同時跑會互相搶，後啟動的那一輪會在幾秒內
+# 失敗（2026-10-06 08:00 的每日排程就是這樣被 07:58 的另一輪擠掉，2 秒內 exit 1）。
+# 所以：搶不到鎖就跳過並通知，不要失敗；超過 LY_FB_LOCK_STALE_MIN 分鐘的鎖視為殘留（上次被中斷）直接接手。
+# LY_FB_LOCK=0 可以關掉這個鎖（測試或刻意並行時用）。
+LOCK_DIR="$LOG_DIR/fb-daily.lock"
+LOCK_STALE_MIN="${LY_FB_LOCK_STALE_MIN:-90}"
+if [ "${LY_FB_LOCK:-1}" = "1" ]; then
+  acquired=0
+  if mkdir "$LOCK_DIR" 2>/dev/null; then
+    acquired=1
+  elif [ -n "$(find "$LOCK_DIR" -maxdepth 0 -mmin "+${LOCK_STALE_MIN}" 2>/dev/null)" ]; then
+    log "發現殘留的抓取鎖（超過 ${LOCK_STALE_MIN} 分鐘）→ 接手"
+    rm -rf "$LOCK_DIR"
+    mkdir "$LOCK_DIR" 2>/dev/null && acquired=1
+  fi
+  if [ "$acquired" -ne 1 ]; then
+    log "已有另一輪抓取在跑（鎖：${LOCK_DIR}）→ 本輪跳過"
+    notify "⏭ 立委粉專每日更新跳過（${STARTED_AT}）
+原因：已經有另一輪在抓（同時只能有一輪，否則兩輪會搶 Chrome 設定檔而失敗）
+強制重跑：把 ${LOCK_DIR} 刪掉再跑一次，或設 LY_FB_LOCK=0"
+    exit 0
+  fi
+  printf '%s\n' "${STARTED_AT}" >"$LOCK_DIR/started_at"
+  trap 'rm -rf "$LOCK_DIR"' EXIT
+fi
+
 NODE="$(command -v node || true)"
 if [ -z "$NODE" ]; then
   log "找不到 node（PATH=${PATH}）；中止"

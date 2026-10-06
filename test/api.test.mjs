@@ -7,7 +7,7 @@ import { openDb, applyDataset, applyBills, applySocial, applyCommitteeMeets, ups
 import { buildDataset, normalizeBills, normalizeSocial, newsName } from '../server/normalize.mjs';
 import { billsCsv, compareLegislators, csvRow, makeTagger, listCommitteeActivity, listCosponsors, listFunds, listRegions, getHealth, getMetaPayload, listActivity, listBills, listBudget, listTopics, listNews, listNewsArticles, listChanges, listCommittees, listLegislators, listRankings, listSyncRuns, listCounties, listDemographics, getTownMap, monthsSince, listLegislatorVotes, listSplitTicket, listRecalls, listCouncil, councilCounties, listSyncSources } from '../server/queries.mjs';
 import { regionOf } from '../server/normalize.mjs';
-import { authorizeSync } from '../server/index.mjs';
+import { authorizeSync, shouldSyncNow } from '../server/index.mjs';
 import { runNewsIngest } from '../server/ingest.mjs';
 import { getProgress, clearProgress } from '../server/sync-progress.mjs';
 import { FetchError } from '../server/fetch-ly.mjs';
@@ -1497,4 +1497,17 @@ test('新聞同步：過程中會回報細部進度，讓畫面看得到「跑�
 test('同步進度註冊表：沒有同步在跑時是 null（/health 才不會一直顯示舊進度）', () => {
   clearProgress();
   assert.equal(getProgress(), null);
+});
+
+test('排程：資料新鮮時不打政府 API，過期（或從沒同步過）才同步', () => {
+  const { db } = seeded();
+  const now = Date.parse('2026-10-06T12:00:00.000Z');
+  // 剛同步過（last_success_at 由 applyDataset 寫入）
+  const last = Date.parse(getMeta(db, 'last_success_at'));
+  assert.equal(shouldSyncNow(db, { now: last + 60 * 60 * 1000 }), false, '一小時前同步過 → 不該再打');
+  assert.equal(shouldSyncNow(db, { now: last + 25 * 60 * 60 * 1000 }), true, '超過 24 小時 → 要同步');
+  // 沒有同步在跑 vs 有同步在跑
+  assert.equal(shouldSyncNow(db, { now: last + 25 * 60 * 60 * 1000, inflightScope: 'news' }), false, '已經有同步在跑就不要重複觸發');
+  const empty = openDb(':memory:');
+  assert.equal(shouldSyncNow(empty, { now }), true, '從來沒同步過 → 要同步');
 });
