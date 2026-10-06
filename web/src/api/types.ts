@@ -693,12 +693,18 @@ export interface BudgetResponse {
   meta: Meta & { budget_fetched_at: string | null; source: { name: string; url: string } };
   total: number;
   count: number;
-  categories: BillLawCount[];
+  categories: (BillLawCount & { is_bills: boolean })[];
   /** 各年度的件數與審議進度（`unknown`＝上游沒給年度） */
   years: BudgetYear[];
   proposers: BillLawCount[];
   /** 目前條件下的整體審議進度（總件數／已審竣／尚未審竣…） */
   progress: BudgetProgress;
+  /** 統計範圍：`bills`（預設，只算預算案本身）／`all`（含決議書面報告等報告類） */
+  scope: 'bills' | 'all';
+  /** 這個範圍的一句話說明 */
+  scope_note: string;
+  all_scope_total: number;
+  bills_scope_total: number;
   types: Record<BudgetType, number>;
   /** 分年度呈現（`group_by=year`）時才有 */
   group_by: 'year' | null;

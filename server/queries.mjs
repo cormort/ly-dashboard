@@ -1904,14 +1904,27 @@ export function budgetBillsByProgress(db) {
  */
 export function listBudget(
   db,
-  { category = '', type = '', q = '', year = '', proposer = '', state = '', limit = 30, offset = 0, all = false, groupBy = '', perGroup = 5 } = {},
+  { category = '', type = '', q = '', year = '', proposer = '', state = '', limit = 30, offset = 0, all = false, groupBy = '', perGroup = 5, scope: scopeArg = 'bills' } = {},
 ) {
   const resolvedLimit = all ? Infinity : Math.max(1, Math.min(Number(limit) || 30, 200));
   const resolvedOffset = Math.max(0, Math.trunc(Number(offset) || 0));
-  // 預算類型在讀取時由名稱判斷（規則見 budgetTypes），改規則不必重新同步
-  // 只有「議案本身」那一類才給預算類型（決議案／定期報告是回覆決議的函件，見 budgetTypes）
+  // 「議案本身」的類別（中央政府總預算案、法人預(決)算案）；其餘是決議案／定期報告（回覆決議的函件）
   const billCats = new Set(CONFIG.budget.billCategories ?? []);
-  const rows = budgetBillsByProgress(db).map((r) => ({ ...r, types: budgetTypes(r.name, { billCategory: billCats.has(r.category) }) }));
+  const isBill = (r) => billCats.has(r.category);
+  const allRows = budgetBillsByProgress(db).map((r) => ({ ...r, types: budgetTypes(r.name, { billCategory: isBill(r) }) }));
+  /**
+   * 統計範圍：`bills`（預設）只算**預算案本身**，`all` 連決議案／定期報告一起算。
+   *
+   * 為什麼要分：報告類（實測 10,801 件「函送…補（捐）助經費彙總表／執行情形報告，請查照案」）
+   * 在 g0v 的議案狀態常常是「交付審查」，照狀態分類就會變成「審議中」，
+   * 於是 114 年度顯示「已審竣 1,371／尚未審竣 1,100」，但**真正的預算案只有 74／67 件**。
+   * 這些報告的審查進度另外看得到（切到 `all`），兩組數字不互相混。
+   *
+   * 注意：**類別件數（categories）不受範圍影響**——那是導覽用的，
+   * 「決議書面報告 10,801」要一直看得到，否則使用者找不到那些報告。
+   */
+  const scope = all === 'bills' || scopeArg === 'bills' ? 'bills' : 'all';
+  const rows = scope === 'bills' ? allRows.filter(isBill) : allRows;
   const count = (list, key) => {
     const m = new Map();
     for (const r of list) m.set(key(r), (m.get(key(r)) ?? 0) + 1);
@@ -1919,7 +1932,7 @@ export function listBudget(
   };
   const ranked = (map, n) => [...map].filter(([k]) => k).sort((a, b) => b[1] - a[1]).slice(0, n).map(([name, n2]) => ({ name: String(name), count: n2 }));
 
-  const categories = count(rows, (r) => r.category);
+  const categories = count(allRows, (r) => r.category);
   const needle = String(q ?? '').trim();
   const base = rows.filter(
     (r) => (!category || r.category === category) && (!needle || r.name.includes(needle) || String(r.proposer ?? '').includes(needle)),
@@ -1966,9 +1979,18 @@ export function listBudget(
 
   return {
     meta: { ...envelope(db), budget_fetched_at: getMeta(db, 'budget_fetched_at'), source: { name: CONFIG.bills.name, url: CONFIG.bills.homepage } },
+    // 統計範圍與說明（前端要做開關與提示）
+    scope,
+    scope_note:
+      scope === 'bills'
+        ? '統計只算預算案本身（總預算案、法人預決算案）；決議書面報告等報告類另計'
+        : '統計含決議案／定期報告（函送…請查照案的報告）',
+    all_scope_total: allRows.length,
+    bills_scope_total: allRows.filter(isBill).length,
     total: matching.length,
     count: Math.min(resolvedLimit, Math.max(0, matching.length - resolvedOffset)),
-    categories: CONFIG.budget.categories.map((name) => ({ name, count: categories.get(name) ?? 0 })),
+    // is_bills：這一類是不是「議案本身」（前端點到報告類的類別時要自動把範圍切到 all，不然會是空的）
+    categories: CONFIG.budget.categories.map((name) => ({ name, count: categories.get(name) ?? 0, is_bills: billCats.has(name) })),
     years,
     proposers: ranked(proposers, 15),
     // 審議進度統計：總件數／已審竣／審議中／待審查／函件／退回（見 budgetProgress 的定義）

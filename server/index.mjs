@@ -181,6 +181,8 @@ export function createServer(db) {
               // 分年度呈現：group_by=year 會回 groups（每年統計＋前幾筆）
               groupBy: q.group_by,
               perGroup: q.per_group,
+              // 統計範圍：bills（預設，只算預算案本身）／all（含決議書面報告等報告類）
+              scope: q.scope,
             };
             if (q.format === 'csv') return sendCsv(res, 'budget.csv', budgetCsv(listBudget(db, { ...filters, all: true }).items));
             return sendJson(res, 200, listBudget(db, { ...filters, limit: q.limit, offset: q.offset }));

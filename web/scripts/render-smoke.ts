@@ -39,7 +39,7 @@ import { SyncStatusBanner } from '../src/components/SyncStatusBanner';
 import { RankingsPage, RankingBoardView } from '../src/pages/RankingsPage';
 import { TopicsPanel, tagTier } from '../src/components/TopicsPanel';
 import { ComparePage } from '../src/pages/ComparePage';
-import { BudgetPage, progressDateText } from '../src/pages/BudgetPage';
+import { BudgetPage, progressDateText, scopeAfterCategoryChange } from '../src/pages/BudgetPage';
 import { YearProgressList, budgetProgressBar, budgetProgressText, hasReviewableItems, yearLabel } from '../src/components/BudgetProgress';
 import { syncProgressText, syncRunningText } from '../src/lib/format';
 import { DashboardPage } from '../src/pages/DashboardPage';
@@ -939,6 +939,11 @@ check('流程條：未知狀態不畫', render(createElement(BillStageBar, { sta
 // 上游對本會期的預算議案沒有日期（實測 199/199），留白會像壞掉；排序上這種案子當成最新
 check('預算頁：沒有進度日期時明講「尚無進度日期」，不是空白', progressDateText('') === '尚無進度日期' && progressDateText(null) === '尚無進度日期');
 check('預算頁：有進度日期就照原樣顯示', progressDateText('2026-04-14') === '2026-04-14');
+
+// 統計範圍的決策：點到報告類一定要含報告，否則「只算預算案」會是空清單
+check('統計範圍：點到報告類自動切成含報告類', scopeAfterCategoryChange({ currentScope: 'bills', isBillCategory: false }) === 'all');
+check('統計範圍：點回預算案類別回到預設（只算預算案）', scopeAfterCategoryChange({ currentScope: 'all', isBillCategory: true }) === 'bills');
+check('統計範圍：使用者自己指定就不覆寫', scopeAfterCategoryChange({ currentScope: 'bills', isBillCategory: true, explicitScope: 'all' }) === 'all');
 
 // 預算進度：審竣／總件數／待審查（數字來自後端五級分類，畫面只負責呈現）
 const progress115 = { total: 366, reviewed: 24, in_review: 61, pending: 280, letter: 1, returned: 0, awaiting: 341 };

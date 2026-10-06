@@ -263,6 +263,7 @@ Query 參數（全部可選）：
 | `q` | 比對名稱或提案單位 |
 | `year` | 預算年度（民國，從名稱「115年度」抽出） |
 | `proposer` | 精確比對提案單位（機關或委員會） |
+| `scope` | 統計範圍：`bills`（預設，只算**預算案本身**：中央政府總預算案、法人預(決)算案）／`all`（含決議案、定期報告，也就是「函送…請查照案」的彙總表／執行情形報告）。範圍會同時套用到清單、統計與 CSV；**類別件數（`categories`）不受範圍影響**（導覽用，「決議書面報告 10,801」要一直看得到） |
 | `state` | 審議狀態：`reviewed`（已審竣）／`in_review`（審議中）／`pending`（待審查）／`letter`（函件處理）／`returned`（退回） |
 | `limit` / `offset` | 分頁，limit 1–200，預設 30 |
 | `format=csv` | 全部符合結果的 CSV |
@@ -288,6 +289,8 @@ Query 參數（全部可選）：
   （`awaiting`＝尚未審竣＝審議中＋待審查＋退回，不含函件）
 - `years[].progress`：每個年度一份同樣的統計（`years[].name` 為 `unknown` 表示上游沒給年度）
 - `year=unknown`：只查沒有年度的案子
+- `scope`／`scope_note`／`bills_scope_total`／`all_scope_total`：目前範圍、一句話說明、兩個範圍各幾件
+- `categories[].is_bills`：這個類別是不是「議案本身」（前端點到報告類要自動切範圍）
 - `group_by=year`：分年度呈現，回 `groups: [{ name, total, progress, items }]`（每年只列 `per_group` 筆，
   預設 5、上限 50；其餘用 `year=<年度>` 再查），並回 `group_by`／`per_group`
 

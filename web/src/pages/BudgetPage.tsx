@@ -11,6 +11,26 @@ import { pathFor } from '../hooks/useRoute';
 import { shortCommittee } from '../lib/format';
 import { partyStyle } from '../lib/parties';
 
+/**
+ * 換類別時的統計範圍決策（抽出來才測得到，這裡是最容易搞錯的地方）：
+ *
+ * - 點到**報告類**的類別（決議書面報告）：一定要含報告類，否則「只算預算案」會是空清單。
+ * - 點到**預算案類別**（或全部）：回到預設的「只算預算案」，但這次呼叫自己指定了 scope 就尊重它。
+ */
+export function scopeAfterCategoryChange({
+  currentScope,
+  isBillCategory,
+  explicitScope,
+}: {
+  currentScope: string;
+  isBillCategory: boolean;
+  explicitScope?: string;
+}): string {
+  if (explicitScope === 'all' || explicitScope === 'bills') return explicitScope;
+  if (!isBillCategory) return 'all';
+  return currentScope === 'all' ? 'bills' : currentScope;
+}
+
 export interface BudgetPageProps {
   refreshToken: number;
   onOpenId: (id: string) => void;
@@ -56,12 +76,22 @@ interface Filters {
   year: string;
   proposer: string;
   state: string;
+  /** 統計範圍：bills（預設，只算預算案本身）／all（含決議書面報告等報告類） */
+  scope: string;
 }
 
 const readFilters = (): Filters => {
   const p = new URLSearchParams(window.location.search);
   const get = (k: string) => p.get(k) ?? '';
-  return { category: get('category') || DEFAULT_CATEGORY, type: get('type'), q: get('q'), year: get('year'), proposer: get('proposer'), state: get('state') };
+  return {
+    category: get('category') || DEFAULT_CATEGORY,
+    type: get('type'),
+    q: get('q'),
+    year: get('year'),
+    proposer: get('proposer'),
+    state: get('state'),
+    scope: get('scope') === 'all' ? 'all' : 'bills',
+  };
 };
 
 /** 單筆預算議案（清單與分年度檢視共用） */
@@ -112,14 +142,6 @@ export function BudgetPage({ refreshToken, onOpenId }: BudgetPageProps) {
     return () => window.removeEventListener('popstate', onPop);
   }, []);
 
-  const change = (patch: Partial<Filters>) => {
-    const next = { ...filters, ...patch };
-    // 換類別時，年度與機關條件多半不再適用
-    if (patch.category !== undefined && patch.category !== filters.category) Object.assign(next, { year: '', proposer: '' });
-    setFilters(next);
-    setPage(0);
-    window.history.replaceState(null, '', pathFor('budget', { ...next, q: next.q.trim(), category: next.category === DEFAULT_CATEGORY ? '' : next.category }));
-  };
 
   const query = {
     category: filters.category === ALL ? '' : filters.category,
@@ -128,6 +150,7 @@ export function BudgetPage({ refreshToken, onOpenId }: BudgetPageProps) {
     year: filters.year,
     proposer: filters.proposer,
     state: filters.state,
+    scope: filters.scope,
   };
   // 全部年度時請後端分年度呈現（每年統計＋前幾筆）；選了某一年就用一般清單分頁
   const grouped = !filters.year;
@@ -141,6 +164,26 @@ export function BudgetPage({ refreshToken, onOpenId }: BudgetPageProps) {
   const reviewableYears = (data?.years ?? []).filter((y) => hasReviewableItems(y.progress));
   const letterOnlyYears = (data?.years ?? []).filter((y) => !hasReviewableItems(y.progress));
   const allCount = data?.categories.reduce((sum, c) => sum + c.count, 0) ?? 0;
+
+  // 類別清單（含 is_bills：那一類是不是「議案本身」）。change 放在這裡才看得到 data。
+  const categories = data?.categories ?? [];
+  const change = (patch: Partial<Filters>) => {
+    let next = { ...filters, ...patch };
+    // 換類別時，年度與機關條件多半不再適用
+    if (patch.category !== undefined && patch.category !== filters.category) {
+      next = { ...next, year: '', proposer: '' };
+      // 報告類的類別（決議書面報告）在「只算預算案」範圍下一定是空的 → 自動切到含報告；
+      // 切回預算案類別（或全部）時回到預設的「只算預算案」（除非這次自己指定了 scope）
+      const picked = categories.find((c) => c.name === patch.category);
+      // ALL 是「全部類別」，不代表預算案；那種情況下的類別切換不動 scope
+      if (patch.category !== ALL) {
+        next = { ...next, scope: scopeAfterCategoryChange({ currentScope: filters.scope, isBillCategory: !!picked?.is_bills, explicitScope: patch.scope }) };
+      }
+    }
+    setFilters(next);
+    setPage(0);
+    window.history.replaceState(null, '', pathFor('budget', { ...next, q: next.q.trim(), category: next.category === DEFAULT_CATEGORY ? '' : next.category }));
+  };
 
   return (
     <>
@@ -222,6 +265,16 @@ export function BudgetPage({ refreshToken, onOpenId }: BudgetPageProps) {
             </button>
           ))}
         </div>
+        {/* 統計範圍：預設只算預算案本身；報告類（函送…請查照案的彙總表／執行情形報告）
+            在 g0v 的狀態常是「交付審查」，照狀態分類會變成「審議中」，把統計灌大 */}
+        <div className="segmented scope-switch" role="group" aria-label="統計範圍">
+          <button type="button" aria-pressed={filters.scope === 'bills'} onClick={() => change({ scope: 'bills' })}>
+            只算預算案 {data ? data.bills_scope_total.toLocaleString() : ''}
+          </button>
+          <button type="button" aria-pressed={filters.scope === 'all'} onClick={() => change({ scope: 'all' })}>
+            含報告類 {data ? data.all_scope_total.toLocaleString() : ''}
+          </button>
+        </div>
         {filters.proposer ? (
           <button type="button" aria-pressed="true" onClick={() => change({ proposer: '' })} aria-label={`取消機關條件：${filters.proposer}`}>
             {filters.proposer}
@@ -229,6 +282,8 @@ export function BudgetPage({ refreshToken, onOpenId }: BudgetPageProps) {
           </button>
         ) : null}
       </div>
+
+      {data ? <p className="muted scope-note">{data.scope_note}</p> : null}
 
       <div className="budget-layout">
         <section className="panel" aria-label="預算案列表" id="budget-results">

@@ -1356,3 +1356,6 @@ a.stat-tile:hover { border-color: #98a2b3; box-shadow: var(--card-base-hover); t
 .budget-group-head h3 { margin: 0; font-size: var(--fs-lg); }
 
 .year-letter-toggle { justify-self: start; margin-top: 4px; font-size: var(--fs-sm); }
+
+.scope-note { margin: 0 0 var(--space-3); font-size: var(--fs-sm); }
+.scope-switch button { white-space: nowrap; }
