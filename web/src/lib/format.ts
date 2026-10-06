@@ -41,6 +41,16 @@ export function formatDate(value: string | null | undefined, fallback = '尚無�
 }
 
 /** 「3 小時前」這類相對時間；無法解析時退回 fallback */
+/** 毫秒 → 人看得懂的時間（同步耗時用；不知道就回 fallback） */
+export function formatDuration(ms: number | null | undefined, fallback = '—'): string {
+  if (ms === null || ms === undefined || !Number.isFinite(ms)) return fallback;
+  const seconds = Math.round(ms / 1000);
+  if (seconds < 60) return `${seconds} 秒`;
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes} 分鐘`;
+  return `${(minutes / 60).toFixed(1)} 小時`;
+}
+
 export function formatRelative(value: string | null | undefined, fallback = '尚無紀錄'): string {
   if (!value) return fallback;
   const date = new Date(value);
@@ -81,9 +91,18 @@ export function formatChangeValue(field: string, value: string | null): string {
 }
 
 /** 資料集代號 → 顯示名稱（後端 dataset 值為 id9/id14 等） */
+/** 跟後端 server/sync-scopes.mjs 的對照表一致（同一批 dataset 名稱） */
 const DATASET_LABELS: Record<string, string> = {
   id9: 'ID9 立法委員名錄',
   id14: 'ID14 委員會委員名單',
+  bills: '議案',
+  budget: '預算',
+  budget_reports: '預算評估報告',
+  meetings: '會議',
+  records: '會議紀錄',
+  social: '委員粉專',
+  council_social: '議員粉專',
+  news: '新聞',
 };
 
 export function datasetLabel(dataset: string): string {

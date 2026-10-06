@@ -6,6 +6,7 @@ import { buildDataset, normalizeCouncilSocial, normalizeBills, normalizeBudget, 
 import { fetchJson, FetchError, sha256 } from './fetch-ly.mjs';
 import { ambiguousCouncilorNames, currentCouncilors, entityNewsTerms, makeTagger, mentionsKnownEntity } from './queries.mjs';
 import { feedDate, feedFileUrl, outletLabel, parseFeedFile } from './news-feed.mjs';
+import { SYNC_STAGES } from './sync-scopes.mjs';
 
 /**
  * Ingestion 管線：FETCH → VALIDATE → NORMALIZE → PERSIST。
@@ -1033,17 +1034,31 @@ export async function runCouncilSocialIngest(db, { logger = console, fetchImpl =
  */
 export async function runAll(db, options = {}) {
   const skipped = (stage) => ({ status: 'skipped', reason: `${stage} 已由環境變數停用` });
-  const roster = await runIngest(db, options);
-  if (roster.status === 'failed') return roster;
-  const bills = CONFIG.skip.bills ? skipped('bills') : await runBillsIngest(db, options);
-  const budget = CONFIG.skip.budget ? skipped('budget') : await runBudgetIngest(db, options);
-  const budgetReports = CONFIG.skip.budget ? skipped('budget_reports') : await runBudgetReportsIngest(db, options);
-  const meetings = CONFIG.skip.budget ? skipped('meetings') : await runMeetingsIngest(db, options);
-  const records = CONFIG.skip.bills ? skipped('records') : await runRecordsIngest(db, options);
-  const social = CONFIG.skip.social ? skipped('social') : await runSocialIngest(db, options);
-  const councilSocial = CONFIG.skip.social ? skipped('council_social') : await runCouncilSocialIngest(db, options);
-  const news = CONFIG.skip.news ? skipped('news') : await runNewsIngest(db, options);
-  return { ...roster, bills, budget, budget_reports: budgetReports, meetings, records, social, council_social: councilSocial, news };
+  const runners = {
+    roster: () => runIngest(db, options),
+    bills: () => (CONFIG.skip.bills ? skipped('bills') : runBillsIngest(db, options)),
+    budget: () => (CONFIG.skip.budget ? skipped('budget') : runBudgetIngest(db, options)),
+    budget_reports: () => (CONFIG.skip.budget ? skipped('budget_reports') : runBudgetReportsIngest(db, options)),
+    meetings: () => (CONFIG.skip.budget ? skipped('meetings') : runMeetingsIngest(db, options)),
+    records: () => (CONFIG.skip.bills ? skipped('records') : runRecordsIngest(db, options)),
+    social: () => (CONFIG.skip.social ? skipped('social') : runSocialIngest(db, options)),
+    council_social: () => (CONFIG.skip.social ? skipped('council_social') : runCouncilSocialIngest(db, options)),
+    news: () => (CONFIG.skip.news ? skipped('news') : runNewsIngest(db, options)),
+  };
+  // options.stages 由 server/sync-scopes.mjs 決定（例如只同步社群粉專）；沒給就跑全部。
+  const requested = options.stages ?? SYNC_STAGES;
+  const unknown = requested.filter((stage) => !(stage in runners));
+  if (unknown.length) throw new Error(`未知的同步階段：${unknown.join('、')}`);
+  const stages = requested;
+  const result = {};
+  for (const stage of stages) {
+    const outcome = await runners[stage]();
+    // 名錄是其他階段的前置（議員／委員會對照），名錄失敗就不要繼續跑後面
+    if (stage === 'roster' && outcome.status === 'failed') return outcome;
+    result[stage] = outcome;
+  }
+  // 名錄的欄位（status／stats…）攤在最上層：CLI 與既有測試都讀這幾個欄位
+  return stages.includes('roster') ? { ...result.roster, ...result } : result;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

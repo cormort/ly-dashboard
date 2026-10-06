@@ -23,7 +23,9 @@ import { AppShell } from '../src/components/AppShell';
 import { ChangesPanel } from '../src/components/ChangesPanel';
 import { CommitteeChart } from '../src/components/CommitteeChart';
 import { FacetChips } from '../src/components/FacetChips';
-import { Header } from '../src/components/Header';
+import { Header, scopeDetailText, scopeOptionLabel } from '../src/components/Header';
+import { formatDuration } from '../src/lib/format';
+import type { SyncScope } from '../src/api/types';
 import { MyAgencyPage } from '../src/pages/MyAgencyPage';
 import { InfoTip } from '../src/components/InfoTip';
 import { PAGE_HINTS } from '../src/lib/pageHints';
@@ -1137,6 +1139,53 @@ try {
 }
 check('colorAt：未知色階落回預設，不丟例外', !scaleThrew && /^rgb\(/.test(fallbackColor), fallbackColor);
 check('colorAt：NaN 的 t 也回合法顏色', /^rgb\(/.test(colorAt('Blues', NaN)));
+
+/* ------------------------- 同步範圍下拉（2026-10-06） ------------------------- */
+console.log('\n— 同步範圍下拉 —');
+const minutesAgo = (m: number) => new Date(Date.now() - m * 60_000).toISOString();
+const scopeFixture: SyncScope[] = [
+  {
+    id: 'all',
+    label: '全部',
+    stages: ['roster', 'news'],
+    datasets: ['id9', 'id14', 'news'],
+    sources: [
+      { dataset: 'id9', label: 'ID9 立法委員名錄', status: 'success', finished_at: '2026-10-06T02:00:00.000Z', duration_ms: 11_000 },
+      { dataset: 'news', label: '新聞', status: 'success', finished_at: '2026-10-06T02:02:32.000Z', duration_ms: 763_000 },
+    ],
+    last_run_at: '2026-10-06T02:00:00.000Z',
+    last_duration_ms: 774_000,
+    failed_sources: [],
+  },
+  {
+    id: 'social',
+    label: '只重讀社群粉專',
+    stages: ['social', 'council_social'],
+    datasets: ['social', 'council_social'],
+    sources: [
+      { dataset: 'social', label: '委員粉專', status: 'success', finished_at: minutesAgo(2), duration_ms: 1_500 },
+      { dataset: 'council_social', label: '議員粉專', status: 'success', finished_at: minutesAgo(2), duration_ms: 900 },
+    ],
+    last_run_at: minutesAgo(2),
+    last_duration_ms: 2_400,
+    failed_sources: [],
+  },
+  { id: 'roster', label: '只同步名錄', stages: ['roster'], datasets: ['id9', 'id14'], sources: [{ dataset: 'id9', label: 'ID9 立法委員名錄', status: 'never', finished_at: null, duration_ms: null }], last_run_at: null, last_duration_ms: null, failed_sources: [] },
+  { id: 'news', label: '只同步新聞', stages: ['news'], datasets: ['news'], sources: [{ dataset: 'news', label: '新聞', status: 'failed', finished_at: minutesAgo(30), duration_ms: 300 }, ], last_run_at: minutesAgo(30), last_duration_ms: 300, failed_sources: ['news'] },
+  { id: 'legislative', label: '議事與預算', stages: ['bills'], datasets: ['bills'], sources: [{ dataset: 'bills', label: '議案', status: 'success', finished_at: minutesAgo(90), duration_ms: 5_000 }], last_run_at: minutesAgo(90), last_duration_ms: 5_000, failed_sources: [] },
+];
+
+const scopeHeader = render(createElement(Header, { ...headerProps, syncScopes: scopeFixture, syncScope: 'all', onSyncScopeChange: () => undefined }));
+expectAll('同步範圍：畫得下拉，選項文字帶著上次同步時間', scopeHeader, ['class="sync-scope"', '同步範圍', '只重讀社群粉專（2 分鐘前）', '只同步名錄（尚未同步）']);
+check('同步範圍：預設選中「全部」', /<option value="all" selected/.test(scopeHeader), scopeHeader.slice(0, 400));
+expectNone('同步範圍：還沒載到範圍資料時不畫下拉（載入中不會空一個選單）', render(createElement(Header, headerProps)), ['class="sync-scope"']);
+check(
+  '同步範圍：選了「只重讀社群粉專」就標記它被選中',
+  /<option value="social" selected/.test(render(createElement(Header, { ...headerProps, syncScopes: scopeFixture, syncScope: 'social', onSyncScopeChange: () => undefined }))),
+);
+check('同步範圍：工具提示逐來源列出時間（下滑時看得到哪個來源舊了）', scopeDetailText(scopeFixture[0]).split('\n').length === 2 && scopeDetailText(scopeFixture[0]).includes('新聞：'), scopeDetailText(scopeFixture[0]));
+check('同步範圍：沒有同步紀錄的範圍說「尚未同步」，不是空白', scopeOptionLabel(scopeFixture[2]) === '只同步名錄（尚未同步）', scopeOptionLabel(scopeFixture[2]));
+check('同步耗時：秒／分鐘／未知都講得清楚', formatDuration(2_400) === '2 秒' && formatDuration(763_000) === '13 分鐘' && formatDuration(null) === '—', [formatDuration(2_400), formatDuration(763_000), formatDuration(null)].join(' / '));
 
 /* 型別上的靜態斷言：確保測試替身符合 API 契約（不改 runtime 行為） */
 const _typecheck: ChangesResponse | null = null;

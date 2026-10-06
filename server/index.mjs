@@ -9,26 +9,29 @@ import {
   billsCsv, budgetCsv, newsCsv, compareLegislators, listBudget, listCounties, listLegislatorVotes, listSplitTicket, listDemographics, listPopulationTrend, getTownMap, listRegions, listFunds, getAgencyHome, listCommitteeActivity, listBudgetMeetings, listBudgetReports, getHealth, getMetaPayload, listActivity, listBills, listCosponsors, listNews, listNewsArticles, listTopics, listChanges,
   listCommittees, listLegislators, listRankings, listSyncRuns, listRecalls, listCouncil, listCouncilActivity, councilCounties,
   listSocialWall,
+  listSyncSources,
 } from './queries.mjs';
-import { runAll, runIngest, runOutletPoll } from './ingest.mjs';
+import { runAll, runOutletPoll } from './ingest.mjs';
+import { resolveScope, scopeStages } from './sync-scopes.mjs';
 
 let inflight = null;
 let inflightScope = null;
 
-/** 目前進行中的同步範圍（'all' | 'roster'），沒有同步時為 null */
+/** 目前進行中的同步範圍（見 server/sync-scopes.mjs 的 id），沒有同步時為 null */
 export function getInflightScope() {
   return inflightScope;
 }
 
 /**
  * Single-flight：同時只允許一個同步在跑（M3）。
- * `scope === 'roster'` 只同步名錄（約 7 秒，離線可用）；預設 'all' 會跑議案／社群／新聞（約 4 分鐘）。
+ * `scope` 見 server/sync-scopes.mjs：'all'＝全部 9 個階段（實測約 13 分鐘，其中新聞 763 秒），
+ * 'social'＝只重讀社群粉專（實測 2 秒）、'roster'、'news'、'legislative'。認不得的值一律退回 'all'。
  */
 export function syncOnce(db, options = {}) {
   if (!inflight) {
-    const scope = options.scope === 'roster' ? 'roster' : 'all';
+    const scope = resolveScope(options.scope).id;
     inflightScope = scope;
-    inflight = (scope === 'roster' ? runIngest(db, options) : runAll(db, options)).finally(() => {
+    inflight = runAll(db, { ...options, stages: scopeStages(scope) }).finally(() => {
       inflight = null;
       inflightScope = null;
     });
@@ -232,12 +235,15 @@ export function createServer(db) {
             return sendJson(res, 200, listChanges(db, { since: q.since ?? null, limit: q.limit ?? 100 }));
           case '/api/v1/sync-runs':
             return sendJson(res, 200, listSyncRuns(db, { limit: q.limit ?? 50 }));
+          // 同步範圍（下拉選單）：每個範圍涵蓋哪些來源、上次同步時間、上次耗時
+          case '/api/v1/sync-sources':
+            return sendJson(res, 200, listSyncSources(db), { 'cache-control': 'no-store' });
           case '/api/v1/sync': {
             // CR-7：這個端點會讓伺服器去打政府 API，不能無條件開放（沒設 token 時只限 loopback）。
             const denied = authorizeSync(req.headers);
             if (denied) return sendError(res, denied.status, denied.code, denied.message);
             // M3：同步可能長達數分鐘，不能在請求裡等。改回 202 並讓它跑在背景，進度看 /sync-runs。
-            const scope = q.scope === 'roster' ? 'roster' : 'all';
+            const scope = resolveScope(q.scope).id;
             const started = getInflightScope() === null;
             syncOnce(db, { scope }).catch((error) => console.error('[sync] 背景同步失敗', error));
             return sendJson(

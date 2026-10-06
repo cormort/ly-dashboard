@@ -14,6 +14,8 @@ export interface SyncState {
   finished: number;
   /** 給人看的結果／錯誤說明 */
   message: string | null;
+  /** 這次實際觸發的同步範圍（選單可能在過程中又被改，所以記下來） */
+  scope: string | null;
 }
 
 const POLL_MS = 2_000;
@@ -21,7 +23,7 @@ const POLL_MS = 2_000;
 const MAX_POLLS = (15 * 60 * 1000) / POLL_MS;
 const MESSAGE_MS = 8_000;
 
-const IDLE: SyncState = { phase: 'idle', finished: 0, message: null };
+const IDLE: SyncState = { phase: 'idle', finished: 0, message: null, scope: null };
 
 export function useSync(onFinished: () => void) {
   const [state, setState] = useState<SyncState>(IDLE);
@@ -45,17 +47,17 @@ export function useSync(onFinished: () => void) {
     return () => clearTimeout(timer);
   }, [state]);
 
-  const start = useCallback(async () => {
+  const start = useCallback(async (scope?: string) => {
     if (runningRef.current) return;
     runningRef.current = true;
     const update = (next: SyncState) => {
       if (aliveRef.current) setState(next);
     };
-    update({ phase: 'running', finished: 0, message: null });
+    update({ phase: 'running', finished: 0, message: null, scope: scope ?? null });
 
     try {
       const baseline = (await fetchSyncRuns(1)).items[0]?.id ?? 0;
-      await startSync();
+      await startSync(scope);
 
       for (let i = 0; i < MAX_POLLS && aliveRef.current; i += 1) {
         await new Promise((resolve) => setTimeout(resolve, POLL_MS));
@@ -63,21 +65,21 @@ export function useSync(onFinished: () => void) {
         const fresh = runs.items.filter((run) => run.id > baseline);
         const finished = new Set(fresh.map((run) => run.dataset)).size;
         if (health.syncing) {
-          update({ phase: 'running', finished, message: null });
+          update({ phase: 'running', finished, message: null, scope: scope ?? null });
           continue;
         }
         const failed = new Set(fresh.filter((run) => run.status === 'failed').map((run) => run.dataset)).size;
         update(
           failed > 0
-            ? { phase: 'error', finished, message: `${failed} 個資料來源同步失敗，保留舊資料` }
-            : { phase: 'done', finished, message: '資料已更新' },
+            ? { phase: 'error', finished, message: `${failed} 個資料來源同步失敗，保留舊資料`, scope: scope ?? null }
+            : { phase: 'done', finished, message: '資料已更新', scope: scope ?? null },
         );
         onFinishedRef.current();
         return;
       }
-      update({ phase: 'error', finished: 0, message: '同步時間過長，請稍後到同步紀錄查看' });
+      update({ phase: 'error', finished: 0, message: '同步時間過長，請稍後到同步紀錄查看', scope: scope ?? null });
     } catch (cause) {
-      update({ phase: 'error', finished: 0, message: toApiError(cause).message });
+      update({ phase: 'error', finished: 0, message: toApiError(cause).message, scope: scope ?? null });
     } finally {
       runningRef.current = false;
     }

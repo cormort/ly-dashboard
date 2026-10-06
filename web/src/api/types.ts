@@ -111,8 +111,8 @@ export interface SyncStartResponse {
   accepted: boolean;
   /** false 代表已有同步在跑，本次請求被合併 */
   started: boolean;
-  scope: 'all' | 'roster';
-  inflight_scope: 'all' | 'roster' | null;
+  scope: string;
+  inflight_scope: string | null;
   message: string;
 }
 
@@ -283,6 +283,38 @@ export interface SyncRunsResponse {
   meta: Meta;
   count: number;
   items: SyncRun[];
+}
+
+/* ---------- /sync-sources（同步範圍：下拉選單） ---------- */
+
+/** 一個同步範圍裡的一個資料來源（＝sync_runs.dataset） */
+export interface SyncSource {
+  dataset: string;
+  /** 顯示名稱，例如「委員粉專」 */
+  label: string;
+  /** 'never'＝從來沒同步過 */
+  status: SyncRunStatus | 'never';
+  finished_at: string | null;
+  duration_ms: number | null;
+}
+
+export interface SyncScope {
+  id: string;
+  /** 下拉選單的文字，例如「只重讀社群粉專」 */
+  label: string;
+  stages: string[];
+  datasets: string[];
+  sources: SyncSource[];
+  /** 涵蓋來源裡**最舊**的那次同步時間；有來源從未同步就是 null */
+  last_run_at: string | null;
+  /** 上次跑完這些來源總共花多久 */
+  last_duration_ms: number | null;
+  failed_sources: string[];
+}
+
+export interface SyncSourcesResponse {
+  meta: Meta;
+  scopes: SyncScope[];
 }
 
 /* ---------- /bills ---------- */

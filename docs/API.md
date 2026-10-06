@@ -558,14 +558,50 @@ Query 參數（全部可選）：
 
 ---
 
+## GET /api/v1/sync-sources
+
+同步範圍（前端下拉選單的選項）：每個範圍涵蓋哪些來源、每個來源上次同步時間與上次耗時。
+清單順序即選單順序，第一個是預設值。`last_run_at` 取**涵蓋來源裡最舊的那一個**
+（按「全部」時看到的是上次完整跑完的時間，不會被某一項剛跑過誤導）；有來源從未同步則為 `null`。
+
+```json
+{
+  "meta": { "...": "..." },
+  "scopes": [
+    {
+      "id": "social", "label": "只重讀社群粉專", "stages": ["social", "council_social"],
+      "datasets": ["social", "council_social"],
+      "sources": [
+        { "dataset": "social", "label": "委員粉專", "status": "success", "finished_at": "2026-10-06T01:49:47.507Z", "duration_ms": 1500 },
+        { "dataset": "council_social", "label": "議員粉專", "status": "success", "finished_at": "2026-10-06T01:49:48.978Z", "duration_ms": 900 }
+      ],
+      "last_run_at": "2026-10-06T01:49:47.507Z", "last_duration_ms": 2400, "failed_sources": []
+    }
+  ]
+}
+```
+
+`status` 多了 `never`（這個來源從來沒同步過）。`last_duration_ms` 是**各來源最近一次耗時相加**，
+不是「某一次執行」的總時間（各來源可能在不同時間跑過）。
+
+---
+
 ## POST /api/v1/sync
 
-手動觸發同步。**不會等同步跑完**（完整同步含議案／新聞約 4 分鐘），立即回 `202`，
+手動觸發同步。**不會等同步跑完**，立即回 `202`，
 進度請看 `/api/v1/sync-runs` 與 `/api/v1/health` 的 `last_runs`。
 
 | 參數 | 說明 |
 | --- | --- |
-| `scope` | `all`（預設，名錄→議案→社群→新聞）或 `roster`（只同步名錄，約 7 秒） |
+| `scope` | 見 `/api/v1/sync-sources`；認不得的值一律退回 `all`（舊版前端沒帶參數也走這條） |
+
+| scope | 內容 | 實測耗時（2026-10-06 本機） |
+| --- | --- | --- |
+| `all`（預設） | 名錄→議案→預算→預算報告→會議→會議紀錄→委員粉專→議員粉專→新聞 | 約 13 分鐘（光新聞 763 秒） |
+| `social` | 只重讀社群粉專（委員＋議員） | **2 秒** |
+| `roster` | 只同步名錄（id9／id14） | 約 15～22 秒 |
+| `legislative` | 議事與預算（議案＋預算＋預算報告＋會議＋會議紀錄） | 約 20 秒 |
+| `news` | 只同步新聞 | 約 13 分鐘 |
 
 ```json
 { "accepted": true, "started": true, "scope": "roster", "inflight_scope": "roster",

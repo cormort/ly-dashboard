@@ -2,6 +2,7 @@ import { CONFIG } from './config.mjs';
 import { getMeta } from './db.mjs';
 import { readFileSync } from 'node:fs';
 import { budgetTypes, committeesOf, newsName, regionOf } from './normalize.mjs';
+import { SYNC_SCOPES, datasetLabel, scopeDatasets } from './sync-scopes.mjs';
 
 const nowIso = () => new Date().toISOString();
 
@@ -273,6 +274,48 @@ function toSyncRun(r) {
     ua: r.ua,
     error: r.error,
   };
+}
+
+/**
+ * 同步範圍（下拉選單用）：每個範圍的最後一次同步時間、上次耗時、涵蓋的來源。
+ *
+ * `last_run_at` 取**涵蓋來源裡最舊的那一個**（＝這個範圍裡最久沒更新的來源），
+ * 這樣按「全部」時顯示的是「上次**完整**跑完」的時間，不會被某一項剛跑過而誤導；
+ * 有任何來源從未同步就回 null，前端顯示「尚未同步」。
+ */
+export function listSyncSources(db) {
+  const latest = db
+    .prepare('SELECT dataset, status, finished_at, duration_ms FROM sync_runs WHERE id IN (SELECT MAX(id) FROM sync_runs GROUP BY dataset)')
+    .all();
+  const byDataset = new Map(latest.map((row) => [row.dataset, row]));
+
+  const scopes = SYNC_SCOPES.map((scope) => {
+    const datasets = scopeDatasets(scope.id);
+    const sources = datasets.map((dataset) => {
+      const run = byDataset.get(dataset) ?? null;
+      return {
+        dataset,
+        label: datasetLabel(dataset),
+        status: run?.status ?? 'never',
+        finished_at: run?.finished_at ?? null,
+        duration_ms: run?.duration_ms === undefined || run?.duration_ms === null ? null : Number(run.duration_ms),
+      };
+    });
+    const finished = sources.map((source) => source.finished_at).filter(Boolean);
+    const duration = sources.reduce((sum, source) => sum + (source.duration_ms ?? 0), 0);
+    return {
+      id: scope.id,
+      label: scope.label,
+      stages: scope.stages,
+      datasets,
+      sources,
+      last_run_at: sources.some((source) => !source.finished_at) ? null : finished.reduce((oldest, at) => (oldest < at ? oldest : at), finished[0]),
+      last_duration_ms: duration || null,
+      failed_sources: sources.filter((source) => source.status === 'failed').map((source) => source.dataset),
+    };
+  });
+
+  return { meta: envelope(db), scopes };
 }
 
 export function listSyncRuns(db, { limit = 50 } = {}) {

@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 import { openDb, applyDataset, applyBills, applySocial, applyCommitteeMeets, upsertNews, saveSnapshot, recordSyncRun, getMeta, migrate } from '../server/db.mjs';
 import { buildDataset, normalizeBills, normalizeSocial, newsName } from '../server/normalize.mjs';
-import { billsCsv, compareLegislators, csvRow, makeTagger, listCommitteeActivity, listCosponsors, listFunds, listRegions, getHealth, getMetaPayload, listActivity, listBills, listTopics, listNews, listNewsArticles, listChanges, listCommittees, listLegislators, listRankings, listSyncRuns, listCounties, listDemographics, getTownMap, monthsSince, listLegislatorVotes, listSplitTicket, listRecalls, listCouncil, councilCounties } from '../server/queries.mjs';
+import { billsCsv, compareLegislators, csvRow, makeTagger, listCommitteeActivity, listCosponsors, listFunds, listRegions, getHealth, getMetaPayload, listActivity, listBills, listTopics, listNews, listNewsArticles, listChanges, listCommittees, listLegislators, listRankings, listSyncRuns, listCounties, listDemographics, getTownMap, monthsSince, listLegislatorVotes, listSplitTicket, listRecalls, listCouncil, councilCounties, listSyncSources } from '../server/queries.mjs';
 import { regionOf } from '../server/normalize.mjs';
 import { authorizeSync } from '../server/index.mjs';
 import { runNewsIngest } from '../server/ingest.mjs';
@@ -1368,4 +1368,29 @@ test('議員資料：來源檔的姓名寫法差異（字形、族語名、私�
   assert.ok(!names.some((name) => /[\uE000-\uF8FF]/.test(name)), '不可以有私用區字元');
   assert.ok(names.includes('陳□吉'), '2022 新北市的陳□吉以「□」表示');
   assert.ok(res.warnings.some((w) => w.includes('私用區字元')));
+});
+
+/* ---------------- 同步範圍（下拉選單的資料來源） ---------------- */
+
+test('同步範圍：每個範圍的「上次同步」取涵蓋來源裡最舊的那個（才不會被剛跑過的單項誤導）', () => {
+  const { db } = seeded();
+  const at = (iso) => ({ started_at: iso, finished_at: iso, ua: 'test' });
+  recordSyncRun(db, { dataset: 'social', status: 'success', duration_ms: 1500, records: 113, attempt: 1, http_status: 200, ...at('2026-10-06T01:49:47.507Z') });
+  recordSyncRun(db, { dataset: 'council_social', status: 'success', duration_ms: 900, records: 360, attempt: 1, http_status: 200, ...at('2026-10-06T02:10:00.000Z') });
+
+  const { scopes } = listSyncSources(db);
+  assert.equal(scopes[0].id, 'all', '第一個是預設的「全部」');
+  assert.deepEqual(scopes.map((s) => s.id), ['all', 'social', 'news', 'roster', 'legislative']);
+
+  const social = scopes.find((s) => s.id === 'social');
+  assert.equal(social.last_run_at, '2026-10-06T01:49:47.507Z', '取較舊的那個（＝這範圍裡最久沒更新的來源）');
+  assert.equal(social.last_duration_ms, 2400, '上次耗時＝涵蓋來源相加');
+  assert.deepEqual(social.sources.map((x) => [x.label, x.status]), [['委員粉專', 'success'], ['議員粉專', 'success']]);
+
+  const all = scopes.find((s) => s.id === 'all');
+  assert.equal(all.last_run_at, null, '有來源從未同步 → 尚未同步（不要假裝有時間）');
+  assert.ok(all.sources.some((x) => x.status === 'never'));
+
+  recordSyncRun(db, { dataset: 'news', status: 'failed', duration_ms: 300, attempt: 1, http_status: 500, error: 'HTTP 500', ...at('2026-10-06T03:00:00.000Z') });
+  assert.deepEqual(listSyncSources(db).scopes.find((s) => s.id === 'news').failed_sources, ['news'], '失敗的來源要看得出來');
 });

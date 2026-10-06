@@ -14,6 +14,7 @@ import type {
   MetaResponse,
   SyncRun,
   SyncRunsResponse,
+  SyncSourcesResponse,
   SyncStartResponse,
 } from './types';
 
@@ -187,9 +188,17 @@ export function fetchSyncRuns(limit = 50, options?: RequestOptions): Promise<Syn
   return apiRequest<SyncRunsResponse>(buildUrl('/sync-runs', { limit }), options);
 }
 
-/** 觸發後端背景同步（立刻回 202，進度看 fetchHealth().syncing 與 fetchSyncRuns） */
-export function startSync(options?: RequestOptions): Promise<SyncStartResponse> {
-  return apiRequest<SyncStartResponse>(buildUrl('/sync'), { ...options, method: 'POST' });
+/** 同步範圍（下拉選單的選項與各來源上次同步時間） */
+export function fetchSyncSources(options?: RequestOptions): Promise<SyncSourcesResponse> {
+  return apiRequest<SyncSourcesResponse>(buildUrl('/sync-sources'), options);
+}
+
+/**
+ * 觸發後端背景同步（立刻回 202，進度看 fetchHealth().syncing 與 fetchSyncRuns）。
+ * `scope` 決定要跑哪些來源（見 /sync-sources；省略＝全部）。
+ */
+export function startSync(scope?: string, options?: RequestOptions): Promise<SyncStartResponse> {
+  return apiRequest<SyncStartResponse>(buildUrl('/sync', { scope }), { ...options, method: 'POST' });
 }
 
 /** 只為了型別檢查時的自我說明用；實際渲染用不到。 */

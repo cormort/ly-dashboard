@@ -244,6 +244,11 @@ header nav a[aria-current='page'], .subnav a[aria-current='page'] { color: var(-
 .search-clear { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); padding: 4px; border: 0; background: transparent; color: var(--muted); box-shadow: none; border-radius: var(--radius-pill); }
 .search-clear:hover:not(:disabled) { background: var(--rule-soft); border-color: transparent; }
 .header-status { display: flex; align-items: center; gap: 4px; white-space: nowrap; margin-left: auto; }
+/* 同步範圍下拉：貼在「更新資料」鈕左邊，選完右邊的鈕才會開始同步 */
+.sync-scope select { font: inherit; font-size: var(--fs-sm); padding: 4px 6px; max-width: 30ch; border: 1px solid var(--rule-soft); border-radius: 8px; background: var(--surface); color: var(--ink-2); }
+.sync-scope select:disabled { opacity: 0.6; }
+.sync-scope-list { margin-top: 12px; }
+.sync-scope-list h3 { display: flex; align-items: center; gap: 6px; font-size: var(--fs-sm); margin: 0 0 6px; }
 .sync-pill { border-color: transparent; background: transparent; color: var(--muted); font-size: var(--fs-sm); box-shadow: none; border-radius: var(--radius-pill); padding: 5px 10px; }
 .sync-pill:hover:not(:disabled) { background: var(--rule-soft); border-color: transparent; }
 .sync-pill .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }

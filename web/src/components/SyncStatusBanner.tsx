@@ -10,15 +10,17 @@ import {
 } from 'lucide-react';
 import { buildUrl } from '../api/client';
 import type { ApiResource } from '../hooks/useApi';
-import type { HealthResponse, SyncRun, SyncRunStatus, SyncRunsResponse } from '../api/types';
+import type { HealthResponse, SyncRun, SyncRunStatus, SyncRunsResponse, SyncScope } from '../api/types';
 import { useApi } from '../hooks/useApi';
-import { datasetLabel, formatDateTime, formatRelative, SYNC_STATUS_LABELS, text } from '../lib/format';
+import { datasetLabel, formatDateTime, formatDuration, formatRelative, SYNC_STATUS_LABELS, text } from '../lib/format';
 import { EmptyState, ErrorState, LoadingState } from './DataStates';
 
 export interface SyncStatusBannerProps {
   health: ApiResource<HealthResponse>;
   /** 頁面層的重新整理序號，讓展開的同步紀錄也一起重抓 */
   refreshToken: number;
+  /** 各同步範圍與其來源的上次同步時間（/api/v1/sync-sources）；沒有就整段不顯示 */
+  sources?: SyncScope[] | null;
 }
 
 function statusClass(status: SyncRunStatus): string {
@@ -50,7 +52,7 @@ function RunRow({ run }: { run: SyncRun }) {
  * 同步狀態橫幅：/api/v1/health（＋展開時的 /api/v1/sync-runs）。
  * meta.stale === true 時必須明顯提示「可能非最新」。
  */
-export function SyncStatusBanner({ health, refreshToken }: SyncStatusBannerProps) {
+export function SyncStatusBanner({ health, refreshToken, sources = null }: SyncStatusBannerProps) {
   const [expanded, setExpanded] = useState(false);
   const runsUrl = expanded ? buildUrl('/sync-runs', { limit: 50 }) : null;
   const runs = useApi<SyncRunsResponse>(runsUrl, { refreshToken });
@@ -166,6 +168,30 @@ export function SyncStatusBanner({ health, refreshToken }: SyncStatusBannerProps
                 <RunRow key={run.id} run={run} />
               ))}
             </ul>
+          ) : null}
+          {sources && sources.length > 0 ? (
+            <div className="sync-scope-list">
+              <h3>
+                <Clock3 aria-hidden="true" />
+                各來源上次同步（可以只更新其中一部分）
+              </h3>
+              <ul className="log-list">
+                {sources.map((scope) => (
+                  <li className="log" key={scope.id}>
+                    <span className={`dot ${scope.failed_sources.length > 0 ? 'error' : 'success'}`} aria-hidden="true" />
+                    <div>
+                      <b>{scope.label}</b>
+                      <small>
+                        {scope.sources
+                          .map((source) => `${source.label}：${source.finished_at ? formatRelative(source.finished_at) : '尚未同步'}${source.status === 'failed' ? '（失敗）' : ''}`)
+                          .join(' · ')}
+                      </small>
+                      <small>上次總共花 {formatDuration(scope.last_duration_ms)}</small>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
           ) : null}
           {health.data && health.data.last_runs.length > 0 && runs.phase !== 'ready' ? (
             <ul className="log-list">

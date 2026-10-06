@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { buildUrl } from './api/client';
-import type { HealthResponse, Legislator, LegislatorsResponse, MetaResponse } from './api/types';
+import type { HealthResponse, Legislator, LegislatorsResponse, MetaResponse, SyncSourcesResponse } from './api/types';
 import { AppShell } from './components/AppShell';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Header } from './components/Header';
@@ -57,12 +57,17 @@ export default function App() {
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [missingId, setMissingId] = useState<string | null>(null);
   const [syncOpen, setSyncOpen] = useState(false);
+  // 同步範圍（下拉選單）：預設「全部」；每次開頁都回到全部，不記得上次選什麼
+  const [syncScope, setSyncScope] = useState('all');
   const tracked = useTracked();
 
   const sync = useSync(() => setRefreshToken((value) => value + 1));
 
   const health = useApi<HealthResponse>(buildUrl('/health'), { refreshToken });
   const meta = useApi<MetaResponse>(buildUrl('/meta'), { refreshToken });
+  // 同步範圍與各來源上次同步時間（下拉選單用）；同步結束後 refreshToken 會讓它重抓
+  const syncSources = useApi<SyncSourcesResponse>(buildUrl('/sync-sources'), { refreshToken });
+  const scopeLabelOf = (id: string | null) => syncSources.data?.scopes.find((scope) => scope.id === id)?.label ?? null;
 
   const source = health.data?.meta.source ?? meta.data?.meta.source ?? null;
   const fetchedAt = health.data?.meta.fetched_at ?? meta.data?.meta.fetched_at ?? null;
@@ -92,14 +97,17 @@ export default function App() {
             onSyncToggle={() => setSyncOpen((v) => !v)}
             query={route === 'legislators' ? query.filters.q : ''}
             onQueryChange={onQueryChange}
-            onRefresh={() => void sync.start()}
+            onRefresh={() => void sync.start(syncScope)}
             refreshing={sync.state.phase === 'running' || health.phase === 'loading' || meta.phase === 'loading'}
             syncMessage={
               sync.state.phase === 'running'
-                ? `同步中…（已完成 ${sync.state.finished} 個來源）`
+                ? `同步中…${scopeLabelOf(sync.state.scope) ? `（${scopeLabelOf(sync.state.scope)}）` : ''}（已完成 ${sync.state.finished} 個來源）`
                 : sync.state.message
             }
             syncTone={sync.state.phase === 'running' ? 'running' : sync.state.phase === 'error' ? 'error' : 'ok'}
+            syncScopes={syncSources.data?.scopes ?? []}
+            syncScope={syncScope}
+            onSyncScopeChange={setSyncScope}
           />
         }
         sidebar={
@@ -124,7 +132,7 @@ export default function App() {
         {/* 同步有問題時一定顯示；正常時由頁首狀態鈕展開 */}
         {syncOpen || failed || stale ? (
           <div id="sync-panel">
-            <SyncStatusBanner health={health} refreshToken={refreshToken} />
+            <SyncStatusBanner health={health} refreshToken={refreshToken} sources={syncSources.data?.scopes ?? null} />
           </div>
         ) : null}
 

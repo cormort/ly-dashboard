@@ -1,9 +1,9 @@
 import { Fragment } from 'react';
 import { RefreshCw } from 'lucide-react';
-import type { SourceInfo } from '../api/types';
+import type { SourceInfo, SyncScope } from '../api/types';
 import type { Route } from '../hooks/useRoute';
 import { pathFor } from '../hooks/useRoute';
-import { formatDateTime } from '../lib/format';
+import { formatDateTime, formatRelative } from '../lib/format';
 import { FontSizeControl } from './FontSizeControl';
 import { InfoTip } from './InfoTip';
 import { PAGE_HINTS } from '../lib/pageHints';
@@ -29,6 +29,22 @@ export interface HeaderProps {
   /** 同步進度／結果文字（如「同步中…（已完成 2 個來源）」）；無則不顯示 */
   syncMessage?: string | null;
   syncTone?: 'running' | 'ok' | 'error';
+  /** 可選的同步範圍（/sync-sources）；只有一個或還沒載到時不顯示下拉 */
+  syncScopes?: SyncScope[];
+  /** 目前選的同步範圍 id（預設 'all'） */
+  syncScope?: string;
+  onSyncScopeChange?: (id: string) => void;
+}
+
+/** 下拉選項的文字：範圍名稱＋上次同步時間（選單裡就要看得到，不然會以為按了同步每頁都變新） */
+export function scopeOptionLabel(scope: SyncScope): string {
+  const when = scope.last_run_at ? formatRelative(scope.last_run_at) : '尚未同步';
+  return `${scope.label}（${when}）`;
+}
+
+/** 這個範圍涵蓋哪些來源、各自上次同步時間（當工具提示用） */
+export function scopeDetailText(scope: SyncScope): string {
+  return scope.sources.map((source) => `${source.label}：${source.finished_at ? formatRelative(source.finished_at) : '尚未同步'}`).join('\n');
 }
 
 /**
@@ -131,6 +147,9 @@ export function Header({
   refreshing,
   syncMessage = null,
   syncTone = 'running',
+  syncScopes = [],
+  syncScope = 'all',
+  onSyncScopeChange,
 }: HeaderProps) {
   const tone = failed ? 'error' : stale ? 'warning' : 'ok';
   const statusText = failed ? '同步失敗' : stale ? '可能非最新' : '資料截至';
@@ -203,6 +222,23 @@ export function Header({
         <span className={`sync-progress ${syncTone}`} role="status" aria-live="polite">
           {syncMessage}
         </span>
+        {syncScopes.length > 1 ? (
+          <label className="sync-scope">
+            <span className="sr-only">同步範圍</span>
+            <select
+              value={syncScope}
+              onChange={(event) => onSyncScopeChange?.(event.target.value)}
+              disabled={refreshing}
+              title={`選擇這次要同步哪些來源（按右邊的箭頭才會開始）\n${scopeDetailText(syncScopes.find((scope) => scope.id === syncScope) ?? syncScopes[0])}`}
+            >
+              {syncScopes.map((scope) => (
+                <option key={scope.id} value={scope.id}>
+                  {scopeOptionLabel(scope)}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
         <button
           type="button"
           className="icon-button"

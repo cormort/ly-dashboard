@@ -9,7 +9,8 @@ import { entityFeedUrl, guardShrink, runIngest, runBillsIngest, runRecordsIngest
 import { entityNewsTerms, listFunds, getHealth, listBills, listBudget, listBudgetMeetings, listBudgetReports, budgetState, listChanges, listCounties, listLegislatorVotes, listRankings, compareLegislators, listRegions, listSplitTicket, listDemographics, listPopulationTrend, getTownMap, listLegislators, listNews, listNewsArticles, newsCsv, listCouncilActivity, currentCouncilors, socialFreshness, listSyncRuns } from '../server/queries.mjs';
 import { FetchError } from '../server/fetch-ly.mjs';
 import { csvRowsToFeedItems, feedDate, feedFileUrl, mergeFeedFile, parseFeedFile } from '../server/news-feed.mjs';
-import { syncOnce, pollOutletsOnce } from '../server/index.mjs';
+import { syncOnce, pollOutletsOnce, getInflightScope } from '../server/index.mjs';
+import { scopeStages } from '../server/sync-scopes.mjs';
 
 const fixture = (name) => JSON.parse(readFileSync(fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url)), 'utf8'));
 const silent = { log() {}, warn() {}, error() {} };
@@ -2019,4 +2020,50 @@ test('整理表日期：YYYY-MM-DD 為準，也接受 Google 試算表自動轉�
   assert.equal(sheetDate('2026/10/5'), '2026-10-05');
   assert.equal(sheetDate(' 2026.1.9 '), '2026-01-09');
   for (const bad of ['10月5日', '2026/13/1', '2026/10', '', null, '昨天']) assert.equal(sheetDate(bad), '', String(bad));
+});
+
+/* ---------------- 同步範圍（下拉選單） ---------------- */
+
+/** 只服務整理表兩個來源（社群／議員），其他一律視為「不該被呼叫」 */
+const sheetOnlyFetch = (urls) => async (url) => {
+  urls.push(url);
+  const body = url === CONFIG.social.url ? socialCsv : url === CONFIG.social.councilUrl ? councilSheet() : null;
+  if (body === null) throw new FetchError(`不該抓這個來源：${url}`, { status: 500, attempts: 1 });
+  return { text: body, status: 200, headers: {}, bytes: body.length, sha256: 'x', attempts: 1 };
+};
+
+test('同步範圍：只重讀社群粉專時，其他階段一個都不跑', async () => {
+  const db = seeded();
+  const urls = [];
+  const result = await runAll(db, { logger: silent, fetchImpl: sheetOnlyFetch(urls), stages: scopeStages('social') });
+
+  assert.equal(result.social.status, 'success');
+  assert.equal(result.council_social.status, 'success');
+  assert.equal(result.news, undefined, '不該跑新聞（實測 763 秒）');
+  assert.equal(result.bills, undefined);
+  assert.equal(result.roster, undefined);
+  const datasets = db.prepare('SELECT DISTINCT dataset FROM sync_runs').all().map((r) => r.dataset);
+  assert.deepEqual(datasets.sort(), ['council_social', 'social'], 'sync_runs 只該有這兩個來源');
+  assert.ok(
+    urls.every((url) => url === CONFIG.social.url || url === CONFIG.social.councilUrl),
+    `只該打整理表，實際打了：${urls.join('、')}`,
+  );
+});
+
+test('同步範圍：syncOnce 收到 scope 就只跑那個範圍（不會偷跑全部）', async () => {
+  const db = seeded();
+  const urls = [];
+  const result = await syncOnce(db, { scope: 'social', logger: silent, fetchImpl: sheetOnlyFetch(urls) });
+  assert.equal(result.social.status, 'success');
+  assert.equal(result.news, undefined);
+  assert.equal(result.bills, undefined);
+  assert.equal(getInflightScope(), null, '跑完要把 inflight 清掉');
+});
+
+test('同步範圍：runAll 收到不認識的階段要直接丟錯，不要靜默跳過', async () => {
+  const db = seeded();
+  await assert.rejects(
+    () => runAll(db, { logger: silent, fetchImpl: async () => assert.fail('不該抓'), stages: ['sosial'] }),
+    /未知的同步階段：sosial/,
+  );
 });
