@@ -85,6 +85,20 @@ test('fb-data：內容改了才 commit（同一天重跑抓到新貼文）', () 
   }
 });
 
+test('fb-data：同一個工作目錄換分支名稱也要能跑（不會卡在 fetch 找不到分支）', () => {
+  const f = fixture();
+  try {
+    syncFbData({ csvPath: f.csvPath, date: f.date, repoUrl: f.url, workDir: f.workDir });
+    // 同一個工作目錄、換一個遠端還不存在的分支：要自己重建工作樹、建分支、推上去
+    const out = syncFbData({ csvPath: f.csvPath, date: f.date, repoUrl: f.url, workDir: f.workDir, branch: 'fb-data-second' });
+    assert.equal(out.status, 'pushed');
+    const listed = execFileSync('git', ['ls-tree', '--name-only', 'fb-data-second'], { cwd: f.url, encoding: 'utf8' });
+    assert.match(listed, /posts/, '新分支上要有資料');
+  } finally {
+    f.cleanup();
+  }
+});
+
 test('fb-data：--dry-run 只在本機預演，遠端不動', () => {
   const f = fixture();
   try {

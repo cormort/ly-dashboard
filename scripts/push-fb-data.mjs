@@ -20,6 +20,12 @@ import { dirname, join, resolve } from 'node:path';
 import { rowsFromCsv } from './push-posts-to-sheet.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const DEFAULT_BRANCH = 'fb-data';
+
+/** 工作目錄預設跟著分支走，換分支才不會沿用同一個工作樹（沿用時 fetch 會找不到）。 */
+export function defaultWorkDir(branch) {
+  return join(ROOT, '.cache', branch === DEFAULT_BRANCH ? DEFAULT_BRANCH : `${DEFAULT_BRANCH}-${branch}`);
+}
 
 /** 把可能夾帶憑證的網址遮掉（git 的錯誤訊息會原樣印出 remote URL）。 */
 export function redact(text) {
@@ -50,23 +56,30 @@ export function dateOf(csvPath, explicit) {
 }
 
 function ensureWorkTree({ repoUrl, workDir, branch, git }) {
-  if (!existsSync(join(workDir, '.git'))) {
-    mkdirSync(dirname(workDir), { recursive: true });
+  // 已經有工作樹：先試著更新成遠端最新的同名分支
+  if (existsSync(join(workDir, '.git'))) {
     try {
-      git(['clone', '--depth', '1', '--branch', branch, repoUrl, workDir], undefined);
+      git(['fetch', '-q', 'origin', branch], workDir);
+      git(['checkout', '-q', branch], workDir);
+      git(['merge', '-q', '--ff-only', `origin/${branch}`], workDir);
+      return;
     } catch {
-      // 分支還不存在（第一次）：建一個同名的空分支
+      // 遠端沒有這個分支（換了 branch 名稱）、或工作樹壞掉：整個重來，
+      // 不要讓它卡在「fetch 失敗」——那樣換分支名稱就一定跑不動。
       rmSync(workDir, { recursive: true, force: true });
-      mkdirSync(workDir, { recursive: true });
-      git(['init', '-q', '-b', branch], workDir);
-      git(['remote', 'add', 'origin', repoUrl], workDir);
-      git(['config', `branch.${branch}.remote`, 'origin'], workDir);
     }
-    return;
   }
-  git(['fetch', '-q', 'origin', branch], workDir);
-  git(['checkout', '-q', branch], workDir);
-  git(['merge', '-q', '--ff-only', `origin/${branch}`], workDir);
+  try {
+    rmSync(workDir, { recursive: true, force: true }); // clone 要求目標目錄不存在
+    git(['clone', '--depth', '1', '--branch', branch, repoUrl, workDir], undefined);
+  } catch {
+    // 分支還不存在（第一次）：建一個同名的空分支
+    rmSync(workDir, { recursive: true, force: true });
+    mkdirSync(workDir, { recursive: true });
+    git(['init', '-q', '-b', branch], workDir);
+    git(['remote', 'add', 'origin', repoUrl], workDir);
+    git(['config', `branch.${branch}.remote`, 'origin'], workDir);
+  }
 }
 
 /**
@@ -128,8 +141,8 @@ export function syncFbData({
 function parseArgs(argv) {
   const args = {
     csv: '',
-    dir: join(ROOT, '.cache/fb-data'),
-    branch: process.env.LY_FB_DATA_BRANCH || 'fb-data',
+    dir: '',
+    branch: process.env.LY_FB_DATA_BRANCH || DEFAULT_BRANCH,
     date: '',
     dryRun: false,
     remote: '',
@@ -160,7 +173,7 @@ function main() {
       csvPath,
       date: dateOf(csvPath, args.date),
       repoUrl,
-      workDir: resolve(args.dir),
+      workDir: resolve(args.dir || defaultWorkDir(args.branch)),
       branch: args.branch,
       dryRun: args.dryRun,
       log: (m) => console.log(m),

@@ -25,16 +25,39 @@ test('寫回：抓取 CSV 欄位改名或缺少必要欄位要擋下來，不能
   assert.throws(() => rowsFromCsv('編號,姓名\n1,吳思瑤'), /缺少欄位/);
 });
 
+test('寫回：Apps Script 轉址鏈偶發失敗會自動重試（寫入是冪等的，重送不會重複寫）', async () => {
+  let calls = 0;
+  const flaky = async () => {
+    calls++;
+    if (calls < 3) return { ok: false, status: 404, json: async () => ({}) };
+    return { ok: true, json: async () => ({ ok: true, sheet: 'Untitled', updated: 1, unchanged: 0, blank: 0, notFound: 0 }) };
+  };
+  const out = await pushRows({ url: 'https://example.test/exec', token: 'x', rows: [{ id: '1', date: '2026-10-06', summary: '' }], fetchImpl: flaky, sleep: async () => {} });
+  assert.equal(calls, 3, '要重試到成功為止');
+  assert.equal(out.updated, 1);
+});
+
+test('寫回：token 錯這種再送也不會好的，不重試（避免無謂等待）', async () => {
+  let calls = 0;
+  const badToken = async () => {
+    calls++;
+    return { ok: true, json: async () => ({ ok: false, error: 'bad-token' }) };
+  };
+  await assert.rejects(() => pushRows({ url: 'https://example.test/exec', token: 'x', rows: [], fetchImpl: badToken, sleep: async () => {} }), /bad-token/);
+  assert.equal(calls, 1, 'bad-token 只打一次');
+});
+
 test('寫回：Web App 回 ok:false 要當失敗（回傳值不能只印出來就算了）', async () => {
   const fetchImpl = async () => ({ ok: true, json: async () => ({ ok: false, error: 'bad-token' }) });
   await assert.rejects(() => pushRows({ url: 'https://example.test/exec', token: 'x', rows: [{ id: '1', date: '2026-10-05', summary: '' }], fetchImpl }), /bad-token/);
 });
 
 test('寫回：HTTP 非 200 或回應不是 JSON 也要丟錯', async () => {
+  const noSleep = { sleep: async () => {}, attempts: 2 };
   const http500 = async () => ({ ok: false, status: 500, json: async () => ({}) });
-  await assert.rejects(() => pushRows({ url: 'https://example.test/exec', token: 'x', rows: [], fetchImpl: http500 }), /HTTP 500/);
+  await assert.rejects(() => pushRows({ url: 'https://example.test/exec', token: 'x', rows: [], fetchImpl: http500, ...noSleep }), /HTTP 500/);
   const notJson = async () => ({ ok: true, json: async () => { throw new Error('not json'); } });
-  await assert.rejects(() => pushRows({ url: 'https://example.test/exec', token: 'x', rows: [], fetchImpl: notJson }), /不是 JSON/);
+  await assert.rejects(() => pushRows({ url: 'https://example.test/exec', token: 'x', rows: [], fetchImpl: notJson, ...noSleep }), /不是 JSON/);
 });
 
 test('寫回：送出的內容是 {token, rows}，且不夾帶姓名等試算表沒有的欄位', async () => {

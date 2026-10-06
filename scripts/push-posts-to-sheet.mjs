@@ -42,19 +42,36 @@ export function rowsFromCsv(csvText) {
   return out;
 }
 
-/** 送出並回傳 Apps Script 的回應；HTTP 非 200 或 ok:false 都當失敗丟出。 */
-export async function pushRows({ url, token, rows, fetchImpl = fetch }) {
-  const res = await fetchImpl(url, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ token, rows }),
-    redirect: 'follow',
-  });
-  if (!res.ok) throw new Error(`Web App 回應 HTTP ${res.status}`);
-  const body = await res.json().catch(() => null);
-  if (!body) throw new Error('Web App 回應不是 JSON');
-  if (!body.ok) throw new Error(`Web App 回報失敗：${body.error ?? 'unknown'}`);
-  return body;
+/**
+ * 送出並回傳 Apps Script 的回應；HTTP 非 200 或 ok:false 都當失敗丟出。
+ *
+ * Apps Script 的 /exec 一律用 302 轉到 script.googleusercontent.com 才把回應吐出來，
+ * 偶爾會踩到轉址鏈的偶發失敗（實測同一支 CSV 曾回 404，重跑就好）。這裡重試 3 次：
+ * 寫入是「同值就跳過」的冪等操作，重送不會造成重複寫入。
+ */
+export async function pushRows({ url, token, rows, fetchImpl = fetch, attempts = 3, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) }) {
+  let lastError = null;
+  for (let i = 1; i <= attempts; i++) {
+    try {
+      const res = await fetchImpl(url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ token, rows }),
+        redirect: 'follow',
+      });
+      if (!res.ok) throw new Error(`Web App 回應 HTTP ${res.status}`);
+      const body = await res.json().catch(() => null);
+      if (!body) throw new Error('Web App 回應不是 JSON');
+      if (!body.ok) throw new Error(`Web App 回報失敗：${body.error ?? 'unknown'}`);
+      return body;
+    } catch (error) {
+      lastError = error;
+      // token 錯、欄位不對這種再送幾次也不會好，直接放棄
+      if (/bad-token|missing-columns|no-rows/.test(error.message)) throw error;
+      if (i < attempts) await sleep(i * 2000);
+    }
+  }
+  throw new Error(`${lastError?.message ?? '未知錯誤'}（已重試 ${attempts} 次）`);
 }
 
 function parseArgs(argv) {
