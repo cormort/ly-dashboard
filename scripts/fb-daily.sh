@@ -26,6 +26,7 @@
 #   LY_FB_DATA_BRANCH       資料分支名稱（預設 fb-data）
 #   LY_NOTIFY               要不要送 Telegram 成敗通知（預設 1；設 0 關掉）
 #   LY_NOTIFY_ENV           通知憑證檔（預設 ~/.ly-dashboard/notify.env）
+#   LY_SYNC_SCOPE           寫回表之後要觸發哪一種同步（預設 social：只重讀整理表）
 #   LY_SYNC_TOKEN           本機伺服器有設 token 時，觸發同步要帶同一組
 #
 # 寫回用的網址與密鑰放在 ~/.ly-dashboard/sheet.env（repo 外、權限 600），下面會自動載入。
@@ -165,13 +166,16 @@ fi
 SYNC_LINE="未觸發（沒有寫回試算表）"
 if [ "$WRITTEN" -eq 1 ]; then
   PORT="${PORT:-8787}"
-  CURL_ARGS=(-sf -m 10 -X POST "http://127.0.0.1:$PORT/api/v1/sync")
+  # 只觸發 social 範圍：這一輪改動的是 Google 整理表，跑「全部」等於白等 13 分鐘
+  # （新聞一個階段就 763 秒）。完整同步交給伺服器自己的 24 小時排程。
+  SCOPE="${LY_SYNC_SCOPE:-social}"
+  CURL_ARGS=(-sf -m 10 -X POST "http://127.0.0.1:$PORT/api/v1/sync?scope=${SCOPE}")
   if [ -n "${LY_SYNC_TOKEN:-}" ]; then
     CURL_ARGS+=(-H "x-sync-token: $LY_SYNC_TOKEN")
   fi
   if curl "${CURL_ARGS[@]}" >/dev/null 2>&1; then
-    log "已觸發本機伺服器（:${PORT}）重新同步，畫面會拿到剛寫回試算表的貼文"
-    SYNC_LINE="已觸發（:${PORT}）"
+    log "已觸發本機伺服器（:${PORT}，範圍 ${SCOPE}）重新同步，畫面會拿到剛寫回試算表的貼文"
+    SYNC_LINE="已觸發（${SCOPE}）"
   else
     log "本機伺服器（:${PORT}）沒有回應，略過觸發同步；它下次同步時會讀到同一份試算表"
     SYNC_LINE="伺服器沒回應（:${PORT}），下次同步會讀到"

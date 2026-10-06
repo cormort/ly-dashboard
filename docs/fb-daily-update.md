@@ -24,7 +24,8 @@ scripts/fetch-fb-posts.mjs
               · Apps Script Web App（目前用這條）：node scripts/push-posts-to-sheet.mjs
                 → POST 到 apps-script/ 部署的 Web App，只更新 F／G 兩欄
               · 服務帳號（有 service_account.json 時）：--write-sheet --key
-              → 寫回成功後叫本機伺服器重新同步，畫面不用等下一個 24 小時
+              → 寫回成功後叫本機伺服器重新同步（只帶 scope=social：改的是整理表，
+                跑「全部」要等 13 分鐘；`LY_SYNC_SCOPE=all` 可改回全部）
        ④  推一份到遠端資料分支（fb-data，見第六節）：node scripts/push-fb-data.mjs
               → posts/YYYY-MM-DD.csv ＋ posts/latest.csv（沒有變動就不 commit）
 ```
