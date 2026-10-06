@@ -445,7 +445,8 @@ test('預算同步：三種類別一次抓、寫入、抽出預算年度', async
   // 預設統計範圍是「只算預算案本身」，要看全部 80 筆要明講 scope: 'all'
   assert.ok(listBudget(db, { limit: 200 }).total < 80, '預設只算預算案本身');
   // 預設是「一案一列」；這個測試要看議案紀錄筆數，明講 merge: 'none'
-  const all = listBudget(db, { scope: 'all', merge: 'none', limit: 200 });
+  // 預設也會排除附件（勘誤表／預算書案／營運及資金運用計畫），要看全部 80 筆要明講 includeAttachments
+  const all = listBudget(db, { scope: 'all', merge: 'none', limit: 200, includeAttachments: true });
   assert.equal(all.total, 80);
   assert.deepEqual(all.categories.map((c) => c.count), [20, 20, 40]);
   assert.ok(all.items.some((b) => b.fiscal_year >= 113), '名稱含「115年度」要抽出年度');
@@ -485,7 +486,7 @@ test('預算同步：失敗保留舊資料；筆數不足 fail closed', async ()
   const short = async (url) =>
     url.includes('agg=') ? { json: { total: 5000, aggs: [{ buckets: [{ 會期: 5, count: 5000 }] }] }, attempts: 1 } : budgetOk(url);
   assert.equal((await runBudgetIngest(db, { logger: silent, fetchImpl: short })).status, 'failed');
-  assert.equal(listBudget(db, { scope: 'all', merge: 'none' }).total, 80, '舊資料必須保留');
+  assert.equal(listBudget(db, { scope: 'all', merge: 'none', includeAttachments: true }).total, 80, '舊資料必須保留');
 });
 
 test('預算中心報告與委員會發言：寫入、預算會議篩選、發言排行只列在職委員', async () => {
@@ -2138,17 +2139,27 @@ test('預算統計範圍：預設只算預算案本身；含報告類要自己�
   const BILL = ['中央政府總預算案', '法人預(決)算案'];
   assert.ok(bills.items.every((b) => BILL.includes(b.category)), '預設清單只列議案本身');
   assert.ok(bills.items.every((b) => !b.types.includes('bogus')));
-  const all = listBudget(db, { scope: 'all', merge: 'none', limit: 200 });
+  // 附件（勘誤表／預算書案／營運及資金運用計畫）預設不列，這條要看全部 80 筆
+  const all = listBudget(db, { scope: 'all', merge: 'none', limit: 200, includeAttachments: true });
   assert.equal(all.scope, 'all');
   assert.equal(all.total, 80);
   assert.ok(all.total > bills.total, '含報告類一定比只算預算案多');
   // 決議案／定期報告（報告類）在含報告的範圍才會出現
   assert.ok(all.items.some((b) => !BILL.includes(b.category)));
   assert.ok(bills.items.every((b) => all.items.some((a) => a.id === b.id)));
-  // 類別件數是導覽用的，不受範圍影響（否則使用者會找不到那 10,801 筆報告）
-  assert.deepEqual(all.categories, bills.categories);
-  assert.equal(all.scope_totals.all, 80, '含報告類在同樣篩選下有 80 筆紀錄');
-  assert.equal(all.scope_totals.bills, bills.total);
+  // 類別件數是導覽用的，不受「範圍」影響（否則使用者會找不到那 10,801 筆報告）→ 兩邊用同樣的附件模式比
+  assert.deepEqual(
+    listBudget(db, { scope: 'all', merge: 'none', limit: 200 }).categories,
+    listBudget(db, { merge: 'none', limit: 200 }).categories,
+  );
+  // 附件被排除後，類別件數也會跟著少（實測：法人預(決)算案 148 筆是預算書案送件）
+  const catsWith = all.categories.find((c) => c.name === '法人預(決)算案').count;
+  const catsWithout = listBudget(db, { merge: 'none', limit: 200 }).categories.find((c) => c.name === '法人預(決)算案').count;
+  assert.ok(catsWith >= catsWithout, '含附件模式的類別件數不會比較少');
+  assert.equal(all.scope_totals.all, 80, '含報告類在同樣篩選下有 80 筆紀錄（附件模式一致才算得準）');
+  // scope_totals 也是照附件模式算的，所以要拿同樣含附件的預算案範圍來比
+  const billsWith = listBudget(db, { merge: 'none', limit: 200, includeAttachments: true });
+  assert.equal(all.scope_totals.bills, billsWith.total);
   assert.ok(all.scope_note && bills.scope_note, '兩種範圍都要有說明');
   // 統計也跟著範圍走：含報告的「尚未審竣」不會比較少
   assert.ok(all.progress.awaiting >= bills.progress.awaiting);
@@ -2269,20 +2280,47 @@ test('預算清單：勘誤表這類附件預設排除、要看得到筆數、�
   insert('errata1', '中央政府總預算案', '函送「中華民國115年度中央政府總預算案內政部暨所屬單位預算勘誤表」，請查照案。', '交付處理');
   insert('errata2', '預(決) 算決議案、定期報告', '函送該部114年10月至12月「因公派員出國計畫考察費用執行情形勘誤表」，請查照案。', '交付處理');
 
+  const baseline = listBudget(db, { merge: 'none', limit: 200, includeAttachments: true }).total;
   const without = listBudget(db, { merge: 'none', limit: 200 });
-  assert.equal(without.attachment_count, 1, '議案類別裡的勘誤表要被排除並計數（報告類那筆不在預設範圍內）');
+  // fixture 本身也有名稱像「預算書案」的資料，所以用相對的：這次新增的那筆要被排除並計數
+  const beforeInsert = without.attachment_count - 1;
+  assert.ok(beforeInsert >= 0, 'fixture 可能有附件，基準不能是負的');
+  assert.ok(without.attachment_count > beforeInsert, '議案類別裡的勘誤表要被排除並計數');
   assert.ok(!without.items.some((i) => i.id === 'errata1'), '勘誤表不列出來');
   assert.equal(listBudget(db, { merge: 'none', limit: 200, q: '勘誤' }).total, 0, '排除後連搜尋都找不到');
   const withIt = listBudget(db, { merge: 'none', limit: 200, includeAttachments: true });
-  assert.equal(withIt.total, without.total + 1, '切回來要多那一筆');
-  assert.equal(withIt.attachment_count, 1, 'containing 模式下筆數照報，只是改成「已包含」');
+  // includeAttachments 會把 fixture 自己的附件也帶回來，所以跟「不含附件」的差額不只 1 筆
+  assert.ok(withIt.total > without.total, '切回來件數一定變多');
+  assert.equal(withIt.total, baseline);
+  assert.equal(withIt.attachment_count, without.attachment_count, '包含模式下筆數照報，只是文字改成「已包含」');
   assert.equal(withIt.include_attachments, true);
   assert.ok(withIt.items.some((i) => i.id === 'errata1'));
-  // 統計也不能把那筆算進去（「審議中」會多 1）
-  assert.equal(withIt.progress.in_review, without.progress.in_review + 1);
+  // 統計也不能把那些附件算進去（fixture 自己也有一堆附件，所以用「含附件一定比較多」來斷言）
+  assert.ok(withIt.progress.in_review > without.progress.in_review, '含附件時「審議中」會變多');
+  assert.equal(
+    withIt.progress.reviewed + withIt.progress.in_review + withIt.progress.pending + withIt.progress.letter + withIt.progress.returned,
+    withIt.progress.total,
+  );
   // 報告類的勘誤表在 scope=all 也要排除
   const allScope = listBudget(db, { scope: 'all', merge: 'none', limit: 200 });
-  assert.equal(allScope.attachment_count, 2);
+  assert.equal(allScope.scope, 'all');
+  // 報告類那筆勘誤在含報告類範圍也要排除（用編號斷言，比數筆數清楚）
+  assert.ok(!allScope.items.some((i) => i.id === 'errata2'), '報告類的勘誤表也要排除');
+  assert.ok(listBudget(db, { scope: 'all', merge: 'none', limit: 200, includeAttachments: true }).items.some((i) => i.id === 'errata2'));
+  assert.ok(allScope.attachment_count > without.attachment_count, '報告類範圍還多了報告類的附件');
   // 一般的預算案不受影響
   assert.ok(listBudget(db, { merge: 'none', limit: 200, q: '中央政府總預算' }).total > 0);
+  // 使用者追加：法人預算的「預算書案」送件、以及「營運及資金運用計畫」附件也不要
+  insert('legal1', '法人預(決)算案', '函送財團法人榮民榮眷基金會115年度預算書案。', '交付審查');
+  insert('legal2', '法人預(決)算案', '函送財團法人臺灣亞洲交流基金會115年度營運及資金運用計畫，請查照案。', '交付處理');
+  // 但「決算書案」（法人決算送件）不在規則裡 → 照列，不要掃到
+  insert('legal3', '法人預(決)算案', '函送財團法人國防安全研究院113年度決算書案。', '交付查照');
+  const after = listBudget(db, { merge: 'none', limit: 200 });
+  const ids = after.items.map((i) => i.id);
+  assert.ok(!ids.includes('legal1'), '預算書案不列');
+  assert.ok(!ids.includes('legal2'), '營運及資金運用計畫不列');
+  assert.ok(ids.includes('legal3'), '決算書案不在排除規則內，要照列');
+  // 新增的預算書案 ＋ 營運及資金運用計畫都要被算進來（決算書案不算）
+  assert.equal(after.attachment_count, without.attachment_count + 2, '勘誤 ＋ 預算書案 ＋ 營運及資金運用計畫');
+  assert.equal(after.attachment_label, '勘誤表、預算書案、營運及資金運用計畫');
 });

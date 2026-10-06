@@ -322,8 +322,8 @@ export function BudgetPage({ refreshToken, onOpenId }: BudgetPageProps) {
           {data.attachment_count > 0 || data.include_attachments ? (
             <>
               {data.include_attachments
-                ? `・已包含 ${data.attachment_count} 筆勘誤表等附件`
-                : `・已排除 ${data.attachment_count} 筆勘誤表等附件`}
+                ? `・已包含 ${data.attachment_count} 筆附件（${data.attachment_label}）`
+                : `・已排除 ${data.attachment_count} 筆附件（${data.attachment_label}）`}
               <button type="button" className="link-button" onClick={() => change({ attachments: data.include_attachments ? '' : '1' })}>
                 {data.include_attachments ? '不顯示' : '顯示'}
               </button>

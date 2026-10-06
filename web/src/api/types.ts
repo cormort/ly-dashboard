@@ -715,6 +715,8 @@ export interface BudgetResponse {
   merge: 'name' | null;
   /** 附件（勘誤表…）在目前篩選下有幾筆；預設不列入清單，`include_attachments=1` 才列 */
   attachment_count: number;
+  /** 被排除的附件種類說明（勘誤表、預算書案…），給畫面顯示用 */
+  attachment_label: string;
   include_attachments: boolean;
   /** 目前篩選下：一案一列的件數 */
   merged_total: number;

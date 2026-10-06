@@ -1976,12 +1976,15 @@ export function listBudget(
   const scope = scopeArg === 'all' ? 'all' : 'bills';
   // 一案一列（預設）：同一案名的多筆議案紀錄合成一列，見 mergeBudgetUnits
   const mergeUnits = merge === 'none' ? false : true;
-  const allUnits = mergeUnits ? mergeBudgetUnits(allRows) : allRows;
-  const scoped = scope === 'bills' ? allUnits.filter(isBill) : allUnits;
-  // 附件／更正（例如「…單位預算勘誤表」）不是預算案本身，預設排除；`include_attachments=1` 可以看回來
+  const allUnitsRaw = mergeUnits ? mergeBudgetUnits(allRows) : allRows;
+  // 附件／更正（例如「…單位預算勘誤表」）不是預算案本身，預設排除；`include_attachments=1` 可以看回來。
+  // 注意：要在「分範圍之前」就濾掉，否則開關上的件數（scope_totals）與類別件數會跟清單對不起來。
   const attachmentRe = CONFIG.budget.attachmentPattern ? new RegExp(CONFIG.budget.attachmentPattern) : null;
   const isAttachment = (r) => Boolean(attachmentRe && (attachmentRe.test(r.name) || attachmentRe.test(r.status ?? '')));
-  const rows = includeAttachments ? scoped : scoped.filter((r) => !isAttachment(r));
+  const scopedRaw = scope === 'bills' ? allUnitsRaw.filter(isBill) : allUnitsRaw;
+  const scoped = includeAttachments ? scopedRaw : scopedRaw.filter((r) => !isAttachment(r));
+  const allUnits = includeAttachments ? allUnitsRaw : allUnitsRaw.filter((r) => !isAttachment(r));
+  const rows = scoped;
   const recordsInScope = (scope === 'bills' ? allRows.filter(isBill) : allRows).length;
   const count = (list, key) => {
     const m = new Map();
@@ -2026,7 +2029,7 @@ export function listBudget(
   const billsMatching = applyFilters(allUnits.filter(isBill));
   const allMatching = applyFilters(allUnits);
   // 目前篩選下被排除的附件（勘誤表…）：要讓使用者知道有幾筆沒列出來
-  const attachmentCount = applyFilters(scoped.filter(isAttachment)).length;
+  const attachmentCount = applyFilters(scopedRaw.filter(isAttachment)).length;
   const sumRecords = (list) => list.reduce((n, r) => n + (r.records ?? 1), 0);
   const resolvedPerGroup = Math.max(1, Math.min(Number(perGroup) || 5, 50));
   // 委員會存在另一張表（同步會重寫 budget_bills），讀取時套用；合併的列取成員紀錄的聯集
@@ -2084,6 +2087,7 @@ export function listBudget(
     merge: mergeUnits ? 'name' : null,
     /** 附件／更正（勘誤表…）在目前篩選下有幾筆。預設**不列入**清單與統計；`include_attachments=1` 才列 */
     attachment_count: attachmentCount,
+    attachment_label: CONFIG.budget.attachmentLabel ?? '附件',
     include_attachments: Boolean(includeAttachments),
     // 兩種模式下都要給「合併後會是幾件」，否則切到每筆議案時一案一列那顆鈕會顯示 0
     merged_total: mergeUnits ? matching.length : new Set(matching.map((r) => `${r.category}\u0000${r.name}`)).size,
