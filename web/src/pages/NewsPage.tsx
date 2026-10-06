@@ -76,7 +76,8 @@ export function NewsPage({ refreshToken, onOpenId, scope = 'legislators', onNavi
     window.history.replaceState(null, '', pathFor(route, { ...next }));
   };
 
-  const res = useApi<NewsArticlesResponse>(buildUrl('/news/articles', { ...filters, scope, limit: PAGE, offset: page * PAGE }), { refreshToken });
+  // 新聞要掃全表（實測最慢約 0.3 秒，但同步中／機器忙碌時會拖長）→ 給比較寬的逾時
+  const res = useApi<NewsArticlesResponse>(buildUrl('/news/articles', { ...filters, scope, limit: PAGE, offset: page * PAGE }), { refreshToken, timeoutMs: 30_000 });
   const roster = useApi<LegislatorsResponse>(buildUrl('/legislators', { session: 'all' }), { refreshToken });
   const people = listFromApi
     ? (res.data?.people ?? []).map((p) => ({ id: p.id, name: p.name, count: p.count }))

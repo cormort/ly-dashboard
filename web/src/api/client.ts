@@ -66,11 +66,54 @@ interface RequestOptions {
   timeoutMs?: number;
   /** 預設 GET；目前只有手動同步用 POST */
   method?: 'GET' | 'POST';
+  /**
+   * 逾時或連不上時自動重試幾次（預設 1）。只給 GET 用：
+   * 這個站會偶發「連線逾時」（伺服器同步中／機器忙碌時），多半一秒後就好了，
+   * 自動重試一次比讓使用者看到紅色錯誤好。POST（手動同步）不重試，免得重複觸發。
+   */
+  retries?: number;
+}
+
+/** 兩次嘗試之間的等待（第 1 次失敗等 700ms，之後倍數成長） */
+const RETRY_DELAY_MS = 700;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /** 低階呼叫：回傳已解析的 JSON，並把失敗一律轉成 ApiError */
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const { signal, timeoutMs = 15_000, method = 'GET' } = options;
+  const { signal, timeoutMs = 15_000, method = 'GET', retries = method === 'GET' ? 1 : 0 } = options;
+  const maxAttempts = Math.max(1, retries + 1);
+
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await apiAttempt<T>(path, { signal, timeoutMs, method });
+    } catch (err) {
+      const apiErr = err instanceof ApiError ? err : toApiError(err);
+      const retryable = apiErr.code === 'timeout' || apiErr.code === 'network_error';
+      // 外層已經取消（換頁／元件卸載）就不要重試；POST 不重試
+      if (!retryable || signal?.aborted || attempt >= maxAttempts) {
+        if (retryable && attempt > 1) {
+          throw new ApiError(`${apiErr.message}（已自動重試 ${attempt - 1} 次）`, {
+            status: apiErr.status,
+            code: apiErr.code,
+            cause: apiErr,
+          });
+        }
+        throw apiErr;
+      }
+      await sleep(RETRY_DELAY_MS * attempt);
+      if (signal?.aborted) throw apiErr;
+    }
+  }
+}
+
+/** 單次嘗試（含逾時控制） */
+async function apiAttempt<T>(
+  path: string,
+  { signal, timeoutMs, method }: { signal?: AbortSignal; timeoutMs: number; method: 'GET' | 'POST' },
+): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(new DOMException('timeout', 'TimeoutError')), timeoutMs);
   const onOuterAbort = () => controller.abort(signal?.reason);

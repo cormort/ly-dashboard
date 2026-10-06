@@ -1,68 +1,105 @@
 #!/usr/bin/env bash
 #
-# 把每日抓取立委臉書貼文的排程裝進 macOS launchd。
+# 把立委觀測站的 macOS launchd 工作裝進 ~/Library/LaunchAgents。
 #
-#   scripts/launchd/install.sh            # 安裝並載入（已存在就重新載入）
-#   scripts/launchd/install.sh --uninstall
-#   scripts/launchd/install.sh --status   # 看目前狀態與最近一次執行
+#   scripts/launchd/install.sh              # 安裝全部（API 伺服器 + 每日抓立委粉專）
+#   scripts/launchd/install.sh server       # 只裝 API 伺服器的監管
+#   scripts/launchd/install.sh fb-daily     # 只裝每日抓取
+#   scripts/launchd/install.sh --status     # 看狀態與最近一次執行
+#   scripts/launchd/install.sh --uninstall  # 移除（log 與抓到的資料保留）
 #
 # 為什麼要有安裝腳本：plist 裡的 __REPO_ROOT__ 要換成本專案的實際路徑，
 # 而且 launchd 的載入指令（bootstrap/bootout）只有在「先 bootout 再 bootstrap」時才會吃到新設定。
+#
+# 注意：`launchctl bootstrap` **不能在 Hermes 的 gateway 裡面執行**（會被擋），
+# 所以這支腳本要由使用者自己在 Terminal 跑。
 set -uo pipefail
 
-LABEL="com.hermes.ly-dashboard-fb-daily"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
-TEMPLATE="$HERE/$LABEL.plist"
-TARGET="$HOME/Library/LaunchAgents/$LABEL.plist"
 DOMAIN="gui/$(id -u)"
+SERVER_LABEL="com.hermes.ly-dashboard-server"
+FB_LABEL="com.hermes.ly-dashboard-fb-daily"
+ALL_LABELS=("$SERVER_LABEL" "$FB_LABEL")
 
-usage() { sed -n '2,10p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,16p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
 
-case "${1:-}" in
-  -h|--help) usage; exit 0 ;;
-  --status)
-    echo "== launchctl 清單 =="
-    launchctl list | grep -F "$LABEL" || echo "（沒有載入）"
+log_for() {
+  case "$1" in
+    "$SERVER_LABEL") echo "$ROOT/.cache/server.log" ;;
+    "$FB_LABEL") echo "$ROOT/.cache/fb-daily.log" ;;
+    *) echo "$ROOT/.cache/$1.log" ;;
+  esac
+}
+
+# 參數：工作名稱（server／fb-daily）；沒給就是全部
+SELECTED=()
+MODE="install"
+for arg in "$@"; do
+  case "$arg" in
+    -h|--help) usage; exit 0 ;;
+    --status) MODE="status" ;;
+    --uninstall) MODE="uninstall" ;;
+    server) SELECTED+=("$SERVER_LABEL") ;;
+    fb-daily) SELECTED+=("$FB_LABEL") ;;
+    *) echo "不認識的參數：$arg"; usage; exit 2 ;;
+  esac
+done
+[ ${#SELECTED[@]} -eq 0 ] && SELECTED=("${ALL_LABELS[@]}")
+
+if [ "$MODE" = "status" ]; then
+  for label in "${SELECTED[@]}"; do
+    echo "== $label =="
+    launchctl list | grep -F "$label" || echo "（沒有載入）"
+    [ -f "$HOME/Library/LaunchAgents/$label.plist" ] && echo "plist：已安裝" || echo "plist：尚未安裝"
+    echo "log（最後 10 行）：$(log_for "$label")"
+    tail -10 "$(log_for "$label")" 2>/dev/null || echo "（還沒有 log；代表還沒跑過）"
     echo
-    echo "== 排程檔 =="
-    [ -f "$TARGET" ] && echo "$TARGET" || echo "（尚未安裝）"
-    echo
-    echo "== 最近一次執行的 log（最後 20 行）=="
-    tail -20 "$ROOT/.cache/fb-daily.log" 2>/dev/null || echo "（還沒有 log；代表還沒跑過）"
-    exit 0
-    ;;
-  --uninstall)
-    launchctl bootout "$DOMAIN/$LABEL" 2>/dev/null || true
-    rm -f "$TARGET"
-    echo "已移除 $LABEL（log 與 .cache/posts-*.csv 保留，沒有刪任何抓到的資料）"
-    exit 0
-    ;;
-  "") ;;
-  *) echo "不認識的參數：$1"; usage; exit 2 ;;
-esac
-
-[ -f "$TEMPLATE" ] || { echo "找不到樣板：$TEMPLATE"; exit 1; }
-mkdir -p "$HOME/Library/LaunchAgents" "$ROOT/.cache"
-
-# __REPO_ROOT__ 用 | 當分隔字元，避免路徑裡的 / 被 sed 當成語法
-sed "s|__REPO_ROOT__|$ROOT|g" "$TEMPLATE" >"$TARGET"
-plutil -lint "$TARGET" >/dev/null || { echo "產生的 plist 不合法，中止：$TARGET"; exit 1; }
-
-# 先 bootout 再 bootstrap：已經載入時直接 bootstrap 會回 EEXIST，舊設定也不會被換掉
-launchctl bootout "$DOMAIN/$LABEL" 2>/dev/null || true
-if ! launchctl bootstrap "$DOMAIN" "$TARGET" 2>&1; then
-  echo "launchctl bootstrap 失敗；中止"
-  exit 1
+  done
+  exit 0
 fi
 
-echo "已安裝並載入：$TARGET"
-echo "排程：每天 08:00（機器睡著時，喚醒後補跑一次）"
+if [ "$MODE" = "uninstall" ]; then
+  for label in "${SELECTED[@]}"; do
+    launchctl bootout "$DOMAIN/$label" 2>/dev/null || true
+    rm -f "$HOME/Library/LaunchAgents/$label.plist"
+    echo "已移除 ${label}（log 與抓到的資料都保留）"
+  done
+  exit 0
+fi
+
+mkdir -p "$HOME/Library/LaunchAgents" "$ROOT/.cache"
+FAILED=0
+for label in "${SELECTED[@]}"; do
+  TEMPLATE="$HERE/$label.plist"
+  TARGET="$HOME/Library/LaunchAgents/$label.plist"
+  if [ ! -f "$TEMPLATE" ]; then
+    echo "找不到樣板：$TEMPLATE"
+    FAILED=1
+    continue
+  fi
+  # __REPO_ROOT__ 用 | 當分隔字元，避免路徑裡的 / 被 sed 當成語法
+  sed "s|__REPO_ROOT__|$ROOT|g" "$TEMPLATE" >"$TARGET"
+  plutil -lint "$TARGET" >/dev/null || { echo "產生的 plist 不合法，中止：$TARGET"; FAILED=1; continue; }
+  # 先 bootout 再 bootstrap：已經載入時直接 bootstrap 會回 EEXIST，舊設定也不會被換掉
+  launchctl bootout "$DOMAIN/$label" 2>/dev/null || true
+  if ! launchctl bootstrap "$DOMAIN" "$TARGET" 2>&1; then
+    echo "launchctl bootstrap 失敗：$label"
+    FAILED=1
+    continue
+  fi
+  echo "已安裝並載入：$TARGET"
+done
+[ "$FAILED" -eq 0 ] || exit 1
+
 echo
 echo "接下來："
-echo "  1) 先確認 script 抓得到東西（需要已登入的 Chrome 設定檔）："
-echo "     node scripts/fetch-fb-posts.mjs --login"
-echo "  2) 立刻試跑一次排程（不用等到明天 08:00）："
-echo "     launchctl kickstart -k $DOMAIN/$LABEL"
-echo "  3) 看結果："
-echo "     scripts/launchd/install.sh --status"
+echo "  API 伺服器：已交給 launchd 監管（當掉會自動重啟）。"
+echo "  如果先前有一個手動啟動的伺服器在跑，launchd 這一份會先跳過（不搶）；要交棒就把它停掉再："
+echo "    launchctl kickstart -k $DOMAIN/$SERVER_LABEL"
+echo "  每日抓取：先確認抓得到東西（需要已登入的 Chrome 設定檔）"
+echo "    node scripts/fetch-fb-posts.mjs --login"
+echo "  立刻試跑每日抓取（不用等到 08:00）"
+echo "    launchctl kickstart -k $DOMAIN/$FB_LABEL"
+echo "  看狀態"
+echo "    scripts/launchd/install.sh --status"

@@ -36,6 +36,26 @@ node server/index.mjs
 - `--no-scheduler`：只開 API，不在啟動時自動同步（開發用）。
 - 環境變數：`PORT`、`LY_HOST`、`LY_SYNC_TOKEN`、`LY_DB`、`LY_UA`、`LY_STALE_HOURS`、`LY_SYNC_INTERVAL_MS`、`LY_FETCH_TIMEOUT_MS`、`LY_FETCH_RETRIES`、`LY_RETRY_AFTER_CAP_MS`、`LY_SHRINK_MIN_RATIO`、`LY_ALLOW_SHRINK`、`LY_STATIC_STALE_MONTHS`、`LY_SKIP_BUDGET`（跳過預算三個來源）。
 
+### 讓伺服器一直活著（launchd 監管）
+
+手動 `node server/index.mjs` 的伺服器一當掉（或那個終端機被關掉），網站就整片掛掉，
+前端只會看到「無法取得新聞（/api/v1/news/articles）連線逾時」——這就是使用者回報的「偶爾會發生」。
+
+```bash
+scripts/launchd/install.sh server     # 產生 plist 並載入（要由使用者在自己的 Terminal 跑）
+scripts/launchd/install.sh --status   # 看有沒有在跑、log 最後幾行
+```
+
+- `KeepAlive { SuccessfulExit: false }`：node 當掉（非 0 離開碼）launchd 會自動拉起來；
+  包裝腳本在「連接埠已經有伺服器在跑」時 **exit 0**（不搶、不當失敗），所以不會 crash-loop。
+- `RunAtLoad`：登入後自動啟動，開機不用再手動開。
+- 交棒：如果當時有一個手動啟動的伺服器佔著 8787，launchd 這一份會先跳過；
+  把舊的停掉再 `launchctl kickstart -k gui/$(id -u)/com.hermes.ly-dashboard-server`。
+- 前端另有一層容錯：GET 逾時／連不上會**自動重試一次**（見 `web/src/api/client.ts` 的 `retries`），
+  新聞頁的逾時放寬到 30 秒 —— 伺服器重啟那種幾秒鐘的空窗，使用者不會再看到錯誤畫面。
+
+> `launchctl bootstrap` 在 Hermes 的 gateway 裡面會被擋（避免間接重啟迴圈），所以安裝那一步要使用者自己執行。
+
 ## 架構
 
 ```

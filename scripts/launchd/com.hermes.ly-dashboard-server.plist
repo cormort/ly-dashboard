@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  API 伺服器的 launchd 監管（macOS）。
+
+  這是「樣板」：`__REPO_ROOT__` 由 scripts/launchd/install.sh 換成本專案的實際路徑後，
+  安裝到 ~/Library/LaunchAgents/。不要直接手改這個檔案就期待生效 —— 改完要重跑 install.sh。
+
+  為什麼要監管：先前是手動 `node server/index.mjs`，一當掉網站就整片掛掉（前端會顯示
+  「無法取得新聞（/api/v1/news/articles）連線逾時」），只能等人發現再重開。
+
+  KeepAlive 用 SuccessfulExit=false：包裝腳本在「連接埠已被占用」時 exit 0（見 scripts/ly-dashboard-server.sh），
+  所以那種情況不會被反覆重啟；node 當掉（非 0）才會被拉起來。
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.hermes.ly-dashboard-server</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>__REPO_ROOT__/scripts/ly-dashboard-server.sh</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>__REPO_ROOT__</string>
+
+    <!-- 登入後就拉起；當掉自動重啟 -->
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+    <key>ProcessType</key>
+    <string>Background</string>
+
+    <key>StandardOutPath</key>
+    <string>__REPO_ROOT__/.cache/server.log</string>
+    <key>StandardErrorPath</key>
+    <string>__REPO_ROOT__/.cache/server.log</string>
+</dict>
+</plist>

@@ -147,6 +147,9 @@ const ROUTES: Record<string, unknown> = {
 };
 
 const seen: string[] = [];
+/** 偶發失敗的替身計數器（測自動重試用） */
+let flakyGets = 0;
+let flakyPosts = 0;
 const seenMethods: string[] = [];
 
 function stubFetch(): void {
@@ -171,6 +174,19 @@ function stubFetch(): void {
           reject(new DOMException('aborted', 'AbortError'));
         });
       });
+    }
+    if (pathname === '/api/v1/flaky') {
+      flakyGets += 1;
+      // 模擬「偶發連不上／逾時」：第一次失敗，第二次成功
+      if (flakyGets < 2) throw new TypeError('Failed to fetch');
+      return new Response(JSON.stringify({ ok: true, attempt: flakyGets }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    if (pathname === '/api/v1/flaky-post') {
+      flakyPosts += 1;
+      throw new TypeError('Failed to fetch');
     }
     if (pathname === '/api/v1/sync') {
       return new Response(
@@ -389,6 +405,38 @@ async function main(): Promise<void> {
         return true;
       },
     );
+  });
+  await check('連不上時會自動重試一次（第二次成功就當沒事，使用者看不到錯誤）', async () => {
+    flakyGets = 0;
+    const seenBefore = seen.length;
+    const data = await apiRequest<{ ok: boolean; attempt: number }>('/api/v1/flaky');
+    assert.equal(data.ok, true);
+    assert.equal(flakyGets, 2, '第一次失敗、第二次才成功');
+    assert.equal(seen.length - seenBefore, 2, '確實打了兩次');
+  });
+  await check('retries: 0 時不重試（要自己處理失敗的呼叫端用）', async () => {
+    flakyGets = 0;
+    await assert.rejects(
+      () => apiRequest('/api/v1/flaky', { retries: 0 }),
+      (error: unknown) => {
+        assert.ok(error instanceof ApiError);
+        assert.equal(error.code, 'network_error');
+        return true;
+      },
+    );
+    assert.equal(flakyGets, 1, '只打一次');
+  });
+  await check('POST（手動同步）預設不重試，免得重複觸發', async () => {
+    flakyPosts = 0;
+    await assert.rejects(
+      () => apiRequest('/api/v1/flaky-post', { method: 'POST' }),
+      (error: unknown) => {
+        assert.ok(error instanceof ApiError);
+        assert.equal(error.code, 'network_error');
+        return true;
+      },
+    );
+    assert.equal(flakyPosts, 1, 'POST 只打一次');
   });
   await check('逾時會被中止並標示為 timeout（不是無聲卡住）', async () => {
     await assert.rejects(

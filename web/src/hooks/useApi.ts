@@ -25,6 +25,8 @@ export interface UseApiOptions<T> {
   isEmpty?: (data: T) => boolean;
   /** 變動時強制重抓（供頁面層的「重新整理」使用） */
   refreshToken?: number;
+  /** 這個端點允許的逾時（毫秒）；重的端點可以放寬，預設 15 秒 */
+  timeoutMs?: number;
 }
 
 function defaultIsEmpty(data: unknown): boolean {
@@ -46,7 +48,7 @@ interface State<T> {
  * @param url 完整請求路徑（用 api/client 的 buildUrl 產生）；`null` 代表尚未啟用請求
  */
 export function useApi<T>(url: string | null, options: UseApiOptions<T> = {}): ApiResource<T> {
-  const { isEmpty, refreshToken = 0 } = options;
+  const { isEmpty, refreshToken = 0, timeoutMs } = options;
   const [state, setState] = useState<State<T>>({ phase: 'loading', data: null, error: null });
   const [nonce, setNonce] = useState(0);
 
@@ -63,7 +65,7 @@ export function useApi<T>(url: string | null, options: UseApiOptions<T> = {}): A
     const controller = new AbortController();
     setState((prev) => ({ phase: 'loading', data: prev.data, error: null }));
 
-    apiRequest<T>(url, { signal: controller.signal })
+    apiRequest<T>(url, { signal: controller.signal, timeoutMs })
       .then((data) => {
         if (controller.signal.aborted) return;
         const check = isEmptyRef.current ?? defaultIsEmpty;
