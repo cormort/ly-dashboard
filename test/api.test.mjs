@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 import { openDb, applyDataset, applyBills, applySocial, applyCommitteeMeets, upsertNews, saveSnapshot, recordSyncRun, getMeta, migrate } from '../server/db.mjs';
 import { buildDataset, normalizeBills, normalizeSocial, newsName } from '../server/normalize.mjs';
-import { billsCsv, compareLegislators, csvRow, makeTagger, listCommitteeActivity, listCosponsors, listFunds, listRegions, getHealth, getMetaPayload, listActivity, listBills, listTopics, listNews, listNewsArticles, listChanges, listCommittees, listLegislators, listRankings, listSyncRuns, listCounties, listDemographics, getTownMap, monthsSince, listLegislatorVotes, listSplitTicket, listRecalls, listCouncil, councilCounties, listSyncSources } from '../server/queries.mjs';
+import { billsCsv, compareLegislators, csvRow, makeTagger, listCommitteeActivity, listCosponsors, listFunds, listRegions, getHealth, getMetaPayload, listActivity, listBills, listBudget, listTopics, listNews, listNewsArticles, listChanges, listCommittees, listLegislators, listRankings, listSyncRuns, listCounties, listDemographics, getTownMap, monthsSince, listLegislatorVotes, listSplitTicket, listRecalls, listCouncil, councilCounties, listSyncSources } from '../server/queries.mjs';
 import { regionOf } from '../server/normalize.mjs';
 import { authorizeSync } from '../server/index.mjs';
 import { runNewsIngest } from '../server/ingest.mjs';
@@ -1393,4 +1393,53 @@ test('同步範圍：每個範圍的「上次同步」取涵蓋來源裡最舊�
 
   recordSyncRun(db, { dataset: 'news', status: 'failed', duration_ms: 300, attempt: 1, http_status: 500, error: 'HTTP 500', ...at('2026-10-06T03:00:00.000Z') });
   assert.deepEqual(listSyncSources(db).scopes.find((s) => s.id === 'news').failed_sources, ['news'], '失敗的來源要看得出來');
+});
+
+test('預算審議排序：本會期沒有日期的案子排最前，舊會期沒有日期的排最後', () => {
+  const db = openDb(':memory:');
+  const insert = (id, session, fiscalYear, latestDate) =>
+    db
+      .prepare('INSERT INTO budget_bills(id, term, session, category, name, status, proposer, fiscal_year, latest_date, url) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(id, 11, session, '中央政府總預算案', `${id} 案`, '排入院會', '行政院', fiscalYear, latestDate, `https://ex/${id}`);
+  // 上游對本會期的預算議案沒有日期（實測 199/199，含 115 年度追加預算案）
+  insert('current-nodate', 6, 115, '');
+  insert('dated-0829', 3, 114, '2025-08-29');
+  insert('dated-0828', 3, 114, '2025-08-28');
+  insert('dated-1202', 1, 113, '2024-12-02');
+  insert('old-nodate', 3, 114, '');
+
+  assert.deepEqual(
+    listBudget(db, { limit: 10 }).items.map((x) => x.id),
+    ['current-nodate', 'dated-0829', 'dated-0828', 'dated-1202', 'old-nodate'],
+    '沒日期但屬本會期的當成最新；沒日期又是舊會期的排最後',
+  );
+});
+
+test('預算審議排序：同一天時依會期、年度、議案編號降冪（畫面要穩定可重現）', () => {
+  const db = openDb(':memory:');
+  const insert = (id, session, fiscalYear, latestDate) =>
+    db
+      .prepare('INSERT INTO budget_bills(id, term, session, category, name, status, proposer, fiscal_year, latest_date, url) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(id, 11, session, '中央政府總預算案', `${id} 案`, '交付查詢', '行政院', fiscalYear, latestDate, `https://ex/${id}`);
+  insert('s5-y114-a', 5, 114, '2026-01-27');
+  insert('s6-y115-b', 6, 115, '2026-01-27');
+  insert('s6-y115-c', 6, 115, '2026-01-27');
+  const ids = listBudget(db, { limit: 10 }).items.map((x) => x.id);
+  assert.deepEqual(ids, ['s6-y115-c', 's6-y115-b', 's5-y114-a'], '同日先比會期，再比年度，最後比議案編號');
+});
+
+test('機關／基金清單：本會期沒有日期的預算議案不可以沉到最後（跟預算審議頁同一條規則）', () => {
+  const db = openDb(':memory:');
+  const insert = (id, session, latestDate, name) =>
+    db
+      .prepare('INSERT INTO budget_bills(id, term, session, category, name, status, proposer, fiscal_year, latest_date, url) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(id, 11, session, '預(決) 算決議案、定期報告', name, '排入院會', '行政院主計總處', 115, latestDate, `https://ex/${id}`);
+  insert('current', 6, '', '函送主計總處115年度決議(一)書面報告');
+  insert('dated', 5, '2026-01-27', '函送主計總處114年度預算執行情形書面報告');
+  insert('old-nodate', 3, '', '函送主計總處113年度舊案');
+
+  const { items } = listFunds(db, { type: 'dgbas', limit: 10 });
+  const year = (title) => (title.includes('115年度') ? '115' : title.includes('114年度') ? '114' : '113');
+  assert.deepEqual(items.map((x) => year(x.title)), ['115', '114', '113'], '沒日期但屬本會期者最前面；沒日期又是舊會期者最後');
+  assert.equal(items[0].date, '', 'API 仍回空的日期，是畫面負責顯示「尚無進度日期」');
 });

@@ -139,7 +139,8 @@ export function FundsPage({ type, refreshToken, onOpenId, onNavigate }: FundsPag
                       </button>
                     ))}
                     {item.status ? <span className="status-tag">{item.status}</span> : null}
-                    <span>{item.date}</span>
+                    {/* 上游對本會期的預算議案常常沒有日期（實測 199 筆全無）；留白會像壞掉 */}
+                    {item.date ? <span>{item.date}</span> : <span className="muted">尚無進度日期</span>}
                     {item.legislator ? (
                       <button
                         type="button"

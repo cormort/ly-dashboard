@@ -1831,6 +1831,46 @@ export const budgetState = (status) =>
   BUDGET_PENDING.has(status) ? 'pending' : status === '退回程序委員會' ? 'returned' : 'done';
 
 /**
+ * 預算議案排序：主要以「最新進度日期」降冪，但**沒有日期的不可以一律塞到最後**。
+ *
+ * 實測（2026-10-06）：本會期（11-6）的預算議案在 g0v 上游的「議案流程」裡日期是空陣列
+ * （199 筆全部沒有日期，包含「115年度中央政府總預算追加預算案」這種當前最重要的案子）。
+ * 若只寫 `ORDER BY latest_date DESC`，空字串會排最後 ⇒ 最新會期的案子全部沉到最下面、
+ * 日期還留白，畫面看起來就像「沒有依時間排序」。
+ *
+ * 規則：
+ *   - 有日期 → 用日期。
+ *   - 沒日期且屬於最新會期（或更後面）→ 當成最新（排最前面）。這種是「剛送進來、還沒有人會
+ *     或委員會的進度」，對看預算的人來說正是最需要知道的。
+ *   - 沒日期且是舊會期 → 排最後（上游缺資料，不是新的）。
+ * 同一個排序鍵再依 會期、預算年度、議案編號 降冪，讓畫面穩定可重現。
+ */
+/** 沒有日期但屬最新會期的案子要排在最前面（比任何有日期的案子都新）用的哨兵值 */
+const NEWEST_DATE = '9999-12-31';
+
+/** 有效排序日期：有日期用日期；沒日期但屬最新會期 → 當最新；沒日期又是舊會期 → 排最後 */
+export function effectiveSortDate(date, session, latestSession) {
+  if (date) return date;
+  return Number(session) >= latestSession ? NEWEST_DATE : '';
+}
+
+export function budgetBillsByProgress(db) {
+  const rows = db.prepare('SELECT * FROM budget_bills').all();
+  const latestSession = rows.reduce((max, r) => Math.max(max, Number(r.session) || 0), 0);
+  const key = (r) => effectiveSortDate(r.latest_date, r.session, latestSession);
+  return rows.sort((a, b) => {
+    const ka = key(a);
+    const kb = key(b);
+    if (ka !== kb) return ka < kb ? 1 : -1;
+    if (Number(a.session) !== Number(b.session)) return Number(b.session) - Number(a.session);
+    const ya = Number(a.fiscal_year) || 0;
+    const yb = Number(b.fiscal_year) || 0;
+    if (ya !== yb) return yb - ya;
+    return a.id < b.id ? 1 : a.id > b.id ? -1 : 0;
+  });
+}
+
+/**
  * 預算審議：`category`、`q`（名稱或提案單位關鍵字）、`year`（預算年度）、`proposer`、`state`、分頁。
  * 統計依序在套用各自條件「之前」算（同 listBills 的 L8），選了某機關後機關清單不會只剩一個。
  */
@@ -1838,7 +1878,7 @@ export function listBudget(db, { category = '', type = '', q = '', year = '', pr
   const resolvedLimit = all ? Infinity : Math.max(1, Math.min(Number(limit) || 30, 200));
   const resolvedOffset = Math.max(0, Math.trunc(Number(offset) || 0));
   // 預算類型在讀取時由名稱判斷（規則見 budgetTypes），改規則不必重新同步
-  const rows = db.prepare('SELECT * FROM budget_bills ORDER BY latest_date DESC, id DESC').all().map((r) => ({ ...r, types: budgetTypes(r.name) }));
+  const rows = budgetBillsByProgress(db).map((r) => ({ ...r, types: budgetTypes(r.name) }));
   const count = (list, key) => {
     const m = new Map();
     for (const r of list) m.set(key(r), (m.get(key(r)) ?? 0) + 1);
@@ -2008,6 +2048,10 @@ const dgbasOf = (r) => [
  * `type === 'dgbas'` 另收不限委員的主計總處新聞；基金／機關新聞（topic_news 'entities'）所有類別都收。
  */
 function collectFundRows(db, resolvedType) {
+  const budgetRows = db.prepare('SELECT * FROM budget_bills').all();
+  const billRows = db.prepare('SELECT * FROM bills').all();
+  // 上游對本會期的議案常常沒有日期；沒有日期不代表最舊（見 effectiveSortDate）
+  const latestSession = [...budgetRows, ...billRows].reduce((max, r) => Math.max(max, Number(r.session) || 0), 0);
   const people = new Map(db.prepare('SELECT id, name, party FROM legislators').all().map((l) => [l.id, { id: l.id, name: l.name, party: l.party }]));
   const lead = new Map(db.prepare('SELECT bill_id, legislator_id FROM bill_sponsors WHERE is_lead = 1').all().map((r) => [r.bill_id, people.get(r.legislator_id)]));
   const rows = [
@@ -2022,8 +2066,8 @@ function collectFundRows(db, resolvedType) {
       .prepare("SELECT * FROM social_accounts WHERE latest_post_summary <> ''")
       .all()
       .map((r) => ({ kind: 'post', date: r.latest_post_date, title: r.latest_post_summary, url: r.url, legislator: people.get(r.legislator_id) })),
-    ...db.prepare('SELECT * FROM bills').all().map((r) => ({ kind: 'bill', date: r.latest_date, title: r.name, url: r.url, status: r.status, legislator: lead.get(r.id) })),
-    ...db.prepare('SELECT * FROM budget_bills').all().map((r) => ({ kind: 'budget', date: r.latest_date, title: r.name, url: r.url, status: r.status, source: r.proposer })),
+    ...billRows.map((r) => ({ kind: 'bill', date: r.latest_date, sort_date: effectiveSortDate(r.latest_date, r.session, latestSession), title: r.name, url: r.url, status: r.status, legislator: lead.get(r.id) })),
+    ...budgetRows.map((r) => ({ kind: 'budget', date: r.latest_date, sort_date: effectiveSortDate(r.latest_date, r.session, latestSession), title: r.name, url: r.url, status: r.status, source: r.proposer })),
     ...db.prepare('SELECT * FROM budget_reports').all().map((r) => ({ kind: 'report', date: r.completed, title: r.title, url: r.url, source: r.type })),
   ];
   return rows;
@@ -2053,7 +2097,7 @@ export function listFunds(db, { type = 'fund', fund = '', kind = '', limit = 30,
     .map((r) => ({ ...r, date: r.date ?? '', legislator: r.legislator ?? null, funds: tag(r) }))
     // 同一則新聞會掛在每位被提到的委員底下，只留一則
     .filter((r, i, all) => r.funds.length && (r.kind !== 'news' || all.findIndex((x) => x.kind === 'news' && x.url === r.url) === i))
-    .sort((a, b) => b.date.localeCompare(a.date) || a.title.localeCompare(b.title));
+    .sort((a, b) => (b.sort_date ?? b.date).localeCompare(a.sort_date ?? a.date) || a.title.localeCompare(b.title));
 
   const byKind = FUND_KINDS.includes(kind) ? tagged.filter((r) => r.kind === kind) : tagged;
   const funds = new Map();

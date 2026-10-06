@@ -181,7 +181,7 @@ export function DashboardPage({ refreshToken, onOpenId, onNavigate }: DashboardP
                   <a href={b.url} target="_blank" rel="noreferrer noopener" className="clamp-2">
                     {b.name}
                   </a>
-                  <time>{shortDate(b.latest_date)}</time>
+                  <time>{shortDate(b.latest_date) || '尚無進度'}</time>
                 </li>
               ))}
             </ul>

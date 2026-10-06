@@ -39,7 +39,7 @@ import { SyncStatusBanner } from '../src/components/SyncStatusBanner';
 import { RankingsPage, RankingBoardView } from '../src/pages/RankingsPage';
 import { TopicsPanel, tagTier } from '../src/components/TopicsPanel';
 import { ComparePage } from '../src/pages/ComparePage';
-import { BudgetPage } from '../src/pages/BudgetPage';
+import { BudgetPage, progressDateText } from '../src/pages/BudgetPage';
 import { DashboardPage } from '../src/pages/DashboardPage';
 import { CommitteesPage } from '../src/pages/CommitteesPage';
 import { legacyRedirect, pathFor, routeOf, type Route } from '../src/hooks/useRoute';
@@ -933,6 +933,10 @@ expectAll('流程條：交付審查走到第 2 步', render(createElement(BillSt
 ]);
 expectAll('流程條：撤案標為中止', render(createElement(BillStageBar, { status: '撤案' })), ['stage-bar stopped', '已中止：撤案']);
 check('流程條：未知狀態不畫', render(createElement(BillStageBar, { status: '交付查照' })) === '');
+
+// 上游對本會期的預算議案沒有日期（實測 199/199），留白會像壞掉；排序上這種案子當成最新
+check('預算頁：沒有進度日期時明講「尚無進度日期」，不是空白', progressDateText('') === '尚無進度日期' && progressDateText(null) === '尚無進度日期');
+check('預算頁：有進度日期就照原樣顯示', progressDateText('2026-04-14') === '2026-04-14');
 
 expectAll('預算頁：loading 態有類別、篩選與三個區塊骨架', render(createElement(BudgetPage, { refreshToken: 0, onOpenId: () => undefined })), [
   '預算審議',

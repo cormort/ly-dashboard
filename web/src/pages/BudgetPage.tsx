@@ -22,6 +22,13 @@ const CATEGORY_LABEL: Record<string, string> = {
 };
 const STATE_LABEL: Record<BudgetState, string> = { pending: '審議中', done: '已結案', returned: '退回' };
 const TYPE_LABEL: Record<BudgetType, string> = { general: '總預算', subsidiary: '附屬單位預算', special: '特別預算', supplementary: '追加預算' };
+/**
+ * 進度日期欄的文字。上游（g0v）對本會期的預算議案常常沒有「最新進度日期」（實測本會期 199/199
+ * 都沒有），留白會讓人以為壞掉，所以明講「尚無進度日期」——排序上也把這種案子當成最新
+ * （見後端 `budgetBillsByProgress`），因為它們正是剛送進來、還沒有人會進度的案子。
+ */
+export const progressDateText = (value: string | null | undefined): string => (value ? value : '尚無進度日期');
+
 const DEFAULT_CATEGORY = '中央政府總預算案';
 const ALL = 'all';
 const PAGE = 30;
@@ -165,7 +172,8 @@ export function BudgetPage({ refreshToken, onOpenId }: BudgetPageProps) {
                         </span>
                       ))}
                       <span className="status-tag">{item.status}</span>
-                      <span>{item.latest_date}</span>
+                      {/* 上游（g0v）對本會期的預算議案常沒有「最新進度日期」，留白會像壞掉 */}
+                      {item.latest_date ? <span>{progressDateText(item.latest_date)}</span> : <span className="muted">{progressDateText(item.latest_date)}</span>}
                       <button type="button" className="link-button" onClick={() => change({ proposer: item.proposer })}>
                         {item.proposer}
                       </button>
