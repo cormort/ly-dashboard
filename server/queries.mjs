@@ -1954,7 +1954,7 @@ export function budgetBillsByProgress(db) {
  */
 export function listBudget(
   db,
-  { category = '', type = '', q = '', year = '', proposer = '', state = '', limit = 30, offset = 0, all = false, groupBy = '', perGroup = 5, scope: scopeArg = 'bills', merge = 'name' } = {},
+  { category = '', type = '', q = '', year = '', proposer = '', state = '', limit = 30, offset = 0, all = false, groupBy = '', perGroup = 5, scope: scopeArg = 'bills', merge = 'name', includeAttachments = false } = {},
 ) {
   const resolvedLimit = all ? Infinity : Math.max(1, Math.min(Number(limit) || 30, 200));
   const resolvedOffset = Math.max(0, Math.trunc(Number(offset) || 0));
@@ -1977,7 +1977,11 @@ export function listBudget(
   // 一案一列（預設）：同一案名的多筆議案紀錄合成一列，見 mergeBudgetUnits
   const mergeUnits = merge === 'none' ? false : true;
   const allUnits = mergeUnits ? mergeBudgetUnits(allRows) : allRows;
-  const rows = scope === 'bills' ? allUnits.filter(isBill) : allUnits;
+  const scoped = scope === 'bills' ? allUnits.filter(isBill) : allUnits;
+  // 附件／更正（例如「…單位預算勘誤表」）不是預算案本身，預設排除；`include_attachments=1` 可以看回來
+  const attachmentRe = CONFIG.budget.attachmentPattern ? new RegExp(CONFIG.budget.attachmentPattern) : null;
+  const isAttachment = (r) => Boolean(attachmentRe && (attachmentRe.test(r.name) || attachmentRe.test(r.status ?? '')));
+  const rows = includeAttachments ? scoped : scoped.filter((r) => !isAttachment(r));
   const recordsInScope = (scope === 'bills' ? allRows.filter(isBill) : allRows).length;
   const count = (list, key) => {
     const m = new Map();
@@ -2021,6 +2025,8 @@ export function listBudget(
   const matching = applyFilters(rows);
   const billsMatching = applyFilters(allUnits.filter(isBill));
   const allMatching = applyFilters(allUnits);
+  // 目前篩選下被排除的附件（勘誤表…）：要讓使用者知道有幾筆沒列出來
+  const attachmentCount = applyFilters(scoped.filter(isAttachment)).length;
   const sumRecords = (list) => list.reduce((n, r) => n + (r.records ?? 1), 0);
   const resolvedPerGroup = Math.max(1, Math.min(Number(perGroup) || 5, 50));
   // 委員會存在另一張表（同步會重寫 budget_bills），讀取時套用；合併的列取成員紀錄的聯集
@@ -2076,6 +2082,9 @@ export function listBudget(
     bills_scope_total: mergeUnits ? billsMatching.length : sumRecords(billsMatching),
     // 一案一列 vs 每筆議案（前端做開關用）：數字是**目前篩選下**的，切換鈕才跟清單一致
     merge: mergeUnits ? 'name' : null,
+    /** 附件／更正（勘誤表…）在目前篩選下有幾筆。預設**不列入**清單與統計；`include_attachments=1` 才列 */
+    attachment_count: attachmentCount,
+    include_attachments: Boolean(includeAttachments),
     // 兩種模式下都要給「合併後會是幾件」，否則切到每筆議案時一案一列那顆鈕會顯示 0
     merged_total: mergeUnits ? matching.length : new Set(matching.map((r) => `${r.category}\u0000${r.name}`)).size,
     records_total: sumRecords(matching),

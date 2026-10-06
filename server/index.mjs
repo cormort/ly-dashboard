@@ -185,6 +185,8 @@ export function createServer(db) {
               scope: q.scope,
               // 一案一列（預設）／merge=none 每筆議案都列
               merge: q.merge,
+              // 勘誤表這類附件預設排除；include_attachments=1 看回來
+              includeAttachments: q.include_attachments === '1',
             };
             if (q.format === 'csv') return sendCsv(res, 'budget.csv', budgetCsv(listBudget(db, { ...filters, all: true }).items));
             return sendJson(res, 200, listBudget(db, { ...filters, limit: q.limit, offset: q.offset }));

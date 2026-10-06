@@ -80,6 +80,8 @@ interface Filters {
   scope: string;
   /** 一案一列（預設）／none＝每筆議案都列 */
   merge: string;
+  /** '1'＝連勘誤表這類附件一起顯示（預設不顯示） */
+  attachments: string;
 }
 
 const readFilters = (): Filters => {
@@ -94,6 +96,7 @@ const readFilters = (): Filters => {
     state: get('state'),
     scope: get('scope') === 'all' ? 'all' : 'bills',
     merge: get('merge') === 'none' ? 'none' : 'name',
+    attachments: get('attachments') === '1' ? '1' : '',
   };
 };
 
@@ -169,6 +172,7 @@ export function BudgetPage({ refreshToken, onOpenId }: BudgetPageProps) {
     state: filters.state,
     scope: filters.scope,
     merge: filters.merge === 'none' ? 'none' : '',
+    include_attachments: filters.attachments === '1' ? '1' : '',
   };
   // 全部年度時請後端分年度呈現（每年統計＋前幾筆）；選了某一年就用一般清單分頁
   const grouped = !filters.year;
@@ -311,7 +315,22 @@ export function BudgetPage({ refreshToken, onOpenId }: BudgetPageProps) {
         ) : null}
       </div>
 
-      {data ? <p className="muted scope-note">{data.scope_note}</p> : null}
+      {data ? (
+        <p className="muted scope-note">
+          {data.scope_note}
+          {/* 勘誤表這種附件不是預算案本身（實測 9 筆被算成「審議中」）→ 預設排除，但要看得到 */}
+          {data.attachment_count > 0 || data.include_attachments ? (
+            <>
+              {data.include_attachments
+                ? `・已包含 ${data.attachment_count} 筆勘誤表等附件`
+                : `・已排除 ${data.attachment_count} 筆勘誤表等附件`}
+              <button type="button" className="link-button" onClick={() => change({ attachments: data.include_attachments ? '' : '1' })}>
+                {data.include_attachments ? '不顯示' : '顯示'}
+              </button>
+            </>
+          ) : null}
+        </p>
+      ) : null}
 
       <div className="budget-layout">
         <section className="panel" aria-label="預算案列表" id="budget-results">

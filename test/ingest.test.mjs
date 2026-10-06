@@ -2257,3 +2257,32 @@ test('預算查詢：每一列帶委員會；一案一列時取成員紀錄的�
     }
   }
 });
+
+test('預算清單：勘誤表這類附件預設排除、要看得到筆數、可以切回來', async () => {
+  const db = seeded();
+  await runBudgetIngest(db, { logger: silent, fetchImpl: budgetOk });
+  const insert = (id, category, name, status) =>
+    db
+      .prepare('INSERT INTO budget_bills(id, term, session, category, name, status, proposer, fiscal_year, latest_date, url) VALUES(?, 11, 5, ?, ?, ?, ?, 115, ?, ?)')
+      .run(id, category, name, status, '行政院', '2026-05-12', `https://example/${id}`);
+  // 實際案例（2026-10-06）：115 年度總預算案的兩筆單位預算勘誤表，狀態「交付處理」→ 會被算成「審議中」
+  insert('errata1', '中央政府總預算案', '函送「中華民國115年度中央政府總預算案內政部暨所屬單位預算勘誤表」，請查照案。', '交付處理');
+  insert('errata2', '預(決) 算決議案、定期報告', '函送該部114年10月至12月「因公派員出國計畫考察費用執行情形勘誤表」，請查照案。', '交付處理');
+
+  const without = listBudget(db, { merge: 'none', limit: 200 });
+  assert.equal(without.attachment_count, 1, '議案類別裡的勘誤表要被排除並計數（報告類那筆不在預設範圍內）');
+  assert.ok(!without.items.some((i) => i.id === 'errata1'), '勘誤表不列出來');
+  assert.equal(listBudget(db, { merge: 'none', limit: 200, q: '勘誤' }).total, 0, '排除後連搜尋都找不到');
+  const withIt = listBudget(db, { merge: 'none', limit: 200, includeAttachments: true });
+  assert.equal(withIt.total, without.total + 1, '切回來要多那一筆');
+  assert.equal(withIt.attachment_count, 1, 'containing 模式下筆數照報，只是改成「已包含」');
+  assert.equal(withIt.include_attachments, true);
+  assert.ok(withIt.items.some((i) => i.id === 'errata1'));
+  // 統計也不能把那筆算進去（「審議中」會多 1）
+  assert.equal(withIt.progress.in_review, without.progress.in_review + 1);
+  // 報告類的勘誤表在 scope=all 也要排除
+  const allScope = listBudget(db, { scope: 'all', merge: 'none', limit: 200 });
+  assert.equal(allScope.attachment_count, 2);
+  // 一般的預算案不受影響
+  assert.ok(listBudget(db, { merge: 'none', limit: 200, q: '中央政府總預算' }).total > 0);
+});

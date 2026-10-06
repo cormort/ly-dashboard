@@ -713,6 +713,9 @@ export interface BudgetResponse {
   bills_scope_total: number;
   /** `name`＝一案一列（預設）／null＝每筆議案一列 */
   merge: 'name' | null;
+  /** 附件（勘誤表…）在目前篩選下有幾筆；預設不列入清單，`include_attachments=1` 才列 */
+  attachment_count: number;
+  include_attachments: boolean;
   /** 目前篩選下：一案一列的件數 */
   merged_total: number;
   /** 目前篩選下：議案紀錄筆數 */
