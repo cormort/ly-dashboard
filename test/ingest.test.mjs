@@ -531,6 +531,10 @@ test('預算查詢：依預算類型篩選，類型件數在類型條件前算',
   assert.ok(special.items.every((b) => b.types.includes('special')));
   assert.deepEqual(special.types, all.types, '選了類型，各類型件數不變');
   assert.equal(listBudget(db, { type: 'bogus' }).total, all.total, '未知類型視為未指定');
+  // 收緊後的真資料守門：fixture 第一筆是「函送…附屬單位預算審查報告，請併…討論案」⇒ 不是預算案本身
+  const report = all.items.find((b) => b.id === '303110233040000');
+  assert.ok(report, 'fixture 應該有那一筆審查報告');
+  assert.deepEqual(report.types, [], '名稱含「審查報告／請併」的不可以算成預算案');
 });
 
 /* ---------------- 429：g0v API 的節流（實測 budget／records 整批失敗） ---------------- */

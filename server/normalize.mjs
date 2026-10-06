@@ -424,20 +424,34 @@ export function normalizeBudget(pages, expectedTotal = pages?.[0]?.total) {
 
 /**
  * 預算類型（可複選）：general 總預算、subsidiary 附屬單位預算、special 特別預算（含對應的決算）、
- * supplementary 追加（減）預算。
- * 只看「決議／檢送」之前的主旨：「為114年度中央政府總預算決議，檢送…特別預算…書面報告」
- * 屬於總預算決議，後面提到的特別預算只是報告內容。
- * 「總預算（案）附屬單位預算」是總預算裡的附屬單位部分、「總預算追加預算」是追加的部分，都不另算總預算；
- * 「總預算案（含附屬單位預算…）」「總決算暨附屬單位決算」則兩者都算。
- * 對不到任何類型（法人預算書、補捐助彙總表、宣導執行表等）回空陣列。
+ * supplementary 追加（減）預算（含決算）。
+ *
+ * 2026-10-06 收緊（使用者：「預算要有年度，總預算案／特別預算案／追加預算案／附屬單位預算等關鍵字，
+ * 現在太寬」）。舊規則只要名稱裡出現「總預算」就算，實測 **6,422 筆**被算成總預算案，其中絕大多數是
+ * 「函，為114年度中央政府總預算決議，檢送…書面報告，請查照案」這種**回覆決議的函件**；真正的預算案只有幾十件。
+ * 現在要同時滿足：
+ *
+ *   1. 名稱裡要有「N年度」——沒有年度的不算。
+ *   2. `billCategory`：這一筆要屬於「議案本身」的那一類（見 CONFIG.budget.billCategories）。
+ *      決議案／定期報告那一類是決議與回函，不是預算案。
+ *   3. 名稱裡不能是報告／附件／回函（審查報告、審查總報告、勘誤表、動支數額表、分配表、執行情形、請查照、檢送）。
+ *   4. 要對得上四種預算（案）或它們的決算：總預算案／總決算、附屬單位預算（決算）、特別預算案（決算）、
+ *      追加預算案（決算）。「總預算追加預算案」只算追加、「總預算案附屬單位預算」只算附屬單位；
+ *      「總預算案（含附屬單位預算…）」兩者都算。對不到的回空陣列。
+ *
+ * 收緊後實測（2026-10-06 的資料庫 11,290 筆）：總預算 53、附屬單位 53、特別 30、追加 5，其餘 11,229 筆不給類型。
  */
-export function budgetTypes(name) {
-  const head = String(name ?? '').split(/決議|檢送/)[0];
+const BUDGET_NOT_A_BILL = /請查照|檢送|審查報告|審查總報告|請併|勘誤|動支數額表|分配表|執行情形/;
+export function budgetTypes(name, { billCategory = true } = {}) {
+  if (!billCategory) return [];
+  const text = String(name ?? '');
+  if (!/\d{2,3}\s*年度/.test(text)) return [];
+  if (BUDGET_NOT_A_BILL.test(text)) return [];
   const types = [];
-  if (/總(預|決)算(?!案?(附屬單位|追加))/.test(head)) types.push('general');
-  if (/附屬單位/.test(head)) types.push('subsidiary');
-  if (/特別(預|決)算/.test(head)) types.push('special');
-  if (/追加減?(預|決)算/.test(head)) types.push('supplementary');
+  if (/總(預算案|決算)(?!附屬單位|追加)/.test(text)) types.push('general');
+  if (/附屬單位(預算|決算)/.test(text)) types.push('subsidiary');
+  if (/特別(預算案|決算)/.test(text)) types.push('special');
+  if (/追加(預算案|決算)/.test(text)) types.push('supplementary');
   return types;
 }
 

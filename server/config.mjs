@@ -29,6 +29,8 @@ export const CONFIG = {
   },
   // 預算審議：同一個 g0v API，改抓政府／委員會送來的預算類議案（總預算案、法人預算、預算決議書面報告）
   budget: {
+    // 這幾類才是「議案本身」；其餘（決議案、定期報告）是決議與回覆函件，不給預算類型
+    billCategories: ['中央政府總預算案', '法人預(決)算案'],
     categories: ['中央政府總預算案', '法人預(決)算案', '預(決) 算決議案、定期報告'],
     // 立法院預算中心的評估報告（官方 WebAPI）；只取與預算審議直接相關的兩類
     reportsUrl: 'https://www.ly.gov.tw/WebAPI/BudgetCenterResearch.aspx',

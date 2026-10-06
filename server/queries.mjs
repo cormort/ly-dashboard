@@ -1909,7 +1909,9 @@ export function listBudget(
   const resolvedLimit = all ? Infinity : Math.max(1, Math.min(Number(limit) || 30, 200));
   const resolvedOffset = Math.max(0, Math.trunc(Number(offset) || 0));
   // 預算類型在讀取時由名稱判斷（規則見 budgetTypes），改規則不必重新同步
-  const rows = budgetBillsByProgress(db).map((r) => ({ ...r, types: budgetTypes(r.name) }));
+  // 只有「議案本身」那一類才給預算類型（決議案／定期報告是回覆決議的函件，見 budgetTypes）
+  const billCats = new Set(CONFIG.budget.billCategories ?? []);
+  const rows = budgetBillsByProgress(db).map((r) => ({ ...r, types: budgetTypes(r.name, { billCategory: billCats.has(r.category) }) }));
   const count = (list, key) => {
     const m = new Map();
     for (const r of list) m.set(key(r), (m.get(key(r)) ?? 0) + 1);
