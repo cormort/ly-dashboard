@@ -6,7 +6,7 @@ import { openDb, applyDataset, applyBills, applySocial, applyCommitteeRecords, a
 import { buildDataset, normalizeBills, normalizeCommitteeRecords, normalizeMeetings, normalizeSocial, normalizeCouncilSocial, sameSocialPage, sheetDate, newsName, rocDate, DataValidationError } from '../server/normalize.mjs';
 import { CONFIG } from '../server/config.mjs';
 import { entityFeedUrl, guardShrink, runIngest, runBillsIngest, runRecordsIngest, runBudgetIngest, runBudgetReportsIngest, runMeetingsIngest, budgetPageUrl, runNewsIngest, runOutletNews, runOutletPoll, retagOutletArticles, runNewsBackfill, backfillTargets, rangeFeedUrl, BACKFILL_CAP, runNewsFeedImport, runCouncilNews, runCouncilSocialIngest, runSocialIngest, runAll } from '../server/ingest.mjs';
-import { entityNewsTerms, listFunds, getHealth, listBills, listBudget, listBudgetMeetings, listBudgetReports, budgetState, listChanges, listCounties, listLegislatorVotes, listRankings, compareLegislators, listRegions, listSplitTicket, listDemographics, listPopulationTrend, getTownMap, listLegislators, listNews, listNewsArticles, newsCsv, listCouncilActivity, currentCouncilors, socialFreshness, listSyncRuns } from '../server/queries.mjs';
+import { entityNewsTerms, listFunds, getHealth, listBills, listBudget, listBudgetMeetings, listBudgetReports, budgetState, budgetUnitState, mergeBudgetUnits, listChanges, listCounties, listLegislatorVotes, listRankings, compareLegislators, listRegions, listSplitTicket, listDemographics, listPopulationTrend, getTownMap, listLegislators, listNews, listNewsArticles, newsCsv, listCouncilActivity, currentCouncilors, socialFreshness, listSyncRuns } from '../server/queries.mjs';
 import { FetchError } from '../server/fetch-ly.mjs';
 import { csvRowsToFeedItems, feedDate, feedFileUrl, mergeFeedFile, parseFeedFile } from '../server/news-feed.mjs';
 import { syncOnce, pollOutletsOnce, getInflightScope } from '../server/index.mjs';
@@ -444,7 +444,8 @@ test('預算同步：三種類別一次抓、寫入、抽出預算年度', async
   assert.equal(result.items, 80);
   // 預設統計範圍是「只算預算案本身」，要看全部 80 筆要明講 scope: 'all'
   assert.ok(listBudget(db, { limit: 200 }).total < 80, '預設只算預算案本身');
-  const all = listBudget(db, { scope: 'all', limit: 200 });
+  // 預設是「一案一列」；這個測試要看議案紀錄筆數，明講 merge: 'none'
+  const all = listBudget(db, { scope: 'all', merge: 'none', limit: 200 });
   assert.equal(all.total, 80);
   assert.deepEqual(all.categories.map((c) => c.count), [20, 20, 40]);
   assert.ok(all.items.some((b) => b.fiscal_year >= 113), '名稱含「115年度」要抽出年度');
@@ -457,13 +458,13 @@ test('預算同步：三種類別一次抓、寫入、抽出預算年度', async
 test('預算查詢：類別、機關、狀態可組合，統計在各自條件前算', async () => {
   const db = seeded();
   await runBudgetIngest(db, { logger: silent, fetchImpl: budgetOk });
-  const reports = listBudget(db, { scope: 'all', category: '預(決) 算決議案、定期報告' });
+  const reports = listBudget(db, { scope: 'all', merge: 'none', category: '預(決) 算決議案、定期報告' });
   assert.equal(reports.total, 40);
   const top = reports.proposers[0].name;
-  const byAgency = listBudget(db, { scope: 'all', category: '預(決) 算決議案、定期報告', proposer: top });
+  const byAgency = listBudget(db, { scope: 'all', merge: 'none', category: '預(決) 算決議案、定期報告', proposer: top });
   assert.ok(byAgency.items.every((b) => b.proposer === top));
   assert.ok(byAgency.proposers.length > 1, '選了機關，機關清單不該只剩一個');
-  const pending = listBudget(db, { scope: 'all', state: 'pending', limit: 200 });
+  const pending = listBudget(db, { scope: 'all', merge: 'none', state: 'pending', limit: 200 });
   assert.ok(pending.items.every((b) => b.state === 'pending'));
   // 五級：舊版把「交付查照」這種函件也算成「已結案」，會讓人以為大部分都審完了
   assert.equal(budgetState('交付查照'), 'letter');
@@ -484,7 +485,7 @@ test('預算同步：失敗保留舊資料；筆數不足 fail closed', async ()
   const short = async (url) =>
     url.includes('agg=') ? { json: { total: 5000, aggs: [{ buckets: [{ 會期: 5, count: 5000 }] }] }, attempts: 1 } : budgetOk(url);
   assert.equal((await runBudgetIngest(db, { logger: silent, fetchImpl: short })).status, 'failed');
-  assert.equal(listBudget(db, { scope: 'all' }).total, 80, '舊資料必須保留');
+  assert.equal(listBudget(db, { scope: 'all', merge: 'none' }).total, 80, '舊資料必須保留');
 });
 
 test('預算中心報告與委員會發言：寫入、預算會議篩選、發言排行只列在職委員', async () => {
@@ -2087,7 +2088,7 @@ test('同步範圍：runAll 收到不認識的階段要直接丟錯，不要靜�
 test('預算進度：分年度的件數統計（含沒有年度的）', async () => {
   const db = seeded();
   await runBudgetIngest(db, { logger: silent, fetchImpl: budgetOk });
-  const all = listBudget(db, { limit: 200 });
+  const all = listBudget(db, { merge: 'none', limit: 200 });
   // 每年都要有完整的進度統計
   for (const y of all.years) {
     assert.ok(y.progress, `${y.name} 要有 progress`);
@@ -2106,7 +2107,7 @@ test('預算進度：分年度的件數統計（含沒有年度的）', async ()
 test('預算進度：分年度呈現（group_by=year）每組都有統計與前幾筆', async () => {
   const db = seeded();
   await runBudgetIngest(db, { logger: silent, fetchImpl: budgetOk });
-  const grouped = listBudget(db, { limit: 5, groupBy: 'year', perGroup: 3 });
+  const grouped = listBudget(db, { merge: 'none', limit: 5, groupBy: 'year', perGroup: 3 });
   assert.equal(grouped.group_by, 'year');
   assert.equal(grouped.per_group, 3);
   assert.ok(grouped.groups.length > 0, '要有分組');
@@ -2117,27 +2118,27 @@ test('預算進度：分年度呈現（group_by=year）每組都有統計與前�
     assert.equal(g.progress.total, g.total);
   }
   // 不分年度時不給 groups（前端才不會誤用）
-  assert.deepEqual(listBudget(db, { limit: 5 }).groups, []);
+  assert.deepEqual(listBudget(db, { merge: 'none', limit: 5 }).groups, []);
 });
 
 test('預算進度：年度不明的案子可以單獨查（不要被藏起來）', async () => {
   const db = seeded();
   await runBudgetIngest(db, { logger: silent, fetchImpl: budgetOk });
-  const unknown = listBudget(db, { year: 'unknown', limit: 200 });
+  const unknown = listBudget(db, { merge: 'none', year: 'unknown', limit: 200 });
   assert.ok(unknown.items.every((b) => b.fiscal_year === null || b.fiscal_year === undefined), '年度不明＝上游沒給年度');
-  const all = listBudget(db, { limit: 200 });
+  const all = listBudget(db, { merge: 'none', limit: 200 });
   assert.equal(unknown.total, all.years.find((y) => y.name === 'unknown')?.count ?? 0);
 });
 
 test('預算統計範圍：預設只算預算案本身；含報告類要自己切，且不影響類別導覽數', async () => {
   const db = seeded();
   await runBudgetIngest(db, { logger: silent, fetchImpl: budgetOk });
-  const bills = listBudget(db, { limit: 200 });
+  const bills = listBudget(db, { merge: 'none', limit: 200 });
   assert.equal(bills.scope, 'bills', '預設只算預算案本身');
   const BILL = ['中央政府總預算案', '法人預(決)算案'];
   assert.ok(bills.items.every((b) => BILL.includes(b.category)), '預設清單只列議案本身');
   assert.ok(bills.items.every((b) => !b.types.includes('bogus')));
-  const all = listBudget(db, { scope: 'all', limit: 200 });
+  const all = listBudget(db, { scope: 'all', merge: 'none', limit: 200 });
   assert.equal(all.scope, 'all');
   assert.equal(all.total, 80);
   assert.ok(all.total > bills.total, '含報告類一定比只算預算案多');
@@ -2146,9 +2147,51 @@ test('預算統計範圍：預設只算預算案本身；含報告類要自己�
   assert.ok(bills.items.every((b) => all.items.some((a) => a.id === b.id)));
   // 類別件數是導覽用的，不受範圍影響（否則使用者會找不到那 10,801 筆報告）
   assert.deepEqual(all.categories, bills.categories);
-  assert.equal(all.all_scope_total, 80);
-  assert.equal(all.bills_scope_total, bills.total);
+  assert.equal(all.scope_totals.all, 80, '含報告類在同樣篩選下有 80 筆紀錄');
+  assert.equal(all.scope_totals.bills, bills.total);
   assert.ok(all.scope_note && bills.scope_note, '兩種範圍都要有說明');
   // 統計也跟著範圍走：含報告的「尚未審竣」不會比較少
   assert.ok(all.progress.awaiting >= bills.progress.awaiting);
+});
+
+test('一案一列：同一個預算案的多筆議案紀錄要合成一列（實測 115 年度總預算案 24 筆）', () => {
+  // 彙總狀態：全部函件→函件處理；需要審查的全部審完→已審竣；否則取最進行中的
+  assert.equal(budgetUnitState({ letter: 3 }), 'letter');
+  assert.equal(budgetUnitState({ reviewed: 9, letter: 5 }), 'reviewed', '需要審查的都審完就算已審竣（函件不影響）');
+  assert.equal(budgetUnitState({ reviewed: 9, in_review: 13, pending: 2 }), 'in_review');
+  assert.equal(budgetUnitState({ reviewed: 3, pending: 2 }), 'pending');
+  assert.equal(budgetUnitState({ reviewed: 3, returned: 1 }), 'returned');
+  // 合併：代表紀錄取最有進展的、日期取最新的、筆數與各狀態都留著
+  const rows = [
+    { id: 'a1', category: '中央政府總預算案', name: '同一個案子', status: '交付審查', proposer: '行政院', fiscal_year: 115, session: 5, latest_date: '2026-04-21', url: 'u1', types: [] },
+    { id: 'a2', category: '中央政府總預算案', name: '同一個案子', status: '審查完畢', proposer: '行政院', fiscal_year: 115, session: 5, latest_date: '2026-07-29', url: 'u2', types: [] },
+    { id: 'a3', category: '中央政府總預算案', name: '同一個案子', status: '排入院會', proposer: '行政院', fiscal_year: 115, session: 4, latest_date: '2025-10-01', url: 'u3', types: [] },
+    { id: 'b1', category: '中央政府總預算案', name: '另一個案子', status: '交付查照', proposer: '行政院', fiscal_year: 115, session: 5, latest_date: '2026-01-01', url: 'u4', types: [] },
+  ];
+  const merged = mergeBudgetUnits(rows);
+  assert.equal(merged.length, 2, '兩個案名 → 兩列');
+  const one = merged.find((u) => u.name === '同一個案子');
+  assert.equal(one.records, 3);
+  assert.deepEqual(one.states, { in_review: 1, reviewed: 1, pending: 1 });
+  assert.equal(one.state, 'in_review', '還沒全部審完 → 審議中（不可以只看代表紀錄就說已審竣）');
+  assert.equal(one.latest_date, '2026-07-29', '日期取最新');
+  assert.equal(one.id, 'a2', '代表紀錄取最有進展的（審查完畢）');
+});
+
+test('一案一列：查詢預設合併，merge=none 才逐筆列', async () => {
+  const db = seeded();
+  await runBudgetIngest(db, { logger: silent, fetchImpl: budgetOk });
+  const merged = listBudget(db, { scope: 'all', limit: 200 });
+  assert.equal(merged.merge, 'name', '預設一案一列');
+  const records = listBudget(db, { scope: 'all', merge: 'none', limit: 200 });
+  assert.equal(records.merge, null);
+  assert.equal(merged.total + 0 <= records.total, true, '合併後不會比逐筆多');
+  assert.ok(merged.items.every((b) => b.records >= 1 && b.record_states));
+  assert.equal(merged.records_total, records.total, '切到每筆議案時的件數＝records_total');
+  assert.equal(records.merged_total, merged.total, '切到每筆議案時，「一案一列」那顆鈕還是要顯示合併後的件數');
+  assert.equal(merged.merged_total, merged.total, '全部條件下，合併後件數＝merged_total');
+  // 合併後每一列的狀態都要跟 record_states 一致（不會出現整列說已審竣、但裡面還有交付審查）
+  for (const b of merged.items) {
+    if (b.state === 'reviewed') assert.ok(!b.record_states.in_review && !b.record_states.pending && !b.record_states.returned, '說已審竣就不能還有未審完的紀錄');
+  }
 });

@@ -4,7 +4,7 @@ import { buildUrl } from '../api/client';
 import type { BudgetItem, BudgetMeetingsResponse, BudgetReportsResponse, BudgetResponse, BudgetState, BudgetType } from '../api/types';
 import { EmptyState, ErrorState, LoadingState } from '../components/DataStates';
 import { InfoTip } from '../components/InfoTip';
-import { YearProgressList, budgetProgressText, hasReviewableItems, yearLabel } from '../components/BudgetProgress';
+import { YearProgressList, budgetProgressText, budgetRecordsText, hasReviewableItems, yearLabel } from '../components/BudgetProgress';
 import { SearchField } from '../components/SearchField';
 import { useApi } from '../hooks/useApi';
 import { pathFor } from '../hooks/useRoute';
@@ -78,6 +78,8 @@ interface Filters {
   state: string;
   /** 統計範圍：bills（預設，只算預算案本身）／all（含決議書面報告等報告類） */
   scope: string;
+  /** 一案一列（預設）／none＝每筆議案都列 */
+  merge: string;
 }
 
 const readFilters = (): Filters => {
@@ -91,6 +93,7 @@ const readFilters = (): Filters => {
     proposer: get('proposer'),
     state: get('state'),
     scope: get('scope') === 'all' ? 'all' : 'bills',
+    merge: get('merge') === 'none' ? 'none' : 'name',
   };
 };
 
@@ -117,7 +120,15 @@ function BudgetItemRow({
             {TYPE_LABEL[t]}
           </span>
         ))}
-        <span className="status-tag">{item.status}</span>
+        {/* 合併多筆議案紀錄時，單一狀態不能代表整個案子 → 直接列出各狀態有幾筆 */}
+        {item.records > 1 ? (
+          <>
+            <span className="status-tag">共 {item.records} 筆議案紀錄</span>
+            <span className="muted">{budgetRecordsText(item.record_states, item.records)}</span>
+          </>
+        ) : (
+          <span className="status-tag">{item.status}</span>
+        )}
         {/* 上游（g0v）對本會期的預算議案常沒有「最新進度日期」，留白會像壞掉 */}
         {item.latest_date ? <span>{progressDateText(item.latest_date)}</span> : <span className="muted">{progressDateText(item.latest_date)}</span>}
         <button type="button" className="link-button" onClick={() => onPickProposer(item.proposer)}>
@@ -151,6 +162,7 @@ export function BudgetPage({ refreshToken, onOpenId }: BudgetPageProps) {
     proposer: filters.proposer,
     state: filters.state,
     scope: filters.scope,
+    merge: filters.merge === 'none' ? 'none' : '',
   };
   // 全部年度時請後端分年度呈現（每年統計＋前幾筆）；選了某一年就用一般清單分頁
   const grouped = !filters.year;
@@ -269,10 +281,20 @@ export function BudgetPage({ refreshToken, onOpenId }: BudgetPageProps) {
             在 g0v 的狀態常是「交付審查」，照狀態分類會變成「審議中」，把統計灌大 */}
         <div className="segmented scope-switch" role="group" aria-label="統計範圍">
           <button type="button" aria-pressed={filters.scope === 'bills'} onClick={() => change({ scope: 'bills' })}>
-            只算預算案 {data ? data.bills_scope_total.toLocaleString() : ''}
+            只算預算案 {data ? data.scope_totals.bills.toLocaleString() : ''}
           </button>
           <button type="button" aria-pressed={filters.scope === 'all'} onClick={() => change({ scope: 'all' })}>
-            含報告類 {data ? data.all_scope_total.toLocaleString() : ''}
+            含報告類 {data ? data.scope_totals.all.toLocaleString() : ''}
+          </button>
+        </div>
+        {/* 一案一列：同一個預算案會有多筆議案紀錄（實測 115 年度總預算案 24 筆，分別交付不同委員會／會期），
+            不合併的話清單看起來就是同一行重複十幾次 */}
+        <div className="segmented merge-switch" role="group" aria-label="議案呈現方式">
+          <button type="button" aria-pressed={filters.merge !== 'none'} onClick={() => change({ merge: 'name' })}>
+            一案一列 {data ? data.merged_total.toLocaleString() : ''}
+          </button>
+          <button type="button" aria-pressed={filters.merge === 'none'} onClick={() => change({ merge: 'none' })}>
+            每筆議案 {data ? data.records_total.toLocaleString() : ''}
           </button>
         </div>
         {filters.proposer ? (

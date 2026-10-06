@@ -40,7 +40,7 @@ import { RankingsPage, RankingBoardView } from '../src/pages/RankingsPage';
 import { TopicsPanel, tagTier } from '../src/components/TopicsPanel';
 import { ComparePage } from '../src/pages/ComparePage';
 import { BudgetPage, progressDateText, scopeAfterCategoryChange } from '../src/pages/BudgetPage';
-import { YearProgressList, budgetProgressBar, budgetProgressText, hasReviewableItems, yearLabel } from '../src/components/BudgetProgress';
+import { YearProgressList, budgetProgressBar, budgetProgressText, budgetRecordsText, hasReviewableItems, yearLabel } from '../src/components/BudgetProgress';
 import { syncProgressText, syncRunningText } from '../src/lib/format';
 import { DashboardPage } from '../src/pages/DashboardPage';
 import { CommitteesPage } from '../src/pages/CommitteesPage';
@@ -939,6 +939,10 @@ check('流程條：未知狀態不畫', render(createElement(BillStageBar, { sta
 // 上游對本會期的預算議案沒有日期（實測 199/199），留白會像壞掉；排序上這種案子當成最新
 check('預算頁：沒有進度日期時明講「尚無進度日期」，不是空白', progressDateText('') === '尚無進度日期' && progressDateText(null) === '尚無進度日期');
 check('預算頁：有進度日期就照原樣顯示', progressDateText('2026-04-14') === '2026-04-14');
+
+// 一案一列：合併後要講清楚那一列是幾筆議案紀錄、各是什麼狀態
+check('議案紀錄彙總：多筆時列出各狀態筆數', budgetRecordsText({ reviewed: 9, in_review: 13, pending: 2 }, 24) === '9 筆已審查完畢、13 筆交付審查、2 筆排入院會');
+check('議案紀錄彙總：只有一筆時不要多餘的說明', budgetRecordsText({ in_review: 1 }, 1) === '');
 
 // 統計範圍的決策：點到報告類一定要含報告，否則「只算預算案」會是空清單
 check('統計範圍：點到報告類自動切成含報告類', scopeAfterCategoryChange({ currentScope: 'bills', isBillCategory: false }) === 'all');

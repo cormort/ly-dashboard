@@ -36,6 +36,19 @@ export function budgetProgressText(progress: BudgetProgress | null | undefined):
   return parts.join('・').replace('・（', '（');
 }
 
+/**
+ * 合併後的「這幾筆議案紀錄各是什麼狀態」，例如「9 筆已審查完畢、13 筆交付審查」。
+ * 一案一列時，單一狀態已經不能代表整個案子（115 年度總預算案就有 24 筆紀錄、狀態不一）。
+ */
+export function budgetRecordsText(recordStates: Partial<Record<string, number>>, records: number): string {
+  if (!records || records <= 1) return '';
+  const order = ['reviewed', 'in_review', 'pending', 'letter', 'returned'];
+  const label: Record<string, string> = { reviewed: '已審查完畢', in_review: '交付審查', pending: '排入院會', letter: '函件處理', returned: '退回' };
+  const parts = order.filter((k) => recordStates[k]).map((k) => `${recordStates[k]} 筆${label[k] ?? k}`);
+  for (const [k, v] of Object.entries(recordStates)) if (!order.includes(k) && v) parts.push(`${v} 筆${label[k] ?? k}`);
+  return parts.join('、');
+}
+
 /** 堆疊長條的比例（已審竣／審議中／待審查與退回；函件不畫，因為它不經審查） */
 export function budgetProgressBar(progress: BudgetProgress | null | undefined): { key: string; label: string; width: number }[] {
   const total = progress?.total ?? 0;

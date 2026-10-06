@@ -1850,10 +1850,58 @@ const BUDGET_STATE = new Map([
 export const BUDGET_STATES = ['reviewed', 'in_review', 'pending', 'letter', 'returned'];
 export const budgetState = (status) => BUDGET_STATE.get(status) ?? 'pending';
 
+/**
+ * 多筆議案紀錄合成「一個案子」時的彙總狀態。
+ *
+ * 為什麼要合併：同一個預算案會有多筆議案紀錄（實測「115年度中央政府總預算案」有 **24 筆**——
+ * 那是同一個預算案分別交付到不同委員會、不同會期審查的紀錄），清單上看起來就是同一行重複十幾次。
+ *
+ * 規則：全部都是函件處理 → 函件處理；需要審查的紀錄全部已審竣 → 已審竣；
+ * 否則取其餘紀錄裡最「進行中」的狀態（審議中 > 待審查 > 退回）。
+ */
+export const budgetUnitState = (states) => {
+  const reviewable = (states.reviewed ?? 0) + (states.in_review ?? 0) + (states.pending ?? 0) + (states.returned ?? 0);
+  if (reviewable === 0) return 'letter';
+  if (reviewable === (states.reviewed ?? 0)) return 'reviewed';
+  if (states.in_review) return 'in_review';
+  if (states.pending) return 'pending';
+  return 'returned';
+};
+
+/** 進度排序（取代表紀錄用）：越前面越「有進展」 */
+const BUDGET_STATE_RANK = { reviewed: 4, in_review: 3, pending: 2, letter: 1, returned: 0 };
+
+/**
+ * 一案一列：依（類別＋名稱）合併議案紀錄。
+ * 代表紀錄取最有進展的（同狀態再比最新進度日期、議案編號），日期取全部紀錄的最新。
+ */
+export const mergeBudgetUnits = (list) => {
+  const map = new Map();
+  for (const r of list) {
+    const state = budgetState(r.status);
+    const key = `${r.category}\u0000${r.name}`;
+    const hit = map.get(key);
+    if (!hit) {
+      map.set(key, { ...r, state, records: 1, states: { [state]: 1 } });
+      continue;
+    }
+    hit.records += 1;
+    hit.states[state] = (hit.states[state] ?? 0) + 1;
+    if (String(r.latest_date ?? '') > String(hit.latest_date ?? '')) hit.latest_date = r.latest_date;
+    const better =
+      BUDGET_STATE_RANK[state] > BUDGET_STATE_RANK[hit.state] ||
+      (BUDGET_STATE_RANK[state] === BUDGET_STATE_RANK[hit.state] && String(r.id) > String(hit.id));
+    if (better) Object.assign(hit, { id: r.id, status: r.status, state, session: r.session, url: r.url, proposer: r.proposer });
+    hit.state = budgetUnitState(hit.states);
+  }
+  return [...map.values()];
+};
+
 /** 一組預算議案的審議進度統計：總件數／已審竣／審議中／待審查／函件／退回，另給「尚未審竣」 */
 export const budgetProgress = (list) => {
   const out = { total: list.length, reviewed: 0, in_review: 0, pending: 0, letter: 0, returned: 0, awaiting: 0 };
-  for (const r of list) out[budgetState(r.status)] += 1;
+  // 合併後的單位自己帶 `state`（彙總狀態）；沒有的就用議案狀態推
+  for (const r of list) out[r.state ?? budgetState(r.status)] += 1;
   out.awaiting = out.in_review + out.pending + out.returned;
   return out;
 };
@@ -1904,7 +1952,7 @@ export function budgetBillsByProgress(db) {
  */
 export function listBudget(
   db,
-  { category = '', type = '', q = '', year = '', proposer = '', state = '', limit = 30, offset = 0, all = false, groupBy = '', perGroup = 5, scope: scopeArg = 'bills' } = {},
+  { category = '', type = '', q = '', year = '', proposer = '', state = '', limit = 30, offset = 0, all = false, groupBy = '', perGroup = 5, scope: scopeArg = 'bills', merge = 'name' } = {},
 ) {
   const resolvedLimit = all ? Infinity : Math.max(1, Math.min(Number(limit) || 30, 200));
   const resolvedOffset = Math.max(0, Math.trunc(Number(offset) || 0));
@@ -1923,8 +1971,12 @@ export function listBudget(
    * 注意：**類別件數（categories）不受範圍影響**——那是導覽用的，
    * 「決議書面報告 10,801」要一直看得到，否則使用者找不到那些報告。
    */
-  const scope = all === 'bills' || scopeArg === 'bills' ? 'bills' : 'all';
-  const rows = scope === 'bills' ? allRows.filter(isBill) : allRows;
+  const scope = scopeArg === 'all' ? 'all' : 'bills';
+  // 一案一列（預設）：同一案名的多筆議案紀錄合成一列，見 mergeBudgetUnits
+  const mergeUnits = merge === 'none' ? false : true;
+  const allUnits = mergeUnits ? mergeBudgetUnits(allRows) : allRows;
+  const rows = scope === 'bills' ? allUnits.filter(isBill) : allUnits;
+  const recordsInScope = (scope === 'bills' ? allRows.filter(isBill) : allRows).length;
   const count = (list, key) => {
     const m = new Map();
     for (const r of list) m.set(key(r), (m.get(key(r)) ?? 0) + 1);
@@ -1932,7 +1984,7 @@ export function listBudget(
   };
   const ranked = (map, n) => [...map].filter(([k]) => k).sort((a, b) => b[1] - a[1]).slice(0, n).map(([name, n2]) => ({ name: String(name), count: n2 }));
 
-  const categories = count(allRows, (r) => r.category);
+  const categories = count(allUnits, (r) => r.category);
   const needle = String(q ?? '').trim();
   const base = rows.filter(
     (r) => (!category || r.category === category) && (!needle || r.name.includes(needle) || String(r.proposer ?? '').includes(needle)),
@@ -1950,7 +2002,24 @@ export function listBudget(
   const byYear = year ? byType.filter((r) => yearKey(r) === String(year)) : byType;
   const proposers = count(byYear, (r) => r.proposer);
   const byProposer = proposer ? byYear.filter((r) => r.proposer === proposer) : byYear;
-  const matching = state ? byProposer.filter((r) => budgetState(r.status) === state) : byProposer;
+  /**
+   * 同一組篩選條件（類別／關鍵字／類型／年度／機關／狀態）套到任一組資料上。
+   * 給開關的數字用：兩個範圍的件數都要是**目前篩選下**的數字，否則切換鈕上的數字跟清單對不起來
+   * （例如只篩 115 年度時，鈕上寫「含報告類 11,292」但清單只有 367 件）。
+   */
+  const applyFilters = (list) => {
+    const baseList = list.filter(
+      (r) => (!category || r.category === category) && (!needle || r.name.includes(needle) || String(r.proposer ?? '').includes(needle)),
+    );
+    const typed = BUDGET_TYPES.includes(type) ? baseList.filter((r) => r.types.includes(type)) : baseList;
+    const dated = year ? typed.filter((r) => yearKey(r) === String(year)) : typed;
+    const byAgency = proposer ? dated.filter((r) => r.proposer === proposer) : dated;
+    return state ? byAgency.filter((r) => (r.state ?? budgetState(r.status)) === state) : byAgency;
+  };
+  const matching = applyFilters(rows);
+  const billsMatching = applyFilters(allUnits.filter(isBill));
+  const allMatching = applyFilters(allUnits);
+  const sumRecords = (list) => list.reduce((n, r) => n + (r.records ?? 1), 0);
   const resolvedPerGroup = Math.max(1, Math.min(Number(perGroup) || 5, 50));
 
   const itemOf = (r) => ({
@@ -1959,7 +2028,11 @@ export function listBudget(
     types: r.types,
     name: r.name,
     status: r.status,
-    state: budgetState(r.status),
+    state: r.state ?? budgetState(r.status),
+    /** 合併了幾筆議案紀錄（一案一列時才有意義） */
+    records: r.records ?? 1,
+    /** 各狀態各有幾筆紀錄（前端顯示「9 筆已審查完畢、13 筆交付審查」用） */
+    record_states: r.states ?? { [r.state ?? budgetState(r.status)]: 1 },
     proposer: r.proposer,
     fiscal_year: r.fiscal_year,
     session: r.session,
@@ -1985,8 +2058,18 @@ export function listBudget(
       scope === 'bills'
         ? '統計只算預算案本身（總預算案、法人預決算案）；決議書面報告等報告類另計'
         : '統計含決議案／定期報告（函送…請查照案的報告）',
-    all_scope_total: allRows.length,
-    bills_scope_total: allRows.filter(isBill).length,
+    all_scope_total: mergeUnits ? allMatching.length : sumRecords(allMatching),
+    bills_scope_total: mergeUnits ? billsMatching.length : sumRecords(billsMatching),
+    // 一案一列 vs 每筆議案（前端做開關用）：數字是**目前篩選下**的，切換鈕才跟清單一致
+    merge: mergeUnits ? 'name' : null,
+    // 兩種模式下都要給「合併後會是幾件」，否則切到每筆議案時一案一列那顆鈕會顯示 0
+    merged_total: mergeUnits ? matching.length : new Set(matching.map((r) => `${r.category}\u0000${r.name}`)).size,
+    records_total: sumRecords(matching),
+    // 兩個範圍在目前篩選下各有幾件（單位／紀錄），給「只算預算案／含報告類」開關
+    scope_totals: {
+      bills: mergeUnits ? billsMatching.length : sumRecords(billsMatching),
+      all: mergeUnits ? allMatching.length : sumRecords(allMatching),
+    },
     total: matching.length,
     count: Math.min(resolvedLimit, Math.max(0, matching.length - resolvedOffset)),
     // is_bills：這一類是不是「議案本身」（前端點到報告類的類別時要自動把範圍切到 all，不然會是空的）
@@ -2357,12 +2440,25 @@ export function listCommitteeActivity(db, { committee = '', q = '', limit = 20 }
 
 export function budgetCsv(items) {
   const TYPE_LABEL = { general: '總預算', subsidiary: '附屬單位預算', special: '特別預算', supplementary: '追加預算' };
+  // 「一案一列」時 items 是合併後的案子：多給「議案紀錄筆數」與各狀態筆數，才知道那一列代表幾筆紀錄
+  const merged = items.some((b) => (b.records ?? 1) > 1);
   const header = ['議案編號', '類別', '預算類型', '名稱', '提案單位', '預算年度', '狀態', '最新進度日期', '連結'];
+  if (merged) header.push('議案紀錄筆數', '狀態筆數');
   return [
     csvRow(header),
-    ...items.map((b) => csvRow([b.id, b.category, b.types.map((t) => TYPE_LABEL[t]).join('、'), b.name, b.proposer, b.fiscal_year, b.status, b.latest_date, b.url])),
+    ...items.map((b) => {
+      const row = [b.id, b.category, b.types.map((t) => TYPE_LABEL[t]).join('、'), b.name, b.proposer, b.fiscal_year, b.status, b.latest_date, b.url];
+      if (merged) {
+        const states = b.record_states ?? {};
+        row.push(b.records ?? 1, Object.entries(states).map(([k, n]) => `${CSV_STATE_LABEL[k] ?? k} ${n}`).join('、'));
+      }
+      return csvRow(row);
+    }),
   ].join('\r\n');
 }
+
+/** CSV 裡的狀態名稱（沿用畫面上的說法） */
+const CSV_STATE_LABEL = { reviewed: '已審竣', in_review: '審議中', pending: '待審查', letter: '函件處理', returned: '退回' };
 
 /** 三讀（含審查完畢後三讀、照案通過）視為通過 */
 const PASSED = new Set(['三讀', '審查完畢(三讀)', '照案通過']);

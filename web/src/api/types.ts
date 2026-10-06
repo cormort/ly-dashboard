@@ -680,6 +680,10 @@ export interface BudgetItem {
   status: string;
   /** 後端分好的審議狀態：已審竣／審議中／待審查／函件處理／退回 */
   state: BudgetState;
+  /** 這一列合併了幾筆議案紀錄（一案一列時才有意義；1＝只有一筆） */
+  records: number;
+  /** 各狀態各有幾筆紀錄（合併後顯示「9 筆已審查完畢、13 筆交付審查」用） */
+  record_states: Partial<Record<BudgetState, number>>;
   /** 提案單位（機關或委員會） */
   proposer: string;
   /** 從名稱抽出的預算年度（民國），抽不到為 null */
@@ -705,6 +709,14 @@ export interface BudgetResponse {
   scope_note: string;
   all_scope_total: number;
   bills_scope_total: number;
+  /** `name`＝一案一列（預設）／null＝每筆議案一列 */
+  merge: 'name' | null;
+  /** 目前篩選下：一案一列的件數 */
+  merged_total: number;
+  /** 目前篩選下：議案紀錄筆數 */
+  records_total: number;
+  /** 目前篩選下，兩個範圍各幾件（單位）或幾筆（紀錄），依 merge 而定 */
+  scope_totals: { bills: number; all: number };
   types: Record<BudgetType, number>;
   /** 分年度呈現（`group_by=year`）時才有 */
   group_by: 'year' | null;
