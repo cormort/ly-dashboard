@@ -40,7 +40,7 @@ import { RankingsPage, RankingBoardView } from '../src/pages/RankingsPage';
 import { TopicsPanel, tagTier } from '../src/components/TopicsPanel';
 import { ComparePage } from '../src/pages/ComparePage';
 import { BudgetPage, progressDateText } from '../src/pages/BudgetPage';
-import { YearProgressList, budgetProgressBar, budgetProgressText, yearLabel } from '../src/components/BudgetProgress';
+import { YearProgressList, budgetProgressBar, budgetProgressText, hasReviewableItems, yearLabel } from '../src/components/BudgetProgress';
 import { syncProgressText, syncRunningText } from '../src/lib/format';
 import { DashboardPage } from '../src/pages/DashboardPage';
 import { CommitteesPage } from '../src/pages/CommitteesPage';
@@ -951,6 +951,37 @@ check('預算進度長條：只畫審查相關的三段（函件不畫），比�
   return parts.length === 3 && Math.round(parts.reduce((sum, p) => sum + p.width, 0)) === 100 && parts.every((p) => p.key !== 'letter');
 })());
 check('預算年度名稱：上游沒給年度時講「年度不明」', yearLabel('unknown') === '年度不明' && yearLabel('115') === '115 年度');
+// 全是函件處理的年度：不要印「已審竣 0・尚未審竣 0」（看起來像一件都沒審，其實不經審查）
+const letterOnlyProgress = { total: 1, reviewed: 0, in_review: 0, pending: 0, letter: 1, returned: 0, awaiting: 0 };
+check('全是函件的年度：講明是函件處理、不印 0/0', budgetProgressText(letterOnlyProgress) === '總 1 件・其中 1 件是函件處理（不經審查）');
+check('全是函件的年度：不算「有需要審查的案子」', hasReviewableItems(letterOnlyProgress) === false && hasReviewableItems(progress115) === true);
+expectAll(
+  '各年度審議進度：只有函件的年度預設收起來（另給一個開關）',
+  render(
+    createElement(YearProgressList, {
+      years: [
+        { name: '115', count: 366, progress: progress115 },
+        { name: '119', count: 1, progress: letterOnlyProgress },
+      ],
+      active: '',
+      progress: null,
+      onPick: () => undefined,
+    }),
+  ),
+  ['115 年度', '另有 1 個年度只有函件處理（不經審查）'],
+);
+check('各年度審議進度：收起時不要把只有函件的年度列出來', (() => {
+  const html = render(
+    createElement(YearProgressList, {
+      years: [{ name: '119', count: 1, progress: letterOnlyProgress }],
+      active: '',
+      progress: null,
+      onPick: () => undefined,
+    }),
+  );
+  return !html.includes('119 年度') && html.includes('另有 1 個年度只有函件處理');
+})());
+
 expectAll(
   '各年度審議進度：每一列顯示「已審竣／總件數・剩幾件」並可點選',
   render(

@@ -4,7 +4,7 @@ import { buildUrl } from '../api/client';
 import type { BudgetItem, BudgetMeetingsResponse, BudgetReportsResponse, BudgetResponse, BudgetState, BudgetType } from '../api/types';
 import { EmptyState, ErrorState, LoadingState } from '../components/DataStates';
 import { InfoTip } from '../components/InfoTip';
-import { YearProgressList, budgetProgressText, yearLabel } from '../components/BudgetProgress';
+import { YearProgressList, budgetProgressText, hasReviewableItems, yearLabel } from '../components/BudgetProgress';
 import { SearchField } from '../components/SearchField';
 import { useApi } from '../hooks/useApi';
 import { pathFor } from '../hooks/useRoute';
@@ -137,6 +137,9 @@ export function BudgetPage({ refreshToken, onOpenId }: BudgetPageProps) {
   );
   const data = budget.data;
   const pages = data ? Math.max(1, Math.ceil(data.total / PAGE)) : 1;
+  // 年度分兩組（見下方下拉與 YearProgressList 的說明）
+  const reviewableYears = (data?.years ?? []).filter((y) => hasReviewableItems(y.progress));
+  const letterOnlyYears = (data?.years ?? []).filter((y) => !hasReviewableItems(y.progress));
   const allCount = data?.categories.reduce((sum, c) => sum + c.count, 0) ?? 0;
 
   return (
@@ -189,11 +192,24 @@ export function BudgetPage({ refreshToken, onOpenId }: BudgetPageProps) {
           <span className="sr-only">預算年度</span>
           <select value={filters.year} onChange={(event) => change({ year: event.target.value })}>
             <option value="">全部年度</option>
-            {(data?.years ?? []).map((y) => (
-              <option key={y.name} value={y.name}>
-                {yearLabel(y.name)}（{y.count}）
-              </option>
-            ))}
+            {/* 年度分兩組：只有函件處理的年度（實測 103、105–110、119 年度）沒有需要審查的案子，
+                混在真的預算年度之間會讓人誤會，所以放另一組 */}
+            <optgroup label="年度">
+              {reviewableYears.map((y) => (
+                <option key={y.name} value={y.name}>
+                  {yearLabel(y.name)}（{y.count}）
+                </option>
+              ))}
+            </optgroup>
+            {letterOnlyYears.length > 0 ? (
+              <optgroup label="只有函件處理的年度（不經審查）">
+                {letterOnlyYears.map((y) => (
+                  <option key={y.name} value={y.name}>
+                    {yearLabel(y.name)}（{y.count}）
+                  </option>
+                ))}
+              </optgroup>
+            ) : null}
           </select>
         </label>
         <div className="segmented" role="group" aria-label="審議狀態">

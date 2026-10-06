@@ -415,11 +415,26 @@ export function normalizeBudget(pages, expectedTotal = pages?.[0]?.total) {
       name,
       status: field(row, '議案狀態'),
       proposer: field(row, '提案單位/提案委員'),
-      fiscal_year: Number(/(\d{2,3})\s*年度/.exec(name)?.[1]) || null,
+      fiscal_year: budgetFiscalYear(name),
       latest_date: field(row, '最新進度日期'),
       url: field(row, 'url'),
     };
   });
+}
+
+/**
+ * 從議案名稱抽出預算年度。
+ *
+ * 要注意**年度區間**：「函送「115至119年度社會發展中程個案計畫…成本效益分析報告，請查照案」」
+ * 是 115 年度送進來的案子，但 115 後面接著「至」、不是「年度」，所以舊寫法 /(\d{2,3})\s*年度/
+ * 會跳過 115 直接抓到 119 —— 那筆就變成「119 年度」的案子（實測 13 筆含「N至M年度」的名稱受影響）。
+ * 碰到區間取**起始年**。
+ */
+export function budgetFiscalYear(name) {
+  const text = String(name ?? '');
+  const range = /(\d{2,3})\s*(?:至|[-~～])\s*\d{2,3}\s*年度/.exec(text);
+  if (range) return Number(range[1]);
+  return Number(/(\d{2,3})\s*年度/.exec(text)?.[1]) || null;
 }
 
 /**

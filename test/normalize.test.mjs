@@ -16,6 +16,7 @@ import {
   parseCsv,
   normalizeSocial,
   budgetTypes,
+  budgetFiscalYear,
 } from '../server/normalize.mjs';
 
 const fixture = (name) => JSON.parse(readFileSync(fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url)), 'utf8'));
@@ -289,4 +290,16 @@ test('預算類型：要有年度、要是預算案本身（決議函件與報�
   for (const [name, expected] of cases) assert.deepEqual(budgetTypes(name), expected, name.slice(0, 34));
   // 類別不是「議案本身」（決議案／定期報告）→ 一律不給類型，就算名稱看起來像預算案
   assert.deepEqual(budgetTypes('「115年度中央政府總預算案」案。', { billCategory: false }), []);
+});
+
+test('預算年度：名稱含「N至M年度」的區間要取起始年', () => {
+  // 實測那筆：「函送「115至119年度社會發展中程個案計畫－海外華語文學習深耕計畫」…請查照案。」
+  // 舊寫法只認「數字緊接年度」，115 後面接著「至」就被跳過，整筆變成 119 年度。
+  assert.equal(budgetFiscalYear('函送「115至119年度社會發展中程個案計畫－海外華語文學習深耕計畫」選擇方案及替代方案成本效益分析報告，請查照案。'), 115);
+  assert.equal(budgetFiscalYear('函送「國家運動訓練中心109至113年度總體評鑑分析報告」，請查照案。'), 109);
+  assert.equal(budgetFiscalYear('「中華民國113年度中央政府總決算暨附屬單位決算及綜計表審核報告」、「中央政府前瞻基礎建設計畫第4期特別決算審核報告（中華民國112年度至113年度）」案。'), 113);
+  // 單一年度不受影響
+  assert.equal(budgetFiscalYear('「115年度中央政府總預算追加預算案」案。'), 115);
+  assert.equal(budgetFiscalYear('「114年度中央政府總預算案（含附屬單位預算及綜計表－營業及非營業部分）」及「中央政府前瞻基礎建設計畫第5期特別預算案」案。'), 114);
+  assert.equal(budgetFiscalYear('沒有年度的案子。'), null);
 });

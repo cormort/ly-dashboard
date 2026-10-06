@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { BudgetProgress, BudgetYear } from '../api/types';
 
 /**
@@ -14,16 +15,24 @@ import type { BudgetProgress, BudgetYear } from '../api/types';
 /** 年度名稱：上游沒給年度的是 `unknown`（實測 1,565 筆，多半是決議函） */
 export const yearLabel = (name: string): string => (name === 'unknown' ? '年度不明' : `${name} 年度`);
 
-/** 一句話的進度統計，例如「總 40 件・已審竣 15・尚未審竣 25（審議中 22、待審查 3）」 */
+/** 這一年有沒有需要審查的案子？（全是函件處理的年度＝沒有） */
+export const hasReviewableItems = (progress: BudgetProgress): boolean => progress.reviewed + progress.awaiting > 0;
+
+/**
+ * 一句話的進度統計，例如「總 40 件・已審竣 15・尚未審竣 25（審議中 22、待審查 3）」。
+ * 整批都是函件處理時（例如某年度只有 1 件「請查照案」）不要印「已審竣 0・尚未審竣 0」——
+ * 那種數字看起來像「一件都沒審」，其實是根本不經審查。
+ */
 export function budgetProgressText(progress: BudgetProgress | null | undefined): string {
   if (!progress || progress.total === 0) return '沒有符合的案子';
+  if (!hasReviewableItems(progress)) return `總 ${progress.total} 件・其中 ${progress.letter} 件是函件處理（不經審查）`;
   const parts = [`總 ${progress.total} 件`, `已審竣 ${progress.reviewed}`, `尚未審竣 ${progress.awaiting}`];
   const detail = [];
   if (progress.in_review) detail.push(`審議中 ${progress.in_review}`);
   if (progress.pending) detail.push(`待審查 ${progress.pending}`);
   if (progress.returned) detail.push(`退回 ${progress.returned}`);
   if (detail.length) parts.push(`（${detail.join('、')}）`);
-  if (progress.letter) parts.push(`・函件處理 ${progress.letter} 件不列入審查`);
+  if (progress.letter) parts.push(`函件處理 ${progress.letter} 件不列入審查`);
   return parts.join('・').replace('・（', '（');
 }
 
@@ -58,38 +67,63 @@ export interface YearProgressListProps {
  * 點一列就只看那一年（等同套用年度條件）。
  */
 export function YearProgressList({ years, active, progress = null, onPick }: YearProgressListProps) {
+  const [showLetterOnly, setShowLetterOnly] = useState(false);
   if (years.length === 0) return null;
-  const rows: { key: string; label: string; progress: BudgetProgress }[] = [
-    ...(progress && active ? [{ key: '', label: '全部年度', progress }] : []),
-    ...years.map((y) => ({ key: y.name, label: yearLabel(y.name), progress: y.progress })),
+  const toRow = (key: string, label: string, p: BudgetProgress) => ({ key, label, progress: p });
+  const main: { key: string; label: string; progress: BudgetProgress }[] = [
+    ...(progress && active ? [toRow('', '全部年度', progress)] : []),
+    ...years.filter((y) => hasReviewableItems(y.progress)).map((y) => toRow(y.name, yearLabel(y.name), y.progress)),
   ];
+  const letterOnly = years.filter((y) => !hasReviewableItems(y.progress)).map((y) => toRow(y.name, yearLabel(y.name), y.progress));
+
+  const row = (r: { key: string; label: string; progress: BudgetProgress }) => {
+    const segments = budgetProgressBar(r.progress);
+    return (
+      <button
+        key={r.key || 'all'}
+        type="button"
+        className="year-progress-row"
+        aria-pressed={active === r.key}
+        onClick={() => onPick(r.key)}
+        title={`${r.label}：${budgetProgressText(r.progress)}`}
+      >
+        <span className="year-progress-name">{r.label}</span>
+        <span className="year-bar" aria-hidden="true">
+          {segments.map((s) => (
+            <span key={s.key} className={`year-bar-part ${s.key}`} style={{ width: `${s.width}%` }} title={`${s.label}`} />
+          ))}
+        </span>
+        <span className="year-progress-numbers">
+          {hasReviewableItems(r.progress) ? (
+            <>
+              <b>{r.progress.reviewed}</b>
+              <span className="muted">/ {r.progress.total} 已審竣</span>
+              <span className="muted">・剩 {r.progress.awaiting}</span>
+            </>
+          ) : (
+            <span className="muted">函件處理 {r.progress.letter} 件</span>
+          )}
+        </span>
+      </button>
+    );
+  };
+
   return (
     <div className="year-progress" role="group" aria-label="各年度審議進度">
-      {rows.map((row) => {
-        const segments = budgetProgressBar(row.progress);
-        return (
+      {main.map(row)}
+      {letterOnly.length > 0 ? (
+        <>
           <button
-            key={row.key || 'all'}
             type="button"
-            className="year-progress-row"
-            aria-pressed={active === row.key}
-            onClick={() => onPick(row.key)}
-            title={`${row.label}：${budgetProgressText(row.progress)}`}
+            className="link-button year-letter-toggle"
+            aria-expanded={showLetterOnly}
+            onClick={() => setShowLetterOnly(!showLetterOnly)}
           >
-            <span className="year-progress-name">{row.label}</span>
-            <span className="year-bar" aria-hidden="true">
-              {segments.map((s) => (
-                <span key={s.key} className={`year-bar-part ${s.key}`} style={{ width: `${s.width}%` }} title={`${s.label}`} />
-              ))}
-            </span>
-            <span className="year-progress-numbers">
-              <b>{row.progress.reviewed}</b>
-              <span className="muted">/ {row.progress.total} 已審竣</span>
-              <span className="muted">・剩 {row.progress.awaiting}</span>
-            </span>
+            {showLetterOnly ? '收起只有函件的年度' : `另有 ${letterOnly.length} 個年度只有函件處理（不經審查）`}
           </button>
-        );
-      })}
+          {showLetterOnly ? letterOnly.map(row) : null}
+        </>
+      ) : null}
     </div>
   );
 }
