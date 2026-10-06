@@ -773,6 +773,22 @@ const SOCIAL_COLUMNS = { name: '姓名', pageName: '臉書專頁名稱', latestD
 const THREADS_COLUMNS = { url: 'Threads連結', latestDate: 'Threads最新貼文日期', summary: 'Threads最新貼文主題摘要' };
 
 /**
+ * 兩個粉專網址是不是同一個頁面（只差大小寫、結尾斜線、http/https、www./m. 時算同一個）。
+ * 更正表與整理表指向同一個粉專時，貼文日期／摘要要留著 —— 那是同一個頁面抓來的資料。
+ */
+export function sameSocialPage(a, b) {
+  const norm = (u) =>
+    String(u ?? '')
+      .trim()
+      .toLowerCase()
+      .replace(/^https?:\/\//, '')
+      .replace(/^(www\.|m\.)/, '')
+      .replace(/\/+$/, '');
+  const left = norm(a);
+  return left !== '' && left === norm(b);
+}
+
+/**
  * 社群帳號整理表 → [{ legislator_id, platform, page_name, url, latest_post_date, latest_post_summary }]。
  * 以漢名（newsName）對應委員；對不到比例過高或欄位改名時 fail closed。
  */
@@ -871,7 +887,16 @@ export function normalizeSocial(csvText, legislatorIdByNewsName, { overrides = [
     };
     const index = accounts.findIndex((a) => a.legislator_id === legislatorId && a.platform === platform);
     if (index >= 0 && action !== 'add') {
-      warnings.push(`以更正表覆蓋 ${override.legislator} 的 ${platform}：${accounts[index].url} → ${override.url}`);
+      // 更正表的網址與整理表是同一個粉專時（常見：整理表後來照著更正表修好了），
+      // 貼文日期／摘要要留著 —— 那還是同一個頁面抓來的資料。清掉的話會出現
+      // 「表上有日期、畫面上卻寫整理表還沒有貼文日期」這種明明有資料卻不見的情況。
+      if (sameSocialPage(accounts[index].url, override.url)) {
+        entry.latest_post_date = accounts[index].latest_post_date ?? '';
+        entry.latest_post_summary = accounts[index].latest_post_summary ?? '';
+        warnings.push(`更正表與整理表的 ${platform} 網址相同（${override.legislator}）：保留貼文日期與摘要`);
+      } else {
+        warnings.push(`以更正表覆蓋 ${override.legislator} 的 ${platform}：${accounts[index].url} → ${override.url}`);
+      }
       accounts[index] = entry;
     } else if (index >= 0) {
       warnings.push(`更正表略過 ${override.legislator} 的 ${platform}（已存在且 action=add）`);

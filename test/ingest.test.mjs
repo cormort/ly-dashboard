@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { openDb, applyDataset, applyBills, applySocial, applyCommitteeRecords, applyCommitteeMeets, upsertNews, upsertArticles, pruneNews, pruneLogs, getMeta, setMeta, migrate } from '../server/db.mjs';
-import { buildDataset, normalizeBills, normalizeCommitteeRecords, normalizeMeetings, normalizeSocial, normalizeCouncilSocial, sheetDate, newsName, rocDate, DataValidationError } from '../server/normalize.mjs';
+import { buildDataset, normalizeBills, normalizeCommitteeRecords, normalizeMeetings, normalizeSocial, normalizeCouncilSocial, sameSocialPage, sheetDate, newsName, rocDate, DataValidationError } from '../server/normalize.mjs';
 import { CONFIG } from '../server/config.mjs';
 import { entityFeedUrl, guardShrink, runIngest, runBillsIngest, runRecordsIngest, runBudgetIngest, runBudgetReportsIngest, runMeetingsIngest, budgetPageUrl, runNewsIngest, runOutletNews, runOutletPoll, retagOutletArticles, runNewsBackfill, backfillTargets, rangeFeedUrl, BACKFILL_CAP, runNewsFeedImport, runCouncilNews, runCouncilSocialIngest, runSocialIngest, runAll } from '../server/ingest.mjs';
 import { entityNewsTerms, listFunds, getHealth, listBills, listBudget, listBudgetMeetings, listBudgetReports, budgetState, listChanges, listCounties, listLegislatorVotes, listRankings, compareLegislators, listRegions, listSplitTicket, listDemographics, listPopulationTrend, getTownMap, listLegislators, listNews, listNewsArticles, newsCsv, listCouncilActivity, currentCouncilors, socialFreshness, listSyncRuns } from '../server/queries.mjs';
@@ -567,6 +567,14 @@ test('非 200 且不可重試（403）只打一次就失敗', async () => {
 
 /* ---------------- 社群更正表（人工確認過的粉專覆蓋整理表） ---------------- */
 
+test('sameSocialPage：同一個粉專的網址寫法不同算同一個，不同粉專不算', () => {
+  assert.ok(sameSocialPage('https://www.facebook.com/kuanheng99/', 'https://facebook.com/kuanheng99'));
+  assert.ok(sameSocialPage('HTTPS://WWW.FACEBOOK.COM/X/', 'http://m.facebook.com/x'));
+  assert.ok(!sameSocialPage('https://www.facebook.com/a/', 'https://www.facebook.com/b/'));
+  assert.ok(!sameSocialPage('', ''), '兩個空字串不算同一個頁面（否則空值會被當成有對應）');
+  assert.ok(!sameSocialPage('https://www.facebook.com/a/', ''));
+});
+
 test('社群更正表：覆蓋整理表的錯誤網址，並清掉屬於舊網址的貼文摘要', () => {
   const db = seeded();
   const dataset = buildDataset(fixture('id9.json'), fixture('id14.json'));
@@ -599,6 +607,34 @@ test('社群更正表：覆蓋整理表的錯誤網址，並清掉屬於舊網�
   const stored = db.prepare('SELECT url, source FROM social_accounts WHERE legislator_id = ?').get(target.legislator_id);
   assert.equal(stored.source, 'override');
   assert.equal(stored.url, 'https://www.facebook.com/correct-page/');
+});
+
+test('社群更正表：網址與整理表相同時保留貼文日期／摘要（不該清掉自己的資料）', () => {
+  const db = seeded();
+  const dataset = buildDataset(fixture('id9.json'), fixture('id14.json'));
+  const idByName = new Map(dataset.legislators.map((l) => [newsName(l.name), l.id]));
+  const csv = fixtureText('social.csv');
+  const { accounts } = normalizeSocial(csv, idByName);
+
+  // 整理表已經照更正表修好了：更正表的網址與整理表是同一個粉專（這裡只差結尾斜線）
+  const target = accounts.find((a) => a.latest_post_date && a.legislator_id);
+  const name = dataset.legislators.find((l) => l.id === target.legislator_id).name;
+  const sameUrl = target.url.endsWith('/') ? target.url : `${target.url}/`;
+
+  const result = normalizeSocial(csv, idByName, { overrides: [{ legislator: name, url: sameUrl }] });
+  const kept = result.accounts.find((a) => a.legislator_id === target.legislator_id);
+  assert.equal(kept.source, 'override', '來源仍標成 override（人工確認過的網址）');
+  assert.equal(kept.latest_post_date, target.latest_post_date, '同一個粉專的貼文日期要留著');
+  assert.equal(kept.latest_post_summary, target.latest_post_summary, '摘要也要留著');
+  assert.ok(
+    result.warnings.some((w) => w.includes('網址相同') && w.includes(name)),
+    '要留下「網址相同、保留資料」的紀錄',
+  );
+
+  // 真的換了網址才清（上面那個測試顧到）；寫進資料庫後日期要在
+  applySocial(db, result.accounts, { fetchedAt: '2026-09-30T09:00:00.000Z' });
+  const stored = db.prepare('SELECT latest_post_date, latest_post_summary FROM social_accounts WHERE legislator_id = ?').get(target.legislator_id);
+  assert.equal(stored.latest_post_date, target.latest_post_date);
 });
 
 test('社群更正表：補上整理表沒有的委員；非 facebook 網址要 fail closed', () => {
