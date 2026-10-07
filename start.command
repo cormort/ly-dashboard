@@ -32,10 +32,12 @@ fi
 # 先跟 GitHub 同步；離線或本機有衝突就跳過，用現有版本照常啟動
 git pull --ff-only || echo "（同步失敗，沿用本機版本）"
 
-[ -d web/node_modules ] || npm --prefix web install
+# 沒裝過、或 lockfile 比上次安裝新（剛 pull 帶進新套件）就重裝；用 npm ci 不會改寫 package-lock.json
+if [ ! -f web/node_modules/.package-lock.json ] || [ web/package-lock.json -nt web/node_modules/.package-lock.json ]; then
+  npm --prefix web ci
+fi
 # 前端原始碼比 dist 新（例如剛 pull 下來）就重 build，避免開到舊版
 if [ ! -f web/dist/index.html ] || [ -n "$(find web/src web/index.html web/package.json web/package-lock.json -newer web/dist/index.html -print -quit)" ]; then
-  npm --prefix web install
   npm --prefix web run build
 fi
 

@@ -8,6 +8,9 @@ export PORT
 
 command -v node >/dev/null || { echo "找不到 node，請先執行：pkg install -y nodejs git"; exit 1; }
 
+# 先跟 GitHub 同步；離線或本機有衝突就跳過，用現有版本照常啟動
+git pull --ff-only || echo "（同步失敗，沿用本機版本）"
+
 # 防止平板休眠時 Termux 被系統殺掉
 command -v termux-wake-lock >/dev/null && termux-wake-lock || true
 
