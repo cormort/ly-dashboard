@@ -113,3 +113,11 @@ test('API 伺服器包裝腳本：連接埠已被占用時要 exit 0（否則 la
     await new Promise((resolve) => server.close(resolve));
   }
 });
+
+test('shell：啟動腳本要把埠號 export 給 node（不然 LY_PORT 只管到檢查，node 還是聽 8787）', () => {
+  const script = readFileSync(join(SCRIPTS, 'ly-dashboard-server.sh'), 'utf8');
+  // server 讀的是 PORT（見 server/config.mjs）；只設 LY_PORT 會讓「檢查的埠」與「監聽的埠」不一致，
+  // 2026-10-07 真的發生過：LY_PORT=8788 啟動，結果佔用 8787，接著判定「已經有伺服器在跑」而混淆
+  assert.match(script, /export PORT/, 'ly-dashboard-server.sh 要把 PORT export 出去');
+  assert.match(script, /PORT="\$\{LY_PORT:-8787\}"/, 'PORT 預設值仍要可由 LY_PORT 覆寫');
+});

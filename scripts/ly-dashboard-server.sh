@@ -15,6 +15,9 @@ set -uo pipefail
 export PATH="/opt/homebrew/bin:/usr/local/bin:${HOME}/.local/bin:${PATH}"
 
 PORT="${LY_PORT:-8787}"
+# 一定要 export：server 讀的是 PORT，只設 LY_PORT 的話「檢查的埠」跟「實際監聽的埠」會是兩個
+# （2026-10-07 真的踩到：LY_PORT=8788 開起來卻佔用 8787）
+export PORT
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
@@ -23,5 +26,5 @@ if lsof -nP -iTCP:"${PORT}" -sTCP:LISTEN >/dev/null 2>&1; then
   exit 0
 fi
 
-echo "$(date '+%F %T') 啟動立委觀測站 API 伺服器：127.0.0.1:${PORT}"
+echo "$(date '+%F %T') 啟動立委觀測站 API 伺服器：${LY_HOST:-127.0.0.1}:${PORT}"
 exec node server/index.mjs
