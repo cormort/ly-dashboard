@@ -9,10 +9,25 @@ export PORT
 if [ "${1:-}" = "--lan" ]; then
   export LY_HOST=0.0.0.0
   IP="$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || true)"
+  TS="$(ifconfig | awk '/inet 100\./{print $2; exit}')"
   echo "區網網址：http://${IP:-<你的IP>}:${PORT}/"
+  [ -z "$TS" ] || echo "Tailscale 網址：http://${TS}:${PORT}/"
 fi
 
 command -v node >/dev/null || { echo "找不到 node，請先安裝 Node.js 22.5 以上"; read -r; exit 1; }
+
+# 8787 已經有伺服器在跑（例如另一個視窗）就不重複啟動，直接開網址
+if curl -sf "http://127.0.0.1:${PORT}/api/v1/health" >/dev/null; then
+  # 要開區網版，但正在跑的是只綁 127.0.0.1 的本機版：別人連不到，提示先關掉
+  if [ "${1:-}" = "--lan" ] && lsof -iTCP:"${PORT}" -sTCP:LISTEN -n -P | grep -q "127.0.0.1:${PORT}"; then
+    echo "現在是僅限本機模式（別人連不到）。請先關掉原本的視窗，再用區網模式開。"
+    read -r
+    exit 1
+  fi
+  echo "已經有伺服器在跑（port ${PORT}），直接開啟網頁；要重啟請先關掉原本的視窗"
+  open "http://127.0.0.1:${PORT}/"
+  exit 0
+fi
 
 # 先跟 GitHub 同步；離線或本機有衝突就跳過，用現有版本照常啟動
 git pull --ff-only || echo "（同步失敗，沿用本機版本）"
