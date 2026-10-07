@@ -1296,6 +1296,10 @@ a.stat-tile:hover { border-color: #98a2b3; box-shadow: var(--card-base-hover); t
 /* 社群整理表過期提醒（人工維護的資料停更時，不要讓舊日期看起來像最新） */
 .social-stale { display: block; color: var(--warn); }
 .council-fb-latest { display: block; margin-top: 2px; font-size: var(--fs-sm); color: var(--muted); }
+/* 最新一則貼文的互動數（讚／留言）：跟著「最新貼文」那一行，抓不到就整行不畫 */
+.wall-engagement { display: flex; align-items: center; gap: 10px; margin-top: 2px; font-size: var(--fs-sm); color: var(--muted); }
+.wall-engagement span { display: inline-flex; align-items: center; gap: 4px; }
+.wall-engagement svg { width: 14px; height: 14px; }
 
 /* ---------- 委員 › 粉專牆 ---------- */
 /* 篩選列：標籤固定寬度，chips 自己換行（重用 .chip 與 .law-facets） */

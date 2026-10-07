@@ -148,6 +148,9 @@ CREATE TABLE IF NOT EXISTS social_accounts (
   url TEXT NOT NULL,
   latest_post_date TEXT,
   latest_post_summary TEXT,
+  -- 最新一則貼文的互動數（讚／留言）；抓不到就 NULL，不用 0 假裝「沒有人按讚」
+  latest_post_likes INTEGER,
+  latest_post_comments INTEGER,
   -- 'sheet'（整理表）或 'override'（人工更正表）；用來分辨哪些是追蹤過的資料
   source TEXT,
   PRIMARY KEY (legislator_id, platform, url)
@@ -259,6 +262,13 @@ export function migrate(db) {
   const socialCols = new Set(db.prepare('PRAGMA table_info(social_accounts)').all().map((c) => c.name));
   if (!socialCols.has('source')) {
     db.exec('ALTER TABLE social_accounts ADD COLUMN source TEXT');
+    db.prepare("DELETE FROM meta WHERE key = 'social_applied_sha'").run();
+  }
+  // 最新貼文的互動數（讚／留言）：新欄位對既有資料庫是 NULL，跑一次同步就會從整理表補上。
+  // 順手清掉 applied_sha，讓「整理表內容沒變」的那一輪也會重新套用一次（否則要等到表有變動才會有數字）。
+  if (!socialCols.has('latest_post_likes') || !socialCols.has('latest_post_comments')) {
+    if (!socialCols.has('latest_post_likes')) db.exec('ALTER TABLE social_accounts ADD COLUMN latest_post_likes INTEGER');
+    if (!socialCols.has('latest_post_comments')) db.exec('ALTER TABLE social_accounts ADD COLUMN latest_post_comments INTEGER');
     db.prepare("DELETE FROM meta WHERE key = 'social_applied_sha'").run();
   }
   // 新聞的標題鍵（去掉空白的標題）：同標題去重要靠索引查，不能每寫一筆就 REPLACE() 掃一次全表
@@ -802,11 +812,21 @@ export function applySocial(db, accounts, { fetchedAt }) {
 
     db.exec('DELETE FROM social_accounts');
     const insert = db.prepare(
-      `INSERT OR REPLACE INTO social_accounts(legislator_id, platform, page_name, url, latest_post_date, latest_post_summary, source)
-       VALUES(?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT OR REPLACE INTO social_accounts(legislator_id, platform, page_name, url, latest_post_date, latest_post_summary, latest_post_likes, latest_post_comments, source)
+       VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     for (const a of accounts) {
-      insert.run(a.legislator_id, a.platform, a.page_name, a.url, a.latest_post_date, a.latest_post_summary, a.source ?? 'sheet');
+      insert.run(
+        a.legislator_id,
+        a.platform,
+        a.page_name,
+        a.url,
+        a.latest_post_date,
+        a.latest_post_summary,
+        Number.isFinite(a.latest_post_likes) ? a.latest_post_likes : null,
+        Number.isFinite(a.latest_post_comments) ? a.latest_post_comments : null,
+        a.source ?? 'sheet',
+      );
     }
     setMeta(db, 'social_fetched_at', fetchedAt);
     setMeta(db, 'social_count', String(accounts.length));

@@ -57,6 +57,20 @@ test('粉專牆：預設只回最近更新的 5 位，且依貼文日期新到�
   assert.equal(wall.count, 5);
 });
 
+test('粉專牆：帶著最新一則貼文的讚數／留言數；抓不到就是 null（不寫 0）', () => {
+  const db = seeded([
+    { ...fb('00001', '丁學忠', '2026-09-30'), latest_post_likes: 1465, latest_post_comments: 103 },
+    fb('00003', '王世堅', '2026-09-29'), // 整理表還沒有互動數
+  ]);
+  const wall = listSocialWall(db, { limit: 100 });
+  const ding = wall.items.find((i) => i.name === '丁學忠');
+  assert.equal(ding.latest_post_likes, 1465);
+  assert.equal(ding.latest_post_comments, 103);
+  const wang = wall.items.find((i) => i.name === '王世堅');
+  assert.equal(wang.latest_post_likes, null, '沒有值＝null，畫面上不要顯示 0');
+  assert.equal(wang.latest_post_comments, null);
+});
+
 test('粉專牆：沒有貼文日期的排在最後，不會被當成最新', () => {
   const wall = listSocialWall(seeded(ACCOUNTS), { limit: 100 });
   assert.equal(wall.items.length, 7);

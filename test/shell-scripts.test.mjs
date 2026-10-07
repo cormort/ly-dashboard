@@ -1,5 +1,6 @@
-import { mkdirSync, rmSync, existsSync, readFileSync, writeFileSync, readdirSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync, readdirSync } from 'node:fs';
 import { createServer } from 'node:net';
+import { tmpdir } from 'node:os';
 import { spawnSync, execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -50,20 +51,27 @@ test('shell：$VAR 後面直接接全形字元要寫成 ${VAR}（否則 bash 會
 
 test('每日抓取腳本：搶不到鎖就跳過（不可以失敗，也不可以刪掉別人的鎖）', async () => {
   const repo = fileURLToPath(new URL('..', import.meta.url));
-  const lock = join(repo, '.cache', 'fb-daily.lock');
+  // 鎖放免洗目錄（LY_FB_LOG_DIR）：原本用正式的 .cache/fb-daily.lock，測試的 finally 會把它刪掉，
+  // 於是「每日排程跑到一半」時跑一次測試，就把那一輪的鎖偷走了（2026-10-07 實際發生）。
+  const dir = mkdtempSync(join(tmpdir(), 'ly-fb-lock-'));
+  const lock = join(dir, 'fb-daily.lock');
+  // 正式路徑的鎖「現在存不存在」不重要（排程跑到一半時它真的存在）；重點是測試不可以動它。
+  const prodLock = join(repo, '.cache', 'fb-daily.lock');
+  const prodBefore = existsSync(prodLock);
   mkdirSync(lock, { recursive: true });
   try {
     const result = spawnSync('bash', [join(repo, 'scripts/fb-daily.sh'), '--ids', '1'], {
       cwd: repo,
-      env: { ...process.env, LY_NOTIFY: '0' }, // 測試不送 Telegram
+      env: { ...process.env, LY_NOTIFY: '0', LY_FB_LOG_DIR: dir }, // 測試不送 Telegram、不碰正式目錄
       encoding: 'utf8',
     });
     assert.equal(result.status, 0, '搶不到鎖要乾淨跳過（exit 0），不是失敗');
     assert.ok(existsSync(lock), '別人的鎖不可以被這次跳過刪掉');
-    const log = readFileSync(join(repo, '.cache', 'fb-daily.log'), 'utf8');
+    const log = readFileSync(join(dir, 'fb-daily.log'), 'utf8');
     assert.match(log, /已有另一輪抓取在跑/);
+    assert.equal(existsSync(prodLock), prodBefore, '測試不可以動到正式路徑的鎖（那可能是正在跑的那一輪的）');
   } finally {
-    rmSync(lock, { recursive: true, force: true });
+    rmSync(dir, { recursive: true, force: true });
   }
 });
 

@@ -259,6 +259,47 @@ test('normalizeSocial：真實整理表 113 位全數對應到在職委員', () 
   assert.ok(accounts.every((a) => /^\d{4}-\d{2}-\d{2}$/.test(a.latest_post_date) && a.latest_post_summary));
 });
 
+test('normalizeSocial：最新貼文的讚數／留言數是選填欄位（有欄位才讀、沒有就 null，不是 0）', () => {
+  // 沒有這兩欄時（整理表還沒加）：整批 null。不能寫 0 —— 畫面上 0 會被讀成「沒有人按讚」。
+  const without = normalizeSocial(socialCsv, idByNewsName());
+  assert.ok(without.accounts.every((a) => a.latest_post_likes === null && a.latest_post_comments === null));
+
+  // 有欄位時：整數照讀（含千分位）；空白＝抓不到 → null；非數字不猜
+  const [head, ...lines] = socialCsv.split('\n');
+  const withCounts = [
+    head.replace('\r', ',最新貼文讚數,最新貼文留言數\r'),
+    lines[0].replace('\r', ',"1,465",103\r'),
+    lines[1].replace('\r', ',,\r'),
+    ...lines.slice(2),
+  ].join('\n');
+  const { accounts, warnings } = normalizeSocial(withCounts, idByNewsName());
+  assert.deepEqual(warnings, []);
+  assert.equal(accounts.length, 113);
+  assert.equal(accounts[0].latest_post_likes, 1465, '千分位的 1,465 要讀成整數');
+  assert.equal(accounts[0].latest_post_comments, 103);
+  assert.equal(accounts[1].latest_post_likes, null, '空白＝抓不到，不是 0');
+  assert.equal(accounts[1].latest_post_comments, null);
+});
+
+test('normalizeSocial：更正表指向同一個粉專時，讚數／留言數也要留著', () => {
+  const [head, ...lines] = socialCsv.split('\n');
+  const withCounts = [head.replace('\r', ',最新貼文讚數,最新貼文留言數\r'), lines[0].replace('\r', ',1465,103\r'), ...lines.slice(1)].join('\n');
+  const overrides = [{ legislator: '吳思瑤', url: 'https://www.facebook.com/taipeineedyou/' }]; // 只差結尾斜線＝同一個粉專
+  const { accounts } = normalizeSocial(withCounts, idByNewsName(), { overrides });
+  const account = accounts.find((a) => a.source === 'override');
+  assert.equal(account.latest_post_date, '2026-09-27', '同一個粉專：日期要保留');
+  assert.equal(account.latest_post_likes, 1465, '同一個粉專的互動數要保留');
+  assert.equal(account.latest_post_comments, 103);
+
+  // 真的換了網址：那筆貼文屬於舊頁面，互動數要清掉（日期／摘要的規則相同）
+  const { accounts: replaced } = normalizeSocial(withCounts, idByNewsName(), {
+    overrides: [{ legislator: '吳思瑤', url: 'https://www.facebook.com/wusuyao2026' }],
+  });
+  const other = replaced.find((a) => a.platform === 'facebook' && a.url.endsWith('wusuyao2026'));
+  assert.equal(other.latest_post_likes, null);
+  assert.equal(other.latest_post_comments, null);
+});
+
 test('normalizeSocial：欄位改名、筆數過少、姓名大量對不到時 fail closed', () => {
   assert.throws(() => normalizeSocial(socialCsv.replace('貼文或粉專連結', '連結'), idByNewsName()), DataValidationError);
   const [head, ...lines] = socialCsv.split('\n');

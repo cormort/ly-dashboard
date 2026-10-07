@@ -138,6 +138,29 @@ const EXTRACT = `() => {
   const dateRx = /(\\d{4}年\\d{1,2}月\\d{1,2}日)/;
   const relRx = /^(\\d+)\\s*(分鐘|小時|天|週|個月|年)/;
   const abs = (s) => { const m = (s || '').match(dateRx); return m ? m[1] : ''; };
+  // 互動數（讚／留言）：取「這一篇貼文」互動列的數字。Facebook 的貼文與貼文底下的留言都是
+  // role="article"，所以只認「容器就是這一篇」的按鈕 —— 不這樣做的話，一則被讚很多的留言
+  // 會蓋掉貼文本身的數字（實測：貼文 7,311 讚、裡面一則留言 84 個心情）。
+  const NUM = (t) => {
+    const m = String(t || '').replace(/,/g, '').match(/(\\d+(?:\\.\\d+)?)\\s*([萬千]?)/);
+    if (!m) return '';
+    const n = Math.round(Number(m[1]) * (m[2] === '萬' ? 10000 : m[2] === '千' ? 1000 : 1));
+    return Number.isFinite(n) ? String(n) : '';
+  };
+  const eng = (el) => {
+    const box = el.closest('[role="article"]');
+    if (!box) return { likes: '', comments: '' };
+    const owned = (n) => n.closest('[role="article"]') === box;
+    const btnNum = (label) => {
+      const b = [...box.querySelectorAll('[role="button"]')].find((n) => owned(n) && (n.getAttribute('aria-label') || '').trim() === label);
+      return b ? NUM((b.innerText || '').trim()) : '';
+    };
+    // 備援：aria-label 直接寫成「讚：1,429人」時取那個數字
+    const al = [...box.querySelectorAll('[role="button"], span[role="toolbar"]')]
+      .filter(owned).map((n) => (n.getAttribute('aria-label') || '').trim()).find((s) => /^讚[:：]/.test(s)) || '';
+    const m = al.match(/讚[:：]\\s*([\\d,.]+[萬千]?)/);
+    return { likes: btnNum('讚') || (m ? NUM(m[1]) : ''), comments: btnNum('留言') };
+  };
   document.querySelectorAll('[aria-label]').forEach((el) => {
     const d = abs(el.getAttribute('aria-label'));
     if (!d) return;
@@ -145,7 +168,7 @@ const EXTRACT = `() => {
     const href = a ? (a.href || '').split('?')[0] : '';
     // 留言的時間戳也要排除（留言的 aria-label 同樣是「2026年10月6日 …」）
     if (a && /comment_id=/.test(a.href || '')) return;
-    out.dates.push({ date: d, rel: '', href });
+    out.dates.push({ date: d, rel: '', href, ...eng(el) });
   });
   document.querySelectorAll('a[href*="/posts/"], a[href*="story_fbid"]').forEach((a) => {
     const raw = a.href || '';
@@ -155,8 +178,8 @@ const EXTRACT = `() => {
     const txt = (a.innerText || '').trim().replace(/\\s+/g, ' ');
     const href = raw.split('?')[0].split('#')[0];
     const d = abs(txt) || abs(a.getAttribute('aria-label') || '');
-    if (d) out.dates.push({ date: d, rel: '', href });
-    else if (relRx.test(txt)) out.dates.push({ date: '', rel: txt.slice(0, 20), href });
+    if (d) out.dates.push({ date: d, rel: '', href, ...eng(a) });
+    else if (relRx.test(txt)) out.dates.push({ date: '', rel: txt.slice(0, 20), href, ...eng(a) });
     else if (txt.length > 25) out.texts.push({ text: txt.slice(0, 600), href });
   });
   document.querySelectorAll('[data-ad-rendering-role="story_message"], [data-ad-comet-preview="message"], [data-ad-preview="message"]').forEach((el) => {
@@ -217,12 +240,27 @@ function saneDate(ymd) {
 export function pickLatest(dump) {
   const texts = new Map();
   for (const t of dump.texts ?? []) if (t.href && !texts.has(t.href)) texts.set(t.href, t.text);
-  const posts = (dump.dates ?? []).map((e) => ({
-    date: e.date ?? '',
-    rel: e.rel ?? '',
-    href: e.href ?? '',
-    text: texts.get(e.href ?? '') ?? '',
-  }));
+  // 同一個 href 在 DOM 裡常有多筆（頁面上的日期元素一筆、永久連結一筆）：互動數取「有值的那一筆」，
+  // 否則會因為挑到的候選剛好沒帶數字，就當成這一篇抓不到讚數。
+  const engByHref = new Map();
+  for (const e of dump.dates ?? []) {
+    const likes = String(e.likes ?? '');
+    const comments = String(e.comments ?? '');
+    if (!e.href || (!likes && !comments)) continue;
+    const seen = engByHref.get(e.href) ?? { likes: '', comments: '' };
+    engByHref.set(e.href, { likes: seen.likes || likes, comments: seen.comments || comments });
+  }
+  const posts = (dump.dates ?? []).map((e) => {
+    const shared = engByHref.get(e.href ?? '') ?? { likes: '', comments: '' };
+    return {
+      date: e.date ?? '',
+      rel: e.rel ?? '',
+      href: e.href ?? '',
+      text: texts.get(e.href ?? '') ?? '',
+      likes: String(e.likes ?? '') || shared.likes,
+      comments: String(e.comments ?? '') || shared.comments,
+    };
+  });
   const dated = posts.filter((p) => p.date).sort((a, b) => dateKey(b.date) - dateKey(a.date));
   const best = dated[0] ?? null;
   const rel = best?.rel || posts.find((p) => p.rel)?.rel || '';
@@ -286,6 +324,8 @@ async function collect(rows, opts) {
       臉書專頁名稱: row['臉書專頁名稱'] ?? '',
       最新貼文日期: '',
       最新貼文主題摘要: '',
+      最新貼文讚數: '',
+      最新貼文留言數: '',
       貼文或粉專連結: row['貼文或粉專連結'] ?? '',
       Threads連結: row['Threads連結'] ?? '',
       'Threads最新貼文日期': row['Threads最新貼文日期'] ?? '',
@@ -337,6 +377,10 @@ async function collect(rows, opts) {
           .sort((a, b) => (a < b ? 1 : -1));
         let date = candidates[0] ?? '';
         let source = date ? '網頁日期' : '';
+        // 讚／留言只跟著「DOM 上挑到的那一篇」。日期若來自內嵌 JSON（creation_time）或永久連結頁，
+        // 就不能拿這個 DOM 的數字 —— 那會變成把 A 篇的讚數掛在 B 篇的日期上。
+        let eng = { likes: '', comments: '' };
+        if (date && toSheetDate(best?.date ?? '') === date) eng = { likes: best.likes, comments: best.comments };
         // 備援：開那一則貼文的永久連結（首頁只給相對時間時，從貼文頁拿日期）
         if (!date) {
           const href = best?.href || (dump.dates ?? []).find((d) => d.href)?.href;
@@ -345,13 +389,19 @@ async function collect(rows, opts) {
             await page.waitForTimeout(5000);
             const second = pickLatest(await page.evaluate(`(${EXTRACT})()`));
             const secondDate = toSheetDate(second.best?.date ?? '');
-            if (secondDate && saneDate(secondDate)) { date = secondDate; source = '貼文永久連結'; }
+            if (secondDate && saneDate(secondDate)) {
+              date = secondDate;
+              source = '貼文永久連結';
+              eng = { likes: second.best?.likes ?? '', comments: second.best?.comments ?? '' };
+            }
             if (!summary) summary = second.summary;
           }
         }
         rec.最新貼文日期 = toSheetDate(date) ?? '';
         rec._source = source;
         rec.最新貼文主題摘要 = cleanSummary(summary);
+        rec.最新貼文讚數 = String(eng.likes ?? '');
+        rec.最新貼文留言數 = String(eng.comments ?? '');
         if (rec.最新貼文日期) rec._status = 'OK';
         else if (rec.最新貼文主題摘要) rec._status = rel ? `只有相對時間（${rel}）` : '有內容但沒有日期';
         else rec._status = '看不到貼文（留空）';
@@ -367,6 +417,10 @@ async function collect(rows, opts) {
           ].filter((d) => d && saneDate(d)).sort((a, b) => (a < b ? 1 : -1));
           rec.最新貼文日期 = retryCandidates[0] ?? '';
           rec.最新貼文主題摘要 = cleanSummary(again.summary);
+          if (rec.最新貼文日期 && toSheetDate(again.best?.date ?? '') === rec.最新貼文日期) {
+            rec.最新貼文讚數 = String(again.best?.likes ?? '');
+            rec.最新貼文留言數 = String(again.best?.comments ?? '');
+          }
           if (rec.最新貼文日期) rec._status = 'OK（重載後取得）';
           else if (rec.最新貼文主題摘要) rec._status = '有內容但沒有日期（重載後）';
         }
@@ -376,7 +430,9 @@ async function collect(rows, opts) {
     }
     results.push(rec);
     console.log(
-      `[${i + 1}/${rows.length}] ${rec.編號} ${rec.姓名} ${rec._status} ${rec.最新貼文日期} ${rec.最新貼文主題摘要.slice(0, 30)}`,
+      `[${i + 1}/${rows.length}] ${rec.編號} ${rec.姓名} ${rec._status} ${rec.最新貼文日期} ${
+        rec.最新貼文讚數 || rec.最新貼文留言數 ? `讚 ${rec.最新貼文讚數 || '—'}／留言 ${rec.最新貼文留言數 || '—'} ` : ''
+      }${rec.最新貼文主題摘要.slice(0, 30)}`,
     );
     await sleep(opts.minDelay + Math.random() * Math.max(0.1, opts.maxDelay - opts.minDelay));
   }
@@ -426,22 +482,37 @@ async function writeSheet({ keyPath, gid, results, dryRun = false }) {
   const sheet = meta.sheets.find((s) => s.properties.sheetId === gid);
   if (!sheet) throw new Error(`找不到 gid=${gid} 的分頁`);
   const title = sheet.properties.title;
-  const values = (await api(`/values/${encodeURIComponent(`'${title}'!A1:L200`)}`)).values ?? [];
+  const values = (await api(`/values/${encodeURIComponent(`'${title}'!A1:Z200`)}`)).values ?? [];
   const rowOf = new Map();
   values.slice(1).forEach((r, i) => {
     const no = String(r[0] ?? '').trim();
     if (no) rowOf.set(no, i + 2);
   });
+  // 互動數（讚／留言）是後加的欄位：表上有才寫。沒有的話只寫日期與摘要 —— 不自己插入欄位，
+  // 這裡是人工維護的整理表（補欄位是 apps-script/Code.js 那條路在做的事，2026-10-07 的決定）。
+  const header = (values[0] ?? []).map((v) => String(v ?? '').trim());
+  const colOf = (label) => header.findIndex((h) => h === label);
+  const likesCol = colOf('最新貼文讚數');
+  const commentsCol = colOf('最新貼文留言數');
+  const letter = (index) => {
+    let s = '';
+    for (let n = index + 1; n > 0; n = Math.floor((n - 1) / 26)) s = String.fromCharCode(65 + ((n - 1) % 26)) + s;
+    return s;
+  };
 
   const data = [];
   const skipped = [];
+  let rowCount = 0;
   for (const [no, row] of rowOf) {
     const rec = results.find((r) => String(r.編號).trim() === no);
     if (!rec) { skipped.push(`${no} 沒有抓取結果`); continue; }
     if (!rec.最新貼文日期 && !rec.最新貼文主題摘要) { skipped.push(`${no} ${rec.姓名}（${rec._status}）`); continue; }
     data.push({ range: `'${title}'!F${row}:G${row}`, values: [[rec.最新貼文日期, rec.最新貼文主題摘要]] });
+    if (likesCol >= 0) data.push({ range: `'${title}'!${letter(likesCol)}${row}`, values: [[rec.最新貼文讚數 ?? '']] });
+    if (commentsCol >= 0) data.push({ range: `'${title}'!${letter(commentsCol)}${row}`, values: [[rec.最新貼文留言數 ?? '']] });
+    rowCount++;
   }
-  console.log(`工作表「${title}」：要寫 ${data.length} 列，略過 ${skipped.length} 列`);
+  console.log(`工作表「${title}」：要寫 ${rowCount} 列，略過 ${skipped.length} 列`);
   for (const s of skipped.slice(0, 10)) console.log('  略過：', s);
   if (dryRun) { console.log('（--dry-run：沒有真的寫入）'); return; }
   if (!data.length) { console.log('沒有可寫入的資料'); return; }
@@ -508,7 +579,9 @@ async function main() {
 
   const stamp = new Date().toISOString().slice(0, 10);
   const outPath = args.out ?? resolve(ROOT, '.cache', `posts-${stamp}.csv`);
-  const sheetCols = ['編號', '姓名', '政黨', '選區/類別', '臉書專頁名稱', '最新貼文日期', '最新貼文主題摘要', '貼文或粉專連結', 'Threads連結', 'Threads最新貼文日期', 'Threads最新貼文主題摘要'];
+  // 欄位順序＝整理表的欄位順序（新增的欄位接在最後，人工要貼回試算表時不會錯位）。
+  // 「最新貼文讚數／留言數」是 2026-10-07 新增的欄位（見 docs/social-sheet-spec.md）。
+  const sheetCols = ['編號', '姓名', '政黨', '選區/類別', '臉書專頁名稱', '最新貼文日期', '最新貼文主題摘要', '貼文或粉專連結', 'Threads連結', 'Threads最新貼文日期', 'Threads最新貼文主題摘要', '最新貼文讚數', '最新貼文留言數'];
   writeFileSync(outPath, `${sheetCols.join(',')}\n${results.map((r) => sheetCols.map((c) => csvCell(r[c])).join(',')).join('\n')}\n`);
   console.log(`寫出 ${outPath}`);
 
@@ -538,7 +611,8 @@ async function main() {
 
   const filled = results.filter((r) => r.最新貼文日期).length;
   const blank = results.length - filled;
-  console.log(`完成：${filled} 列有日期、${blank} 列留空${loginLost ? '（有登入失效，請重新登入設定檔）' : ''}`);
+  const withCounts = results.filter((r) => r.最新貼文日期 && (r.最新貼文讚數 !== '' || r.最新貼文留言數 !== '')).length;
+  console.log(`完成：${filled} 列有日期（其中 ${withCounts} 列有讚數或留言數）、${blank} 列留空${loginLost ? '（有登入失效，請重新登入設定檔）' : ''}`);
 }
 
 if (import.meta.url === `file://${process.argv[1]?.replace(/\\/g, '/')}` || process.argv[1]?.endsWith('fetch-fb-posts.mjs')) {

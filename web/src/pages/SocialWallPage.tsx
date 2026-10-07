@@ -1,5 +1,5 @@
 import { useState, type CSSProperties } from 'react';
-import { ExternalLink, MapPin } from 'lucide-react';
+import { ExternalLink, MapPin, MessageCircle, ThumbsUp } from 'lucide-react';
 import { buildUrl } from '../api/client';
 import type { SocialWallItem, SocialWallResponse } from '../api/types';
 import { EmptyState, ErrorState, LoadingState } from '../components/DataStates';
@@ -103,10 +103,29 @@ export function WallCard({
       <p className="wall-page">粉專：{text(item.page_name, '（整理表未填名稱）')}</p>
 
       {item.latest_post_date ? (
-        <p className="council-fb-latest">
-          最新貼文 <time dateTime={item.latest_post_date}>{formatRelative(item.latest_post_date)}</time>
-          {item.latest_post_summary ? `：${item.latest_post_summary}` : ''}
-        </p>
+        <>
+          <p className="council-fb-latest">
+            最新貼文 <time dateTime={item.latest_post_date}>{formatRelative(item.latest_post_date)}</time>
+            {item.latest_post_summary ? `：${item.latest_post_summary}` : ''}
+          </p>
+          {item.latest_post_likes !== null || item.latest_post_comments !== null ? (
+            <p className="wall-engagement">
+              {item.latest_post_likes !== null ? (
+                <span title={`最新一則貼文的讚數（${item.latest_post_likes}）`}>
+                  <ThumbsUp aria-hidden="true" />
+                  {item.latest_post_likes.toLocaleString('en-US')}
+                </span>
+              ) : null}
+              {item.latest_post_comments !== null ? (
+                <span title={`最新一則貼文的留言數（${item.latest_post_comments}）`}>
+                  <MessageCircle aria-hidden="true" />
+                  {item.latest_post_comments.toLocaleString('en-US')}
+                </span>
+              ) : null}
+              <span className="muted">最新一則貼文</span>
+            </p>
+          ) : null}
+        </>
       ) : (
         <p className="council-fb-latest">整理表還沒有這一位的貼文日期</p>
       )}

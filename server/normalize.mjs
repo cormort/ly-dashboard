@@ -800,6 +800,19 @@ const SOCIAL_ACTIONS = new Set(['replace', 'add', 'deny']);
 const SOCIAL_COLUMNS = { name: '姓名', pageName: '臉書專頁名稱', latestDate: '最新貼文日期', summary: '最新貼文主題摘要', url: '貼文或粉專連結' };
 /** Threads 欄位是選填：整理表有加才讀，沒加維持只有臉書 */
 const THREADS_COLUMNS = { url: 'Threads連結', latestDate: 'Threads最新貼文日期', summary: 'Threads最新貼文主題摘要' };
+/**
+ * 最新貼文的互動數（讚／留言）是 2026-10-07 新加的**選填**欄位：整理表還沒有這兩欄時整批留 null
+ * （不能因為沒有欄位就擋下整份匯入 —— 那會讓粉專牆整片消失）。
+ */
+const SOCIAL_ENGAGEMENT_COLUMNS = { likes: '最新貼文讚數', comments: '最新貼文留言數' };
+
+/** 試算表的互動數 → 整數或 null（空白、非數字一律 null，不猜 0） */
+export function countCell(value) {
+  const s = String(value ?? '').trim().replace(/,/g, '');
+  if (!/^\d+$/.test(s)) return null;
+  const n = Number(s);
+  return Number.isSafeInteger(n) ? n : null;
+}
 
 /**
  * 兩個粉專網址是不是同一個頁面（只差大小寫、結尾斜線、http/https、www./m. 時算同一個）。
@@ -828,6 +841,7 @@ export function normalizeSocial(csvText, legislatorIdByNewsName, { overrides = [
   if (missing.length) throw new DataValidationError(`社群整理表缺少欄位：${missing.join('、')}`);
   if (rows.length < 100) throw new DataValidationError(`社群整理表筆數異常（${rows.length} < 100）`);
   const threadsCol = Object.fromEntries(Object.entries(THREADS_COLUMNS).map(([key, label]) => [key, header.findIndex((h) => h.trim() === label)]));
+  const engCol = Object.fromEntries(Object.entries(SOCIAL_ENGAGEMENT_COLUMNS).map(([key, label]) => [key, header.findIndex((h) => h.trim() === label)]));
 
   const accounts = [];
   const unmatched = [];
@@ -849,6 +863,8 @@ export function normalizeSocial(csvText, legislatorIdByNewsName, { overrides = [
         url: threadsUrl,
         latest_post_date: threadsDate,
         latest_post_summary: (row[threadsCol.summary] ?? '').trim(),
+        latest_post_likes: null,
+        latest_post_comments: null,
       });
     }
     if (!/^https:\/\/(www\.|m\.)?facebook\.com\//.test(url)) continue; // 只收臉書網址，擋掉空白與誤貼
@@ -860,6 +876,8 @@ export function normalizeSocial(csvText, legislatorIdByNewsName, { overrides = [
       url,
       latest_post_date: date,
       latest_post_summary: (row[col.summary] ?? '').trim(),
+      latest_post_likes: countCell(row[engCol.likes]),
+      latest_post_comments: countCell(row[engCol.comments]),
     });
   }
   if (unmatched.length > rows.length * 0.1) {
@@ -912,6 +930,8 @@ export function normalizeSocial(csvText, legislatorIdByNewsName, { overrides = [
       url: override.url,
       latest_post_date: '',
       latest_post_summary: '',
+      latest_post_likes: null,
+      latest_post_comments: null,
       source: 'override',
     };
     const index = accounts.findIndex((a) => a.legislator_id === legislatorId && a.platform === platform);
@@ -922,6 +942,9 @@ export function normalizeSocial(csvText, legislatorIdByNewsName, { overrides = [
       if (sameSocialPage(accounts[index].url, override.url)) {
         entry.latest_post_date = accounts[index].latest_post_date ?? '';
         entry.latest_post_summary = accounts[index].latest_post_summary ?? '';
+        // 互動數也一起留著：它們同樣屬於那個頁面的最新一則貼文（清了會變成「有日期、沒有讚數」）
+        entry.latest_post_likes = accounts[index].latest_post_likes ?? null;
+        entry.latest_post_comments = accounts[index].latest_post_comments ?? null;
         warnings.push(`更正表與整理表的 ${platform} 網址相同（${override.legislator}）：保留貼文日期與摘要`);
       } else {
         warnings.push(`以更正表覆蓋 ${override.legislator} 的 ${platform}：${accounts[index].url} → ${override.url}`);

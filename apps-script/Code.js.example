@@ -1,15 +1,20 @@
 /**
  * 這是範本：複製成 Code.js、把 TOKEN 換成自己產生的隨機字串（跟本機 ~/.ly-dashboard/sheet.env 一致）再 clasp push。
  *
- * ly-dashboard：接收本機每日抓取的「最新貼文日期／摘要」，寫回臉書整理表（立委）的 F／G 欄。
- * 呼叫端：scripts/push-posts-to-sheet.mjs（POST JSON {token, rows:[{id,date,summary}]}）
+ * ly-dashboard：接收本機每日抓取的「最新貼文日期／摘要／讚數／留言數」，寫回臉書整理表（立委）。
+ * 呼叫端：scripts/push-posts-to-sheet.mjs（POST JSON {token, rows:[{id,date,summary,likes,comments}]}）
  * 規則（見 docs/social-sheet-spec.md）：抓不到就留空、不填今天；只更新本來就有對應編號的列。
+ * 「最新貼文讚數／留言數」是 2026-10-07 新增的欄位：表上沒有時由這一端在最後面補上標題；
+ * 呼叫端沒帶這個欄位時不會去動它（舊版呼叫端仍然可用）。
  */
 var TOKEN = 'REPLACE_WITH_YOUR_OWN_RANDOM_TOKEN';
 var SHEET_ID = '11XrvNGMKZb_8rekFdGIg5VsXcV8rdJkZjyzd1I4gAMM';
+// 最新一則貼文的互動數（2026-10-07 新增）。表上沒有這兩欄時，這一端會在最後面自己補上標題。
+var LIKE_HEADER = '最新貼文讚數';
+var COMMENT_HEADER = '最新貼文留言數';
 
 function doGet() {
-  return reply({ ok: true, hint: 'POST JSON {token, rows:[{id,date,summary}]}' });
+  return reply({ ok: true, hint: 'POST JSON {token, rows:[{id,date,summary,likes,comments}]}' });
 }
 
 function doPost(e) {
@@ -34,6 +39,22 @@ function doPost(e) {
   if (idCol < 0 || dateCol < 0 || sumCol < 0) {
     return reply({ ok: false, error: 'missing-columns', header: header });
   }
+  // 讚數／留言數是後加的欄位：表上沒有就在**最後面**補上標題（不插在中間，免得動到人工維護的欄位順序）
+  var likeCol = header.indexOf(LIKE_HEADER);
+  var cmtCol = header.indexOf(COMMENT_HEADER);
+  var added = [];
+  if (likeCol < 0) {
+    likeCol = header.length;
+    sheet.getRange(1, likeCol + 1).setValue(LIKE_HEADER);
+    header.push(LIKE_HEADER);
+    added.push(LIKE_HEADER);
+  }
+  if (cmtCol < 0) {
+    cmtCol = header.length;
+    sheet.getRange(1, cmtCol + 1).setValue(COMMENT_HEADER);
+    header.push(COMMENT_HEADER);
+    added.push(COMMENT_HEADER);
+  }
   // 日期欄維持純文字：否則 Sheets 會把 2026-10-05 轉成日期格式，匯出的 CSV 變成 2026/10/5
   sheet.getRange(1, dateCol + 1, Math.max(1, values.length), 1).setNumberFormat('@');
 
@@ -42,8 +63,10 @@ function doPost(e) {
     if (r && r.id !== undefined && r.id !== null && String(r.id).trim()) byId[String(r.id).trim()] = r;
   });
 
-  var updated = 0, unchanged = 0, blank = 0;
+  var updated = 0, unchanged = 0, blank = 0, counts = 0;
   var sample = null;
+  // 讀值要防呆：values 是在補標題「之前」讀的，新欄位在舊列可能是 undefined
+  var cell = function (r, c) { var row = values[r] || []; return String(row[c] === undefined || row[c] === null ? '' : row[c]).trim(); };
   for (var i = 1; i < values.length; i++) {
     var id = String(values[i][idCol]).trim();
     var row = byId[id];
@@ -52,12 +75,21 @@ function doPost(e) {
     var date = String(row.date || '').trim();
     var summary = String(row.summary || '').trim();
     if (!date) { blank++; continue; }          // 沒抓到就留空，不動舊值
-    if (String(values[i][dateCol]).trim() === date && String(values[i][sumCol]).trim() === summary) {
+    // 互動數：呼叫端「沒有帶這個欄位」＝不要動它（舊的呼叫端）；有帶但空字串＝這一篇抓不到，要清掉舊值
+    var hasLikes = row.likes !== undefined && row.likes !== null;
+    var hasComments = row.comments !== undefined && row.comments !== null;
+    var likes = hasLikes ? String(row.likes).trim() : null;
+    var comments = hasComments ? String(row.comments).trim() : null;
+    if (String(values[i][dateCol]).trim() === date && String(values[i][sumCol]).trim() === summary &&
+        (!hasLikes || cell(i, likeCol) === likes) && (!hasComments || cell(i, cmtCol) === comments)) {
       unchanged++;
       continue;
     }
     sheet.getRange(i + 1, dateCol + 1).setValue(date);
     sheet.getRange(i + 1, sumCol + 1).setValue(summary);
+    if (hasLikes) sheet.getRange(i + 1, likeCol + 1).setValue(likes);
+    if (hasComments) sheet.getRange(i + 1, cmtCol + 1).setValue(comments);
+    if (hasLikes || hasComments) counts++;
     if (!sample) sample = { id: id, date: String(sheet.getRange(i + 1, dateCol + 1).getDisplayValue()) };
     updated++;
   }
@@ -69,6 +101,8 @@ function doPost(e) {
     updated: updated,
     unchanged: unchanged,
     blank: blank,
+    counts: counts,
+    addedColumns: added,
     notFound: notFound.length,
     notFoundIds: notFound.slice(0, 20),
     sample: sample,

@@ -22,6 +22,10 @@ const DEFAULT_CSV = fileURLToPath(new URL('../.cache/posts-latest.csv', import.m
 /**
  * 抓取 CSV → [{ id, date, summary }]：只帶有日期的列（沒抓到的留空、不送出去，
  * 免得把表上既有的值清掉）。
+ *
+ * 「最新貼文讚數／最新貼文留言數」是後加的選填欄位：CSV 有這兩欄才帶（值可能是空字串，
+ * 代表這一篇抓不到互動數 → 表上要跟著清空，不然會留著「上一篇的讚數」掛在這一篇的日期上）；
+ * 舊的 CSV 沒有這兩欄就整批不帶，Apps Script 那一端也不會去動它們。
  */
 export function rowsFromCsv(csvText) {
   const [header = [], ...rows] = parseCsv(csvText);
@@ -32,12 +36,17 @@ export function rowsFromCsv(csvText) {
   if (iId < 0 || iDate < 0 || iSum < 0) {
     throw new Error(`抓取 CSV 缺少欄位（編號／最新貼文日期／最新貼文主題摘要）：${header.join(',')}`);
   }
+  const iLikes = col('最新貼文讚數');
+  const iComments = col('最新貼文留言數');
   const out = [];
   for (const row of rows) {
     const id = (row[iId] ?? '').trim();
     const date = (row[iDate] ?? '').trim();
     if (!id || !date) continue;
-    out.push({ id, date, summary: (row[iSum] ?? '').trim() });
+    const rec = { id, date, summary: (row[iSum] ?? '').trim() };
+    if (iLikes >= 0) rec.likes = (row[iLikes] ?? '').trim();
+    if (iComments >= 0) rec.comments = (row[iComments] ?? '').trim();
+    out.push(rec);
   }
   return out;
 }
@@ -113,6 +122,8 @@ async function main() {
     const out = await pushRows({ url, token, rows });
     console.log(
       `[寫回] 工作表「${out.sheet}」：更新 ${out.updated}、未變 ${out.unchanged}、留空跳過 ${out.blank}` +
+        `${Number.isFinite(out.counts) && out.counts > 0 ? `、含讚數／留言數 ${out.counts} 列` : ''}` +
+        `${out.addedColumns?.length ? `、表上新增欄位 ${out.addedColumns.join('、')}` : ''}` +
         `${out.notFound ? `、表上找不到 ${out.notFound} 列（${(out.notFoundIds ?? []).join('、')}）` : ''}`,
     );
   } catch (error) {

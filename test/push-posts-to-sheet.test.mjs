@@ -21,6 +21,21 @@ test('寫回：只送有日期的列（抓不到就留空、不送出去，免�
   assert.equal(rows[0].date, '2026-10-05');
 });
 
+test('寫回：CSV 有「最新貼文讚數／留言數」就一起送（空白＝抓不到，要跟著清空表上舊值）', () => {
+  const CSV = `${HEADER},最新貼文讚數,最新貼文留言數`;
+  const rows = rowsFromCsv(
+    [
+      CSV,
+      '1,吳思瑤,民主進步黨,臺北市第一選區,吳思瑤,2026-10-05,摘要一,https://www.facebook.com/taipeineedyou,1465,103',
+      '3,王世堅,民主進步黨,臺北市第二選區,王世堅,2026-10-04,摘要二,https://www.facebook.com/wcc,,',
+    ].join('\n'),
+  );
+  assert.deepEqual(rows, [
+    { id: '1', date: '2026-10-05', summary: '摘要一', likes: '1465', comments: '103' },
+    { id: '3', date: '2026-10-04', summary: '摘要二', likes: '', comments: '' },
+  ]);
+});
+
 test('寫回：抓取 CSV 欄位改名或缺少必要欄位要擋下來，不能默默送錯', () => {
   assert.throws(() => rowsFromCsv('編號,姓名\n1,吳思瑤'), /缺少欄位/);
 });

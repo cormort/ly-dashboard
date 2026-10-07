@@ -1194,7 +1194,7 @@ export function listSocialWall(db, { party = '', region = '', limit = SOCIAL_WAL
 
   const all = db
     .prepare(
-      `SELECT s.legislator_id, s.page_name, s.url, s.latest_post_date, s.latest_post_summary, s.source,
+      `SELECT s.legislator_id, s.page_name, s.url, s.latest_post_date, s.latest_post_summary, s.latest_post_likes, s.latest_post_comments, s.source,
               l.name, l.party, l.area_name, l.photo_url
        FROM social_accounts s JOIN legislators l ON l.id = s.legislator_id
        WHERE s.platform = 'facebook' AND l.leave_flag = 0`,
@@ -1211,6 +1211,9 @@ export function listSocialWall(db, { party = '', region = '', limit = SOCIAL_WAL
       url: row.url,
       latest_post_date: row.latest_post_date || null,
       latest_post_summary: row.latest_post_summary ?? '',
+      // 讚／留言數是「最新那一則」的快照；抓不到就是 null（畫面不顯示，不要寫成 0）
+      latest_post_likes: Number.isFinite(row.latest_post_likes) ? row.latest_post_likes : null,
+      latest_post_comments: Number.isFinite(row.latest_post_comments) ? row.latest_post_comments : null,
       source: row.source ?? 'sheet',
     }))
     // 新到舊；沒有日期的（整理表還沒抓到貼文）一律排最後

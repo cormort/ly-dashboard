@@ -28,6 +28,7 @@
 #   LY_NOTIFY_ENV           通知憑證檔（預設 ~/.ly-dashboard/notify.env）
 #   LY_SYNC_SCOPE           寫回表之後要觸發哪一種同步（預設 social：只重讀整理表）
 #   LY_SYNC_TOKEN           本機伺服器有設 token 時，觸發同步要帶同一組
+#   LY_FB_LOG_DIR           輸出目錄（log／CSV／鎖；預設 <repo>/.cache）。測試要用免洗目錄，見下面 LOG_DIR
 #
 # 寫回用的網址與密鑰放在 ~/.ly-dashboard/sheet.env（repo 外、權限 600），下面會自動載入。
 set -uo pipefail
@@ -46,7 +47,10 @@ fi
 # launchd 不會載入使用者的 shell 設定，把常見的 node 位置補進 PATH
 export PATH="/opt/homebrew/bin:/usr/local/bin:$HOME/.local/bin:$PATH"
 
-LOG_DIR="$ROOT/.cache"
+# 輸出目錄：預設 .cache，但可以用 LY_FB_LOG_DIR 換掉 —— 測試要用免洗目錄放「自己的鎖」，
+# 否則測試在 finally 刪掉 .cache/fb-daily.lock 時，會把正在跑的那一輪的鎖一起偷走
+# （2026-10-07 實際發生：08:00 的每日抓取跑到一半，測試把它的鎖刪了，之後就沒有東西擋第二輪）。
+LOG_DIR="${LY_FB_LOG_DIR:-$ROOT/.cache}"
 mkdir -p "$LOG_DIR"
 LOG="$LOG_DIR/fb-daily.log"
 

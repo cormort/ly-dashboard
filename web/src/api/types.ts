@@ -1053,6 +1053,9 @@ export interface SocialWallItem {
   /** 整理表記錄的最新貼文；還沒有抓到貼文時為 null（排序會排到最後） */
   latest_post_date: string | null;
   latest_post_summary: string;
+  /** 最新那一則貼文的讚數／留言數（抓不到時 null，畫面不顯示也不要寫 0） */
+  latest_post_likes: number | null;
+  latest_post_comments: number | null;
   /** 'sheet'＝整理表、'override'＝人工更正表 */
   source: 'sheet' | 'override';
 }

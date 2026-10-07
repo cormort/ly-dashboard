@@ -279,6 +279,8 @@ const wallItem = {
   url: 'https://www.facebook.com/taipeineedyou',
   latest_post_date: '2026-09-27',
   latest_post_summary: '堅持正向選舉、不贊成選戰負面操作',
+  latest_post_likes: 1465,
+  latest_post_comments: 103,
   source: 'sheet' as const,
 };
 const wallCardClosed = render(createElement(WallCard, { item: wallItem, onOpenId: () => undefined }));
@@ -292,6 +294,19 @@ expectAll('粉專牆卡片：黨籍短名、選區、粉專名稱、貼文日期
   'aria-expanded="false"',
   '委員檔案',
 ]);
+// 互動數：讚 1,465／留言 103；沒有值時整行不畫（不要顯示 0，那看起來像「沒有人按讚」）
+expectAll('粉專牆卡片：顯示最新一則貼文的讚數與留言數（含千分位與說明標題）', wallCardClosed, [
+  'wall-engagement',
+  '1,465',
+  '103',
+  '最新一則貼文的讚數（1465）',
+  '最新一則貼文的留言數（103）',
+  '最新一則貼文',
+]);
+const wallCardNoCounts = render(createElement(WallCard, { item: { ...wallItem, latest_post_likes: null, latest_post_comments: null }, onOpenId: () => undefined }));
+check('粉專牆卡片：抓不到讚數／留言數時不畫互動數那一行（也不寫 0）', !wallCardNoCounts.includes('wall-engagement'));
+const wallCardNoDate = render(createElement(WallCard, { item: { ...wallItem, latest_post_date: null, latest_post_summary: '', latest_post_likes: null, latest_post_comments: null }, onOpenId: () => undefined }));
+check('粉專牆卡片：沒有貼文日期時不會畫出互動數', !wallCardNoDate.includes('wall-engagement') && wallCardNoDate.includes('整理表還沒有這一位的貼文日期'));
 // server render 不執行 useEffect，所以這裡看到的是「還沒捲進畫面」的狀態：
 // 不得有 iframe，但要先把嵌入框的位置佔好（載入時瀑布流才不會跳）
 expectNone('粉專牆卡片：還沒捲進畫面時不載入 Facebook 嵌入框（iframe 不出現，佔位不算）', wallCardClosed, ['<iframe', 'plugins/page.php']);
