@@ -81,9 +81,10 @@ export function NewsPage({ refreshToken, onOpenId, scope = 'legislators', onNavi
   // 新聞要掃全表（實測最慢約 0.3 秒，但同步中／機器忙碌時會拖長）→ 給比較寬的逾時
   const res = useApi<NewsArticlesResponse>(buildUrl('/news/articles', { ...filters, scope, limit: PAGE, offset: page * PAGE }), { refreshToken, timeoutMs: 30_000 });
   const roster = useApi<LegislatorsResponse>(buildUrl('/legislators', { session: 'all' }), { refreshToken });
-  // 首長下拉：「我的機關」的首長排第一個（其餘維持依則數排序）
-  const myHeads = useApi<AgencyHomeResponse>(officials ? buildUrl('/agency', { name: readPreference(MY_AGENCY_KEY) || DEFAULT_AGENCY }) : null, { refreshToken });
-  const headNames = new Set((myHeads.data?.agency?.heads ?? []).map((h) => h.name));
+  // 首長／機關下拉：「我的機關」排第一個（首長頁排它的首長，機關頁排它自己；其餘維持依則數排序）
+  const myAgency = useApi<AgencyHomeResponse>(listFromApi ? buildUrl('/agency', { name: readPreference(MY_AGENCY_KEY) || DEFAULT_AGENCY }) : null, { refreshToken });
+  const mine = myAgency.data?.agency;
+  const headNames = new Set(officials ? (mine?.heads ?? []).map((h) => h.name) : mine ? [mine.name] : []);
   const people = listFromApi
     ? (res.data?.people ?? []).map((p) => ({ id: p.id, name: p.name, count: p.count })).sort((a, b) => Number(headNames.has(b.name)) - Number(headNames.has(a.name)))
     : (roster.data?.items ?? []).filter((l) => !l.former).map((l) => ({ id: l.id, name: l.name, count: l.news_count })).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'zh-Hant'));
