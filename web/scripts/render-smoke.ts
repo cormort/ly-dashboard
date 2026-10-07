@@ -408,7 +408,9 @@ check(
     const top = render(createElement(Header, { ...headerProps, route: 'dashboard' as const })).match(/<nav aria-label="主要頁面">([\s\S]*?)<\/nav>/)?.[1] ?? '';
     return (
       subOf('budget') === '預算審議→委員會→法案查詢' &&
-      subOf('officials') === '機關首長新聞→機關新聞→委員新聞→全部新聞' &&
+      // 新聞主題最前面多一個跨主題捷徑「我的機關」（用分隔線隔開，見 D227）：四個新聞子頁都一樣
+      subOf('officials') === '我的機關→機關首長新聞→機關新聞→委員新聞→全部新聞' &&
+      subOf('agencynews') === '我的機關→機關首長新聞→機關新聞→委員新聞→全部新聞' &&
       subOf('agencies') === '機關→基金→財團法人→行政法人' &&
       subOf('legislators') === '委員查詢→最近動態→排行榜→委員比較' &&
       // 社群自成一個頁籤（2026-10-06 起，標籤原為「臉書」）：委員粉專牆與議員近期動態都在這裡；委員的次級導覽不該再出現「議員」
@@ -423,6 +425,15 @@ check(
     );
   })(),
 );
+
+// 新聞底下的「我的機關」是跨主題捷徑：它跟新聞自己的頁籤之間要有一條分隔線，
+// 而且**只有**有 lead 的主題才有（其他主題的次級導覽不得出現）
+check('新聞的次級導覽：我的機關在最前面，後面接一條分隔線再接原本的頁籤', (() => {
+  const newsSub = render(createElement(Header, { ...headerProps, route: 'officials' as const })).match(/<nav class="subnav"[^>]*>([\s\S]*?)<\/nav>/)?.[1] ?? '';
+  const expected = newsSub.indexOf('我的機關') < newsSub.indexOf('subnav-divider') && newsSub.indexOf('subnav-divider') < newsSub.indexOf('機關首長新聞');
+  const budgetSub = render(createElement(Header, { ...headerProps, route: 'budget' as const })).match(/<nav class="subnav"[^>]*>([\s\S]*?)<\/nav>/)?.[1] ?? '';
+  return expected && !budgetSub.includes('subnav-divider');
+}));
 
 // 功能說明掛在分頁導覽上：單頁主題（總覽）在頂層導覽、有子頁的主題在次級導覽那一列右端
 console.log('\n— 導覽列上的說明提示 —');

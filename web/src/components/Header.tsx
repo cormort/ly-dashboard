@@ -74,6 +74,12 @@ interface NavGroup {
   label: string;
   home: Route;
   routes: { route: Route; label: string }[];
+  /**
+   * 插在次級導覽最前面的捷徑（2026-10-07）。它指向**別的**主題的頁面，
+   * 所以用一條分隔線跟這個主題自己的頁籤隔開，避免看起來像同一組。
+   * 這裡允許重複：同一個頁面可以在兩個主題下都出現（例：新聞底下也放「我的機關」）。
+   */
+  lead?: { route: Route; label: string };
 }
 
 const NAV: NavGroup[] = [
@@ -120,6 +126,8 @@ const NAV: NavGroup[] = [
     id: 'news',
     label: '新聞',
     home: 'officials',
+    // 看新聞時最常回頭查的就是自己機關，所以在最前面放一個捷徑（用分隔線隔開，見 NavGroup.lead）
+    lead: { route: 'my', label: '我的機關' },
     routes: [
       { route: 'officials', label: '機關首長新聞' },
       { route: 'agencynews', label: '機關新聞' },
@@ -183,6 +191,8 @@ export function Header({
   // 目前頁面的功能說明：掛在分頁導覽上（頁面本身不再有重複分頁名稱的標題列）
   const hint = PAGE_HINTS[route];
   const hasSubnav = activeGroup.routes.length > 1;
+  // 先取出成 const：TS 的屬性縮窄不會進到 onClick 的閉包裡
+  const subnavLead = activeGroup.lead;
 
   return (
     <>
@@ -323,6 +333,21 @@ export function Header({
       {hasSubnav ? (
         <div className="subnav-row">
           <nav className="subnav" aria-label={`${activeGroup.label}的頁面`}>
+            {subnavLead ? (
+              <>
+                <a
+                  href={pathFor(subnavLead.route)}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    onNavigate(pathFor(subnavLead.route));
+                  }}
+                >
+                  {subnavLead.label}
+                </a>
+                {/* 這條線左邊是「別的」主題的頁面，右邊才是「新聞」自己的頁籤 */}
+                <span className="subnav-divider" aria-hidden="true" />
+              </>
+            ) : null}
             {activeGroup.routes.map((item) => (
               <a
                 key={item.route}
