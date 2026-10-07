@@ -33,7 +33,22 @@
 
 **已改的檔案：** `web/src/styles.css`（新增一個 ≤760 的區塊）、`web/src/components/Header.tsx`（狀態鈕的長／短日期）、
 `web/scripts/render-smoke.ts`（狀態鈕的斷言改成驗兩種寫法）、新增 `scripts/check-rwd.mjs`、`test/check-rwd.test.mjs`、`package.json`（`check:rwd`）。
-**驗收：** `npm --prefix web run test` 181 項全過、`npm run check:rwd -- --widths 390,768` 全綠、`npm --prefix web run build` 成功。
+
+**五個寬度的完整量測（2026-10-07，`npm run check:rwd -- --widths 360,390,768,1024,1280`）：**
+
+| 寬度 | 橫向溢出 | 頁首高度 |
+| --- | --- | --- |
+| 360（最小手機） | 0（21 條路由全部） | 179px |
+| 390（主流手機） | 0 | 179px |
+| 768（平板） | 0 | 147–197px |
+| 1024（平板／小筆電） | 0 | 147–152px |
+| 1280（桌機） | 0 | 101–106px |
+
+**105 個「寬度 × 路由」組合全部沒有橫向捲動。** 手機端的卡片、圖表、粉專牆與 Facebook 嵌入框另外用截圖看過：
+粉專牆在 390px 是單欄、嵌入框 323px 塞得進 358px 的卡片（沒有破版）。
+768／1024 的頁首偏高（147–197px）是 T12 要處理的：那兩個寬度目前還套著手機的規則（例如搜尋框自己占一列）。
+
+**驗收：** `npm --prefix web run test` 181 項全過、`npm run check:rwd` 全綠、`npm --prefix web run build` 成功。
 
 ---
 

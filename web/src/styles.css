@@ -1394,7 +1394,9 @@ a.stat-tile:hover { border-color: #98a2b3; box-shadow: var(--card-base-hover); t
   .date-short { display: inline; }
   .sync-scope { max-width: 100%; min-width: 0; }
   /* 選項全名在原生選單（點下去那一個）裡看得到，這裡只留辨識得出來的前幾個字 */
-  .sync-scope select { max-width: 9ch; }
+  .sync-scope select { max-width: 15ch; }
+  /* 選單旁的 ⓘ（每個範圍的更新頻率）：手機收起來，同一個資訊在點狀態鈕打開的同步面板裡有 */
+  .sync-scope .info-wrap { display: none; }
   /* 頁首自己的內距與列距收緊一點（手機每一列都珍貴） */
   header { padding: 8px var(--space-4); gap: 6px var(--space-3); }
   .sync-progress { flex-basis: 100%; min-width: 0; }
