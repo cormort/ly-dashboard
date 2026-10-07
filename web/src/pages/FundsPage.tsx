@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { ExternalLink, X } from 'lucide-react';
 import { buildUrl } from '../api/client';
 import type { FundKind, FundsResponse, FundType } from '../api/types';
+import { ClearFiltersButton } from '../components/ClearFiltersButton';
 import { EmptyState, ErrorState, LoadingState } from '../components/DataStates';
 import { FacetChips } from '../components/FacetChips';
 import { RouteLink } from '../components/RouteLink';
@@ -99,6 +100,7 @@ export function FundsPage({ type, refreshToken, onOpenId, onNavigate }: FundsPag
             <X aria-hidden="true" />
           </button>
         ) : null}
+        <ClearFiltersButton active={Boolean(filters.fund || filters.kind)} onClick={() => change({ fund: '', kind: '' })} />
       </div>
 
       {type === 'agency' && filters.fund && onNavigate ? (

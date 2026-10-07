@@ -5,6 +5,7 @@ import type { BillsResponse } from '../api/types';
 import { BillStageBar } from '../components/BillStage';
 import { PASSED_STATUSES } from '../lib/billStage';
 import { EmptyState, ErrorState, LoadingState } from '../components/DataStates';
+import { ClearFiltersButton } from '../components/ClearFiltersButton';
 import { SearchField } from '../components/SearchField';
 import { useApi } from '../hooks/useApi';
 import { billTitle } from '../lib/format';
@@ -112,6 +113,10 @@ export function BillsPage({ refreshToken, onOpenId }: BillsPageProps) {
             <X aria-hidden="true" />
           </button>
         ) : null}
+        <ClearFiltersButton
+          active={Boolean(filters.q.trim() || filters.law || filters.status || filters.session || filters.from || filters.to)}
+          onClick={() => change({ q: '', law: '', status: '', session: '', from: '', to: '' })}
+        />
       </div>
 
       {filters.law && data ? <LawSummary law={filters.law} data={data} /> : null}

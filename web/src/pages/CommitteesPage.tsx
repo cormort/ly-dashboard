@@ -3,6 +3,7 @@ import { ExternalLink } from 'lucide-react';
 import { buildUrl } from '../api/client';
 import type { CommitteeActivityResponse } from '../api/types';
 import { EmptyState, ErrorState, LoadingState } from '../components/DataStates';
+import { ClearFiltersButton } from '../components/ClearFiltersButton';
 import { SearchField } from '../components/SearchField';
 import { useApi } from '../hooks/useApi';
 import { pathFor } from '../hooks/useRoute';
@@ -56,6 +57,7 @@ export function CommitteesPage({ refreshToken, onOpenId }: CommitteesPageProps) 
 
       <div className="filters bill-filters" role="search">
         <SearchField value={q} onChange={(value) => change({ q: value })} ariaLabel="搜尋會議、機關回覆與會議紀錄" placeholder="搜尋機關或議題，例如：主計總處（空白分隔，任一符合）" />
+        <ClearFiltersButton active={Boolean(q.trim() || committee)} onClick={() => change({ committee: '', q: '' })} />
       </div>
 
       {data ? (

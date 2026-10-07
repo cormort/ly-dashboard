@@ -5,6 +5,7 @@ import type { BudgetItem, BudgetMeetingsResponse, BudgetReportsResponse, BudgetR
 import { EmptyState, ErrorState, LoadingState } from '../components/DataStates';
 import { InfoTip } from '../components/InfoTip';
 import { YearProgressList, budgetProgressText, budgetRecordsText, hasReviewableItems, yearLabel } from '../components/BudgetProgress';
+import { ClearFiltersButton } from '../components/ClearFiltersButton';
 import { SearchField } from '../components/SearchField';
 import { useApi } from '../hooks/useApi';
 import { pathFor } from '../hooks/useRoute';
@@ -313,6 +314,10 @@ export function BudgetPage({ refreshToken, onOpenId }: BudgetPageProps) {
             <X aria-hidden="true" />
           </button>
         ) : null}
+        <ClearFiltersButton
+          active={Boolean(filters.q.trim() || filters.year || filters.state || filters.proposer || filters.type)}
+          onClick={() => change({ q: '', year: '', state: '', proposer: '', type: '' })}
+        />
       </div>
 
       {data ? (

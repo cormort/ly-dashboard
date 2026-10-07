@@ -1,5 +1,6 @@
-import { Scale, Star, X } from 'lucide-react';
+import { Scale, Star } from 'lucide-react';
 import type { CommitteeItem } from '../api/types';
+import { ClearFiltersButton } from './ClearFiltersButton';
 import type { FilterState } from '../lib/urlState';
 
 export interface FilterBarProps {
@@ -68,10 +69,7 @@ export function FilterBar({ filters, regions, committees, onChange, onReset, con
         追蹤中（{trackedCount}）
       </button>
 
-      <button type="button" className="quiet" onClick={onReset} disabled={!hasFilters}>
-        <X aria-hidden="true" />
-        清除條件
-      </button>
+      <ClearFiltersButton active={hasFilters} onClick={onReset} />
     </div>
   );
 }

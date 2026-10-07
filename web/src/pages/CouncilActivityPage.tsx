@@ -1,7 +1,9 @@
 import { useState, type CSSProperties } from 'react';
-import { ExternalLink, X } from 'lucide-react';
+import { ExternalLink } from 'lucide-react';
 import { buildUrl } from '../api/client';
 import type { CouncilActivityResponse, Councilor } from '../api/types';
+import { ClearFiltersButton } from '../components/ClearFiltersButton';
+import { SearchField } from '../components/SearchField';
 import { EmptyState, ErrorState, LoadingState } from '../components/DataStates';
 import { useApi } from '../hooks/useApi';
 import { useParam } from '../hooks/useParam';
@@ -57,7 +59,6 @@ export function CouncilActivityPage({ refreshToken }: CouncilActivityPageProps) 
   const [county, setCounty] = useParam<string>('county', '');
   const [councilor, setCouncilor] = useParam<string>('councilor', '');
   const [q, setQ] = useParam<string>('q', '');
-  const [draft, setDraft] = useState(q);
   const [page, setPage] = useState(0);
   const [openFb, setOpenFb] = useState<string | null>(null);
   const res = useApi<CouncilActivityResponse>(buildUrl('/council/activity', { county, councilor, q, limit: PAGE, offset: page * PAGE }), { refreshToken });
@@ -95,15 +96,7 @@ export function CouncilActivityPage({ refreshToken }: CouncilActivityPageProps) 
           </button>
         ))}
       </div>
-      <form
-        className="filters"
-        role="search"
-        onSubmit={(event) => {
-          event.preventDefault();
-          setQ(draft.trim());
-          setPage(0);
-        }}
-      >
+      <div className="filters" role="search">
         <select value={councilor} aria-label="依議員篩選" onChange={(event) => pickCouncilor(event.target.value)}>
           <option value="">全部議員</option>
           {data.councilors.map((c) => (
@@ -113,15 +106,14 @@ export function CouncilActivityPage({ refreshToken }: CouncilActivityPageProps) 
             </option>
           ))}
         </select>
-        <input type="search" value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="搜尋標題關鍵字（空白分隔＝全部符合）" aria-label="搜尋新聞標題" />
-        <button type="submit">搜尋</button>
-        {q ? (
-          <button type="button" aria-pressed="true" aria-label={`取消關鍵字：${q}`} onClick={() => (setDraft(''), setQ(''), setPage(0))}>
-            {q}
-            <X aria-hidden="true" />
-          </button>
-        ) : null}
-      </form>
+        <SearchField
+          value={q}
+          onChange={(value) => (setQ(value.trim()), setPage(0))}
+          ariaLabel="搜尋新聞標題"
+          placeholder="搜尋標題關鍵字（空白分隔＝全部符合）"
+        />
+        <ClearFiltersButton active={Boolean(q || councilor)} onClick={() => (setQ(''), pickCouncilor(''), setPage(0))} />
+      </div>
 
       <div className="home">
         <section className="panel" aria-label="議員新聞" id="council-news">

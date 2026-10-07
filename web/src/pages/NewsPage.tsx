@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { Download, ExternalLink, X } from 'lucide-react';
 import { buildUrl } from '../api/client';
 import type { AgencyHomeResponse, LegislatorsResponse, NewsArticlesResponse, NewsKind } from '../api/types';
+import { ClearFiltersButton } from '../components/ClearFiltersButton';
+import { SearchField } from '../components/SearchField';
 import { EmptyState, ErrorState, LoadingState } from '../components/DataStates';
 import { DEFAULT_AGENCY, MY_AGENCY_KEY } from './MyAgencyPage';
 import { readPreference } from '../lib/storage';
@@ -59,13 +61,11 @@ export function NewsPage({ refreshToken, onOpenId, scope = 'legislators', onNavi
   const listFromApi = officials || agencies;
   const who = officials ? '首長' : agencies ? '機關' : '委員';
   const [filters, setFilters] = useState<Filters>(readFilters);
-  const [draft, setDraft] = useState(filters.q);
   const [page, setPage] = useState(0);
   useEffect(() => {
     const onPop = () => {
       const next = readFilters();
       setFilters(next);
-      setDraft(next.q);
     };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
@@ -101,14 +101,7 @@ export function NewsPage({ refreshToken, onOpenId, scope = 'legislators', onNavi
     <>
       <h1 className="sr-only">{officials ? '機關首長新聞' : agencies ? '機關新聞' : everything ? '全部新聞' : '新聞'}</h1>
 
-      <form
-        className="filters"
-        role="search"
-        onSubmit={(event) => {
-          event.preventDefault();
-          change({ q: draft.trim() });
-        }}
-      >
+      <div className="filters" role="search">
         {/* 全部新聞以關鍵字為主，不提供依人篩選（委員與首長上百人混在一起反而難找） */}
         {everything ? null : (
         <select value={filters.legislator} aria-label={`依${who}分析`} onChange={(event) => change({ legislator: event.target.value, source: '' })}>
@@ -120,27 +113,20 @@ export function NewsPage({ refreshToken, onOpenId, scope = 'legislators', onNavi
           ))}
         </select>
         )}
-        <input
-          type="search"
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
+        <SearchField
+          value={filters.q}
+          onChange={(q) => change({ q: q.trim() })}
+          ariaLabel="搜尋新聞標題"
           placeholder={everything ? '搜尋標題關鍵字（空白分隔＝全部符合）' : '搜尋標題關鍵字'}
-          aria-label="搜尋新聞標題"
         />
-        <button type="submit">搜尋</button>
-        {filters.q ? (
-          <button type="button" aria-pressed="true" aria-label={`取消關鍵字：${filters.q}`} onClick={() => (setDraft(''), change({ q: '' }))}>
-            {filters.q}
-            <X aria-hidden="true" />
-          </button>
-        ) : null}
         {filters.source ? (
           <button type="button" aria-pressed="true" aria-label={`取消媒體：${filters.source}`} onClick={() => change({ source: '' })}>
             {filters.source}
             <X aria-hidden="true" />
           </button>
         ) : null}
-      </form>
+        <ClearFiltersButton active={Boolean(filters.q || filters.source || filters.legislator || filters.kind)} onClick={() => change({ q: '', source: '', legislator: '', kind: '' })} />
+      </div>
 
       {everything && data?.kind_counts ? (
         <div className="segmented" role="group" aria-label="新聞類別">
