@@ -108,6 +108,10 @@ CREATE TABLE IF NOT EXISTS bill_sponsors (
   PRIMARY KEY (bill_id, legislator_id)
 );
 CREATE INDEX IF NOT EXISTS idx_bill_sponsors_legislator ON bill_sponsors(legislator_id);
+CREATE TABLE IF NOT EXISTS law_agencies (
+  law_name TEXT PRIMARY KEY,
+  agencies TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS bill_cosigners (
   bill_id TEXT NOT NULL,
   legislator_id TEXT NOT NULL,
@@ -548,6 +552,20 @@ export function applyProgressOverrides(db) {
     applied += stmt.run(row.date, row.id).changes;
   }
   return applied;
+}
+
+/** 法律→主管機關（上游法規庫；整批覆寫）。上游沒填的空陣列也存，才知道「問過了但沒有」。 */
+export function applyLawAgencies(db, laws) {
+  db.exec('BEGIN');
+  try {
+    db.exec('DELETE FROM law_agencies');
+    const insert = db.prepare('INSERT OR REPLACE INTO law_agencies(law_name, agencies) VALUES(?, ?)');
+    for (const [name, agencies] of laws) insert.run(name, JSON.stringify(agencies));
+    db.exec('COMMIT');
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
 }
 
 export function applyBills(db, { bills, sponsors, cosigners = [] }, { fetchedAt }) {

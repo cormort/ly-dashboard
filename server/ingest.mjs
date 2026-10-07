@@ -1,7 +1,7 @@
 import { pathToFileURL } from 'node:url';
 import { readFileSync } from 'node:fs';
 import { CONFIG } from './config.mjs';
-import { openDb, recordSyncRun, saveSnapshot, applyDataset, applyBills, applyBudget, applyBudgetReports, applyCommitteeMeets, applyCommitteeRecords, applyMeetings, applySocial, applyCouncilSocial, upsertNews, upsertTopicNews, upsertArticles, pruneNews, pruneLogs, getMeta, setMeta, upsertProgressOverride, getProgressOverrides, applyProgressOverrides, upsertBudgetCommittees, getBudgetCommittees } from './db.mjs';
+import { openDb, recordSyncRun, saveSnapshot, applyDataset, applyBills, applyLawAgencies, applyBudget, applyBudgetReports, applyCommitteeMeets, applyCommitteeRecords, applyMeetings, applySocial, applyCouncilSocial, upsertNews, upsertTopicNews, upsertArticles, pruneNews, pruneLogs, getMeta, setMeta, upsertProgressOverride, getProgressOverrides, applyProgressOverrides, upsertBudgetCommittees, getBudgetCommittees } from './db.mjs';
 import { buildDataset, normalizeCouncilSocial, normalizeBills, normalizeBudget, normalizeBudgetReports, normalizeCommitteeMeets, normalizeCommitteeRecords, normalizeMeetings, normalizeSocial, newsName, parseNewsRss, DataValidationError, NORMALIZER_VERSION } from './normalize.mjs';
 import { fetchJson, FetchError, sha256 } from './fetch-ly.mjs';
 import { ambiguousCouncilorNames, currentCouncilors, entityNewsTerms, makeTagger, mentionsKnownEntity } from './queries.mjs';
@@ -145,6 +145,14 @@ export async function runIngest(db, { logger = console, fetchImpl = fetchJson, n
 }
 
 const BILL_FIELDS = ['屆', '議案編號', '最新進度日期', '法律編號', '議案名稱', '提案單位/提案委員', '議案狀態', '提案人', '連署人', '議案類別', '會期', 'url'];
+
+/** 法律→主管機關（母法）的分頁網址；一頁最多 200（250 以上上游回 413） */
+export function lawsPageUrl(page) {
+  const qs = new URLSearchParams({ 類別: '母法', limit: '200', page: String(page) });
+  qs.append('output_fields', '名稱');
+  qs.append('output_fields', '主管機關');
+  return `${CONFIG.bills.url.replace(/bills$/, 'laws')}?${qs}`;
+}
 
 /** 某屆委員提案的分頁網址（g0v API 以中文欄位名當 query key） */
 export function billsPageUrl(term, page) {
@@ -350,6 +358,14 @@ export async function runBillsIngest(db, { logger = console, fetchImpl = fetchJs
       json: { pages: pages.length, bills: pages.map((page) => page.bills) },
     });
     const applied = applyBills(db, normalized, { fetchedAt: now().toISOString() });
+    // 法律→主管機關：「機關」頁用它把「修農業發展條例」的提案算進農業部。失敗不影響議案本身，沿用上次的對照
+    try {
+      const lawPages = (await fetchAllPages(lawsPageUrl, fetchImpl, 'laws')).pages;
+      const laws = new Map(lawPages.flatMap((p) => p.laws ?? []).map((l) => [l['名稱'], (l['主管機關'] ?? []).filter(Boolean)]));
+      if (laws.size > 0) applyLawAgencies(db, laws);
+    } catch (error) {
+      logger.warn?.(`[bills] 法律主管機關同步失敗，沿用上次的對照：${error.message}`);
+    }
     for (const w of normalized.warnings) logger.warn(`[bills] 警告：${w}`);
     logger.log(
       `[bills] 已套用：${normalized.bills.length} 筆議案、${normalized.sponsors.length} 筆提案人對應、狀態異動 ${applied.changes} 筆（快照${snapshotted ? '已保存' : '已存在'}）`,

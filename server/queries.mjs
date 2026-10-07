@@ -2242,7 +2242,15 @@ const dgbasOf = (r) => [
  * 基金／機關／財團法人／行政法人頁與「我的機關」共用：把新聞、臉書、提案、預算審議、預算中心報告攤成同一種資料列。
  * `type === 'dgbas'` 另收不限委員的主計總處新聞；基金／機關新聞（topic_news 'entities'）所有類別都收。
  */
+/** 法律名稱 → 主管機關：上游（law_agencies）有填的為準，沒填的用 server/law-agencies.json 人工補 */
+const lawAgencySupplement = new Map(Object.entries(JSON.parse(readFileSync(new URL('./law-agencies.json', import.meta.url), 'utf8')).laws).flatMap(([agency, names]) => names.map((n) => [n, [agency]])));
+function lawAgencyMap(db) {
+  const upstream = new Map(db.prepare('SELECT law_name, agencies FROM law_agencies').all().map((r) => [r.law_name, JSON.parse(r.agencies)]));
+  return (law) => (upstream.get(law)?.length ? upstream.get(law) : (lawAgencySupplement.get(law) ?? []));
+}
+
 function collectFundRows(db, resolvedType) {
+  const agencyOfLaw = lawAgencyMap(db);
   const budgetRows = db.prepare('SELECT * FROM budget_bills').all();
   const billRows = db.prepare('SELECT * FROM bills').all();
   // 上游對本會期的議案常常沒有日期；沒有日期不代表最舊（見 effectiveSortDate）
@@ -2261,7 +2269,7 @@ function collectFundRows(db, resolvedType) {
       .prepare("SELECT * FROM social_accounts WHERE latest_post_summary <> ''")
       .all()
       .map((r) => ({ kind: 'post', date: r.latest_post_date, title: r.latest_post_summary, url: r.url, legislator: people.get(r.legislator_id) })),
-    ...billRows.map((r) => ({ kind: 'bill', date: r.latest_date, sort_date: effectiveSortDate(r.latest_date, r.session, latestSession), title: r.name, url: r.url, status: r.status, legislator: lead.get(r.id) })),
+    ...billRows.map((r) => ({ kind: 'bill', agencies: [...new Set(JSON.parse(r.laws || '[]').flatMap(agencyOfLaw))], date: r.latest_date, sort_date: effectiveSortDate(r.latest_date, r.session, latestSession), title: r.name, url: r.url, status: r.status, legislator: lead.get(r.id) })),
     ...budgetRows.map((r) => ({ kind: 'budget', date: r.latest_date, sort_date: effectiveSortDate(r.latest_date, r.session, latestSession), title: r.name, url: r.url, status: r.status, source: r.proposer })),
     ...db.prepare('SELECT * FROM budget_reports').all().map((r) => ({ kind: 'report', date: r.completed, title: r.title, url: r.url, source: r.type })),
   ];
@@ -2278,7 +2286,8 @@ export function listFunds(db, { type = 'fund', fund = '', kind = '', limit = 30,
   const resolvedOffset = Math.max(0, Math.trunc(Number(offset) || 0));
   const resolvedType = ENTITY_TYPES.includes(type) || type === 'dgbas' ? type : 'fund';
   const rows = collectFundRows(db, resolvedType);
-  const tag = resolvedType === 'dgbas' ? dgbasOf : ((t) => (r) => t(r.title)[resolvedType])(makeTagger(rows.map((r) => r.title)));
+  // 委員提案另外看「修的法律歸哪個機關主管」：標題沒寫機關名也算（例如修農業發展條例 → 農業部）
+  const tag = resolvedType === 'dgbas' ? dgbasOf : ((t) => (r) => t(r.agencies?.length ? `${r.title} ${r.agencies.join(' ')}` : r.title)[resolvedType])(makeTagger(rows.map((r) => r.title)));
   // 各來源的資料期間（全部資料，不只命中的）：新聞只保留近一個月，件數少要看得出原因
   const periods = {};
   for (const r of rows) {
@@ -2342,7 +2351,7 @@ export function getAgencyHome(db, { name = '', per = 5 } = {}) {
 
   // 「誰在關注」要算到每位被掛名的委員，所以先留著去重前的列；顯示用的 matched 才把同一則新聞合併成一則
   // 主計總處另有專屬的主計新聞來源（topic_news 'dgbas'），沿用主計總處專頁的資料列，才不會因移到這裡而變少
-  const hits = collectFundRows(db, known.name === DGBAS_AGENCY ? 'dgbas' : 'agency').filter((r) => hit(r.title) || (r.kind === 'budget' && hit(r.source)));
+  const hits = collectFundRows(db, known.name === DGBAS_AGENCY ? 'dgbas' : 'agency').filter((r) => hit(r.title) || (r.kind === 'budget' && hit(r.source)) || (r.kind === 'bill' && r.agencies?.some((a) => terms.includes(a))));
   const matched = hits
     .filter((r, i, all) => r.kind !== 'news' || all.findIndex((x) => x.kind === 'news' && x.url === r.url) === i)
     .sort(byDate);
