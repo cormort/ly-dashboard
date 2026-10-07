@@ -581,7 +581,7 @@ h3 .convener-mark, h1 .convener-mark { margin-left: 0; }
 
 /* ---------- 首頁 ---------- */
 .home { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: var(--space-6); align-items: start; }
-.home-side { display: grid; gap: var(--space-6); }
+.home-side { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-6); }
 .activity-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
 .activity {
   padding: 14px 0 14px 14px;
@@ -752,7 +752,7 @@ button.chip:hover:not(:disabled) { border-color: var(--accent-line); background:
 
 /* ---------- 排行榜 ---------- */
 .rankings { display: grid; gap: var(--space-6); }
-.board-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: var(--space-4); align-items: start; }
+.board-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr)); gap: var(--space-4); align-items: start; }
 .ranking-board {
   background: var(--surface);
   border: 1px solid var(--rule);
@@ -966,7 +966,7 @@ select { max-width: 100%; }
 .category-tiles .stat-tile { display: grid; justify-items: start; gap: 2px; text-align: left; padding: 14px 16px; }
 .category-tiles .stat-tile[aria-pressed='true'] { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent-ink); }
 .category-tiles .stat-tile[aria-pressed='true'] .stat-label { color: var(--accent-ink); }
-.budget-layout { display: grid; grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr); gap: var(--space-6); align-items: start; }
+.budget-layout { display: grid; grid-template-columns: minmax(0, 2fr) minmax(min(260px, 100%), 1fr); gap: var(--space-6); align-items: start; }
 .state-tag { border-radius: var(--radius-pill); padding: 1px 8px; font-weight: 600; font-size: var(--fs-xs); }
 .state-tag.pending { color: var(--warn); background: var(--warn-bg); }
 .state-tag.done { color: var(--accent-ink); background: var(--accent-soft); }
@@ -981,10 +981,10 @@ select { max-width: 100%; }
 .clamp-2 { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
 .clamp-3 { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; margin: 0; }
 /* 委員會頁：會議與紀錄兩欄等寬，窄螢幕疊成一欄 */
-.committee-layout { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: var(--space-6); align-items: start; }
+.committee-layout { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr)); gap: var(--space-6); align-items: start; }
 button.chip[aria-pressed='true'] { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent-ink); font-weight: 600; }
 @media (max-width: 900px) {
-  .budget-layout { grid-template-columns: 1fr; }
+  .budget-layout { grid-template-columns: minmax(0, 1fr); }
 }
 
 /* ---------- 總覽 ---------- */
