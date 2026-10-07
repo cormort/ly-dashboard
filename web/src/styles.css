@@ -244,6 +244,8 @@ header nav a[aria-current='page'], .subnav a[aria-current='page'] { color: var(-
 .search-clear { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); padding: 4px; border: 0; background: transparent; color: var(--muted); box-shadow: none; border-radius: var(--radius-pill); }
 .search-clear:hover:not(:disabled) { background: var(--rule-soft); border-color: transparent; }
 .header-status { display: flex; align-items: center; gap: 4px; white-space: nowrap; margin-left: auto; }
+/* 手機用的短版狀態文字（相對時間）：預設隱藏，只在手機的 media query 裡顯示 */
+.date-short { display: none; }
 /* 同步範圍下拉：貼在「更新資料」鈕左邊，選完右邊的鈕才會開始同步 */
 .sync-scope select { font: inherit; font-size: var(--fs-sm); padding: 4px 6px; max-width: 30ch; border: 1px solid var(--rule-soft); border-radius: 8px; background: var(--surface); color: var(--ink-2); }
 .sync-scope select:disabled { opacity: 0.6; }
@@ -1365,3 +1367,70 @@ a.stat-tile:hover { border-color: #98a2b3; box-shadow: var(--card-base-hover); t
 .scope-switch button { white-space: nowrap; }
 
 .committee-tag { font-size: var(--fs-xs, 0.75rem); color: var(--ink-2); border: 1px dashed var(--rule); border-radius: var(--radius-pill); padding: 0 8px; }
+
+/* ---------------------------------------------------------------
+   手機（RWD）2026-10-07：橫向溢出與頁首高度
+   驗收：`npm run check:rwd`（scripts/check-rwd.mjs）—— 手機寬度下
+   document.documentElement.scrollWidth 必須等於 clientWidth。
+   現況量測、目標與決策：docs/rwd-plan.md
+   --------------------------------------------------------------- */
+@media (max-width: 760px) {
+  /* 1) 頁首控制列：桌機是刻意排成單列（nowrap），手機必須換行。
+        這是「一個元素弄壞整個站」的那一個：390px 下 .header-status 實測 605px 寬
+        （同步狀態鈕＋字級控制＋同步範圍 select＋更新鈕），讓 21 條路由裡 19 條橫向溢出 231px。 */
+  .header-status {
+    flex-wrap: wrap;
+    white-space: normal;
+    row-gap: 6px;
+    margin-left: 0;
+    justify-content: flex-start;
+    /* 不要獨占一列（那會多花約 40px 的頁首高度）：跟品牌同一列，裝不下才往下折 */
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  /* 狀態鈕：手機顯示短版時間（「1 天前」），一行就夠，才擠得下同一列的同步範圍與更新鈕 */
+  .header-status .sync-pill { font-size: var(--fs-sm); white-space: nowrap; }
+  .date-long { display: none; }
+  .date-short { display: inline; }
+  .sync-scope { max-width: 100%; min-width: 0; }
+  /* 選項全名在原生選單（點下去那一個）裡看得到，這裡只留辨識得出來的前幾個字 */
+  .sync-scope select { max-width: 9ch; }
+  /* 頁首自己的內距與列距收緊一點（手機每一列都珍貴） */
+  header { padding: 8px var(--space-4); gap: 6px var(--space-3); }
+  .sync-progress { flex-basis: 100%; min-width: 0; }
+  .sync-progress:empty { display: none; }
+  /* 字體大小控制在手機是多餘的（系統本身就有字級設定），讓頁首少一行 */
+  .font-size-control { display: none; }
+
+  /* 2) 主導覽固定一列、可橫向捲動：原本 flex-wrap: wrap 會折成兩列，多占約 40px */
+  header nav { flex-wrap: nowrap; }
+
+  /* 3) 長字串（40 字元的 SHA、網址、長標題）不要撐開版面。
+        flex 子項沒有 min-width: 0 時不會縮到比內容窄 —— /legislators 的「最近異動」
+        就是這樣被一段 SHA 撐到 830px。 */
+  .log > div, .log-list li > div, .changes .log-list li { min-width: 0; }
+  .log small, .log .old-value, .log .new-value, .log code, .db-counts { overflow-wrap: anywhere; word-break: break-word; }
+
+  /* 4) 手機的主要控制項要有好按的高度（≥40px）；表格列內的連結不在此限 */
+  .chip,
+  .filters button,
+  .filters select,
+  .segmented button,
+  .icon-button,
+  .subnav a,
+  header nav a { min-height: 40px; }
+  .icon-button { min-width: 40px; }
+
+  /* 5) 分段選單（.segmented，例如全部新聞頁的類別＋筆數）在手機上會比螢幕寬：
+        它自己是 flex、按鈕又 nowrap，會把整頁撐開（實測 /news/all 溢出 130px）。
+        原本只有 .filters .segmented 有處理，這裡推廣到所有 .segmented。 */
+  .segmented { overflow-x: auto; max-width: 100%; min-width: 0; flex-wrap: nowrap; }
+  .segmented button { flex: 0 0 auto; white-space: nowrap; }
+  /* 包住 .segmented 的外層（例如議員頁的 .council-switches）要能縮到比內容窄，
+     否則它會用內容寬度（實測 512px）把整頁撐開 —— flex 子項預設不會縮到 min-content 以下 */
+  .council-switches { min-width: 0; max-width: 100%; flex: 1 1 auto; }
+
+  /* 6) 表格已在 .table-wrap／.table-scroll 內橫向捲動（2026-10-07 實測，父層寬度是對的），
+        這裡只補觸控捲動與細捲軸，讓「右邊還有欄位」比較看得出來 */
+  .table-wrap, .table-scroll { -webkit-overflow-scrolling: touch; scrollbar-width: thin; }
+}

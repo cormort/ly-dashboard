@@ -232,7 +232,11 @@ export function Header({
           title="同步狀態與紀錄"
         >
           <span className="dot" aria-hidden="true" />
-          {statusText} {formatDateTime(fetchedAt, '尚無成功同步紀錄')}
+          {statusText}{' '}
+          {/* 手機只顯示相對時間（「1 天前」），否則整串日期會把頁首擠成三行；
+              桌機維持完整的日期時間（同一個資訊，兩種寬度各用適合的寫法） */}
+          <span className="date-long">{formatDateTime(fetchedAt, '尚無成功同步紀錄')}</span>
+          <span className="date-short">{formatRelative(fetchedAt, '尚無成功同步紀錄')}</span>
         </button>
         <FontSizeControl />
         <span className={`sync-progress ${syncTone}`} role="status" aria-live="polite">

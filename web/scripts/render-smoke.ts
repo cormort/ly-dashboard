@@ -450,7 +450,14 @@ check('InfoTip：aria-describedby 指向提示（讀螢幕程式讀得到）', (
 })());
 expectAll('顯示資料來源與資料截至時間', render(createElement(Header, headerProps)), [
   '立法院開放資料',
-  '資料截至 2026/09/30',
+  'date-long',
+  '2026/09/30',
+]);
+// 手機用的短版（相對時間）：同一則資訊的兩種寫法，CSS 依寬度切換（見 styles.css 的 ≤760）
+expectAll('狀態鈕同時帶完整日期與手機用的短版（相對時間）', render(createElement(Header, headerProps)), [
+  '資料截至',
+  'date-short',
+  'class="date-long"',
 ]);
 // L6：同步面板是條件式 render，aria-controls 不能指向不存在的元素
 expectNone('面板不存在時，aria-controls 不該指向空號', render(createElement(Header, headerProps)), ['aria-controls="sync-panel"']);
