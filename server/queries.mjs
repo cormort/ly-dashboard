@@ -103,6 +103,7 @@ export function listLegislators(db, query = {}) {
   const legislatorRows = db.prepare('SELECT * FROM legislators').all();
   // 名錄表格要用的活動量：提案數、近期新聞數（一次 GROUP BY，不逐人查）
   const billCount = new Map(db.prepare('SELECT legislator_id, COUNT(*) AS n FROM bill_sponsors GROUP BY legislator_id').all().map((r) => [r.legislator_id, Number(r.n)]));
+  const cosignCount = new Map(db.prepare('SELECT legislator_id, COUNT(*) AS n FROM bill_cosigners GROUP BY legislator_id').all().map((r) => [r.legislator_id, Number(r.n)]));
   const newsCount = new Map(db.prepare('SELECT legislator_id, COUNT(*) AS n FROM news GROUP BY legislator_id').all().map((r) => [r.legislator_id, Number(r.n)]));
   // 每位委員報導最多的媒體（同數量取名稱較前者）
   const topSource = new Map();
@@ -166,6 +167,7 @@ export function listLegislators(db, query = {}) {
       contacts: JSON.parse(l?.contacts || '[]'),
       social: socialByLegislator.get(id) ?? [],
       bill_count: billCount.get(id) ?? 0,
+      cosign_count: cosignCount.get(id) ?? 0,
       news_count: newsCount.get(id) ?? 0,
       election: l ? electionSummary(l.name, scope.term) : null,
       top_source: topSource.get(id) ?? null,

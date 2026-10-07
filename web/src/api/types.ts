@@ -228,6 +228,8 @@ export interface Legislator {
   social: LegislatorSocial[];
   /** 本屆提案數（含共同提案） */
   bill_count: number;
+  /** 本屆連署數（連署人，不含在提案數內；同步後才有資料） */
+  cosign_count?: number;
   /** 近 180 天新聞則數 */
   news_count: number;
   /** 該屆當選的選舉摘要（不分區委員為 null） */

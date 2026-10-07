@@ -144,9 +144,14 @@ export async function runIngest(db, { logger = console, fetchImpl = fetchJson, n
   };
 }
 
+const BILL_FIELDS = ['屆', '議案編號', '最新進度日期', '法律編號', '議案名稱', '提案單位/提案委員', '議案狀態', '提案人', '連署人', '議案類別', '會期', 'url'];
+
 /** 某屆委員提案的分頁網址（g0v API 以中文欄位名當 query key） */
 export function billsPageUrl(term, page) {
   const qs = new URLSearchParams({ 屆: String(term), 提案來源: '委員提案', limit: String(CONFIG.bills.pageSize), page: String(page) });
+  // 清單預設不含「連署人」；一指定 output_fields 就只回指定的欄位，所以原本用到的欄位要一併列出
+  // （「法律編號」會連同「法律編號:str」＝法律名稱一起回來）
+  for (const f of BILL_FIELDS) qs.append('output_fields', f);
   return `${CONFIG.bills.url}?${qs}`;
 }
 

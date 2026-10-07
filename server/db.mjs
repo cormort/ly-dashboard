@@ -108,6 +108,12 @@ CREATE TABLE IF NOT EXISTS bill_sponsors (
   PRIMARY KEY (bill_id, legislator_id)
 );
 CREATE INDEX IF NOT EXISTS idx_bill_sponsors_legislator ON bill_sponsors(legislator_id);
+CREATE TABLE IF NOT EXISTS bill_cosigners (
+  bill_id TEXT NOT NULL,
+  legislator_id TEXT NOT NULL,
+  PRIMARY KEY (bill_id, legislator_id)
+);
+CREATE INDEX IF NOT EXISTS idx_bill_cosigners_legislator ON bill_cosigners(legislator_id);
 CREATE TABLE IF NOT EXISTS news (
   legislator_id TEXT NOT NULL,
   url TEXT NOT NULL,
@@ -544,11 +550,12 @@ export function applyProgressOverrides(db) {
   return applied;
 }
 
-export function applyBills(db, { bills, sponsors }, { fetchedAt }) {
+export function applyBills(db, { bills, sponsors, cosigners = [] }, { fetchedAt }) {
   const previous = new Map(db.prepare('SELECT id, status FROM bills').all().map((r) => [r.id, r.status]));
   db.exec('BEGIN');
   try {
     db.exec('DELETE FROM bill_sponsors');
+    db.exec('DELETE FROM bill_cosigners');
     db.exec('DELETE FROM bills');
     const insertBill = db.prepare(
       `INSERT INTO bills(id, term, session, name, status, category, proposer_text, laws, latest_date, url)
@@ -559,6 +566,8 @@ export function applyBills(db, { bills, sponsors }, { fetchedAt }) {
     }
     const insertSponsor = db.prepare('INSERT OR IGNORE INTO bill_sponsors(bill_id, legislator_id, is_lead) VALUES(?, ?, ?)');
     for (const s of sponsors) insertSponsor.run(s.bill_id, s.legislator_id, s.is_lead ? 1 : 0);
+    const insertCosigner = db.prepare('INSERT OR IGNORE INTO bill_cosigners(bill_id, legislator_id) VALUES(?, ?)');
+    for (const c of cosigners) insertCosigner.run(c.bill_id, c.legislator_id);
 
     // M2：議案進度異動留痕（哪些案子從什麼狀態變成什麼狀態）
     const insertChange = db.prepare(

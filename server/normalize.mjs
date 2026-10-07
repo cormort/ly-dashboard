@@ -361,6 +361,8 @@ export function normalizeBills(pages, legislatorIdByName) {
 
   const unmatched = new Set();
   const sponsors = [];
+  // 連署人：不是提案人，不算進「提案數」，另外存供「連署」數字使用
+  const cosigners = [];
   const items = [...bills.values()].map((row) => {
     const id = field(row, '議案編號');
     const names = Array.isArray(row['提案人']) ? row['提案人'].map((n) => String(n).trim()).filter(Boolean) : [];
@@ -370,6 +372,11 @@ export function normalizeBills(pages, legislatorIdByName) {
       if (!legislatorId) return void (name.endsWith('黨團') || unmatched.add(name));
       sponsors.push({ bill_id: id, legislator_id: legislatorId, is_lead: index === 0 });
     });
+    const cosignNames = Array.isArray(row['連署人']) ? row['連署人'].map((n) => String(n).trim()).filter(Boolean) : [];
+    for (const name of cosignNames) {
+      const legislatorId = legislatorIdByName.get(name);
+      if (legislatorId) cosigners.push({ bill_id: id, legislator_id: legislatorId });
+    }
     return {
       id,
       term: Number(field(row, '屆')) || null,
@@ -384,7 +391,7 @@ export function normalizeBills(pages, legislatorIdByName) {
     };
   });
   const warnings = unmatched.size ? [`議案提案人有 ${unmatched.size} 個姓名對不到本屆委員：${[...unmatched].slice(0, 5).join('、')}`] : [];
-  return { bills: items, sponsors, warnings, total };
+  return { bills: items, sponsors, cosigners, warnings, total };
 }
 
 /**

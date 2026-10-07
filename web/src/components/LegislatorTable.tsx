@@ -128,7 +128,7 @@ export function LegislatorTable({ items, isTracked, onToggleTrack, onOpen }: Leg
                   </span>
                 </td>
                 <td>{text(l.area_name)}</td>
-                <td className="num">{l.bill_count}</td>
+                <td className="num">{l.bill_count}<small className="muted"> ＋連署 {l.cosign_count ?? 0}</small></td>
                 <td className="num">{l.news_count}</td>
                 <td className="num">{latestPost(l) ? latestPost(l).slice(5).replace('-', '/') : '—'}</td>
                 <td className="num" title={l.election ? `${l.election.year}${l.election.by_election ? ' 補選' : ''} ${l.election.district}：${l.election.votes.toLocaleString('zh-TW')} 票` : undefined}>

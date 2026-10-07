@@ -82,7 +82,7 @@ function LegislatorCard({
 
       <footer>
         <span>
-          提案 {legislator.bill_count}　新聞 {legislator.news_count}
+          提案 {legislator.bill_count}　連署 {legislator.cosign_count ?? 0}　新聞 {legislator.news_count}
           {latestPost ? `　貼文 ${latestPost.slice(5).replace('-', '/')}` : ''}
         </span>
         <button type="button" onClick={() => onOpen(legislator)}>
