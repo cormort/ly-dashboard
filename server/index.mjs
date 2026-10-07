@@ -158,7 +158,7 @@ export function createServer(db) {
           case '/api/v1/health':
             // progress：現在跑到哪（例如新聞 137/601）。單一資料集內部一大串請求時，
             // 只靠 sync_runs 會十幾分鐘都是「已完成 0 個來源」，所以另外回報細部進度。
-            return sendJson(res, 200, { ...getHealth(db), syncing: getInflightScope(), progress: getProgress() });
+            return sendJson(res, 200, { ...getHealth(db), sync_enabled: authorizeSync({}) === null, syncing: getInflightScope(), progress: getProgress() });
           case '/api/v1/meta':
             return sendJson(res, 200, getMetaPayload(db));
           case '/api/v1/legislators':

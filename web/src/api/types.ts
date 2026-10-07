@@ -92,6 +92,8 @@ export interface SyncProgress {
 export interface HealthResponse {
   meta: Meta;
   ok: boolean;
+  /** 這台伺服器是否允許從網頁觸發同步（區網分享模式下為 false，按鈕要隱藏） */
+  sync_enabled?: boolean;
   db: HealthDbCounts;
   /** 目前進行中的同步細部進度；沒有同步在跑時是 null */
   progress?: SyncProgress | null;

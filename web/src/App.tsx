@@ -119,6 +119,7 @@ export default function App() {
                     ? 'blocked'
                     : 'ok'
             }
+            syncEnabled={health.data?.sync_enabled !== false}
             syncScopes={syncSources.data?.scopes ?? []}
             syncScope={syncScope}
             onSyncScopeChange={setSyncScope}

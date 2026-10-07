@@ -21,6 +21,8 @@ export interface HeaderProps {
   /** 同步紀錄面板是否展開 */
   syncOpen: boolean;
   onSyncToggle: () => void;
+  /** false＝伺服器不接受網頁觸發同步（區網分享模式），整組同步按鈕隱藏 */
+  syncEnabled?: boolean;
   query: string;
   onQueryChange: (value: string) => void;
   /** 按下去觸發後端同步（同步完才會重新載入畫面資料） */
@@ -152,6 +154,7 @@ export function Header({
   failed,
   syncOpen,
   onSyncToggle,
+  syncEnabled = true,
   query,
   onQueryChange,
   onRefresh,
@@ -241,7 +244,7 @@ export function Header({
             </button>
           ) : null}
         </span>
-        {syncScopes.length > 1 ? (
+        {syncEnabled && syncScopes.length > 1 ? (
           <label className="sync-scope">
             <span className="sr-only">同步範圍</span>
             {/* 點一下（或滑過）就看得到這個範圍的更新頻率——「為什麼按了沒變」的答案在這裡 */}
@@ -271,6 +274,7 @@ export function Header({
             </select>
           </label>
         ) : null}
+        {syncEnabled ? (
         <button
           type="button"
           className="icon-button"
@@ -281,6 +285,7 @@ export function Header({
         >
           <RefreshCw className={refreshing ? 'spin' : undefined} aria-hidden="true" />
         </button>
+        ) : null}
         </div>
       </header>
 
