@@ -2252,10 +2252,10 @@ function lawAgencyMap(db) {
 /**
  * 審查會議列席：議案在哪些會議的議程被審查，那場會議「邀請／列席」的機關就算跟這個議案有關（不一定是主管機關）。
  * 只看議程裡「邀請…」「列席…」那一句，句內認得的機關（fund-config 的機關全名與簡稱）都收。
- * 一場會議常邀請好幾個機關，所以這只當「列席」關聯顯示，不算主管；而且只收邀請不超過 MAX_ATTEND 個機關的會議（實測對照主管機關：邀請 1 個的準確率 87%、2 個以內 70%、全收只有 21%）。
+ * 一場會議常邀請好幾個機關，所以這只當「列席」關聯顯示，不算主管，多邀請的機關也全收（2026-10-07 使用者決定：非主管機關但有出席就算有關）。
+ * 對照主管機關的準確率：邀請 1 個 87%、2 個以內 70%、全收 21%；要收緊再加回「邀請超過 N 個就略過」。
  * ponytail: 每次請求掃全部議程（約 2 千場，數十毫秒）；變慢再在同步時預先算好。
  */
-const MAX_ATTEND = 2;
 function attendByBill(db) {
   const canon = new Map(FUND_CONFIG.agencies.map((n) => [n, n]));
   for (const [alias, name] of Object.entries(FUND_CONFIG.aliases)) if (canon.has(name)) canon.set(alias, name);
@@ -2270,8 +2270,7 @@ function attendByBill(db) {
     const content = m.content ?? '';
     const invited = new Set();
     for (const clause of content.matchAll(/(?:邀請|列席)[^。；]*/g)) for (const k of clause[0].match(re) ?? []) invited.add(canon.get(k));
-    // 邀請超過 MAX_ATTEND 個機關的會議（多半是專題報告，順便審別的議案）不算：實測邀請 3 個以上的準確率掉到 48% 以下
-    if (!invited.size || invited.size > MAX_ATTEND) continue;
+    if (!invited.size) continue;
     for (const title of new Set([...content.matchAll(/「(.+?)」/g)].map((x) => x[1]))) {
       for (const id of idsByTitle.get(title) ?? []) {
         const set = result.get(id) ?? result.set(id, new Set()).get(id);
