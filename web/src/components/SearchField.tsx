@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import type { Ref } from 'react';
 import { Search, X } from 'lucide-react';
 
 export interface SearchFieldProps {
@@ -9,6 +10,10 @@ export interface SearchFieldProps {
   /** 送出前的等待時間（毫秒） */
   delayMs?: number;
   className?: string;
+  /** 根元素的 id（給 aria-controls 指） */
+  id?: string;
+  /** 輸入框的 ref（手機展開搜尋時要自動聚焦） */
+  inputRef?: Ref<HTMLInputElement>;
 }
 
 /**
@@ -23,6 +28,8 @@ export function SearchField({
   ariaLabel,
   delayMs = 300,
   className,
+  id,
+  inputRef,
 }: SearchFieldProps) {
   const [draft, setDraft] = useState(value);
   const timerRef = useRef<number | null>(null);
@@ -66,9 +73,10 @@ export function SearchField({
   };
 
   return (
-    <div className={className ? `search ${className}` : 'search'}>
+    <div id={id} className={className ? `search ${className}` : 'search'}>
       <Search aria-hidden="true" />
       <input
+        ref={inputRef}
         type="search"
         value={draft}
         aria-label={ariaLabel}

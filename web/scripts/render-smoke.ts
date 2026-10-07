@@ -485,6 +485,21 @@ expectAll(
 );
 expectAll('同步失敗時明示', render(createElement(Header, { ...headerProps, failed: true })), ['同步失敗', 'sync-pill error']);
 
+// 手機的搜尋框收成一顆圖示（2026-10-07）：DOM 一直都在，只是手機用 CSS 切換顯示，
+// 所以這裡驗的是「按鈕與輸入框成對、aria 指得到真正的元素」——桌機行為不變。
+expectAll('手機搜尋圖示：按鈕與輸入框成對，aria-controls 指得到真的元素', render(createElement(Header, headerProps)), [
+  'icon-button search-toggle',
+  'aria-expanded="false"',
+  'aria-controls="header-search"',
+  'id="header-search"',
+]);
+expectNone('手機搜尋圖示：收起時不該有 search-open（CSS 才知道要藏輸入框）', render(createElement(Header, headerProps)), [
+  'class="search-open"',
+]);
+expectNone('搜尋圖示只給沒有自己搜尋框的頁面（委員會頁不該出現）', render(createElement(Header, { ...headerProps, route: 'committees' as const })), [
+  'search-toggle',
+]);
+
 console.log('\n— SyncStatusBanner —');
 expectAll(
   'loading 態',

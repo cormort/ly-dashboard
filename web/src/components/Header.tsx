@@ -1,5 +1,5 @@
-import { Fragment } from 'react';
-import { RefreshCw } from 'lucide-react';
+import { Fragment, useEffect, useRef, useState } from 'react';
+import { RefreshCw, Search, X } from 'lucide-react';
 import type { SourceInfo, SyncScope } from '../api/types';
 import type { Route } from '../hooks/useRoute';
 import { pathFor } from '../hooks/useRoute';
@@ -165,6 +165,14 @@ export function Header({
   syncScope = 'all',
   onSyncScopeChange,
 }: HeaderProps) {
+  // 手機的搜尋框：收成圖示，點開才顯示輸入框（桌機由 CSS 讓它一直顯示，這裡的狀態不影響）
+  const [searchOpen, setSearchOpen] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    // 展開後直接聚焦，不然使用者還要再點一次輸入框
+    if (searchOpen) searchInputRef.current?.focus();
+  }, [searchOpen]);
+
   // 目前選的同步範圍（說明與提示都要用同一份）
   const currentScope = syncScopes.find((scope) => scope.id === syncScope) ?? syncScopes[0] ?? null;
   const tone = failed ? 'error' : stale ? 'warning' : 'ok';
@@ -178,7 +186,7 @@ export function Header({
 
   return (
     <>
-      <header>
+      <header className={searchOpen ? 'search-open' : undefined}>
       <a
         className="brand"
         href="/"
@@ -214,12 +222,30 @@ export function Header({
 
       {/* 法案、預算、委員會頁有自己的搜尋框，兩個不同目標的搜尋框疊在一起會混淆 */}
       {route !== 'bills' && route !== 'budget' && route !== 'committees' ? (
-        <SearchField
-          value={query}
-          onChange={onQueryChange}
-          ariaLabel="關鍵字搜尋立法委員"
-          placeholder="搜尋委員姓名、選區、委員會"
-        />
+        <>
+          {/* 手機：搜尋框收成一顆圖示（點開才出現輸入框），頁首因此少一列、也不會一進站
+              就被鍵盤擋掉半個畫面。桌機這顆按鈕用 CSS 關掉（display: none），
+              搜尋框直接顯示——桌機行為完全不變。 */}
+          <button
+            type="button"
+            className="icon-button search-toggle"
+            aria-expanded={searchOpen}
+            aria-controls="header-search"
+            title={searchOpen ? '收起搜尋' : '搜尋委員'}
+            onClick={() => setSearchOpen((open) => !open)}
+          >
+            {searchOpen ? <X aria-hidden="true" /> : <Search aria-hidden="true" />}
+            <span className="sr-only">{searchOpen ? '收起搜尋' : '搜尋委員姓名、選區、委員會'}</span>
+          </button>
+          <SearchField
+            id="header-search"
+            inputRef={searchInputRef}
+            value={query}
+            onChange={onQueryChange}
+            ariaLabel="關鍵字搜尋立法委員"
+            placeholder="搜尋委員姓名、選區、委員會"
+          />
+        </>
       ) : null}
 
       <div className="header-status">

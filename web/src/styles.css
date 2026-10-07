@@ -246,6 +246,8 @@ header nav a[aria-current='page'], .subnav a[aria-current='page'] { color: var(-
 .header-status { display: flex; align-items: center; gap: 4px; white-space: nowrap; margin-left: auto; }
 /* 手機用的短版狀態文字（相對時間）：預設隱藏，只在手機的 media query 裡顯示 */
 .date-short { display: none; }
+/* 手機的搜尋圖示按鈕：桌機的搜尋框直接顯示，所以這顆按鈕預設不存在 */
+.search-toggle { display: none; }
 /* 同步範圍下拉：貼在「更新資料」鈕左邊，選完右邊的鈕才會開始同步 */
 .sync-scope select { font: inherit; font-size: var(--fs-sm); padding: 4px 6px; max-width: 30ch; border: 1px solid var(--rule-soft); border-radius: 8px; background: var(--surface); color: var(--ink-2); }
 .sync-scope select:disabled { opacity: 0.6; }
@@ -839,8 +841,25 @@ button.chip:hover:not(:disabled) { border-color: var(--accent-line); background:
 /* ---------- 響應式 ---------- */
 @media (max-width: 1100px) {
   header { position: static; gap: var(--space-2) 20px; }
-  .search { order: 4; flex-basis: 100%; max-width: none; margin-left: 0; }
   .header-status { margin-left: auto; }
+}
+
+/* 平板（761–1100）：搜尋框維持行內（跟狀態列同一列就好），不要自己占一列。
+   768px 的頁首因此從 191px 降到約 100px。手機才需要它自己一列（那裡它會被收成一顆圖示）。 */
+@media (max-width: 760px) {
+  .search { order: 4; flex-basis: 100%; max-width: none; margin-left: 0; }
+}
+
+/* 平板（761–1100）：頁首只要兩列（品牌＋導覽／搜尋＋狀態）。
+   實測 768px：品牌 89 + 20 的間距 + 導覽 623 = 732，比可用的 728 多 4px → 導覽被擠到下一列，
+   頁首變三列（154px）。把間距收到 12px 就進得去；導覽也改成不換行（可橫向捲動）當保險。 */
+@media (min-width: 761px) and (max-width: 1100px) {
+  header { gap: var(--space-2) var(--space-3); }
+  header nav { flex-wrap: nowrap; overflow-x: auto; min-width: 0; }
+  /* 導覽連結左右各收 3px：9 個連結就少 54px，品牌與導覽才進得了同一列。
+     實測 768px（有 ⓘ 的頁面）：659 + 89 + 12 = 760 > 728 → 會被擠成三列（154px）；
+     收完 605 + 89 + 12 = 706 → 兩列 109px。順便讓觸控高度到 40px（平板多半是手指）。 */
+  header nav a { padding: 7px 9px; min-height: 40px; }
 }
 @media (max-width: 900px) {
   .home, .overview, .board-grid, .grid { grid-template-columns: 1fr; }
@@ -1432,7 +1451,12 @@ a.stat-tile:hover { border-color: #98a2b3; box-shadow: var(--card-base-hover); t
      否則它會用內容寬度（實測 512px）把整頁撐開 —— flex 子項預設不會縮到 min-content 以下 */
   .council-switches { min-width: 0; max-width: 100%; flex: 1 1 auto; }
 
-  /* 6) 表格已在 .table-wrap／.table-scroll 內橫向捲動（2026-10-07 實測，父層寬度是對的），
+  /* 6) 搜尋框收成一顆圖示：頁首少一列（實測 179px → 136px），要用再點開。
+        收起時用 display:none，順便讓它離開 Tab 順序；點開後自動聚焦。 */
+  .search-toggle { display: inline-flex; margin-left: auto; }
+  header:not(.search-open) .search { display: none; }
+
+  /* 7) 表格已在 .table-wrap／.table-scroll 內橫向捲動（2026-10-07 實測，父層寬度是對的），
         這裡只補觸控捲動與細捲軸，讓「右邊還有欄位」比較看得出來 */
   .table-wrap, .table-scroll { -webkit-overflow-scrolling: touch; scrollbar-width: thin; }
 }
