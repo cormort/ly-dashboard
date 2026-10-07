@@ -6,6 +6,7 @@ import { buildDataset, normalizeCouncilSocial, normalizeBills, normalizeBudget, 
 import { fetchJson, FetchError, sha256 } from './fetch-ly.mjs';
 import { ambiguousCouncilorNames, currentCouncilors, entityNewsTerms, makeTagger, mentionsKnownEntity } from './queries.mjs';
 import { feedDate, feedFileUrl, outletLabel, parseFeedFile } from './news-feed.mjs';
+import { syncNewsData } from './news-push.mjs';
 import { SYNC_STAGES } from './sync-scopes.mjs';
 import { fetchBillProgress } from './ppg-progress.mjs';
 import { fetchBillCommittees } from './budget-committees.mjs';
@@ -582,6 +583,26 @@ function feedStaleNote(db, now) {
 }
 
 /**
+ * 把本機抓到的新聞推回 GitHub 的資料分支（`LY_NEWS_PUSH=1` 才做，見 server/news-push.mjs）。
+ *
+ * 為什麼：換一台裝置當 server（筆電／Mac Mini）時，各自抓到的新聞只留在自己的 SQLite；
+ * 推回 `news-data` 之後，另一台只要做一次新聞同步（或下一輪媒體 RSS 輪詢的匯入）就看得到，
+ * 而且兩邊靠網址去重，不會因為重複推送而長出重複的新聞。
+ *
+ * 失敗只記警告：推不上去（憑證／網路）是環境問題，不該讓本機的同步變成失敗。
+ */
+export async function maybePushNews(db, { logger = console } = {}) {
+  if (!CONFIG.newsPush.enabled) return { status: 'skipped' };
+  try {
+    const result = await syncNewsData({ db, days: CONFIG.newsPush.days, log: (message) => logger.log(message) });
+    return result;
+  } catch (error) {
+    logger.warn(`[news] 推回資料分支失敗（不影響本機同步）：${error?.message || error}`);
+    return { status: 'failed', error: String(error?.message || error) };
+  }
+}
+
+/**
  * 媒體 RSS 的獨立輪詢（排程每 CONFIG.news.outletIntervalMs 一次，見 index.mjs startScheduler）。
  * 為什麼要比每日同步頻繁：feed 只留最新幾十則（實測中央社 20、自由 40、公視 25），
  * 一天抓一次的話，中間被擠出 feed 的報導就永遠收不到了。
@@ -595,7 +616,10 @@ export async function runOutletPoll(db, { logger = console, fetchImpl = fetchJso
     `[news] 媒體 RSS 輪詢：${result.items} 則（新增 ${result.stored} 則進新聞庫、${result.added} 則委員新聞）${result.failures ? `，${result.failures}/${result.total} 家失敗` : ''}` +
       (feed.skipped ? '' : `；收集檔 ${feed.files} 個、新增 ${feed.stored} 則`),
   );
-  return { ...result, feed };
+  // 匯入完收集檔之後，把本機這一輪的收穫（含 Google 那一路抓到的）推回資料分支
+  const push = await maybePushNews(db, { logger });
+  if (push.status === 'pushed') logger.log(`[news] 本機收穫已推回資料分支：新增 ${push.added} 則`);
+  return { ...result, feed, push };
 }
 
 /* ---------------- 近半年新聞回補（一次性，scripts/backfill-news.mjs） ---------------- */
@@ -1184,6 +1208,8 @@ export async function runAll(db, options = {}) {
     // 名錄是其他階段的前置（議員／委員會對照），名錄失敗就不要繼續跑後面
     if (stage === 'roster' && outcome.status === 'failed') return outcome;
     result[stage] = outcome;
+    // 新聞跑完就把本機的收穫推回資料分支（LY_NEWS_PUSH=1 才做；推失敗不影響同步結果）
+    if (stage === 'news' && outcome.status !== 'failed') result.news_push = await maybePushNews(db, { logger: options.logger ?? console });
   }
   // 名錄的欄位（status／stats…）攤在最上層：CLI 與既有測試都讀這幾個欄位
   return stages.includes('roster') ? { ...result.roster, ...result } : result;

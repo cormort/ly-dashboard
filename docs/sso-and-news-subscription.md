@@ -16,7 +16,7 @@ D133–D137（粉專連結驗證）、D166–D215（每日粉專抓取與粉專�
 | 對外綁定 | 預設 `127.0.0.1`（`LY_HOST`，見 `server/config.mjs`） | 目前只有本機看得到；要給機關用必須改綁內網位址並處理 TLS |
 | 唯一的保護 | `POST /api/v1/sync`：有 `LY_SYNC_TOKEN` → 要求 `x-sync-token`；沒設 → 只有 loopback 能用，`LY_HOST` 非 loopback 時**直接 403 停用**（`authorizeSync()`，`server/index.mjs`） | 唯讀 API 完全開放；「誰能看」這件事目前不存在 |
 | 帳號／角色／稽核 | **完全沒有** | `change_log`、`sync_runs` 是「資料異動」與「同步紀錄」，不是使用者行為稽核 |
-| 新聞來源 | 媒體 RSS（中央社／自由／聯合／公視）每小時由 GitHub Action 收進 `news-data` 分支（`.github/workflows/collect-news.yml`），同步時匯入 `articles`；委員新聞走 Google 新聞 RSS | 「持續收集、不重打來源」的機制已經有了（見 D113–D117、D138–D139） |
+| 新聞來源 | 媒體 RSS（中央社／自由／聯合／公視）每小時由 GitHub Action 收進 `news-data` 分支（`.github/workflows/collect-news.yml`），同步時匯入 `articles`；委員新聞走 Google 新聞 RSS。**2026-10-07 起**：本機的伺服器也可以把抓到的新聞推回同一個分支（`LY_NEWS_PUSH=1`，見 `server/news-push.mjs`／D228）—— 兩台裝置互相看得到對方抓的 | 「持續收集、不重打來源」的機制已經有了（見 D113–D117、D138–D139） |
 
 ### 新聞的資料模型（跟下一節的成本直接相關）
 

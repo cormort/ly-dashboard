@@ -68,7 +68,8 @@ export function mergeFeedFile(text, items, collectedAt) {
       summary: i.summary || old?.summary || '',
       source: i.source || old?.source || '',
       published_at: i.published_at,
-      collected_at: old?.collected_at ?? collectedAt,
+      // 已經在檔案裡的那一則保留它原本的 collected_at；本機推上來的 items 可能自己帶（＝什麼時候抓到的）
+      collected_at: old?.collected_at ?? i.collected_at ?? collectedAt,
       ...((i.origin ?? old?.origin) ? { origin: i.origin ?? old.origin } : {}),
     });
   }

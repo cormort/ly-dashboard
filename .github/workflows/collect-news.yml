@@ -57,14 +57,27 @@ jobs:
       - name: 抓 RSS 並併入當天的檔
         run: node app/scripts/collect-news-rss.mjs --out data
 
-      - name: 有變動才 commit
-        working-directory: data
+      # 有變動才 commit；推失敗（本機的伺服器也在推同一個分支，見 scripts/push-news-data.mjs）
+      # 就重抓遠端最新、重新收集一次再推 —— 收集腳本是「合併進當天的檔」，所以重跑不會丟掉遠端已經有的。
+      - name: 有變動才 commit（撞到本機也在推就重併再試）
         run: |
-          git add -A
-          if git diff --cached --quiet; then
-            echo "沒有新新聞"
-            exit 0
-          fi
-          git -c user.name="news-collector[bot]" -c user.email="news-collector@users.noreply.github.com" \
-            commit -q -m "news: $(date -u +%Y-%m-%dT%H:%MZ) 收集"
-          git push -q origin news-data
+          for attempt in 1 2 3; do
+            git -C data add -A
+            if git -C data diff --cached --quiet; then
+              echo "沒有新新聞"
+              exit 0
+            fi
+            git -C data -c user.name="news-collector[bot]" -c user.email="news-collector@users.noreply.github.com" \
+              commit -q -m "news: $(date -u +%Y-%m-%dT%H:%MZ) 收集"
+            if git -C data push -q origin news-data; then
+              echo "已推上 news-data"
+              exit 0
+            fi
+            echo "push 失敗（本機伺服器可能同時在推），重併遠端內容再試（第 ${attempt} 次）"
+            git -C data fetch -q --depth 1 origin news-data
+            git -C data reset -q --hard origin/news-data
+            node app/scripts/collect-news-rss.mjs --out data
+            sleep $((attempt * 3))
+          done
+          echo "::error::重試 3 次仍推不上 news-data"
+          exit 1

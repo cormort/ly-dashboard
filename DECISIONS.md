@@ -623,3 +623,21 @@ T6 圖表／地圖、T7 粉專牆嵌入框（已看過沒破版，但沒改任�
 點「我的機關」會到 `/my`（導覽高亮「我的機關」，頁面是行政院主計總處）。手機上次級導覽折成兩列，分隔線仍在。
 `npm --prefix web run test` **185 項全過**（子頁順序那條改成含「我的機關」＋新增一條分隔線斷言）；`npm test` 254 項全過；
 `npm run check:rwd` 在 390／768 對五個受影響頁面（`/officials`、`/news`、`/news/all`、`/news/agencies`、`/my`）**10 個組合 0 溢出**。
+
+## 本機抓到的新聞推回資料分支（跨裝置共用，2026-10-07）
+
+使用者：「我現在是用筆電測試當 server，如果抓取了新的新聞可以自己同步到 github 上面嗎」
+→「這樣子在不同裝置間就可以更新了」。
+
+| # | 岔路 | 選擇 | 理由 |
+| --- | --- | --- | --- |
+| D228 | 本機的收穫要不要推回 `news-data` | **要，但預設關閉**（`LY_NEWS_PUSH=1` 才做）；邏輯放 `server/news-push.mjs`，執行入口 `scripts/push-news-data.mjs`（`npm run push:news`） | 原本只有 GitHub Actions 的收集端會寫這個分支（它補「伺服器沒開時也不漏收」）；反過來，伺服器自己抓到的（逐委員／逐機關的 Google 新聞、以及在伺服器開著時輪詢到的媒體 RSS）只留在本機 SQLite。換一台裝置當 server 就看不到，資料也只在那一台。預設關閉是因為推上去需要能寫 repo 的憑證，不該在 clone 下來就默默對外寫 |
+| D229 | 推什麼、推哪幾天 | **近 7 天**（`LY_NEWS_PUSH_DAYS` 可調）的 `news` ＋ `topic_news`，依網址去重後按「臺灣時間的發布日」分檔；`origin` 照匯入 CSV 那條規則（Google 轉址＝`google`、其餘＝`outlet`） | 只有文章的 url／標題／來源／發布時間進收集檔（跟 Actions 收的同一種形狀）；「哪一則配哪位委員」不進檔，匯入端本來就會用標題重新分派。視窗限制是避免每次把整庫推上去 |
+| D230 | 兩邊同時寫同一個分支 | **每輪都先 `reset --hard origin/<branch>` 再重新合併本機 items，然後才 push，失敗重試 3 次**；Actions 那一步也加上「重抓遠端＋重新收集再推」的重試 | 本機的媒體 RSS 輪詢每小時一次、Actions 也是每小時（:17），撞到 non-fast-forward 是遲早的事。內容全部來自本機 DB 與遠端檔案，所以丢掉本機未推的 commit 不會遺失東西；`mergeFeedFile` 依網址合併，兩台各自抓到的都會在（測試釘住「B 不會蓋掉 A」） |
+| D231 | 什麼時候推 | 新聞階段跑完（`runAll`，涵蓋「只同步新聞」這個範圍）＋**每小時的媒體 RSS 輪詢之後**（`runOutletPoll`） | 使用者要的是「抓到新的就自己同步上去」；輪詢那一條是最常有新東西的時機。推失敗只記警告，**不讓本機的同步變成失敗** |
+
+**已驗證（2026-10-07）**：
+- `test/push-news-data.test.mjs` **9 條全過**（origin 判定、臺灣時間分檔、併檔去重與 `collected_at` 保留、**兩台裝置各自抓到的都在、B 不覆蓋 A**、沒變就不 commit、`--dry-run` 不推、分支不存在自己建、只推近 N 天）；`npm test` **263 項全過**。
+- 真實資料預演：`npm run push:news -- --days 7 --dry-run` → 會更新 7 個檔、新增 1,733 則（本機近 7 天 4,232 則，其餘 Actions 已經收過）。
+- **真的推了一輪**（`--days 1`）：commit `5535d64`（`news/2026-10-06.ndjson`、`news/2026-10-07.ndjson`，新增 217 則），`git ls-remote` 確認 `news-data` 已前進；再從 raw URL 讀回遠端檔：10-07 那天的 94 則裡，本機當日 19 則**全部都在**。
+- `.github/workflows/collect-news.yml` 的重試步驟用 ruby YAML 解析驗過、抽出的 shell 也過 `bash -n`（CI 只能這樣驗，無法在本機跑）。

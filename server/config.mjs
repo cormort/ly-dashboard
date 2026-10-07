@@ -154,6 +154,13 @@ export const CONFIG = {
   // 來源是月報與選舉年，不會天天變；超過這個月數就在 /health 的 warnings 提醒重跑 build。
   staticStaleMonths: Number(process.env.LY_STATIC_STALE_MONTHS ?? 3),
   syncIntervalMs: Number(process.env.LY_SYNC_INTERVAL_MS || 24 * 60 * 60 * 1000),
+  // 本機抓到的新聞要不要推回 GitHub 的資料分支（news-data，見 server/news-push.mjs）。
+  // 預設關閉：推上去需要能寫 repo 的憑證（git remote 自帶的，或 credential helper）。
+  // 筆電／Mac Mini 當 server 時打開它，本機的收穫就成為資料分支的一份（與 Actions 的收集並存）。
+  newsPush: {
+    enabled: process.env.LY_NEWS_PUSH === '1',
+    days: Number(process.env.LY_NEWS_PUSH_DAYS ?? 7),
+  },
   // 排程**檢查**的間隔：不是每 24 小時才醒一次，而是每小時檢查「資料是不是超過 syncIntervalMs 沒更新」。
   // 這樣某輪失敗（fail closed 保留舊資料）會在一小時內自動重試，Mac 睡著／重開機後也會補上；
   // 資料新鮮時完全不會打政府 API，所以不會增加對方負擔。
