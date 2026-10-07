@@ -6,6 +6,7 @@ import { pathFor } from '../hooks/useRoute';
 import { formatDateTime, formatRelative } from '../lib/format';
 import { FontSizeControl } from './FontSizeControl';
 import { InfoTip } from './InfoTip';
+import { Magnifier } from './Magnifier';
 import { PAGE_HINTS } from '../lib/pageHints';
 import { SearchField } from './SearchField';
 
@@ -230,6 +231,7 @@ export function Header({
         })}
       </nav>
 
+      <Magnifier />
       {/* 法案、預算、委員會頁有自己的搜尋框，兩個不同目標的搜尋框疊在一起會混淆 */}
       {route !== 'bills' && route !== 'budget' && route !== 'committees' ? (
         <>

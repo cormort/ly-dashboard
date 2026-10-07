@@ -247,7 +247,7 @@ header nav a[aria-current='page'], .subnav a[aria-current='page'] { color: var(-
 /* 手機用的短版狀態文字（相對時間）：預設隱藏，只在手機的 media query 裡顯示 */
 .date-short { display: none; }
 /* 手機的搜尋圖示按鈕：桌機的搜尋框直接顯示，所以這顆按鈕預設不存在 */
-.search-toggle { display: none; }
+.search-toggle, .magnifier-toggle { display: none; }
 /* 同步範圍下拉：貼在「更新資料」鈕左邊，選完右邊的鈕才會開始同步 */
 .sync-scope select { font: inherit; font-size: var(--fs-sm); padding: 4px 6px; max-width: 30ch; border: 1px solid var(--rule-soft); border-radius: 8px; background: var(--surface); color: var(--ink-2); }
 .sync-scope select:disabled { opacity: 0.6; }
@@ -1006,6 +1006,9 @@ a.stat-tile:hover { border-color: #98a2b3; box-shadow: var(--card-base-hover); t
 .more-link svg { width: 14px; height: 14px; }
 .dash-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
 .dash-list li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; align-items: baseline; font-size: var(--fs-md); }
+/* 只有「標題＋日期」兩個子項的列（例如書面回覆）：標題要吃 1fr、日期靠右；
+   不然標題掉進 auto 欄、日期掉進 1fr 欄，長標題會把日期擠出卡片外 */
+.dash-list li:not(:has(> :nth-child(3))) { grid-template-columns: minmax(0, 1fr) auto; }
 .dash-list a { text-decoration: none; color: var(--ink); }
 .dash-list a:hover { color: var(--accent-ink); text-decoration: underline; }
 .dash-list a svg { width: 11px; height: 11px; margin-left: 3px; vertical-align: -1px; color: var(--muted); }
@@ -1455,10 +1458,27 @@ a.stat-tile:hover { border-color: #98a2b3; box-shadow: var(--card-base-hover); t
 
   /* 6) 搜尋框收成一顆圖示：頁首少一列（實測 179px → 136px），要用再點開。
         收起時用 display:none，順便讓它離開 Tab 順序；點開後自動聚焦。 */
-  .search-toggle { display: inline-flex; margin-left: auto; }
+  .search-toggle, .magnifier-toggle { display: inline-flex; margin-left: auto; }
+  .magnifier-toggle + .search-toggle { margin-left: 0; }
   header:not(.search-open) .search { display: none; }
 
   /* 7) 表格已在 .table-wrap／.table-scroll 內橫向捲動（2026-10-07 實測，父層寬度是對的），
         這裡只補觸控捲動與細捲軸，讓「右邊還有欄位」比較看得出來 */
   .table-wrap, .table-scroll { -webkit-overflow-scrolling: touch; scrollbar-width: thin; }
 }
+
+/* 手機放大鏡（Magnifier.tsx）：透明蓋板接手觸控，鏡片浮在手指上方 */
+.magnifier-catcher { position: fixed; inset: 0; z-index: 1000; touch-action: none; background: transparent; }
+.magnifier-lens {
+  position: fixed; display: none; z-index: 1001; overflow: hidden; pointer-events: none;
+  background: var(--paper, #fff); border: 3px solid var(--accent); border-radius: 12px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.3);
+}
+.magnifier-inner { position: absolute; top: 0; left: 0; transform-origin: 0 0; pointer-events: none; }
+.magnifier-bar {
+  position: fixed; z-index: 1002; left: 50%; bottom: 16px; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 999px;
+  background: var(--ink-2, #344054); color: #fff; font-size: 0.85rem; box-shadow: 0 4px 14px rgb(0 0 0 / 0.3);
+}
+.magnifier-bar button { min-width: 40px; min-height: 40px; border: 0; border-radius: 999px; background: rgb(255 255 255 / 0.18); color: #fff; font-weight: 600; }
+.magnifier-bar svg { width: 18px; height: 18px; }
