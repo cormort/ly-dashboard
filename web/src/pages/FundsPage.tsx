@@ -134,8 +134,9 @@ export function FundsPage({ type, refreshToken, onOpenId, onNavigate }: FundsPag
                   <p className="bill-meta">
                     <span className="fund-kind">{KIND_LABEL[item.kind]}</span>
                     {item.funds.map((f) => (
-                      <button key={f} type="button" className="link-button" onClick={() => change({ fund: f })}>
+                      <button key={f} type="button" className="link-button" onClick={() => change({ fund: f })} title={item.attend_only?.includes(f) ? '審查這個議案的會議邀請該機關列席（不一定是主管機關）' : undefined}>
                         {f}
+                        {item.attend_only?.includes(f) ? '（列席）' : ''}
                       </button>
                     ))}
                     {item.status ? <span className="status-tag">{item.status}</span> : null}

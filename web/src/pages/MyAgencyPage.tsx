@@ -298,7 +298,7 @@ export function MyAgencyPage({ refreshToken, onOpenId, onNavigate }: MyAgencyPag
                 <ItemList items={data.kinds.report.items} tag={(i) => i.source?.replace('評估', '')} />
               </Block>
               <Block title="法案" total={data.kinds.bill.total} href={link('bill')} onNavigate={onNavigate}>
-                <ItemList items={data.kinds.bill.items} tag={(i) => i.status} />
+                <ItemList items={data.kinds.bill.items} tag={(i) => (i.attend_only ? `列席${i.status ? ` · ${i.status}` : ''}` : i.status)} />
               </Block>
             </div>
           </section>

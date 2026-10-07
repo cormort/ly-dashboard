@@ -1683,7 +1683,7 @@ export function listNewsArticles(db, { q = '', source = '', legislator = '', sco
     source_total: counts.size,
     people: officials ? [...people.values()].map((p) => ({ ...p, count: perPerson.get(p.id) ?? 0 })).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'zh-Hant')) : undefined,
     sources: [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 30).map(([name, count]) => ({ name, count })),
-    items: matching.slice(resolvedOffset, resolvedOffset + resolvedLimit),
+    items: matching.slice(resolvedOffset, resolvedOffset + resolvedLimit).map(({ agencies, attend, ...item }) => item),
   };
 }
 
@@ -2249,8 +2249,42 @@ function lawAgencyMap(db) {
   return (law) => (upstream.get(law)?.length ? upstream.get(law) : (lawAgencySupplement.get(law) ?? []));
 }
 
+/**
+ * 審查會議列席：議案在哪些會議的議程被審查，那場會議「邀請／列席」的機關就算跟這個議案有關（不一定是主管機關）。
+ * 只看議程裡「邀請…」「列席…」那一句，句內認得的機關（fund-config 的機關全名與簡稱）都收。
+ * 一場會議常邀請好幾個機關，所以這只當「列席」關聯顯示，不算主管；而且只收邀請不超過 MAX_ATTEND 個機關的會議（實測對照主管機關：邀請 1 個的準確率 87%、2 個以內 70%、全收只有 21%）。
+ * ponytail: 每次請求掃全部議程（約 2 千場，數十毫秒）；變慢再在同步時預先算好。
+ */
+const MAX_ATTEND = 2;
+function attendByBill(db) {
+  const canon = new Map(FUND_CONFIG.agencies.map((n) => [n, n]));
+  for (const [alias, name] of Object.entries(FUND_CONFIG.aliases)) if (canon.has(name)) canon.set(alias, name);
+  const re = new RegExp([...canon.keys()].sort((a, b) => b.length - a.length).map(escapeRe).join('|'), 'g');
+  const idsByTitle = new Map();
+  for (const b of db.prepare('SELECT id, name FROM bills').all()) {
+    const title = b.name.match(/「(.+?)」/)?.[1] ?? b.name;
+    (idsByTitle.get(title) ?? idsByTitle.set(title, []).get(title)).push(b.id);
+  }
+  const result = new Map();
+  for (const m of db.prepare("SELECT content FROM committee_meetings WHERE content LIKE '%審查%' AND (content LIKE '%邀請%' OR content LIKE '%列席%')").all()) {
+    const content = m.content ?? '';
+    const invited = new Set();
+    for (const clause of content.matchAll(/(?:邀請|列席)[^。；]*/g)) for (const k of clause[0].match(re) ?? []) invited.add(canon.get(k));
+    // 邀請超過 MAX_ATTEND 個機關的會議（多半是專題報告，順便審別的議案）不算：實測邀請 3 個以上的準確率掉到 48% 以下
+    if (!invited.size || invited.size > MAX_ATTEND) continue;
+    for (const title of new Set([...content.matchAll(/「(.+?)」/g)].map((x) => x[1]))) {
+      for (const id of idsByTitle.get(title) ?? []) {
+        const set = result.get(id) ?? result.set(id, new Set()).get(id);
+        for (const a of invited) set.add(a);
+      }
+    }
+  }
+  return result;
+}
+
 function collectFundRows(db, resolvedType) {
   const agencyOfLaw = lawAgencyMap(db);
+  const attend = attendByBill(db);
   const budgetRows = db.prepare('SELECT * FROM budget_bills').all();
   const billRows = db.prepare('SELECT * FROM bills').all();
   // 上游對本會期的議案常常沒有日期；沒有日期不代表最舊（見 effectiveSortDate）
@@ -2269,7 +2303,7 @@ function collectFundRows(db, resolvedType) {
       .prepare("SELECT * FROM social_accounts WHERE latest_post_summary <> ''")
       .all()
       .map((r) => ({ kind: 'post', date: r.latest_post_date, title: r.latest_post_summary, url: r.url, legislator: people.get(r.legislator_id) })),
-    ...billRows.map((r) => ({ kind: 'bill', agencies: [...new Set(JSON.parse(r.laws || '[]').flatMap(agencyOfLaw))], date: r.latest_date, sort_date: effectiveSortDate(r.latest_date, r.session, latestSession), title: r.name, url: r.url, status: r.status, legislator: lead.get(r.id) })),
+    ...billRows.map((r) => ({ kind: 'bill', agencies: [...new Set(JSON.parse(r.laws || '[]').flatMap(agencyOfLaw))], attend: [...(attend.get(r.id) ?? [])], date: r.latest_date, sort_date: effectiveSortDate(r.latest_date, r.session, latestSession), title: r.name, url: r.url, status: r.status, legislator: lead.get(r.id) })),
     ...budgetRows.map((r) => ({ kind: 'budget', date: r.latest_date, sort_date: effectiveSortDate(r.latest_date, r.session, latestSession), title: r.name, url: r.url, status: r.status, source: r.proposer })),
     ...db.prepare('SELECT * FROM budget_reports').all().map((r) => ({ kind: 'report', date: r.completed, title: r.title, url: r.url, source: r.type })),
   ];
@@ -2298,7 +2332,12 @@ export function listFunds(db, { type = 'fund', fund = '', kind = '', limit = 30,
     if (d > p.to) p.to = d;
   }
   const tagged = rows
-    .map((r) => ({ ...r, date: r.date ?? '', legislator: r.legislator ?? null, funds: tag(r) }))
+    .map((r) => {
+      const funds = tag(r);
+      // 審查會議列席的機關：只在「機關」頁加進來，且只標沒有別的關聯（標題／主管機關）的那些
+      const attendOnly = resolvedType === 'agency' ? (r.attend ?? []).filter((a) => !funds.includes(a)) : [];
+      return { ...r, date: r.date ?? '', legislator: r.legislator ?? null, funds: [...funds, ...attendOnly], attend_only: attendOnly };
+    })
     // 同一則新聞會掛在每位被提到的委員底下，只留一則
     .filter((r, i, all) => r.funds.length && (r.kind !== 'news' || all.findIndex((x) => x.kind === 'news' && x.url === r.url) === i))
     .sort((a, b) => (b.sort_date ?? b.date).localeCompare(a.sort_date ?? a.date) || a.title.localeCompare(b.title));
@@ -2351,14 +2390,20 @@ export function getAgencyHome(db, { name = '', per = 5 } = {}) {
 
   // 「誰在關注」要算到每位被掛名的委員，所以先留著去重前的列；顯示用的 matched 才把同一則新聞合併成一則
   // 主計總處另有專屬的主計新聞來源（topic_news 'dgbas'），沿用主計總處專頁的資料列，才不會因移到這裡而變少
-  const hits = collectFundRows(db, known.name === DGBAS_AGENCY ? 'dgbas' : 'agency').filter((r) => hit(r.title) || (r.kind === 'budget' && hit(r.source)) || (r.kind === 'bill' && r.agencies?.some((a) => terms.includes(a))));
+  const hits = collectFundRows(db, known.name === DGBAS_AGENCY ? 'dgbas' : 'agency')
+    .map((r) => {
+      const direct = hit(r.title) || (r.kind === 'budget' && hit(r.source)) || (r.kind === 'bill' && r.agencies?.some((a) => terms.includes(a)));
+      const viaAttend = !direct && r.kind === 'bill' && r.attend?.includes(known.name);
+      return direct || viaAttend ? { ...r, attend_only: viaAttend } : null;
+    })
+    .filter(Boolean);
   const matched = hits
     .filter((r, i, all) => r.kind !== 'news' || all.findIndex((x) => x.kind === 'news' && x.url === r.url) === i)
     .sort(byDate);
   const kinds = Object.fromEntries(
     AGENCY_KINDS.map((k) => {
       const list = matched.filter((r) => r.kind === k);
-      return [k, { total: list.length, items: list.slice(0, resolvedPer) }];
+      return [k, { total: list.length, items: list.slice(0, resolvedPer).map(({ agencies, attend, ...item }) => item) }];
     }),
   );
 

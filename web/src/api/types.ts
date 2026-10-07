@@ -1263,6 +1263,8 @@ export interface FundItem {
   legislator: { id: string; name: string; party: string } | null;
   /** 命中的該類正式名稱；清單外含「基金」為「其他基金」，清單外的基金會為「其他基金會」 */
   funds: string[];
+  /** funds 之中只因「審查會議邀請列席」才關聯的機關（不是主管機關，也沒出現在標題） */
+  attend_only?: string[];
 }
 
 export interface FundsResponse {
@@ -1344,6 +1346,8 @@ export interface AgencyItem {
   legislator?: { id: string; name: string; party: string } | null;
   /** 首長新聞才有：是哪位首長 */
   head?: string;
+  /** 委員提案：只因審查會議邀請該機關列席才關聯（不是主管機關，標題也沒提） */
+  attend_only?: boolean;
 }
 
 export interface AgencyBlock<T> {
