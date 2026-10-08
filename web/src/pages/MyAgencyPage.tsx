@@ -6,7 +6,7 @@ import { EmptyState, ErrorState, LoadingState } from '../components/DataStates';
 import { useApi } from '../hooks/useApi';
 import { pathFor } from '../hooks/useRoute';
 import { RouteLink } from '../components/RouteLink';
-import { shortCommittee } from '../lib/format';
+import { formatDay, shortCommittee } from '../lib/format';
 import { partyStyle } from '../lib/parties';
 import { readPreference, writePreference } from '../lib/storage';
 
@@ -20,10 +20,15 @@ export interface MyAgencyPageProps {
 export const MY_AGENCY_KEY = 'my-agency';
 /** 沒選過時預設載入的機關 */
 export const DEFAULT_AGENCY = '行政院主計總處';
-const shortDate = (value: string | null | undefined) => (value ? value.slice(5, 10).replace('-', '/') : '');
 
 /** 網址 ?agency= 優先（可分享），其次是上次選的（存在這個瀏覽器），都沒有就用預設機關 */
 const initialAgency = (): string => new URLSearchParams(window.location.search).get('agency') || readPreference(MY_AGENCY_KEY) || DEFAULT_AGENCY;
+
+/** 網址 ?watch=（「誰在關注」哪一位的明細，可分享、上一頁也回得去）；沒帶就沒有明細 */
+const initialWatch = (): string => new URLSearchParams(window.location.search).get('watch') || '';
+
+/** 「誰在關注」的件數連到這裡：同一頁的明細卡片，記在網址上（換機關時要一起帶） */
+export const watchUrl = (agency: string, id: string) => pathFor('my', { agency, watch: id });
 
 /** 一個區塊：標題＋件數＋「看更多」；沒資料時明說，不留空白 */
 function Block({ title, total, href, onNavigate, note, children }: { title: string; total: number; href?: string; onNavigate: (href: string) => void; note?: string; children: ReactNode }) {
@@ -61,10 +66,97 @@ function ItemList({ items, tag }: { items: AgencyItem[]; tag?: (item: AgencyItem
           <a href={i.url} target="_blank" rel="noreferrer noopener" className="clamp-2">
             {i.title}
           </a>
-          <time>{shortDate(i.date)}</time>
+          <time>{formatDay(i.date)}</time>
         </li>
       ))}
     </ul>
+  );
+}
+
+/** 「誰在關注」明細的分組順序（與機關頁的來源一致；空的來源不顯示） */
+const WATCHER_GROUPS: { kind: FundKind; label: string }[] = [
+  { kind: 'news', label: '新聞' },
+  { kind: 'post', label: '臉書貼文' },
+  { kind: 'bill', label: '委員提案' },
+  { kind: 'budget', label: '預算審議' },
+  { kind: 'report', label: '預算中心報告' },
+];
+
+/**
+ * 「誰在關注」的明細：那個「N 次」是由哪些資料組成。依來源分組，**每一筆都連回原始資料**
+ * （新聞／貼文／議案／報告是各自的來源網址）；會議本身沒有自己的網址，連到委員會頁的同一場會議
+ * （那裡的議程、登記發言與紀錄就是來源）。件數以清單上的數字為準，分組加總必須等於它。
+ */
+export function WatcherDetail({
+  watcher,
+  onClose,
+  onNavigate,
+}: {
+  watcher: NonNullable<AgencyHomeResponse['watcher']>;
+  onClose: () => void;
+  onNavigate: (href: string) => void;
+}) {
+  const groups = WATCHER_GROUPS.map((g) => ({ ...g, block: watcher.kinds[g.kind] })).filter((g) => g.block.total > 0);
+  return (
+    <section className="panel dash-card wide watcher-detail" aria-label={`${watcher.name} 的關注明細`}>
+      <div className="sectionhead">
+        <h2>
+          <span style={{ color: partyStyle(watcher.party).color }}>{watcher.name}</span> 的 {watcher.count.toLocaleString()} 次
+        </h2>
+        <button type="button" className="link-button" onClick={onClose}>
+          收起來
+        </button>
+      </div>
+      <p className="muted">依來源分組，點標題連到原始資料。</p>
+      {groups.map((g) => (
+        <section key={g.kind} aria-label={g.label}>
+          <h3>
+            {g.label} <span className="muted">{g.block.total.toLocaleString()}</span>
+          </h3>
+          <ul className="dash-list">
+            {g.block.items.map((i) => (
+              <li key={`${i.kind}-${i.url}`}>
+                {i.status ? <span className="status-tag">{i.status}</span> : null}
+                <a href={i.url} target="_blank" rel="noreferrer noopener" className="clamp-2">
+                  {i.title}
+                </a>
+                <time>{formatDay(i.date)}</time>
+              </li>
+            ))}
+          </ul>
+          {g.block.total > g.block.items.length ? <p className="muted">只列最新 {g.block.items.length} 筆（共 {g.block.total} 筆）。</p> : null}
+        </section>
+      ))}
+      {watcher.meetings.total > 0 ? (
+        <section aria-label="會議發言">
+          <h3>
+            會議發言 <span className="muted">{watcher.meetings.total.toLocaleString()}</span>
+          </h3>
+          <ul className="dash-list">
+            {watcher.meetings.items.map((m) => {
+              const href = pathFor('committees', { q: m.name });
+              return (
+                <li key={`${m.date}-${m.name}`}>
+                  <span className="kind">{m.committees[0] ? shortCommittee(m.committees[0]) : '會議'}</span>
+                  <a
+                    href={href}
+                    className="clamp-2"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      onNavigate(href);
+                    }}
+                  >
+                    {m.name}
+                  </a>
+                  <time>{formatDay(m.date)}</time>
+                </li>
+              );
+            })}
+          </ul>
+          {watcher.meetings.total > watcher.meetings.items.length ? <p className="muted">只列最新 {watcher.meetings.items.length} 筆（共 {watcher.meetings.total} 筆）。</p> : null}
+        </section>
+      ) : null}
+    </section>
   );
 }
 
@@ -74,22 +166,34 @@ function ItemList({ items, tag }: { items: AgencyItem[]; tag?: (item: AgencyItem
  */
 export function MyAgencyPage({ refreshToken, onOpenId, onNavigate }: MyAgencyPageProps) {
   const [agency, setAgency] = useState(initialAgency);
+  const [watch, setWatch] = useState(initialWatch);
   const [draft, setDraft] = useState('');
   useEffect(() => {
-    const onPop = () => setAgency(initialAgency());
+    const onPop = () => {
+      setAgency(initialAgency());
+      setWatch(initialWatch());
+    };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
   }, []);
 
-  const res = useApi<AgencyHomeResponse>(buildUrl('/agency', { name: agency }), { refreshToken });
+  const res = useApi<AgencyHomeResponse>(buildUrl('/agency', { name: agency, watch }), { refreshToken });
   const data = res.data;
   const names = new Set(data?.agencies.map((a) => a.name));
 
   const choose = (name: string) => {
     setAgency(name);
+    setWatch('');
     setDraft('');
     writePreference(MY_AGENCY_KEY, name);
     window.history.replaceState(null, '', pathFor('my', { agency: name }));
+  };
+
+  /** 「誰在關注」的件數：點開看那 N 次是哪些資料（同一位再點一次＝收起來） */
+  const toggleWatch = (id: string) => {
+    const next = watch === id ? '' : id;
+    setWatch(next);
+    window.history.replaceState(null, '', pathFor('my', { agency, watch: next }));
   };
   const selector = (
     <div className="agency-picker">
@@ -227,7 +331,7 @@ export function MyAgencyPage({ refreshToken, onOpenId, onNavigate }: MyAgencyPag
                         {m.name}
                         {m.speakers.length ? <span className="muted">　發言：{m.speakers.slice(0, 4).map((s) => s.name).join('、')}{m.speakers.length > 4 ? '…' : ''}</span> : null}
                       </span>
-                      <time>{shortDate(m.date)}</time>
+                      <time>{formatDay(m.date)}</time>
                     </li>
                   ))}
                 </ul>
@@ -239,7 +343,7 @@ export function MyAgencyPage({ refreshToken, onOpenId, onNavigate }: MyAgencyPag
                       <a href={r.url} target="_blank" rel="noreferrer noopener" className="clamp-2">
                         {r.title}
                       </a>
-                      <time>{shortDate(r.date)}</time>
+                      <time>{formatDay(r.date)}</time>
                     </li>
                   ))}
                 </ul>
@@ -250,7 +354,7 @@ export function MyAgencyPage({ refreshToken, onOpenId, onNavigate }: MyAgencyPag
           <section className="dash-section" aria-labelledby="my-watchers">
             <div className="dash-section-head">
               <h2 id="my-watchers">誰在關注</h2>
-              <p className="muted">新聞、臉書、提案掛名，加上提到本機關的會議中登記發言的委員</p>
+              <p className="muted">新聞、臉書、提案掛名，加上提到本機關的會議中登記發言的委員；點件數看是哪些資料</p>
             </div>
             <section className="panel dash-card wide" aria-label="關注本機關的委員">
               {data.watchers.length === 0 ? (
@@ -262,12 +366,24 @@ export function MyAgencyPage({ refreshToken, onOpenId, onNavigate }: MyAgencyPag
                       <button type="button" className="name-button" style={{ color: partyStyle(w.party).color }} onClick={() => onOpenId(w.id)}>
                         {w.name}
                       </button>
-                      <span className="muted">{w.count} 次</span>
+                      <a
+                        href={watchUrl(agency, w.id)}
+                        className="link-button count-button"
+                        aria-expanded={watch === w.id}
+                        title={`看 ${w.name} 的 ${w.count} 次是哪些資料`}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          toggleWatch(w.id);
+                        }}
+                      >
+                        {w.count} 次
+                      </a>
                     </li>
                   ))}
                 </ol>
               )}
             </section>
+            {data.watcher ? <WatcherDetail watcher={data.watcher} onClose={() => toggleWatch(data.watcher!.id)} onNavigate={onNavigate} /> : null}
           </section>
 
           <section className="dash-section" aria-labelledby="my-news">

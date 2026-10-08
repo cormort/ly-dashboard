@@ -17,7 +17,7 @@ import { EmptyState, ErrorState, LoadingState } from '../components/DataStates';
 import { useApi, type ApiResource } from '../hooks/useApi';
 import { pathFor, type Route } from '../hooks/useRoute';
 import { PASSED_STATUSES } from '../lib/billStage';
-import { billTitle, shortCommittee } from '../lib/format';
+import { billTitle, formatDay, shortCommittee } from '../lib/format';
 import { partyStyle, sortParties } from '../lib/parties';
 import { readPreference } from '../lib/storage';
 import { DEFAULT_AGENCY, MY_AGENCY_KEY } from './MyAgencyPage';
@@ -28,7 +28,6 @@ export interface DashboardPageProps {
 }
 
 const KIND_LABEL = { post: '臉書', news: '新聞', bill: '提案' } as const;
-const shortDate = (value: string | null | undefined) => (value ? value.slice(5, 10).replace('-', '/') : '');
 
 /** 一張總覽卡：標題＋「看更多」連到對應頁面；四態沿用各頁的 LoadingState／ErrorState */
 function Card<T>({
@@ -182,7 +181,7 @@ export function DashboardPage({ refreshToken, onOpenId, onNavigate }: DashboardP
                   <a href={b.url} target="_blank" rel="noreferrer noopener" className="clamp-2">
                     {b.name}
                   </a>
-                  <time>{shortDate(b.latest_date) || '尚無進度'}</time>
+                  <time>{formatDay(b.latest_date) || '尚無進度'}</time>
                 </li>
               ))}
             </ul>
@@ -201,7 +200,7 @@ export function DashboardPage({ refreshToken, onOpenId, onNavigate }: DashboardP
                   ) : (
                     <span className="clamp-2">{r.title}</span>
                   )}
-                  <time>{r.completed?.slice(0, 7).replace('-', '/')}</time>
+                  <time>{formatDay(r.completed)}</time>
                 </li>
               ))}
             </ul>
@@ -216,7 +215,7 @@ export function DashboardPage({ refreshToken, onOpenId, onNavigate }: DashboardP
                   <a href={r.html_url ?? r.gazette_url ?? '#'} target="_blank" rel="noreferrer noopener" className="clamp-2">
                     {r.title}
                   </a>
-                  <time>{shortDate(r.date)}</time>
+                  <time>{formatDay(r.date)}</time>
                 </li>
               ))}
             </ul>
@@ -231,7 +230,7 @@ export function DashboardPage({ refreshToken, onOpenId, onNavigate }: DashboardP
                   <a href={b.url} target="_blank" rel="noreferrer noopener" className="clamp-2">
                     {billTitle(b.name)}
                   </a>
-                  <time>{shortDate(b.latest_date)}</time>
+                  <time>{formatDay(b.latest_date)}</time>
                 </li>
               ))}
             </ul>
@@ -246,7 +245,7 @@ export function DashboardPage({ refreshToken, onOpenId, onNavigate }: DashboardP
                   <a href={b.url} target="_blank" rel="noreferrer noopener" className="clamp-2">
                     {billTitle(b.name)}
                   </a>
-                  <time>{shortDate(b.latest_date)}</time>
+                  <time>{formatDay(b.latest_date)}</time>
                 </li>
               ))}
             </ul>
@@ -270,7 +269,7 @@ export function DashboardPage({ refreshToken, onOpenId, onNavigate }: DashboardP
                   <a href={n.url} target="_blank" rel="noreferrer noopener" className="clamp-2">
                     {n.title}
                   </a>
-                  <time>{shortDate(n.published_at)}</time>
+                  <time>{formatDay(n.published_at)}</time>
                 </li>
               ))}
             </ul>
@@ -285,7 +284,7 @@ export function DashboardPage({ refreshToken, onOpenId, onNavigate }: DashboardP
                   <a href={n.url} target="_blank" rel="noreferrer noopener" className="clamp-2">
                     {n.title}
                   </a>
-                  <time>{shortDate(n.published_at)}</time>
+                  <time>{formatDay(n.published_at)}</time>
                 </li>
               ))}
             </ul>
@@ -346,7 +345,7 @@ export function DashboardPage({ refreshToken, onOpenId, onNavigate }: DashboardP
                         {latest.text}
                       </a>
                     ) : null}
-                    <time>{shortDate(a.activity_date)}</time>
+                    <time>{formatDay(a.activity_date)}</time>
                   </li>
                 );
               })}
@@ -460,7 +459,7 @@ export function DashboardPage({ refreshToken, onOpenId, onNavigate }: DashboardP
                           <b>{x.legislator.name}</b>　{x.text}
                           <ExternalLink aria-hidden="true" />
                         </a>
-                        <time>{shortDate(x.date)}</time>
+                        <time>{formatDay(x.date)}</time>
                       </li>
                     ))}
                   </ul>

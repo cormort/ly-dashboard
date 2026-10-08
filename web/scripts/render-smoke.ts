@@ -18,15 +18,15 @@ import { createElement, type ReactElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { ApiError } from '../src/api/client';
 import type { ApiResource } from '../src/hooks/useApi';
-import type { ChangesResponse, CommitteesResponse, LegislatorsResponse, MetaResponse } from '../src/api/types';
+import type { AgencyHomeResponse, ChangesResponse, CommitteesResponse, LegislatorsResponse, MetaResponse } from '../src/api/types';
 import { AppShell } from '../src/components/AppShell';
 import { ChangesPanel } from '../src/components/ChangesPanel';
 import { CommitteeChart } from '../src/components/CommitteeChart';
 import { FacetChips } from '../src/components/FacetChips';
 import { Header, scopeCadenceText, scopeDetailText, scopeOptionLabel } from '../src/components/Header';
-import { formatDuration } from '../src/lib/format';
+import { formatDateTime, formatDay, formatDuration } from '../src/lib/format';
 import type { SyncScope } from '../src/api/types';
-import { MyAgencyPage } from '../src/pages/MyAgencyPage';
+import { MyAgencyPage, WatcherDetail, watchUrl } from '../src/pages/MyAgencyPage';
 import { InfoTip } from '../src/components/InfoTip';
 import { PAGE_HINTS } from '../src/lib/pageHints';
 import { FundsPage } from '../src/pages/FundsPage';
@@ -352,6 +352,62 @@ check(
 // 「機關」頁與「我的機關」互相連結
 expectAll('我的機關連到機關頁', myAgencyHtml, ['href="/agencies"', '機關頁']);
 {
+  // 「誰在關注」的件數：連到同頁的明細卡片（?watch=），明細每一筆都連回原始資料
+  const watcher = {
+    id: 'L1',
+    name: '賴士葆',
+    party: '中國國民黨',
+    count: 4,
+    kinds: {
+      news: {
+        total: 2,
+        items: [
+          { kind: 'news', date: '2026-09-29', title: '主計總處說明穩定物價措施', url: 'https://n/1', source: '甲報', legislator: null, funds: [] },
+        ],
+      },
+      post: { total: 1, items: [{ kind: 'post', date: '2026-09-28', title: '今天質詢主計長', url: 'https://p/1', legislator: null, funds: [] }] },
+      bill: { total: 1, items: [{ kind: 'bill', date: '2026-09-10', title: '「預算法部分條文修正草案」，請審議案。', url: 'https://l/1', status: '交付審查', legislator: null, funds: [] }] },
+      budget: { total: 0, items: [] },
+      report: { total: 0, items: [] },
+    },
+    meetings: {
+      total: 1,
+      items: [{ date: '2026-09-25', name: '財政委員會第5次會議', committees: ['財政委員會'], speakers: [{ id: 'L1', name: '賴士葆', party: '中國國民黨' }] }],
+    },
+  } as NonNullable<AgencyHomeResponse['watcher']>;
+  const detailProps = { watcher, onClose: () => undefined, onNavigate: () => undefined };
+  expectAll('誰在關注明細：每一筆連回原始資料（新聞／貼文／議案）', render(createElement(WatcherDetail, detailProps)), [
+    '賴士葆',
+    '4 次',
+    '依來源分組',
+    'https://n/1',
+    'https://p/1',
+    'https://l/1',
+    '會議發言',
+    'href="/committees?q=%E8%B2%A1%E6%94%BF%E5%A7%94%E5%93%A1%E6%9C%83%E7%AC%AC5%E6%AC%A1%E6%9C%83%E8%AD%B0"', // 會議沒有自己的網址 → 連到委員會頁的同一場會議
+    '收起來',
+  ]);
+  expectNone('誰在關注明細：沒有資料的來源不列', render(createElement(WatcherDetail, detailProps)), ['預算審議', '預算中心報告']);
+  expectAll('誰在關注明細：只列前幾筆時明講總數', render(createElement(WatcherDetail, detailProps)), ['只列最新 1 筆（共 2 筆）']);
+  check(
+    '誰在關注的件數連到明細網址（同頁 ?watch=，可分享）',
+    watchUrl('財政部', 'L1') === '/my?agency=%E8%B2%A1%E6%94%BF%E9%83%A8&watch=L1' && watchUrl('財政部', 'L1').startsWith('/my?'),
+  );
+  check(
+    '誰在關注的件數是真的連結（href=?watch=，可分享／新視窗），不是純文字',
+    (() => {
+      const src = readFileSync(new URL('../src/pages/MyAgencyPage.tsx', import.meta.url), 'utf8');
+      return (
+        src.includes('href={watchUrl(agency, w.id)}') &&
+        src.includes('aria-expanded={watch === w.id}') &&
+        !src.includes('<span className="muted">{w.count} 次</span>') &&
+        src.includes("buildUrl('/agency', { name: agency, watch })") &&
+        src.includes("window.history.replaceState(null, '', pathFor('my', { agency, watch: next }))")
+      );
+    })(),
+  );
+}
+{
   const win = window as unknown as { location: { pathname: string; search: string } };
   const saved = win.location.search;
   const fundsProps = { refreshToken: 0, onOpenId: () => undefined, onNavigate: () => undefined };
@@ -462,7 +518,7 @@ check('InfoTip：aria-describedby 指向提示（讀螢幕程式讀得到）', (
 expectAll('顯示資料來源與資料截至時間', render(createElement(Header, headerProps)), [
   '立法院開放資料',
   'date-long',
-  '2026/09/30',
+  formatDateTime(META.fetched_at), // 今年的日期不寫年份（2026-10-08 使用者決定）；規則本身在 smoke.ts 驗
 ]);
 // 手機用的短版（相對時間）：同一則資訊的兩種寫法，CSS 依寬度切換（見 styles.css 的 ≤760）
 expectAll('狀態鈕同時帶完整日期與手機用的短版（相對時間）', render(createElement(Header, headerProps)), [
@@ -869,7 +925,7 @@ const detailHtml = render(
     );
   const fresh = withFreshness(false);
   const old = withFreshness(true);
-  check('詳情側欄：最新貼文旁標整理表資料截至哪天', fresh.includes('整理表資料截至 2026-09-27') && !fresh.includes('沒更新'));
+  check('詳情側欄：最新貼文旁標整理表資料截至哪天', fresh.includes(`整理表資料截至 ${formatDay('2026-09-27')}`) && !fresh.includes('沒更新'));
   check('詳情側欄：整理表過期時提醒、引導看嵌入貼文', old.includes('整理表已 12 天沒更新') && old.includes('看貼文'));
 }
 check('詳情側欄：臉書帳號旁有「看貼文」（官方嵌入框點了才載入，預設不載入）', detailHtml.includes('看貼文') && !detailHtml.includes('facebook.com/plugins/page.php'));
@@ -886,7 +942,7 @@ expectAll('詳情側欄有 dialog 語意、學經歷、會期與來源連結', d
   '社群',
   '臉書：測試委員甲',
   'https://www.facebook.com/test',
-  '最新貼文 2026-09-27：測試摘要',
+  '最新貼文 ' + formatDay('2026-09-27') + '：測試摘要',
   '最近提案',
   '讀取提案',
   '近期新聞',
@@ -986,7 +1042,7 @@ check('流程條：未知狀態不畫', render(createElement(BillStageBar, { sta
 
 // 上游對本會期的預算議案沒有日期（實測 199/199），留白會像壞掉；排序上這種案子當成最新
 check('預算頁：沒有進度日期時明講「尚無進度日期」，不是空白', progressDateText('') === '尚無進度日期' && progressDateText(null) === '尚無進度日期');
-check('預算頁：有進度日期就照原樣顯示', progressDateText('2026-04-14') === '2026-04-14');
+check('預算頁：有進度日期就照實際日期顯示（今年的不寫年份），沒有就明講', progressDateText('2026-04-14') === formatDay('2026-04-14') && progressDateText('') === '尚無進度日期');
 
 // 一案一列：合併後要講清楚那一列是幾筆議案紀錄、各是什麼狀態
 check('議案紀錄彙總：多筆時列出各狀態筆數', budgetRecordsText({ reviewed: 9, in_review: 13, pending: 2 }, 24) === '9 筆已審查完畢、13 筆交付審查、2 筆排入院會');

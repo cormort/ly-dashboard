@@ -45,6 +45,7 @@ import {
   datasetLabel,
   formatChangeValue,
   formatDateTime,
+  formatDay,
   text,
 } from '../src/lib/format.ts';
 
@@ -493,10 +494,20 @@ async function main(): Promise<void> {
     assert.equal(formatChangeValue('party', null), '（無）');
     assert.equal(formatChangeValue('party', '中國國民黨'), '中國國民黨');
   });
-  await check('時間欄位 null 不會顯示 Invalid Date', () => {
+  await check('日期顯示：今年的不寫年份、不同年才補；null／壞值有替代文字', () => {
     assert.equal(formatDateTime(null), '尚無紀錄');
     assert.equal(formatDateTime('not-a-date'), '尚無紀錄');
-    assert.match(formatDateTime('2026-09-30T08:59:55.000Z'), /2026/);
+    // 「今天」注入固定日期，測試才不會因為跨年而失效
+    const now = new Date('2026-10-08T12:00:00+08:00');
+    const stamp = new Date('2026-09-30T08:59:55.000Z');
+    const hhmm = `${String(stamp.getHours()).padStart(2, '0')}:${String(stamp.getMinutes()).padStart(2, '0')}`;
+    const mmdd = `${String(stamp.getMonth() + 1).padStart(2, '0')}/${String(stamp.getDate()).padStart(2, '0')}`;
+    assert.equal(formatDateTime('2026-09-30T08:59:55.000Z', '尚無紀錄', now), `${mmdd} ${hhmm}`, '今年：只有月日與時間、沒有年份');
+    assert.match(formatDateTime('2025-12-31T08:00:00.000Z', '尚無紀錄', now), /^2025\//, '不同年：補上年份');
+    assert.equal(formatDay('2026-09-27', '—', now), '09/27');
+    assert.equal(formatDay('2024/02/01', '—', now), '2024/02/01');
+    assert.equal(formatDay(null, '—', now), '—');
+    assert.equal(formatDay('不是日期', '未提供', now), '未提供');
   });
   await check('資料集代號有中文標示', () => {
     assert.equal(datasetLabel('id9'), 'ID9 立法委員名錄');

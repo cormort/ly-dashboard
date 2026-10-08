@@ -10,7 +10,7 @@ import { useApi } from '../hooks/useApi';
 import { useInView } from '../hooks/useInView';
 import { useParam } from '../hooks/useParam';
 import { shouldMountEmbed, embedButtonLabel } from '../lib/embedPolicy';
-import { formatRelative, text } from '../lib/format';
+import { formatDay, formatRelative, text } from '../lib/format';
 import { partyStyle } from '../lib/parties';
 
 export interface SocialWallPageProps {
@@ -206,7 +206,7 @@ export function SocialWallPage({ refreshToken, onOpenId }: SocialWallPageProps) 
           {expanded
             ? '依黨籍或縣市展開的粉專牆，新的貼文排在前面。卡片捲進畫面就會自動載入 Facebook 官方的粉專嵌入框（只對粉絲專頁有效，個人檔案請點「粉專」連結）。'
             : `預設只顯示最近更新的 ${data.default_limit} 位委員；選黨籍或縣市就會展開整個粉專牆。卡片捲進畫面就會自動載入 Facebook 官方的粉專嵌入框。`}
-          {data.social.as_of ? `「最新貼文」來自委員臉書整理表，資料截至 ${data.social.as_of}。` : ''}
+          {data.social.as_of ? `「最新貼文」來自委員臉書整理表，資料截至 ${formatDay(data.social.as_of, '—')}。` : ''}
         </p>
         {data.social.stale ? (
           <p className="social-stale" role="note">

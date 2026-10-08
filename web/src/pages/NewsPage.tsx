@@ -10,7 +10,7 @@ import { readPreference } from '../lib/storage';
 import { useApi } from '../hooks/useApi';
 import { pathFor } from '../hooks/useRoute';
 import { RouteLink } from '../components/RouteLink';
-import { formatDateTime } from '../lib/format';
+import { formatDay } from '../lib/format';
 import { partyStyle } from '../lib/parties';
 
 export interface NewsPageProps {
@@ -150,7 +150,7 @@ export function NewsPage({ refreshToken, onOpenId, scope = 'legislators', onNavi
             {data ? (
               <span className="muted">
                 {data.total.toLocaleString()} 則
-                {everything && data.first_date && data.last_date ? `・資料涵蓋 ${data.first_date.slice(0, 10)} 至 ${data.last_date.slice(0, 10)}` : ''}
+                {everything && data.first_date && data.last_date ? `・資料涵蓋 ${formatDay(data.first_date)} 至 ${formatDay(data.last_date)}` : ''}
               </span>
             ) : null}
             {/* 下載的是目前篩選條件下「全部符合」的新聞，不只這一頁 */}
@@ -175,7 +175,7 @@ export function NewsPage({ refreshToken, onOpenId, scope = 'legislators', onNavi
                     <ExternalLink aria-hidden="true" />
                   </a>
                   <p className="bill-meta">
-                    <span>{formatDateTime(a.published_at)}</span>
+                    <span>{formatDay(a.published_at)}</span>
                     {agencies ? null : (a.kinds ?? []).map((k) => (KIND_TAG[k] ? <span key={k} className="muted">{KIND_TAG[k]}</span> : null))}
                     {/* 機關新聞：提到的機關，點了只看那個機關 */}
                     {(a.agencies ?? []).map((name) => (

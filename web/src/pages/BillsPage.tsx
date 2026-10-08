@@ -8,7 +8,7 @@ import { EmptyState, ErrorState, LoadingState } from '../components/DataStates';
 import { ClearFiltersButton } from '../components/ClearFiltersButton';
 import { SearchField } from '../components/SearchField';
 import { useApi } from '../hooks/useApi';
-import { billTitle } from '../lib/format';
+import { billTitle, formatDay } from '../lib/format';
 import { pathFor } from '../hooks/useRoute';
 import { partyStyle, sortParties } from '../lib/parties';
 
@@ -161,7 +161,7 @@ export function BillsPage({ refreshToken, onOpenId }: BillsPageProps) {
                   <p className="bill-meta">
                     <BillStageBar status={bill.status} />
                     <span className="status-tag">{bill.status}</span>
-                    <span>{bill.latest_date}</span>
+                    <span>{formatDay(bill.latest_date, '尚無進度日期')}</span>
                     {bill.session ? (
                       <span>
                         第 {bill.term} 屆第 {bill.session} 會期
@@ -230,8 +230,8 @@ function LawSummary({ law, data }: { law: string; data: BillsResponse }) {
           <span className="stat-label">件已三讀</span>
         </div>
         <div className="stat-tile">
-          <b className="stat-value">{data.first_date?.slice(0, 7).replace('-', '/') ?? '—'}</b>
-          <span className="stat-label">最早進度（最新 {latest ?? '—'}）</span>
+          <b className="stat-value">{formatDay(data.first_date)}</b>
+          <span className="stat-label">最早進度（最新 {latest ? formatDay(latest) : '—'}）</span>
         </div>
       </div>
       <p className="muted">各黨主提案件數</p>

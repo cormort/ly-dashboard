@@ -5,20 +5,14 @@
  * 前端不切字串、不剝前綴、不合併跨屆資料（舊版 B3/B4 的成因）。
  */
 
-const dateTimeFormatter = new Intl.DateTimeFormat('zh-TW', {
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
-  hour: '2-digit',
-  minute: '2-digit',
-  hour12: false,
-});
+const pad = (n: number) => String(n).padStart(2, '0');
 
-const dateFormatter = new Intl.DateTimeFormat('zh-TW', {
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
-});
+/** 解析後端各種日期寫法（ISO 時間、`2026-09-27`、`2024/02/01`）；不合法回 null */
+function parseDate(value: string | null | undefined): Date | null {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
 
 /** 後端可能回 null／空字串，畫面統一到「未提供」 */
 export function text(value: string | null | undefined, fallback = '未提供'): string {
@@ -26,18 +20,33 @@ export function text(value: string | null | undefined, fallback = '未提供'): 
   return trimmed === '' ? fallback : trimmed;
 }
 
-export function formatDateTime(value: string | null | undefined, fallback = '尚無紀錄'): string {
-  if (!value) return fallback;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return fallback;
-  return dateTimeFormatter.format(date);
+/**
+ * **清單裡的日期一律用這支**：今年的不寫年份（`04/29`），不同年才補（`2025/04/29`）。
+ *
+ * 2026-10-08 使用者：「現在日期表達方式沒有統一，今年的就不用加上年度」——
+ * 原本同一份資料在不同頁面分別出現 `04/29`、`2026/04/29`、`2026/04/29 09:20`、`2026-04-29` 四種寫法。
+ * 一律走這裡，跨年時仍然看得出年份（別把 2025 的資料讀成今年）。
+ * `now` 只給測試注入固定日期用。
+ */
+export function formatDay(value: string | null | undefined, fallback = '—', now: Date = new Date()): string {
+  const date = parseDate(value);
+  if (!date) return fallback;
+  const monthDay = `${pad(date.getMonth() + 1)}/${pad(date.getDate())}`;
+  return date.getFullYear() === now.getFullYear() ? monthDay : `${date.getFullYear()}/${monthDay}`;
 }
 
-export function formatDate(value: string | null | undefined, fallback = '尚無紀錄'): string {
-  if (!value) return fallback;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return fallback;
-  return dateFormatter.format(date);
+/** 日期＋時間（同步時間、異動紀錄）：年份規則同 formatDay */
+export function formatDateTime(value: string | null | undefined, fallback = '尚無紀錄', now: Date = new Date()): string {
+  const date = parseDate(value);
+  if (!date) return fallback;
+  const monthDay = `${pad(date.getMonth() + 1)}/${pad(date.getDate())}`;
+  const clock = `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  return `${date.getFullYear() === now.getFullYear() ? monthDay : `${date.getFullYear()}/${monthDay}`} ${clock}`;
+}
+
+/** 只到日的日期（formatDay 的別名；年份規則一樣） */
+export function formatDate(value: string | null | undefined, fallback = '尚無紀錄', now: Date = new Date()): string {
+  return formatDay(value, fallback, now);
 }
 
 /** 「3 小時前」這類相對時間；無法解析時退回 fallback */

@@ -3,7 +3,7 @@ import { useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEv
 import { ExternalLink, GitCompareArrows, MapPin, Star, X } from 'lucide-react';
 import type { Legislator, SocialFreshness, SourceInfo } from '../api/types';
 import { useEscapeKey } from '../hooks/useEscapeKey';
-import { text } from '../lib/format';
+import { formatDay, text } from '../lib/format';
 import { partyStyle } from '../lib/parties';
 import { LegislatorBills } from './LegislatorBills';
 import { LegislatorCosponsors } from './LegislatorCosponsors';
@@ -153,7 +153,7 @@ export function LegislatorDetail({
               )}
             </dd>
             <dt>就職日期</dt>
-            <dd>{text(legislator.onboard_date)}</dd>
+            <dd>{formatDay(legislator.onboard_date, '未提供')}</dd>
           </dl>
         </section>
 
@@ -169,10 +169,10 @@ export function LegislatorDetail({
                   </a>
                   {account.latest_post_date ? (
                     <small>
-                      最新貼文 {account.latest_post_date}
+                      最新貼文 {formatDay(account.latest_post_date)}
                       {account.latest_post_summary ? `：${account.latest_post_summary}` : ''}
                       {/* 整理表是人工維護的：標出資料截至哪天，太久沒更新就提醒（最新的請看下面的嵌入貼文） */}
-                      {socialFreshness?.as_of ? <span className="muted">（整理表資料截至 {socialFreshness.as_of}）</span> : null}
+                      {socialFreshness?.as_of ? <span className="muted">（整理表資料截至 {formatDay(socialFreshness.as_of, '未提供')}）</span> : null}
                     </small>
                   ) : null}
                   {account.platform === 'facebook' && socialFreshness?.stale ? (

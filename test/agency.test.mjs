@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { openDb, applyDataset } from '../server/db.mjs';
+import { openDb, applyDataset, applyLawAgencies, applyMojLawAgencies } from '../server/db.mjs';
 import { buildDataset } from '../server/normalize.mjs';
 import { getAgencyHome, listAgencies, listCommitteeActivity } from '../server/queries.mjs';
 
@@ -120,6 +120,85 @@ test('委員會關鍵字 q：空白分隔、任一符合；會議比對名稱與
   assert.deepEqual(either.meetings.period, all.meetings.period, '資料期間仍是全部資料的起訖');
   assert.equal(listCommitteeActivity(db, { q: '財政部', committee: '教育及文化委員會' }).meetings.total, 0, '與委員會條件同時成立');
   assert.equal(listCommitteeActivity(db, { q: '   ' }).meetings.total, 3, '空白關鍵字等於不篩');
+});
+
+test('誰在關注的件數可以點開：?watch= 回那一位的組成（分來源件數＋連回原始資料的網址）', () => {
+  const { db, a, b } = seeded();
+  const w = getAgencyHome(db, { name: '財政部', watch: a.id }).watcher;
+  assert.equal(w.id, a.id);
+  assert.equal(w.name, a.name);
+  assert.equal(w.count, 2, '與清單上的次數一致');
+  assert.equal(w.kinds.news.total, 1);
+  assert.deepEqual(w.kinds.news.items.map((i) => i.url), ['https://n/1'], '新聞帶著來源網址');
+  assert.equal(w.kinds.bill.total, 0, '沒有掛名的提案');
+  assert.equal(w.meetings.total, 1, '在這場會議登記發言');
+  assert.deepEqual(w.meetings.items.map((m) => m.name), ['財政委員會第5次會議']);
+  assert.equal(
+    ['news', 'post', 'bill', 'budget', 'report'].reduce((sum, k) => sum + w.kinds[k].total, 0) + w.meetings.total,
+    w.count,
+    '分來源加總＝清單上的次數',
+  );
+  assert.equal(w.kinds.news.items[0].agencies, undefined, '對照用的中介欄位不外流');
+
+  const wb = getAgencyHome(db, { name: '財政部', watch: b.id }).watcher;
+  assert.equal(wb.count, 2);
+  assert.deepEqual(wb.kinds.bill.items.map((i) => i.url), ['https://l/1'], '提案連回立法院議案頁');
+
+  assert.equal(getAgencyHome(db, { name: '財政部', watch: '不存在的委員' }).watcher, null, '認不得的 id 不編造');
+  assert.equal(getAgencyHome(db, { name: '財政部' }).watcher, null, '沒指定就沒有明細');
+  assert.equal(getAgencyHome(db, { name: '教育部', watch: a.id }).watcher, null, '不是這個機關的關注者就沒有');
+});
+
+test('我的機關：誰在關注的「看更多」與明細的件數一致（同一組比對）', () => {
+  const { db, a } = seeded();
+  const home = getAgencyHome(db, { name: '財政部', watch: a.id });
+  const w = home.watcher;
+  assert.equal(
+    home.watchers.find((x) => x.id === a.id).count,
+    w.kinds.news.total + w.meetings.total,
+    '清單上的次數＝明細裡各來源的加總',
+  );
+});
+
+test('機關清單也從法律的主管機關來：司法院、考試院、監察院、總統府不是行政院所屬也要有', () => {
+  const { db } = seeded();
+  assert.equal(listAgencies(db).some((a) => a.name === '司法院'), false, '還沒有法律對照時不會冒出來');
+  applyLawAgencies(db, new Map([['刑事訴訟法', ['司法院']], ['審計法', ['監察院']]]));
+  applyMojLawAgencies(db, new Map([['刑事訴訟法', ['司法院']], ['總統府組織法', ['總統府']]]));
+  const list = listAgencies(db);
+  for (const name of ['司法院', '監察院', '總統府']) assert.ok(list.some((a) => a.name === name), `${name} 要在清單裡`);
+  assert.deepEqual(list.find((a) => a.name === '司法院').heads, [], '沒有首長名單就沒有首長，不會編造');
+
+  // 舊寫法（上次同步留下來的簡稱）讀取時也要正規化；已廢止的機關不進選單
+  applyLawAgencies(db, new Map([['電信管理法', ['通訊傳播委員會']], ['國民大會組織法', ['國民大會']], ['主計法', ['主計總處']]]));
+  const names = listAgencies(db).map((a) => a.name);
+  assert.ok(names.includes('國家通訊傳播委員會') && names.includes('行政院主計總處'), '簡稱在讀取時換成全名');
+  assert.equal(names.includes('通訊傳播委員會') || names.includes('主計總處') || names.includes('國民大會'), false, '舊名／簡稱／已廢止的機關不留重複項');
+});
+
+test('我的機關：預算審議沒有日期時，年度大的在前（與報告／議事同一套排序）', () => {
+  const { db } = seeded();
+  const ins = db.prepare('INSERT INTO budget_bills(id, term, session, category, name, status, proposer, fiscal_year, latest_date, url) VALUES(?,?,?,?,?,?,?,?,?,?)');
+  ins.run('B3', 11, 5, '總預算', '113年度中央政府總預算案', '交付審查', '財政部', 113, '', 'https://b/3');
+  ins.run('B4', 11, 5, '總預算', '116年度中央政府總預算案', '交付審查', '財政部', 116, '', 'https://b/4');
+  const titles = getAgencyHome(db, { name: '財政部', per: 20 }).kinds.budget.items.map((i) => i.title);
+  assert.deepEqual(
+    titles,
+    ['116年度中央政府總預算案', '113年度中央政府總預算案', '115年度中央政府總預算案'],
+    '沒有日期的兩筆依年度降冪；有日期的（115 年度，2026-09-20）排在後面',
+  );
+});
+
+test('司法院這種機關頁真的用得到：修刑事訴訟法的提案會算進來', () => {
+  const { db } = seeded();
+  db.prepare('INSERT INTO bills(id, term, session, name, status, category, proposer_text, laws, latest_date, url) VALUES(?,?,?,?,?,?,?,?,?,?)').run(
+    'J1', 11, 5, '「刑事訴訟法部分條文修正草案」，請審議案。', '交付審查', '法律案', '', JSON.stringify(['刑事訴訟法']), '2026-10-01', 'https://l/j1',
+  );
+  applyMojLawAgencies(db, new Map([['刑事訴訟法', ['司法院']]]));
+  const r = getAgencyHome(db, { name: '司法院' });
+  assert.equal(r.agency.name, '司法院');
+  assert.equal(r.kinds.bill.total, 1, '標題沒有機關名，靠法律的主管機關對上');
+  assert.deepEqual(r.kinds.bill.items.map((i) => i.url), ['https://l/j1']);
 });
 
 test('我的機關的「看更多」：以機關全名＋簡稱查委員會頁，件數與我的機關一致', () => {

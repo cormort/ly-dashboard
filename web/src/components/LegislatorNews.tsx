@@ -2,7 +2,7 @@ import { ExternalLink } from 'lucide-react';
 import { buildUrl } from '../api/client';
 import type { NewsResponse } from '../api/types';
 import { useApi } from '../hooks/useApi';
-import { formatDateTime } from '../lib/format';
+import { formatDay } from '../lib/format';
 import { EmptyState, ErrorState, LoadingState } from './DataStates';
 
 /** 近期新聞：/api/v1/news（Google 新聞，標題含委員姓名者）。只列標題與連結，不轉載內文。 */
@@ -43,7 +43,7 @@ export function LegislatorNews({ legislatorId }: { legislatorId: string }) {
               <ExternalLink aria-hidden="true" />
             </a>
             <small>
-              {formatDateTime(item.published_at)} · {item.source}
+              {formatDay(item.published_at)} · {item.source}
             </small>
           </li>
         ))}

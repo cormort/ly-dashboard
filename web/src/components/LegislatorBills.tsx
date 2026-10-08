@@ -2,7 +2,7 @@ import { ExternalLink } from 'lucide-react';
 import { buildUrl } from '../api/client';
 import type { BillsResponse } from '../api/types';
 import { useApi } from '../hooks/useApi';
-import { billTitle } from '../lib/format';
+import { billTitle, formatDay } from '../lib/format';
 import { BillStageBar } from './BillStage';
 import { EmptyState, ErrorState, LoadingState } from './DataStates';
 
@@ -44,7 +44,7 @@ export function LegislatorBills({ legislatorId }: { legislatorId: string }) {
             </a>
             <small>
               <BillStageBar status={bill.status} />
-              {bill.latest_date} · {bill.status}
+              {formatDay(bill.latest_date, '尚無進度日期')} · {bill.status}
               {bill.is_lead ? ' · 主提案' : ''}
             </small>
           </li>

@@ -5,6 +5,7 @@ import { EmptyState, ErrorState, LoadingState } from '../components/DataStates';
 import { PartyTag } from '../components/PartyTag';
 import { useApi } from '../hooks/useApi';
 import { useParam } from '../hooks/useParam';
+import { formatDay } from '../lib/format';
 import { partyStyle } from '../lib/parties';
 
 export interface CouncilPageProps {
@@ -448,7 +449,7 @@ export function CouncilPage({ refreshToken }: CouncilPageProps) {
                         {t.label}
                       </button>
                     </td>
-                    <td>{t.date}</td>
+                    <td>{formatDay(t.date, '—')}</td>
                     <td className="num">{t.seats}</td>
                     <td className="num">{t.stats.candidates}</td>
                     <td className="num">{numOrDash(a?.electorate ?? null)}</td>

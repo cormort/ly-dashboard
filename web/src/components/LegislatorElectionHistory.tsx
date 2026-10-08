@@ -2,6 +2,7 @@ import { buildUrl } from '../api/client';
 import type { LegislatorVotesResponse } from '../api/types';
 import { useApi } from '../hooks/useApi';
 import { pathFor } from '../hooks/useRoute';
+import { formatDay } from '../lib/format';
 import { partyStyle } from '../lib/parties';
 import { EmptyState, ErrorState, LoadingState } from './DataStates';
 
@@ -31,7 +32,7 @@ export function LegislatorElectionHistory({ legislatorId, region }: { legislator
             {recalls.map((r) => (
               <li key={r.title}>
                 <div>
-                  <b>{r.vote_date}</b> 第 {r.term} 屆 {r.area}
+                  <b>{formatDay(r.vote_date, '未提供')}</b> 第 {r.term} 屆 {r.area}
                   {r.district ? ` ${r.district}` : ''}
                   <span className={r.passed ? 'recall-passed' : 'muted'}> {r.passed ? '罷免通過' : '罷免未通過'}</span>
                 </div>

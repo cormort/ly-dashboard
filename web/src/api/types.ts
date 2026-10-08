@@ -1372,4 +1372,21 @@ export interface AgencyHomeResponse {
   replies?: AgencyBlock<{ date: string; meeting: string; title: string; url: string }>;
   /** 誰在關注：新聞／臉書／提案掛名＋會議發言的委員，依次數排序 */
   watchers?: { id: string; name: string; party: string; count: number }[];
+  /**
+   * 指定 `?watch=<委員id>` 時的明細：那個「N 次」是由哪些資料組成（分來源的件數＋前幾筆，
+   * 每筆都帶連回原始資料的 url）；認不得的 id 為 null。會議本身沒有 url，前端連到委員會頁。
+   */
+  watcher?: {
+    id: string;
+    name: string;
+    party: string;
+    count: number;
+    kinds: Record<FundKind, AgencyBlock<AgencyItem>>;
+    meetings: AgencyBlock<{
+      date: string;
+      name: string;
+      committees: string[];
+      speakers: { id: string | null; name: string; party: string }[];
+    }>;
+  } | null;
 }

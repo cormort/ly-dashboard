@@ -8,7 +8,7 @@ import { Portrait } from '../components/Portrait';
 import { useApi } from '../hooks/useApi';
 import type { TrackedApi } from '../hooks/useTracked';
 import { readPreference, writePreference } from '../lib/storage';
-import { formatDateTime } from '../lib/format';
+import { formatDateTime, formatDay } from '../lib/format';
 import { partyStyle } from '../lib/parties';
 
 export interface HomePageProps {
@@ -31,7 +31,7 @@ function useLastVisit(): string | null {
   return previous;
 }
 
-const shortDate = (value: string | undefined | null) => (value ? value.slice(5, 10).replace('-', '/') : '');
+const shortDate = formatDay;
 
 function ActivityCard({ item, onOpenId, isNew }: { item: ActivityItem; onOpenId: (id: string) => void; isNew: boolean }) {
   const { legislator: l, post, news, bill } = item;

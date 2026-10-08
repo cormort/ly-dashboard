@@ -8,6 +8,7 @@ import { FacetChips } from '../components/FacetChips';
 import { RouteLink } from '../components/RouteLink';
 import { useApi } from '../hooks/useApi';
 import { pathFor } from '../hooks/useRoute';
+import { formatDay } from '../lib/format';
 import { partyStyle } from '../lib/parties';
 
 export interface FundsPageProps {
@@ -143,7 +144,7 @@ export function FundsPage({ type, refreshToken, onOpenId, onNavigate }: FundsPag
                     ))}
                     {item.status ? <span className="status-tag">{item.status}</span> : null}
                     {/* 上游對本會期的預算議案常常沒有日期（實測 199 筆全無）；留白會像壞掉 */}
-                    {item.date ? <span>{item.date}</span> : <span className="muted">尚無進度日期</span>}
+                    {item.date ? <span>{formatDay(item.date)}</span> : <span className="muted">尚無進度日期</span>}
                     {item.legislator ? (
                       <button
                         type="button"

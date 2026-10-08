@@ -239,7 +239,7 @@ export function createServer(db) {
           case '/api/v1/committee-activity':
             return sendJson(res, 200, listCommitteeActivity(db, { committee: q.committee, q: q.q, limit: q.limit }));
           case '/api/v1/agency':
-            return sendJson(res, 200, getAgencyHome(db, { name: q.name, per: q.per }));
+            return sendJson(res, 200, getAgencyHome(db, { name: q.name, per: q.per, watch: q.watch }));
           case '/api/v1/funds':
             return sendJson(res, 200, listFunds(db, { type: q.type, fund: q.fund, kind: q.kind, limit: q.limit, offset: q.offset }));
           case '/api/v1/cosponsors':

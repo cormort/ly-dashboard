@@ -7,7 +7,7 @@ import { SearchField } from '../components/SearchField';
 import { EmptyState, ErrorState, LoadingState } from '../components/DataStates';
 import { useApi } from '../hooks/useApi';
 import { useParam } from '../hooks/useParam';
-import { formatDateTime } from '../lib/format';
+import { formatDay } from '../lib/format';
 import { partyStyle } from '../lib/parties';
 import { FacebookEmbed } from '../components/FacebookEmbed';
 
@@ -45,7 +45,7 @@ function FacebookRow({ c, open, onToggle }: { c: Councilor; open: boolean; onTog
       </div>
       {c.latest_post_date ? (
         <small className="council-fb-latest">
-          最新貼文 {c.latest_post_date}
+          最新貼文 {formatDay(c.latest_post_date)}
           {c.latest_post_summary ? `：${c.latest_post_summary}` : ''}
         </small>
       ) : null}
@@ -121,7 +121,7 @@ export function CouncilActivityPage({ refreshToken }: CouncilActivityPageProps) 
             <h2>{picked ? `${picked.name}的新聞` : '新聞'}</h2>
             <span className="muted">
               {data.total.toLocaleString()} 則
-              {data.first_date && data.last_date ? `・資料涵蓋 ${data.first_date.slice(0, 10)} 至 ${data.last_date.slice(0, 10)}` : ''}
+              {data.first_date && data.last_date ? `・資料涵蓋 ${formatDay(data.first_date)} 至 ${formatDay(data.last_date)}` : ''}
             </span>
           </div>
           {data.items.length === 0 ? (
@@ -136,7 +136,7 @@ export function CouncilActivityPage({ refreshToken }: CouncilActivityPageProps) 
                       <ExternalLink aria-hidden="true" />
                     </a>
                     <p className="bill-meta">
-                      <span>{formatDateTime(a.published_at)}</span>
+                      <span>{formatDay(a.published_at)}</span>
                       <span>{a.source}</span>
                       {a.councilors.map((c) => (
                         <button key={c.id} type="button" className="name-button" style={{ color: partyStyle(c.party).color }} title={`${c.county}${c.district}`} onClick={() => pickCouncilor(c.id)}>
@@ -172,7 +172,7 @@ export function CouncilActivityPage({ refreshToken }: CouncilActivityPageProps) 
           </div>
           <p className="muted">
             點「看貼文」載入 Facebook 官方的粉專嵌入框（只對粉絲專頁有效；個人檔案請點「粉專」連結）。
-            {data.social?.as_of ? `「最新貼文」來自議員臉書整理表，資料截至 ${data.social.as_of}。` : ''}
+            {data.social?.as_of ? `「最新貼文」來自議員臉書整理表，資料截至 ${formatDay(data.social.as_of, '—')}。` : ''}
           </p>
           {data.social?.stale ? (
             <p className="social-stale" role="note">

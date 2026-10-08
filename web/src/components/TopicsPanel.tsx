@@ -5,7 +5,7 @@ import type { TopicItem, TopicsResponse } from '../api/types';
 import { EmptyState, ErrorState, LoadingState } from '../components/DataStates';
 import { useApi } from '../hooks/useApi';
 import { pathFor } from '../hooks/useRoute';
-import { formatDateTime } from '../lib/format';
+import { formatDateTime, formatDay } from '../lib/format';
 import { partyStyle, sortParties } from '../lib/parties';
 
 export interface TopicsPanelProps {
@@ -127,7 +127,7 @@ function TagsView({ items, unit, comparable, onNavigate }: { items: TopicItem[];
             deltaLabel(topic, comparable),
             topic.passed ? `三讀 ${topic.passed}` : null,
             parties.length ? `主提案：${parties.map((p) => `${partyStyle(p).short} ${topic.parties[p]}`).join('、')}` : null,
-            topic.latest_date ? `最新進度 ${topic.latest_date}` : null,
+            topic.latest_date ? `最新進度 ${formatDay(topic.latest_date, '—')}` : null,
           ]
             .filter(Boolean)
             .join('・');
@@ -255,7 +255,7 @@ export function TopicsPanel({ refreshToken, onNavigate }: TopicsPanelProps) {
           )}
           <p className="topic-foot muted">
             共 {data.distinct} 種{meta?.label ?? ''}，列出前 {data.items.length} 名
-            {data.items[0]?.latest_date ? `・最新進度 ${data.items[0].latest_date}` : ''}
+            {data.items[0]?.latest_date ? `・最新進度 ${formatDay(data.items[0].latest_date, '—')}` : ''}
             <span className="topic-updated">（資料更新：{formatDateTime(data.meta.fetched_at, '尚未同步')}）</span>
           </p>
         </>

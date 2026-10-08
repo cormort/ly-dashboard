@@ -1261,6 +1261,14 @@ a.stat-tile:hover { border-color: #98a2b3; box-shadow: var(--card-base-hover); t
 .agency-picker-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-3); }
 .watchers { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-6); }
 .watchers li { display: inline-flex; align-items: baseline; gap: 6px; }
+/* 「誰在關注」的件數＝連到明細（同一頁的卡片，記在網址 ?watch=，可分享、上一頁回得去） */
+.count-button { font-size: var(--fs-sm); color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.count-button[aria-expanded='true'] { color: var(--accent-ink); text-decoration-color: currentColor; }
+/* 明細卡片：依來源分組，每組一個小標題；每一列都連回原始資料 */
+.watcher-detail { margin-top: var(--space-3); }
+.watcher-detail h3 { margin: var(--space-4) 0 var(--space-2); display: flex; align-items: baseline; gap: 6px; font-size: var(--fs-md); }
+.watcher-detail h3 .muted { font-size: var(--fs-sm); font-weight: 500; }
+.watcher-detail > section:first-of-type h3 { margin-top: var(--space-2); }
 .cross-link { margin: 0; font-size: var(--fs-sm); }
 .cross-link a { margin-left: 4px; }
 /* 分區錨點（我的機關統計卡）跳過去時不要被固定頁首蓋住 */

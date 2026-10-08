@@ -118,9 +118,16 @@ printf "  /api/v1/council?county=臺北市 → "
 curl -s "http://127.0.0.1:${PORT}/api/v1/council?county=%E8%87%BA%E5%8C%97%E5%B8%82" | python3 -c 'import sys,json;d=json.load(sys.stdin);t=d["terms"][0];print(d["county"], t["label"], t["seats"], "席")'
 printf "  /api/v1/council?county=基隆市 → "
 curl -s -o /dev/null -w "HTTP %{http_code}（預期 404：非直轄市沒有議員資料）\n" "http://127.0.0.1:${PORT}/api/v1/council?county=%E5%9F%BA%E9%9A%86%E5%B8%82"
-printf "  POST /api/v1/sync?scope=roster → "
-curl -s -o /tmp/verify-sync.json -w "HTTP %{http_code} " -X POST "http://127.0.0.1:${PORT}/api/v1/sync?scope=roster"
-python3 -c 'import json;d=json.load(open("/tmp/verify-sync.json"));print(d["message"],"| scope:",d["scope"])'
+printf "  POST /api/v1/sync?scope=roster&force=1 → "
+curl -s -o /tmp/verify-sync.json -w "HTTP %{http_code} " -X POST "http://127.0.0.1:${PORT}/api/v1/sync?scope=roster&force=1"
+python3 -c '
+import json
+d = json.load(open("/tmp/verify-sync.json"))
+# 成功是 {message, scope}；被防呆擋下來是 {error:{code,message}}（護欄 2026-10-06 才加的，兩種都要能印）
+err = d.get("error") if isinstance(d.get("error"), dict) else {}
+print(d.get("message") or err.get("message") or json.dumps(d, ensure_ascii=False)[:100], "| scope:", d.get("scope", "—"))
+'
+printf "  POST /api/v1/sync?scope=roster（才剛同步過）→ HTTP %s（預期 409：防呆擋下，不讓白跑）\n" "$(curl -s -o /dev/null -w '%{http_code}' -X POST "http://127.0.0.1:${PORT}/api/v1/sync?scope=roster")"
 
 echo
 echo "--- CR-7：設了 LY_SYNC_TOKEN 之後，POST /api/v1/sync 要擋掉沒有帶 token 的請求"

@@ -2,7 +2,7 @@ import type { CSSProperties } from 'react';
 import { Download, LayoutGrid, List, MapPin, Star } from 'lucide-react';
 import type { ApiResource } from '../hooks/useApi';
 import type { Legislator, LegislatorsResponse } from '../api/types';
-import { shortCommittee, text } from '../lib/format';
+import { formatDay, shortCommittee, text } from '../lib/format';
 import { partyStyle } from '../lib/parties';
 import { EmptyState, ErrorState, LoadingState } from './DataStates';
 import { LegislatorTable } from './LegislatorTable';
@@ -83,7 +83,7 @@ function LegislatorCard({
       <footer>
         <span>
           提案 {legislator.bill_count}　連署 {legislator.cosign_count ?? 0}　新聞 {legislator.news_count}
-          {latestPost ? `　貼文 ${latestPost.slice(5).replace('-', '/')}` : ''}
+          {latestPost ? `　貼文 ${formatDay(latestPost)}` : ''}
         </span>
         <button type="button" onClick={() => onOpen(legislator)}>
           查看檔案

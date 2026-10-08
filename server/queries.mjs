@@ -1,6 +1,7 @@
 import { CONFIG } from './config.mjs';
 import { getMeta , getBudgetCommittees } from './db.mjs';
 import { readFileSync } from 'node:fs';
+import { ABOLISHED_AGENCIES, canonicalAgency } from './agency-names.mjs';
 import { budgetTypes, committeesOf, newsName, regionOf } from './normalize.mjs';
 import { SYNC_SCOPES, datasetLabel, scopeDatasets } from './sync-scopes.mjs';
 
@@ -2120,12 +2121,43 @@ export function listBudget(
   };
 }
 
+/**
+ * 名稱裡的預算年度（「115年度中央政府總預算案」→ 115、「…基金會115年度預算評估報告」→ 115）；
+ * 抓不到回 0。
+ */
+export function fiscalYearOf(text) {
+  const match = String(text ?? '').match(/(\d{2,3})\s*年度/);
+  return match ? Number(match[1]) : 0;
+}
+
+/** 一列資料的預算年度：標題／名稱先看，再看議程內容（會議的年度常寫在議程裡，不在名稱） */
+const fiscalYearOfRow = (r) => fiscalYearOf(r.title ?? r.name) || fiscalYearOf(r.content);
+
+/**
+ * 預算／決算相關清單的排序：**日期降冪 → 年度降冪 → 標題／編號降冪**。
+ *
+ * 日期相同（預算中心報告常常整批同一天發布）或根本沒有日期時，年度大的排在前面——
+ * 2026-10-08 使用者：「預算跟決算相關報告或議事，如果沒有日期分不出先後，就用降冪（年度大的在前）」。
+ * `sort_date` 優先：預算議案沒有日期時由 effectiveSortDate 給哨兵值（見 budgetBillsByProgress）。
+ */
+export function budgetOrder(a, b) {
+  const key = (r) => String(r.sort_date ?? r.date ?? r.completed ?? '');
+  const ka = key(a);
+  const kb = key(b);
+  if (ka !== kb) return ka < kb ? 1 : -1;
+  const years = fiscalYearOfRow(b) - fiscalYearOfRow(a);
+  if (years) return years;
+  const label = (r) => String(r.title ?? r.name ?? '');
+  return label(b).localeCompare(label(a), 'zh-Hant') || String(b.id ?? b.no ?? '').localeCompare(String(a.id ?? a.no ?? ''));
+}
+
 /** 預算中心評估報告：依撰成日期新→舊；`type` 精確、`q` 比對標題 */
 export function listBudgetReports(db, { type = '', q = '', limit = 20, offset = 0 } = {}) {
   const resolvedLimit = Math.max(1, Math.min(Number(limit) || 20, 100));
   const resolvedOffset = Math.max(0, Math.trunc(Number(offset) || 0));
   const needle = String(q ?? '').trim();
-  const rows = db.prepare('SELECT * FROM budget_reports ORDER BY completed DESC, no DESC').all();
+  // 同一天發布的整批報告（實測 2026-09-01 有 6 份）再用年度降冪決定先後，不會變成依編號碰運氣
+  const rows = db.prepare('SELECT * FROM budget_reports').all().sort(budgetOrder);
   const types = CONFIG.budget.reportTypes.map((name) => ({ name, count: rows.filter((r) => r.type === name).length }));
   const matching = rows.filter((r) => (!type || r.type === type) && (!needle || r.title.includes(needle)));
   return {
@@ -2142,7 +2174,7 @@ export function listBudgetReports(db, { type = '', q = '', limit = 20, offset = 
  */
 export function listBudgetMeetings(db, { limit = 15 } = {}) {
   const resolvedLimit = Math.max(1, Math.min(Number(limit) || 15, 100));
-  const rows = db.prepare("SELECT * FROM committee_meetings WHERE content LIKE '%預算%' ORDER BY date DESC, id DESC").all();
+  const rows = db.prepare("SELECT * FROM committee_meetings WHERE content LIKE '%預算%'").all().sort(budgetOrder);
   const people = new Map(db.prepare('SELECT id, name, party, leave_flag FROM legislators').all().map((l) => [l.id, l]));
   const committees = new Map();
   const speakers = new Map();
@@ -2249,10 +2281,19 @@ const dgbasOf = (r) => [
  * ③ `server/law-agencies.json`：兩邊都沒有的少量人工補（來源不明的組織條例等）
  */
 const lawAgencySupplement = new Map(Object.entries(JSON.parse(readFileSync(new URL('./law-agencies.json', import.meta.url), 'utf8')).laws).flatMap(([agency, names]) => names.map((n) => [n, [agency]])));
+/**
+ * 讀取時的正規化：組改／簡稱規則（agency-names）→ fund-config 的 aliases（主計總處→行政院主計總處、央行→中央銀行…）。
+ * 資料庫裡的行是上次同步寫進去的，之後才加的規則不會回溯；讀的時候再掃一次，舊資料也能對上。
+ */
+const canonicalAgencyName = (name) => {
+  const renamed = canonicalAgency(name);
+  return FUND_CONFIG.aliases[renamed] ?? renamed;
+};
+
 function lawAgencyMap(db) {
   const upstream = new Map(db.prepare('SELECT law_name, agencies FROM law_agencies').all().map((r) => [r.law_name, JSON.parse(r.agencies)]));
   const moj = new Map(db.prepare('SELECT law_name, agencies FROM moj_law_agencies').all().map((r) => [r.law_name, JSON.parse(r.agencies)]));
-  return (law) => upstream.get(law)?.length ? upstream.get(law) : (moj.get(law) ?? lawAgencySupplement.get(law) ?? []);
+  return (law) => (upstream.get(law)?.length ? upstream.get(law) : (moj.get(law) ?? lawAgencySupplement.get(law) ?? [])).map(canonicalAgencyName);
 }
 
 /**
@@ -2345,7 +2386,7 @@ export function listFunds(db, { type = 'fund', fund = '', kind = '', limit = 30,
     })
     // 同一則新聞會掛在每位被提到的委員底下，只留一則
     .filter((r, i, all) => r.funds.length && (r.kind !== 'news' || all.findIndex((x) => x.kind === 'news' && x.url === r.url) === i))
-    .sort((a, b) => (b.sort_date ?? b.date).localeCompare(a.sort_date ?? a.date) || a.title.localeCompare(b.title));
+    .sort(budgetOrder);
 
   const byKind = FUND_KINDS.includes(kind) ? tagged.filter((r) => r.kind === kind) : tagged;
   const funds = new Map();
@@ -2362,13 +2403,37 @@ export function listFunds(db, { type = 'fund', fund = '', kind = '', limit = 30,
   };
 }
 
-/** 「我的機關」可選的機關：機關清單（行政院所屬機關代碼表）＋首長名單裡的機關，各自附上現任首長 */
-export function listAgencies() {
+/**
+ * 「我的機關」可選的機關：
+ * ① 機關清單（行政院所屬機關代碼表）② 首長名單裡的機關 ③ **法律的主管機關**（下面兩份對照的聯集），
+ * 各自附上現任首長。第三項是關鍵：司法院、考試院、監察院、立法院、總統府不是行政院所屬、
+ * 不會出現在機關代碼表，但確實是很多法律（刑事訴訟法、法院組織法…）的主管機關。
+ * `db` 沒給（或還沒同步過法律對照）時只有前兩項，行為與以前相同。
+ */
+export function listAgencies(db = null) {
   const heads = new Map();
   for (const o of OFFICIALS) heads.set(o.agency, [...(heads.get(o.agency) ?? []), { name: o.name, title: o.title }]);
-  return [...new Set([...FUND_CONFIG.agencies, ...heads.keys()])]
+  return [...new Set([...FUND_CONFIG.agencies, ...heads.keys(), ...(db ? lawAgencyNames(db) : [])])]
     .sort((a, b) => a.localeCompare(b, 'zh-Hant'))
     .map((name) => ({ name, heads: heads.get(name) ?? [] }));
+}
+
+/**
+ * 法律對照裡出現過的機關（g0v 法規庫＋法務部全國法規資料庫）。
+ * 讀出來再用 canonicalAgency 掃一次：舊資料（上次同步時還沒有這條正規化規則）也能對上，
+ * 已經不存在的機關（國民大會…）濾掉，不留一個永遠空的頁面在選單裡。
+ */
+function lawAgencyNames(db) {
+  const names = new Set();
+  for (const table of ['law_agencies', 'moj_law_agencies']) {
+    for (const row of db.prepare(`SELECT agencies FROM ${table}`).all()) {
+      for (const name of JSON.parse(row.agencies)) {
+        const canonical = canonicalAgencyName(name);
+        if (canonical && !ABOLISHED_AGENCIES.has(canonical)) names.add(canonical);
+      }
+    }
+  }
+  return [...names];
 }
 
 const AGENCY_KINDS = ['news', 'bill', 'budget', 'report', 'post'];
@@ -2380,10 +2445,12 @@ const DGBAS_AGENCY = '行政院主計總處';
  * 不用 makeTagger，因為首長名單裡的「行政院」「公共工程委員會」不在機關清單內，用它會整個漏掉。
  * 回傳：各來源（件數＋最新幾則）、首長新聞、近期議程提到該機關的會議、機關書面回覆，以及「誰在關注」
  * （新聞／臉書／提案掛名的委員，加上提到該機關的會議中登記發言的委員，依次數排序）。
+ * `watch` 給委員 id 時多回 `watcher`：那「N 次」是由哪些資料組成（分來源的件數＋前幾筆，每筆都有連回原始資料的 url），
+ * 讓「誰在關注」的件數可以點進去看來源，而不是只有一個數字。
  * 沒給 name 或不認得時 `agency` 為 null，只回機關清單供選單使用。
  */
-export function getAgencyHome(db, { name = '', per = 5 } = {}) {
-  const agencies = listAgencies();
+export function getAgencyHome(db, { name = '', per = 5, watch = '' } = {}) {
+  const agencies = listAgencies(db);
   const known = agencies.find((a) => a.name === String(name).trim());
   const base = { meta: envelope(db), agencies };
   if (!known) return { ...base, agency: null };
@@ -2391,7 +2458,8 @@ export function getAgencyHome(db, { name = '', per = 5 } = {}) {
   const resolvedPer = Math.max(1, Math.min(Number(per) || 5, 20));
   const terms = [known.name, ...Object.entries(FUND_CONFIG.aliases).filter(([, canonical]) => canonical === known.name).map(([alias]) => alias)];
   const hit = (text) => terms.some((t) => String(text ?? '').includes(t));
-  const byDate = (a, b) => String(b.date ?? '').localeCompare(String(a.date ?? '')) || String(a.title ?? '').localeCompare(String(b.title ?? ''));
+  // 排序一律走 budgetOrder：日期降冪，日期相同或沒有日期時用年度降冪（預算／決算的報告與議事）
+  const byDate = budgetOrder;
 
   // 「誰在關注」要算到每位被掛名的委員，所以先留著去重前的列；顯示用的 matched 才把同一則新聞合併成一則
   // 主計總處另有專屬的主計新聞來源（topic_news 'dgbas'），沿用主計總處專頁的資料列，才不會因移到這裡而變少
@@ -2404,7 +2472,7 @@ export function getAgencyHome(db, { name = '', per = 5 } = {}) {
     .filter(Boolean);
   const matched = hits
     .filter((r, i, all) => r.kind !== 'news' || all.findIndex((x) => x.kind === 'news' && x.url === r.url) === i)
-    .sort(byDate);
+    .sort(budgetOrder);
   const kinds = Object.fromEntries(
     AGENCY_KINDS.map((k) => {
       const list = matched.filter((r) => r.kind === k);
@@ -2414,7 +2482,7 @@ export function getAgencyHome(db, { name = '', per = 5 } = {}) {
 
   const officialNews = known.heads.flatMap((h) =>
     db.prepare('SELECT * FROM topic_news WHERE topic = ? ORDER BY published_at DESC, url').all(`official:${h.name}`).map((r) => ({ kind: 'news', date: r.published_at.slice(0, 10), title: r.title, url: r.url, source: r.source, head: h.name })),
-  ).sort(byDate);
+  ).sort(budgetOrder);
 
   const people = new Map(db.prepare('SELECT id, name, party FROM legislators').all().map((l) => [l.id, { id: l.id, name: l.name, party: l.party }]));
   const meetings = db
@@ -2436,13 +2504,41 @@ export function getAgencyHome(db, { name = '', per = 5 } = {}) {
         .map((a) => ({ date: m.date, meeting: m.title, title: a.title, url: a.url })),
     );
 
-  const watch = new Map();
+  const tally = new Map();
   const bump = (l) => {
-    if (l?.id) watch.set(l.id, { ...l, count: (watch.get(l.id)?.count ?? 0) + 1 });
+    if (l?.id) tally.set(l.id, { ...l, count: (tally.get(l.id)?.count ?? 0) + 1 });
   };
   for (const r of hits) bump(r.legislator);
   for (const m of meetings) for (const sp of m.speakers) bump(sp);
-  const watchers = [...watch.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'zh-Hant')).slice(0, 8);
+  const watchers = [...tally.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'zh-Hant')).slice(0, 8);
+
+  /**
+   * 「誰在關注」的件數點進去要看得到來源（`?watch=<委員id>`）：把同一組命中限縮到那一位。
+   * 件數的組成＝掛名的資料列（新聞／貼文／提案）＋發言的會議，所以這裡也照同樣兩塊算，
+   * 加起來必須等於清單上的「N 次」（測試釘住）。
+   */
+  const watchId = String(watch ?? '').trim();
+  const watched = watchId ? tally.get(watchId) : null;
+  const watcher = watched
+    ? (() => {
+        const mine = hits.filter((r) => r.legislator?.id === watchId);
+        const kindsOfWatcher = Object.fromEntries(
+          AGENCY_KINDS.map((k) => {
+            const list = mine.filter((r) => r.kind === k);
+            return [k, { total: list.length, items: list.slice(0, resolvedPer).map(({ agencies, attend, ...item }) => item) }];
+          }),
+        );
+        const myMeetings = meetings.filter((m) => m.speakers.some((s) => s.id === watchId));
+        return {
+          id: watchId,
+          name: watched.name,
+          party: watched.party,
+          count: watched.count,
+          kinds: kindsOfWatcher,
+          meetings: { total: myMeetings.length, items: myMeetings.slice(0, resolvedPer) },
+        };
+      })()
+    : null;
 
   return {
     ...base,
@@ -2452,6 +2548,7 @@ export function getAgencyHome(db, { name = '', per = 5 } = {}) {
     meetings: { total: meetings.length, items: meetings.slice(0, resolvedPer) },
     replies: { total: replies.length, items: replies.slice(0, resolvedPer) },
     watchers,
+    watcher,
   };
 }
 

@@ -9,7 +9,7 @@ import { ClearFiltersButton } from '../components/ClearFiltersButton';
 import { SearchField } from '../components/SearchField';
 import { useApi } from '../hooks/useApi';
 import { pathFor } from '../hooks/useRoute';
-import { shortCommittee } from '../lib/format';
+import { formatDay, shortCommittee } from '../lib/format';
 import { partyStyle } from '../lib/parties';
 
 /**
@@ -62,7 +62,7 @@ const TYPE_LABEL: Record<BudgetType, string> = { general: '總預算', subsidiar
  * 都沒有），留白會讓人以為壞掉，所以明講「尚無進度日期」——排序上也把這種案子當成最新
  * （見後端 `budgetBillsByProgress`），因為它們正是剛送進來、還沒有人會進度的案子。
  */
-export const progressDateText = (value: string | null | undefined): string => (value ? value : '尚無進度日期');
+export const progressDateText = (value: string | null | undefined): string => formatDay(value, '尚無進度日期');
 
 const DEFAULT_CATEGORY = '中央政府總預算案';
 const ALL = 'all';
@@ -547,7 +547,7 @@ function BudgetReports({ refreshToken }: { refreshToken: number }) {
                   <span>{r.title}</span>
                 )}
                 <small>
-                  {r.completed?.slice(0, 7).replace('-', '/')}　{r.author}　{r.type}
+                  {formatDay(r.completed)}　{r.author}　{r.type}
                 </small>
               </li>
             ))}

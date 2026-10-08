@@ -508,6 +508,34 @@ test('預算中心報告與委員會發言：寫入、預算會議篩選、發�
   assert.ok(budget.speakers[0].count <= 8);
 });
 
+test('預算與決算的排序：日期相同或沒有日期時，年度大的在前（降冪）', () => {
+  const db = seeded();
+  const insert = db.prepare('INSERT INTO budget_reports(no, type, title, author, completed, url) VALUES(?,?,?,?,?,?)');
+  // 同一天發布的兩份（預算案）＋兩份沒有日期的（決算案）
+  insert.run('R1', '預算案評估', '114年度中央政府總預算案評估報告', '預算中心', '2026-09-01', 'https://r/1');
+  insert.run('R2', '預算案評估', '116年度中央政府總預算案評估報告', '預算中心', '2026-09-01', 'https://r/2');
+  insert.run('R3', '決算案評估', '113年度中央政府總決算審核報告', '審計部', '', 'https://r/3');
+  insert.run('R4', '決算案評估', '115年度中央政府總決算審核報告', '審計部', '', 'https://r/4');
+  const reports = listBudgetReports(db, { limit: 100 }).items;
+  assert.deepEqual(
+    reports.map((r) => r.no),
+    ['R2', 'R1', 'R4', 'R3'],
+    '同一天 → 116 年度在 114 年度前面；沒有日期 → 115 在 113 前面，且都排在有日期的後面',
+  );
+
+  const meeting = db.prepare('INSERT INTO committee_meetings(id, date, committee, joint, name, content, speakers) VALUES(?,?,?,?,?,?,?)');
+  // 列表只列「有發言名單」的會議（見 listBudgetMeetings），所以這裡要帶 speakers
+  const speakers = JSON.stringify([{ id: '00100', name: '測試委員' }]);
+  meeting.run(1, '2026-05-01', '財政委員會', '無', '審查115年度中央政府總預算案', '預算審查', speakers);
+  meeting.run(2, '2026-05-01', '財政委員會', '無', '審查116年度中央政府總預算案', '預算審查', speakers);
+  meeting.run(3, '2026-05-01', '財政委員會', '無', '審查113年度中央政府總決算', '預算與決算審查', speakers);
+  assert.deepEqual(
+    listBudgetMeetings(db, { limit: 100 }).items.slice(0, 3).map((m) => m.name),
+    ['審查116年度中央政府總預算案', '審查115年度中央政府總預算案', '審查113年度中央政府總決算'],
+    '議事同一天時也依年度降冪',
+  );
+});
+
 test('預算中心／發言名單：格式不符 fail closed，保留舊資料', async () => {
   const db = seeded();
   const ok = async (url) => ({ json: fixture(url.includes('BudgetCenter') ? 'budget-reports.json' : 'id223.json'), attempts: 1 });
