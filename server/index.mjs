@@ -45,11 +45,15 @@ export function syncOnce(db, options = {}) {
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
+  // PWA 的 manifest 一定要用這個 MIME，否則部分瀏覽器不認（T11）
+  '.webmanifest': 'application/manifest+json; charset=utf-8',
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
+  '.webp': 'image/webp',
   '.ico': 'image/x-icon',
   '.woff2': 'font/woff2',
 };
@@ -127,11 +131,19 @@ async function serveStatic(res, urlPath) {
       if (!info.isFile()) continue;
       const body = await readFile(candidate);
       const ext = extname(candidate);
-      const immutable = candidate.includes('/assets/');
+      const filename = candidate.slice(candidate.lastIndexOf('/') + 1);
+      // Service Worker 一定要能被更新：絕不長快取（否則使用者會卡在舊版 SW，改了也拿不到）。
+      const isServiceWorker = filename === 'sw.js';
+      const immutable = !isServiceWorker && candidate.includes('/assets/');
+      const cacheControl = isServiceWorker
+        ? 'no-cache, no-store, must-revalidate'
+        : immutable
+          ? 'public, max-age=31536000, immutable'
+          : 'no-cache';
       res.writeHead(200, {
         'content-type': MIME[ext] ?? 'application/octet-stream',
         'content-length': body.length,
-        'cache-control': immutable ? 'public, max-age=31536000, immutable' : 'no-cache',
+        'cache-control': cacheControl,
         ...SECURITY_HEADERS,
       });
       res.end(body);

@@ -17,3 +17,14 @@ createRoot(container).render(
     <App />
   </StrictMode>,
 );
+
+// T11：註冊 Service Worker（只在安全來源生效 —— https 或 localhost）。
+// 它只快取靜態外框（見 web/public/sw.js），離線時畫面還在、資料一律連線取得。
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch((error) => {
+      // 註冊失敗不影響功能，只是離線快取不會生效
+      console.warn('[立委觀測站] Service Worker 註冊失敗', error);
+    });
+  });
+}

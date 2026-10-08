@@ -7,6 +7,7 @@ import { Header } from './components/Header';
 import { LegislatorDetail } from './components/LegislatorDetail';
 import { legislatorDetailUrl } from './lib/legislators';
 import { SyncStatusBanner } from './components/SyncStatusBanner';
+import { OfflineNotice } from './components/OfflineNotice';
 import { useApi } from './hooks/useApi';
 import { useQueryState } from './hooks/useQueryState';
 import { useSync } from './hooks/useSync';
@@ -144,6 +145,8 @@ export default function App() {
           ) : null
         }
       >
+        <OfflineNotice />
+
         {/* 同步有問題時一定顯示；正常時由頁首狀態鈕展開 */}
         {syncOpen || failed || stale ? (
           <div id="sync-panel">
