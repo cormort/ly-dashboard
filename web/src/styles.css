@@ -218,8 +218,16 @@ header {
 .brand small { color: var(--muted); font-size: var(--fs-xs); }
 header nav { display: flex; flex-wrap: wrap; gap: var(--space-1); min-width: 0; }
 /* 頁內分類（機關／基金四類），樣子同頁首導覽 */
-.subnav { display: flex; gap: var(--space-1); overflow-x: auto; padding-bottom: var(--space-2); border-bottom: 1px solid var(--rule); }
+/* align-items: center 不能省：預設的 stretch 會把每個頁籤拉成同一高度，
+   文字卻黏在頂端（390px 實測膠囊 40px、文字行盒 18px → 上留白 5px／下留白 17px，
+   看起來就是「選取的 tag 沒有垂直置中」）。改成 center 後頁籤各自縮到自然高度並置中。 */
+.subnav { display: flex; align-items: center; gap: var(--space-1); overflow-x: auto; padding-bottom: var(--space-2); border-bottom: 1px solid var(--rule); }
 header nav a, .subnav a {
+  /* inline-flex + align-items 置中：手機的觸控目標規則會用 min-height: 40px 撐高頁籤，
+     但 min-height 只把盒子變高、文字仍黏在頂端（390px 實測上留白 5px／下留白 17px，
+     看起來就是「選取的 tag 沒有垂直置中」）。改成 flex 置中後兩排都對齊。 */
+  display: inline-flex;
+  align-items: center;
   padding: 7px 12px;
   text-decoration: none;
   color: var(--ink-2);
@@ -300,11 +308,12 @@ header nav, .subnav-row { position: relative; }
 /* 頁首的 .header-status 是 nowrap（控制列不換行用），說明框會繼承到而整行被裁掉 → 這裡強制換行 */
 .info-tip { white-space: normal; }
 .info-tip .info-line + .info-line { margin-top: 2px; color: #e2e8f0; }
-.subnav-row { display: flex; align-items: center; gap: var(--space-2); max-width: 1240px; margin: 0 auto; padding: 0 var(--space-6); border-bottom: 1px solid var(--rule); }
-.subnav-row .subnav { flex: 1 1 auto; min-width: 0; max-width: none; margin: 0; padding-left: 0; padding-right: 0; border-bottom: 0; }
+/* 上下留白對稱：不然頁籤會被 padding-bottom 往上推（實測比列中心高 3–4px） */
+.subnav-row { display: flex; align-items: center; gap: var(--space-2); max-width: 1240px; margin: 0 auto; padding: var(--space-1) var(--space-6); border-bottom: 1px solid var(--rule); }
+.subnav-row .subnav { flex: 1 1 auto; min-width: 0; max-width: none; margin: 0; padding: 0; border-bottom: 0; }
 /* 次級導覽裡的跨主題捷徑（NavGroup.lead）：跟右邊「本主題自己的頁籤」之間畫一條線 */
 .subnav-divider { flex: 0 0 auto; align-self: center; width: 1px; height: 18px; margin: 0 var(--space-1); background: var(--rule); }
-@media (max-width: 760px) { .subnav-row { padding: 0 var(--space-4); } .info-wrap.end .info-tip { right: var(--space-4); } }
+@media (max-width: 760px) { .subnav-row { padding: var(--space-1) var(--space-4); } .info-wrap.end .info-tip { right: var(--space-4); } }
 .page-lead { margin: 0; max-width: 760px; color: var(--muted); font-size: var(--fs-base); line-height: 1.65; }
 .panel {
   background: var(--surface);

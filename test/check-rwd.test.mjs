@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ROUTES, OVERFLOW_TOLERANCE, HEADER_MAX_PX, overflowOf, failures } from '../scripts/check-rwd.mjs';
+import { ROUTES, OVERFLOW_TOLERANCE, HEADER_MAX_PX, TAG_CENTER_MAX_PX, overflowOf, failures } from '../scripts/check-rwd.mjs';
 
 /**
  * 這支測試只驗「純函式」的部分（路由清單、溢出量、失敗判定）——
@@ -42,4 +42,14 @@ test('check-rwd：--strict 才會把「頁首太高」算失敗（手機希望 �
     ['/'],
     '--strict 時頁首過高要算失敗',
   );
+});
+
+test('check-rwd：選取頁籤的文字偏離膠囊中心太多就算失敗（手機被 min-height 撐高過）', () => {
+  const rows = [
+    { width: 390, route: '/budget', overflow: 0, headerH: 120, tagOffset: 0.5 },
+    { width: 390, route: '/news', overflow: 0, headerH: 120, tagOffset: TAG_CENTER_MAX_PX },
+    { width: 390, route: '/agencies', overflow: 0, headerH: 120, tagOffset: TAG_CENTER_MAX_PX + 6, tagWorst: { label: '機關', offset: -8, pill: 40, line: 18 } },
+  ];
+  assert.deepEqual(failures(rows).map((r) => r.route), ['/agencies'], '2px 以內算中文字墨跡的正常偏移，6px 就是真的沒置中');
+  assert.deepEqual(failures(rows, { strict: true }).map((r) => r.route), ['/agencies'], '--strict 不影響這個判定');
 });
