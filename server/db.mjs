@@ -112,6 +112,12 @@ CREATE TABLE IF NOT EXISTS law_agencies (
   law_name TEXT PRIMARY KEY,
   agencies TEXT NOT NULL
 );
+-- 法律→主管機關的第二個來源（法務部全國法規資料庫）。與 law_agencies 分開放：
+-- 兩個來源的填寫程度差很多（g0v 缺 1,119 部），分開才知道「上游問過但沒填」跟「根本沒問到」的差別。
+CREATE TABLE IF NOT EXISTS moj_law_agencies (
+  law_name TEXT PRIMARY KEY,
+  agencies TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS bill_cosigners (
   bill_id TEXT NOT NULL,
   legislator_id TEXT NOT NULL,
@@ -554,12 +560,24 @@ export function applyProgressOverrides(db) {
   return applied;
 }
 
-/** 法律→主管機關（上游法規庫；整批覆寫）。上游沒填的空陣列也存，才知道「問過了但沒有」。 */
+/** 法律→主管機關（整批覆寫）。上游沒填的空陣列也存，才知道「問過了但沒有」。 */
 export function applyLawAgencies(db, laws) {
+  return replaceLawAgencies(db, 'law_agencies', laws);
+}
+
+/**
+ * 法律→主管機關（法務部全國法規資料庫；整批覆寫）。
+ * 與 applyLawAgencies 分開存，讓 queries 的對照順序（上游 → 全國法規資料庫 → 手工補）有依據。
+ */
+export function applyMojLawAgencies(db, laws) {
+  return replaceLawAgencies(db, 'moj_law_agencies', laws);
+}
+
+function replaceLawAgencies(db, table, laws) {
   db.exec('BEGIN');
   try {
-    db.exec('DELETE FROM law_agencies');
-    const insert = db.prepare('INSERT OR REPLACE INTO law_agencies(law_name, agencies) VALUES(?, ?)');
+    db.exec(`DELETE FROM ${table}`);
+    const insert = db.prepare(`INSERT OR REPLACE INTO ${table}(law_name, agencies) VALUES(?, ?)`);
     for (const [name, agencies] of laws) insert.run(name, JSON.stringify(agencies));
     db.exec('COMMIT');
   } catch (error) {

@@ -98,6 +98,8 @@ export async function fetchJson(url, options = {}) {
     retries = CONFIG.fetchRetries,
     ua = CONFIG.userAgent,
     text: asText = false,
+    // 二進位來源（例如法務部回 ZIP 的法律資料檔）：原樣回 Buffer，不做 utf8 轉換也不解析
+    raw: asRaw = false,
     // 額外的 request header（例如讀私人 repo 的 Authorization）；轉址到別的網域時不帶，避免把憑證送出去
     headers: extraHeaders = {},
     // Retry-After 的等待上限；測試會注入小值，不必真的等
@@ -118,13 +120,13 @@ export async function fetchJson(url, options = {}) {
       await pace(target);
       const origin = new URL(url).host;
       const headersFor = (href) => (new URL(href).host === origin ? extraHeaders : {});
-      let res = await request(target, { timeoutMs, ua, accept: asText ? '*/*' : 'application/json', headers: headersFor(target) });
+      let res = await request(target, { timeoutMs, ua, accept: asText || asRaw ? '*/*' : 'application/json', headers: headersFor(target) });
       // 跟隨轉址（Google 試算表匯出會 307 到 googleusercontent）；上限 5 次防迴圈
       for (let hops = 0; [301, 302, 303, 307, 308].includes(res.status) && res.headers.location; hops++) {
         if (hops === 5) throw Object.assign(new FetchError('轉址過多', { status: res.status, attempts: attempt }), { retryable: false });
         target = new URL(res.headers.location, target).href;
         await pace(target);
-        res = await request(target, { timeoutMs, ua, accept: asText ? '*/*' : 'application/json', headers: headersFor(target) });
+        res = await request(target, { timeoutMs, ua, accept: asText || asRaw ? '*/*' : 'application/json', headers: headersFor(target) });
       }
       const { status, body, headers } = res;
       if (status !== 200) {
@@ -142,6 +144,7 @@ export async function fetchJson(url, options = {}) {
       const text = body.toString('utf8');
       // ponytail: RSS 等非 JSON 來源共用同一套逾時／重試，只是不解析
       if (asText) return { text, status, headers, bytes: body.length, sha256: sha256(body), attempts: attempt };
+      if (asRaw) return { buffer: body, status, headers, bytes: body.length, sha256: sha256(body), attempts: attempt };
       let json;
       try {
         json = JSON.parse(text);

@@ -27,6 +27,13 @@ export const CONFIG = {
     name: 'g0v 立法院 API',
     homepage: 'https://ly.govapi.tw/',
   },
+  // 法律→主管機關的第二個來源：法務部全國法規資料庫的開放資料（回 ZIP，內含 ChLaw.json）。
+  // g0v 的「主管機關」有 1,119 部母法是空的，這一份才填得滿（見 server/moj-law.mjs）。
+  mojLaws: {
+    url: 'https://law.moj.gov.tw/api/ch/law/json',
+    name: '全國法規資料庫',
+    homepage: 'https://law.moj.gov.tw/',
+  },
   // 預算審議：同一個 g0v API，改抓政府／委員會送來的預算類議案（總預算案、法人預算、預算決議書面報告）
   budget: {
     // 委員會（交什麼委員會審查）：要逐筆打 /bill/{id}，所以只做「議案本身」那幾類，而且做過就不重打

@@ -11,6 +11,8 @@ import { SYNC_STAGES } from './sync-scopes.mjs';
 import { fetchBillProgress } from './ppg-progress.mjs';
 import { fetchBillCommittees } from './budget-committees.mjs';
 import { reportProgress } from './sync-progress.mjs';
+import { canonicalAgency } from './agency-names.mjs';
+import { syncMojLawAgencies } from './moj-law.mjs';
 
 /**
  * Ingestion 管線：FETCH → VALIDATE → NORMALIZE → PERSIST。
@@ -358,13 +360,23 @@ export async function runBillsIngest(db, { logger = console, fetchImpl = fetchJs
       json: { pages: pages.length, bills: pages.map((page) => page.bills) },
     });
     const applied = applyBills(db, normalized, { fetchedAt: now().toISOString() });
-    // 法律→主管機關：「機關」頁用它把「修農業發展條例」的提案算進農業部。失敗不影響議案本身，沿用上次的對照
+    // 法律→主管機關：「機關」頁用它把「修農業發展條例」的提案算進農業部。
+    // 上游（g0v）自己填的為主；上游的寫法要先正規化（金管會→金融監督管理委員會…），否則機關頁認不出來。
+    // 兩段都各自 fail soft —— 議案本身不能因為對照表抓不到就失敗，沿用上次的。
     try {
       const lawPages = (await fetchAllPages(lawsPageUrl, fetchImpl, 'laws')).pages;
-      const laws = new Map(lawPages.flatMap((p) => p.laws ?? []).map((l) => [l['名稱'], (l['主管機關'] ?? []).filter(Boolean)]));
+      const laws = new Map(
+        lawPages.flatMap((p) => p.laws ?? []).map((l) => [l['名稱'], [...new Set((l['主管機關'] ?? []).filter(Boolean).map(canonicalAgency))]]),
+      );
       if (laws.size > 0) applyLawAgencies(db, laws);
     } catch (error) {
-      logger.warn?.(`[bills] 法律主管機關同步失敗，沿用上次的對照：${error.message}`);
+      logger.warn?.(`[bills] 法律主管機關（上游）同步失敗，沿用上次的對照：${error.message}`);
+    }
+    // 上游沒填的（實測 1,119 部母法，環境部相關幾乎全空）用法務部全國法規資料庫補（server/moj-law.mjs）
+    try {
+      await syncMojLawAgencies(db, { fetchImpl, logger });
+    } catch (error) {
+      logger.warn?.(`[bills] 法律主管機關（全國法規資料庫）同步失敗，沿用上次的對照：${error.message}`);
     }
     for (const w of normalized.warnings) logger.warn(`[bills] 警告：${w}`);
     logger.log(

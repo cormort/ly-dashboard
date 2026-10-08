@@ -2242,11 +2242,17 @@ const dgbasOf = (r) => [
  * 基金／機關／財團法人／行政法人頁與「我的機關」共用：把新聞、臉書、提案、預算審議、預算中心報告攤成同一種資料列。
  * `type === 'dgbas'` 另收不限委員的主計總處新聞；基金／機關新聞（topic_news 'entities'）所有類別都收。
  */
-/** 法律名稱 → 主管機關：上游（law_agencies）有填的為準，沒填的用 server/law-agencies.json 人工補 */
+/**
+ * 法律名稱 → 主管機關。三個來源，前面有就用前面的：
+ * ① `law_agencies`：g0v 法規庫自己填的（它的寫法已經在同步時正規化成機關全名）
+ * ② `moj_law_agencies`：法務部全國法規資料庫（上游空的 1,119 部母法靠這一份才對得到，見 server/moj-law.mjs）
+ * ③ `server/law-agencies.json`：兩邊都沒有的少量人工補（來源不明的組織條例等）
+ */
 const lawAgencySupplement = new Map(Object.entries(JSON.parse(readFileSync(new URL('./law-agencies.json', import.meta.url), 'utf8')).laws).flatMap(([agency, names]) => names.map((n) => [n, [agency]])));
 function lawAgencyMap(db) {
   const upstream = new Map(db.prepare('SELECT law_name, agencies FROM law_agencies').all().map((r) => [r.law_name, JSON.parse(r.agencies)]));
-  return (law) => (upstream.get(law)?.length ? upstream.get(law) : (lawAgencySupplement.get(law) ?? []));
+  const moj = new Map(db.prepare('SELECT law_name, agencies FROM moj_law_agencies').all().map((r) => [r.law_name, JSON.parse(r.agencies)]));
+  return (law) => upstream.get(law)?.length ? upstream.get(law) : (moj.get(law) ?? lawAgencySupplement.get(law) ?? []);
 }
 
 /**
