@@ -10,6 +10,8 @@
   "scripts": {
     "test": "node --test test/*.mjs",
     "check:rwd": "node scripts/check-rwd.mjs",
+    "verify:pwa": "node scripts/verify-pwa.mjs",
+    "gen:pwa-icons": "node scripts/gen-pwa-icons.mjs",
     "push:news": "node scripts/push-news-data.mjs",
     "ingest": "node server/ingest.mjs",
     "serve": "node server/index.mjs",
