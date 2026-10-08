@@ -21,6 +21,7 @@ import { billTitle, formatDay, shortCommittee } from '../lib/format';
 import { partyStyle, sortParties } from '../lib/parties';
 import { readPreference } from '../lib/storage';
 import { DEFAULT_AGENCY, MY_AGENCY_KEY } from './MyAgencyPage';
+import { AGENCY_REPORT_CATEGORY } from './BudgetPage';
 export interface DashboardPageProps {
   refreshToken: number;
   onOpenId: (id: string) => void;
@@ -126,6 +127,7 @@ export function DashboardPage({ refreshToken, onOpenId, onNavigate }: DashboardP
                 ['近期議程', mine.data.meetings.total],
                 ['書面回覆', mine.data.replies.total],
                 ['預算審議', mine.data.kinds.budget.total],
+                ['機關檢送報告', mine.data.kinds.submitted.total],
                 ['新聞', mine.data.kinds.news.total + mine.data.official_news.total],
               ] as const
             ).map(([label, n]) => (
@@ -185,6 +187,29 @@ export function DashboardPage({ refreshToken, onOpenId, onNavigate }: DashboardP
                 </li>
               ))}
             </ul>
+          )}
+        </Card>
+        <Card
+          title="機關檢送報告"
+          href={link('budget', { category: AGENCY_REPORT_CATEGORY, proposer: agencyName, scope: 'all' })}
+          onNavigate={onNavigate}
+          resource={mine}
+        >
+          {(data) => (
+            <>
+              <p className="muted">本機關自己函送立法院的書面報告（依預算決議檢送、定期報告）；原本算在「預算審議」裡，現在單獨列出來。</p>
+              <ul className="dash-list">
+                {(data.kinds?.submitted?.items ?? []).map((r) => (
+                  <li key={`${r.url}-${r.title}`}>
+                    <span className="kind">{(r.status ?? '').replace('排入院會', '院會')}</span>
+                    <a href={r.url} target="_blank" rel="noreferrer noopener" className="clamp-2">
+                      {r.title}
+                    </a>
+                    <time>{formatDay(r.date)}</time>
+                  </li>
+                ))}
+              </ul>
+            </>
           )}
         </Card>
         <Card title="預算中心報告" href={link('budget', { category: 'all' })} onNavigate={onNavigate} resource={reports}>

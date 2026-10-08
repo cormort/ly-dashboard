@@ -1256,7 +1256,7 @@ export interface SplitTicketResponse {
 
 export type FundType = 'fund' | 'agency' | 'foundation' | 'administrative' | 'dgbas';
 
-export type FundKind = 'news' | 'post' | 'bill' | 'budget' | 'report';
+export type FundKind = 'news' | 'post' | 'bill' | 'budget' | 'submitted' | 'report';
 
 export interface FundItem {
   kind: FundKind;

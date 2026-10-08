@@ -19,7 +19,14 @@ export interface FundsPageProps {
   onNavigate?: (href: string) => void;
 }
 
-const KIND_LABEL: Record<FundKind, string> = { news: '新聞', post: '臉書', bill: '委員提案', budget: '預算審議', report: '預算中心報告' };
+const KIND_LABEL: Record<FundKind, string> = {
+  news: '新聞',
+  post: '臉書',
+  bill: '委員提案',
+  budget: '預算審議',
+  submitted: '機關檢送報告',
+  report: '預算中心報告',
+};
 const PAGE = 30;
 const slash = (d: string) => d.replaceAll('-', '/');
 

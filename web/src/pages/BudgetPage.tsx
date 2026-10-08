@@ -64,6 +64,12 @@ const TYPE_LABEL: Record<BudgetType, string> = { general: '總預算', subsidiar
  */
 export const progressDateText = (value: string | null | undefined): string => formatDay(value, '尚無進度日期');
 
+/**
+ * 「機關檢送報告」在預算頁的歸屬類別（g0v 的分類名稱，跟 server/config.mjs 的 categories 同一份）。
+ * 機關自己函送的書面報告都掛在這一類底下，所以「我的機關」與「總覽」的看更多都連到這裡（再加 proposer）。
+ * 上游改分類名稱時，這裡與 server 的 config 要一起改。
+ */
+export const AGENCY_REPORT_CATEGORY = '預(決) 算決議案、定期報告';
 const DEFAULT_CATEGORY = '中央政府總預算案';
 const ALL = 'all';
 const PAGE = 30;

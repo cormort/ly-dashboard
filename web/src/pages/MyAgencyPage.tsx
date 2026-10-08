@@ -9,6 +9,7 @@ import { RouteLink } from '../components/RouteLink';
 import { formatDay, shortCommittee } from '../lib/format';
 import { partyStyle } from '../lib/parties';
 import { readPreference, writePreference } from '../lib/storage';
+import { AGENCY_REPORT_CATEGORY } from './BudgetPage';
 
 export interface MyAgencyPageProps {
   refreshToken: number;
@@ -307,6 +308,7 @@ export function MyAgencyPage({ refreshToken, onOpenId, onNavigate }: MyAgencyPag
               { label: '近期議程提到', value: data.meetings.total, id: 'my-meetings' },
               { label: '新聞', value: data.kinds.news.total + data.official_news.total, id: 'my-news' },
               { label: '預算審議', value: data.kinds.budget.total, id: 'my-budget' },
+              { label: '機關檢送報告', value: data.kinds.submitted.total, id: 'my-budget' },
               { label: '法案', value: data.kinds.bill.total, id: 'my-budget' },
             ].map((t) => (
               <a key={t.label} className="stat-tile" href={`#${t.id}`}>
@@ -409,6 +411,15 @@ export function MyAgencyPage({ refreshToken, onOpenId, onNavigate }: MyAgencyPag
             <div className="dash-grid">
               <Block title="預算審議" total={data.kinds.budget.total} href={link('budget')} onNavigate={onNavigate}>
                 <ItemList items={data.kinds.budget.items} tag={(i) => i.status} />
+              </Block>
+              <Block
+                title="機關檢送報告"
+                total={data.kinds.submitted.total}
+                href={pathFor('budget', { category: AGENCY_REPORT_CATEGORY, proposer: data.agency.name, scope: 'all' })}
+                onNavigate={onNavigate}
+                note="本機關自己函送立法院的書面報告（依預算決議檢送、定期報告）；看更多開的是預算頁同一類別再加上本機關"
+              >
+                <ItemList items={data.kinds.submitted.items} tag={(i) => i.status} />
               </Block>
               <Block title="預算中心報告" total={data.kinds.report.total} href={link('report')} onNavigate={onNavigate}>
                 <ItemList items={data.kinds.report.items} tag={(i) => i.source?.replace('評估', '')} />

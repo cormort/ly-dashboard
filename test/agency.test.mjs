@@ -212,3 +212,37 @@ test('我的機關的「看更多」：以機關全名＋簡稱查委員會頁�
   }
   assert.equal(getAgencyHome(db, { name: '中央銀行' }).meetings.total, 1, '簡稱「央行」也對得到');
 });
+
+test('我的機關：機關自己檢送的報告單獨一個來源，不再混在預算審議裡', () => {
+  const { db } = seeded();
+  db.prepare('INSERT INTO budget_bills(id, term, session, category, name, status, proposer, fiscal_year, latest_date, url) VALUES(?,?,?,?,?,?,?,?,?,?)').run(
+    'B2', 11, 5, '預(決) 算決議案、定期報告', '函，為115年度中央政府總預算決議，檢送該部「一般行政」預算凍結50萬元書面報告，請查照案。', '排入院會', '財政部', 115, '2026-09-28', 'https://b/2',
+  );
+  const r = getAgencyHome(db, { name: '財政部' });
+  assert.equal(r.kinds.submitted.total, 1, '機關自己檢送的書面報告算在 submitted');
+  assert.equal(r.kinds.submitted.items[0].url, 'https://b/2');
+  assert.equal(r.kinds.submitted.items[0].source, '財政部', '提案單位就是檢送的機關');
+  assert.equal(r.kinds.budget.total, 1, '預算審議只剩原本那筆總預算案');
+});
+
+test('機關檢送報告：立法院委員會的處理函件與決算書都不算', () => {
+  const { db } = seeded();
+  const ins = db.prepare('INSERT INTO budget_bills(id, term, session, category, name, status, proposer, fiscal_year, latest_date, url) VALUES(?,?,?,?,?,?,?,?,?,?)');
+  ins.run('B3', 11, 5, '預(決) 算決議案、定期報告', '函，為院會交付處理「財政部函為114年度中央政府總預算決議，有關書面報告案」等4案，業經處理完竣，請查照案。', '審查完畢', '本院財政委員會', 115, '2026-09-27', 'https://b/3');
+  ins.run('B4', 11, 5, '預(決) 算決議案、定期報告', '函送財團法人國際合作發展基金會113年度決算書案。', '審查完畢', '財政部', 115, '2026-09-26', 'https://b/4');
+  const r = getAgencyHome(db, { name: '財政部' });
+  assert.equal(r.kinds.submitted.total, 0, '委員會處理函件（提案單位是本院委員會）與決算書都不是「機關檢送的報告」');
+});
+
+test('機關檢送報告：只是從預算審議拆出來，同一機關兩個來源加起來不變', () => {
+  const { db } = seeded();
+  db.prepare('INSERT INTO budget_bills(id, term, session, category, name, status, proposer, fiscal_year, latest_date, url) VALUES(?,?,?,?,?,?,?,?,?,?)').run(
+    'B2', 11, 5, '預(決) 算決議案、定期報告', '函，為115年度中央政府總預算決議，檢送該部「一般行政」預算凍結50萬元書面報告，請查照案。', '排入院會', '財政部', 115, '2026-09-28', 'https://b/2',
+  );
+  const r = getAgencyHome(db, { name: '財政部' });
+  const matched = db
+    .prepare('SELECT name, proposer FROM budget_bills')
+    .all()
+    .filter((b) => String(b.name).includes('財政部') || String(b.proposer).includes('財政部'));
+  assert.equal(r.kinds.budget.total + r.kinds.submitted.total, matched.length, '加起來＝原本算在預算審議裡的件數（沒有少算也沒有重複算）');
+});

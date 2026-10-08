@@ -421,7 +421,7 @@ Query 參數（全部可選）：
 基金（`type=fund`，預設）、機關（`agency`）、財團法人（`foundation`）、行政法人（`administrative`）四頁，以及主計總處專頁（`dgbas`：預算類議案提案機關為主計總處者標「主計總處提送」，標題提到「主計總處／主計長」者標「提及主計總處」）用；每個名稱只歸一類（行政法人 > 財團法人 > 基金 > 機關）：新聞、臉書最新貼文、委員提案、預算審議、預算中心報告中，標題提到特種基金、國營事業或財團法人的項目，依日期新→舊（新聞同一網址只留一則）。
 關鍵字在 `server/fund-config.json`（取自 excel_merge 的 fund-config：全名＋不會誤判的簡稱，簡稱歸到正式名稱）與政府機關代碼表（data.gov.tw 7307）中未裁撤的層級 2–3 中央機關（已在基金清單的國營事業只算基金）；
 行政法人另有 `administrative` 清單；財團法人／行政法人也從標題「財團法人○○」「行政法人○○」自動取出名稱（之後不帶前綴出現也算）。清單外凡含「基金」者歸「其他基金」，清單外的「基金會」歸「其他基金會」。
-`fund` 精確篩選（上述名稱）、`kind`（`news|post|bill|budget|report`）。回傳 `kinds`（套用 `fund` 後各來源件數）、`periods`（各來源全部資料的期間 `{ from, to }`，YYYY-MM-DD）、
+`fund` 精確篩選（上述名稱）、`kind`（`news|post|bill|budget|submitted|report`）。回傳 `kinds`（套用 `fund` 後各來源件數）、`periods`（各來源全部資料的期間 `{ from, to }`，YYYY-MM-DD）、
 `funds`（套用 `kind` 後最常出現的前 40 個）、`items`（`{ kind, date, title, url, source?, status?, legislator, funds }`）。
 
 ## GET /api/v1/cosponsors
@@ -734,7 +734,7 @@ Query 參數（全部可選）：
   "meta": { ... },
   "agencies": [{ "name": "財政部", "heads": [{ "name": "莊翠雲", "title": "部長" }] }],  // 機關清單＋首長名單裡的機關
   "agency": { "name": "財政部", "heads": [...], "terms": ["財政部"] },                      // 無此機關時為 null，以下欄位皆不出現
-  "kinds": {                                                                                 // news / bill / budget / report / post
+  "kinds": {                                                                                 // news / bill / budget / submitted / report / post
     "news": { "total": 38, "items": [{ "kind": "news", "date": "2026-10-02", "title": "...", "url": "...", "source": "..." }] }
   },
   "official_news": { "total": 5, "items": [{ "...": "...", "head": "莊翠雲" }] },           // 首長新聞（topic_news official:<首長>）
@@ -745,5 +745,6 @@ Query 參數（全部可選）：
 ```
 
 - `meetings` 只含**已開過**且議程提到該機關者；資料中沒有未來行事曆。
+- `kinds.submitted`＝**機關自己函送立法院的書面報告**（依預算決議檢送、定期報告；提案單位就是該機關），2026-10-08 從 `budget` 拆出來單獨一個來源（件數相加不變）。規則見 `server/config.mjs` 的 `budget.agencyReportPattern`。
 - `watchers` 次數 = 新聞／臉書／提案（首位提案人）掛名次數（新聞同一則掛在多位委員底下時每人各算一次）＋提到該機關的會議中登記發言的次數。
 

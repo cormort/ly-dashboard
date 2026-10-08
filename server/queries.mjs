@@ -2302,7 +2302,7 @@ export function mentionsKnownEntity(tagger, title) {
   return [...t.fund, ...t.agency, ...t.administrative].some((n) => n !== OTHER_FUND);
 }
 
-const FUND_KINDS = ['news', 'post', 'bill', 'budget', 'report'];
+const FUND_KINDS = ['news', 'post', 'bill', 'budget', 'submitted', 'report'];
 
 /**
  * 主計總處專頁（`type=dgbas`）：預算類議案的提案機關是主計總處 →「主計總處提送」；標題提到 →「提及主計總處」；
@@ -2311,7 +2311,7 @@ const FUND_KINDS = ['news', 'post', 'bill', 'budget', 'report'];
 const DGBAS_RE = /主計總處|主計長/;
 const LOCAL_ACCOUNTING_RE = /[縣市](政府)?主計處/;
 const dgbasOf = (r) => [
-  ...(r.kind === 'budget' && DGBAS_RE.test(r.source ?? '') ? ['主計總處提送'] : []),
+  ...((r.kind === 'budget' || r.kind === 'submitted') && DGBAS_RE.test(r.source ?? '') ? ['主計總處提送'] : []),
   ...(DGBAS_RE.test(r.title) ? ['提及主計總處'] : LOCAL_ACCOUNTING_RE.test(r.title) ? ['地方主計處'] : r.title.includes('主計') ? ['僅提及主計'] : []),
 ];
 
@@ -2378,6 +2378,8 @@ function collectFundRows(db, resolvedType) {
   const attend = attendByBill(db);
   const budgetRows = db.prepare('SELECT * FROM budget_bills').all();
   const billRows = db.prepare('SELECT * FROM bills').all();
+  // 機關自己檢送的報告（函，為…決議，檢送…書面報告）→ 來源從預算審議拆出來，見 config 的說明
+  const agencyReportRe = CONFIG.budget.agencyReportPattern ? new RegExp(CONFIG.budget.agencyReportPattern) : null;
   // 上游對本會期的議案常常沒有日期；沒有日期不代表最舊（見 effectiveSortDate）
   const latestSession = [...budgetRows, ...billRows].reduce((max, r) => Math.max(max, Number(r.session) || 0), 0);
   const people = new Map(db.prepare('SELECT id, name, party FROM legislators').all().map((l) => [l.id, { id: l.id, name: l.name, party: l.party }]));
@@ -2408,7 +2410,20 @@ function collectFundRows(db, resolvedType) {
           .all()
           .map((r) => ({ kind: 'post', date: r.latest_post_date, title: r.latest_post_summary, url: r.url, legislator: people.get(r.legislator_id) }))),
     ...billRows.map((r) => ({ kind: 'bill', agencies: [...new Set(JSON.parse(r.laws || '[]').flatMap(agencyOfLaw))], attend: [...(attend.get(r.id) ?? [])], date: r.latest_date, sort_date: effectiveSortDate(r.latest_date, r.session, latestSession), title: r.name, url: r.url, status: r.status, legislator: lead.get(r.id) })),
-    ...budgetRows.map((r) => ({ kind: 'budget', date: r.latest_date, sort_date: effectiveSortDate(r.latest_date, r.session, latestSession), title: r.name, url: r.url, status: r.status, source: r.proposer })),
+    ...budgetRows.map((r) => {
+      // 「機關自己檢送的報告」單獨一個來源（見 CONFIG.budget.agencyReportPattern）：
+      // 跟預算頁「預算審議預設不算決議案、定期報告」的語意一致，件數只是從預算審議搬過來，沒有少算。
+      const submitted = agencyReportRe !== null && agencyReportRe.test(String(r.name ?? ''));
+      return {
+        kind: submitted ? 'submitted' : 'budget',
+        date: r.latest_date,
+        sort_date: effectiveSortDate(r.latest_date, r.session, latestSession),
+        title: r.name,
+        url: r.url,
+        status: r.status,
+        source: r.proposer,
+      };
+    }),
     ...db.prepare('SELECT * FROM budget_reports').all().map((r) => ({ kind: 'report', date: r.completed, title: r.title, url: r.url, source: r.type })),
   ];
   return rows;
@@ -2494,7 +2509,8 @@ function lawAgencyNames(db) {
   return [...names];
 }
 
-const AGENCY_KINDS = ['news', 'bill', 'budget', 'report', 'post'];
+// 'submitted'＝機關自己檢送的報告（從 budget 拆出來，見 collectFundRows 與 CONFIG.budget.agencyReportPattern）
+const AGENCY_KINDS = ['news', 'bill', 'budget', 'submitted', 'report', 'post'];
 const DGBAS_AGENCY = '行政院主計總處';
 
 /**
@@ -2523,7 +2539,7 @@ export function getAgencyHome(db, { name = '', per = 5, watch = '' } = {}) {
   // 主計總處另有專屬的主計新聞來源（topic_news 'dgbas'），沿用主計總處專頁的資料列，才不會因移到這裡而變少
   const hits = collectFundRows(db, known.name === DGBAS_AGENCY ? 'dgbas' : 'agency')
     .map((r) => {
-      const direct = hit(r.title) || (r.kind === 'budget' && hit(r.source)) || (r.kind === 'bill' && r.agencies?.some((a) => terms.includes(a)));
+      const direct = hit(r.title) || ((r.kind === 'budget' || r.kind === 'submitted') && hit(r.source)) || (r.kind === 'bill' && r.agencies?.some((a) => terms.includes(a)));
       const viaAttend = !direct && r.kind === 'bill' && r.attend?.includes(known.name);
       return direct || viaAttend ? { ...r, attend_only: viaAttend } : null;
     })
