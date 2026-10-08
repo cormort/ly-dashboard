@@ -16,13 +16,23 @@ export LY_DB="$(mktemp -d)/verify.db"
 
 MODE="fast"
 [ "${1:-}" = "--full" ] && MODE="full"
-export LY_SKIP_BILLS=1 LY_SKIP_NEWS=1 LY_SKIP_SOCIAL=1
 if [ "$MODE" = "full" ]; then
-  unset LY_SKIP_BILLS LY_SKIP_NEWS LY_SKIP_SOCIAL
   echo "模式：完整同步（會呼叫 g0v、Google 新聞 113 次、Google 試算表）"
 else
   echo "模式：快速（跳過外部來源；要完整請加 --full）"
 fi
+
+# 跑 ingestion。M1 的跳過開關**只給這個指令帶**，不能在這裡 export：
+# `test/ingest.test.mjs` 有兩條「同步範圍」測的是範圍路由，帶著 LY_SKIP_* 跑會拿到
+# skipped 而不是 success（實測：快速模式固定失敗 2 條，`--full` 不會）。
+# 而且 config.mjs 是在載入時就把環境變數讀掉的，所以也不能靠測試自己清掉。
+run_ingest() {
+  if [ "$MODE" = "full" ]; then
+    node server/ingest.mjs
+  else
+    LY_SKIP_BILLS=1 LY_SKIP_NEWS=1 LY_SKIP_SOCIAL=1 node server/ingest.mjs
+  fi
+}
 
 echo
 echo "=== 1) 後端測試（真實 API fixture，不打網路）"
@@ -38,7 +48,7 @@ fi
 
 echo
 echo "=== 2) ingestion（獨立臨時 DB）"
-node server/ingest.mjs | python3 -c '
+run_ingest | python3 -c '
 import sys, json
 d = json.load(sys.stdin)
 print("status:", d["status"], "| 耗時:", round(d.get("duration_ms", 0) / 1000, 1), "秒")
@@ -50,7 +60,7 @@ for stage in ("bills", "social", "news"):
 '
 echo
 echo "=== 3) 第二次 ingestion（名錄內容未變應為 skipped）"
-node server/ingest.mjs | python3 -c 'import sys,json;print("status:",json.load(sys.stdin)["status"])'
+run_ingest | python3 -c 'import sys,json;print("status:",json.load(sys.stdin)["status"])'
 
 echo
 echo "=== 4) API 端點"

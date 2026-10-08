@@ -682,3 +682,17 @@ T6 圖表／地圖、T7 粉專牆嵌入框（已看過沒破版，但沒改任�
 **待辦**：這些新法案若要也能對到機關，只能另外建「草案→提案機關」的猜法（例如從提案委員的委員會、或法案名稱關鍵字），那是另一件事。
 另外全國法規資料庫給的機關有 3 個不在 `fund-config` 的機關清單裡（司法院 63 部、總統府 6 部、國家安全會議 4 部），
 現在是原樣存著（不會掛到錯的頁面，但也沒有頁面可掛）；要收就把它們加進機關清單。
+
+## verify.sh 快速模式固定失敗 2 條（2026-10-08）
+
+發現：`bash scripts/verify.sh`（快速模式）在第 1 步就停住，`ℹ pass 274／fail 2`。用 `git worktree` 在乾淨的 `6d2708a` 上跑也一樣 → 不是某次改動弄壞的，是腳本自己的問題。
+
+| # | 岔路 | 選擇 | 理由 |
+| --- | --- | --- | --- |
+| D239 | 根因 | `verify.sh` 第 19 行的 `export LY_SKIP_BILLS=1 LY_SKIP_NEWS=1 LY_SKIP_SOCIAL=1` 是給**下面的 ingestion** 用的，export 會連**測試**一起帶到：`test/ingest.test.mjs` 那兩條「同步範圍」測的是**範圍路由**（指定 social 就只跑 social），`CONFIG.skip.social` 一開，`result.social.status` 就變 `skipped`，assert `success` 直接失敗 | 兩件事不該互相影響：跳過外部來源是同步階段的行為，範圍路由是另一件事 |
+| D240 | 怎麼修 | ① `verify.sh` 不 export，改成只在那兩個 `node server/ingest.mjs` 前面帶（包成 `run_ingest()`）② 那兩條測試用 `withSkipsOff()` 把 `CONFIG.skip` 暫時關掉再跑 | 兩邊都修：腳本不再污染環境；開發者 shell 裡帶著 `LY_SKIP_*=1 npm test` 也不會壞。測試自己清 `process.env` 沒有用 —— `config.mjs` 是**載入時**就把環境變數讀進 `CONFIG.skip` 的，只能在物件上關 |
+
+**已驗證（2026-10-08）**：`node --test test/` 在有／沒有 `LY_SKIP_*=1` 兩種環境下都 **276 項全過**（原本後者固定 2 條失敗）；`bash -n scripts/verify.sh` 通過（本機是 bash 3.2，所以沒用空陣列展開）。
+
+**順帶發現（沒有動）**：快速模式其實**還是會打 g0v**——`LY_SKIP_BUDGET` 沒有一起帶，所以預算（11,292 筆）、會議（1,887 場）、委員提案進度、委員會（最多 600 筆逐一打）都會真的抓，檔頭寫的「約 15 秒」不對，實際要 8 分鐘以上。
+要真的秒級就把 `LY_SKIP_BUDGET=1` 也帶上，但第 4 步的排行榜／預算端點會變成空的——那是另一種取捨，留給使用者決定。

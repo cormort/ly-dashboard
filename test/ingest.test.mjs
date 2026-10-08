@@ -2050,10 +2050,25 @@ const sheetOnlyFetch = (urls) => async (url) => {
   return { text: body, status: 200, headers: {}, bytes: body.length, sha256: 'x', attempts: 1 };
 };
 
+/**
+ * 「同步範圍」這幾條測的是**範圍路由**，不是「跳過」：把 LY_SKIP_*（開發者 shell 或腳本帶進來的
+ * 環境）暫時關掉再跑。config.mjs 是載入時就把環境變數讀掉的，所以只能在 CONFIG.skip 上關
+ * （`verify.sh` 快速模式原本 export 這些開關 → 這兩條固定拿到 skipped 而失敗，2026-10-08 修）。
+ */
+async function withSkipsOff(fn) {
+  const before = { ...CONFIG.skip };
+  Object.assign(CONFIG.skip, { bills: false, budget: false, news: false, social: false });
+  try {
+    return await fn();
+  } finally {
+    Object.assign(CONFIG.skip, before);
+  }
+}
+
 test('同步範圍：只重讀社群粉專時，其他階段一個都不跑', async () => {
   const db = seeded();
   const urls = [];
-  const result = await runAll(db, { logger: silent, fetchImpl: sheetOnlyFetch(urls), stages: scopeStages('social') });
+  const result = await withSkipsOff(() => runAll(db, { logger: silent, fetchImpl: sheetOnlyFetch(urls), stages: scopeStages('social') }));
 
   assert.equal(result.social.status, 'success');
   assert.equal(result.council_social.status, 'success');
@@ -2071,7 +2086,7 @@ test('同步範圍：只重讀社群粉專時，其他階段一個都不跑', as
 test('同步範圍：syncOnce 收到 scope 就只跑那個範圍（不會偷跑全部）', async () => {
   const db = seeded();
   const urls = [];
-  const result = await syncOnce(db, { scope: 'social', logger: silent, fetchImpl: sheetOnlyFetch(urls) });
+  const result = await withSkipsOff(() => syncOnce(db, { scope: 'social', logger: silent, fetchImpl: sheetOnlyFetch(urls) }));
   assert.equal(result.social.status, 'success');
   assert.equal(result.news, undefined);
   assert.equal(result.bills, undefined);
