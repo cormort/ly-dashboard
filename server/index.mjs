@@ -332,6 +332,28 @@ export function shouldSyncNow(db, { inflightScope = getInflightScope(), now = Da
   return !Number.isFinite(at) || now - at >= CONFIG.syncIntervalMs;
 }
 
+/**
+ * 新聞階段（Google 逐委員／逐機關那一路）現在該不該重跑？
+ *
+ * 為什麼不沿用 `shouldSyncNow`：那支看的是**全域** `last_success_at`。任何階段（名錄、議事…）
+ * 剛跑完都會把它更新，於是新聞永遠排不到自己的重跑；這裡刻意只看
+ * **新聞階段自己的最後成功時間**（`sync_runs` 逐 dataset 有紀錄）。
+ *
+ * 條件（全過才要跑）：
+ *  - `intervalMs > 0`（0＝停用，只跟著 24 小時的全同步）；
+ *  - 沒有同步在跑（single-flight）；
+ *  - 從沒成功過，或距離上次成功已達 `intervalMs`。
+ */
+export function shouldRefreshNews(db, { now = Date.now(), intervalMs = CONFIG.newsRefreshMs, inflightScope = getInflightScope() } = {}) {
+  if (!(intervalMs > 0)) return false;
+  if (inflightScope) return false;
+  const row = db.prepare("SELECT MAX(finished_at) AS at FROM sync_runs WHERE dataset = 'news' AND status = 'success'").get();
+  const last = row?.at;
+  if (!last) return true;
+  const at = Date.parse(last);
+  return !Number.isFinite(at) || now - at >= intervalMs;
+}
+
 export function startScheduler(db, { logger = console, checkEveryMs = CONFIG.schedulerCheckMs } = {}) {
   if (shouldSyncNow(db)) {
     logger.log('[scheduler] 資料不存在或已過期，啟動時先同步一次');
@@ -349,6 +371,20 @@ export function startScheduler(db, { logger = console, checkEveryMs = CONFIG.sch
       pollOutletsOnce(db, { logger }).catch((error) => logger.error('[scheduler] 媒體 RSS 輪詢失敗', error));
     }, CONFIG.news.outletIntervalMs);
     outletTimer.unref();
+  }
+  // 新聞階段（Google 那一路）自動重跑：只看新聞自己的上次成功時間，不看全域的 last_success_at。
+  // 最多每小時醒一次（wake），真正要不要跑交給 shouldRefreshNews 決定 —— 資料還新就什麼都不做。
+  if (CONFIG.newsRefreshMs > 0) {
+    const newsTimer = setInterval(() => {
+      if (!shouldRefreshNews(db)) return;
+      const label =
+        CONFIG.newsRefreshMs >= 3600_000
+          ? `${Math.round(CONFIG.newsRefreshMs / 3600_000)} 小時`
+          : `${Math.round(CONFIG.newsRefreshMs / 60_000)} 分鐘`;
+      logger.log(`[scheduler] 新聞已超過 ${label} 未成功更新，開始新聞同步`);
+      syncOnce(db, { logger, scope: 'news' }).catch((error) => logger.error('[scheduler] 新聞同步失敗', error));
+    }, Math.min(CONFIG.newsRefreshMs, 60 * 60 * 1000));
+    newsTimer.unref();
   }
   return timer;
 }
