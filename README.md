@@ -98,6 +98,8 @@ cron/啟動排程 (24h)                      server/ingest.mjs
 - `committee_seats`：事實表，`is_convener` 綁在會期上；跨會期去重後才是「曾任召委」。
 - `change_log`：每次同步與前一版比對，記錄 `is_convener`、黨籍、選區、離職狀態的變化。
 - `raw_snapshots`：原始 JSON gzip 保存（sha256 去重），可回溯、可重跑。
+- `committee_seats` / `memberships`：會期 × 委員會 × 委員（`is_convener` 綁在會期上）。
+  **會期剛開始時上游（data.ly.gov.tw 的 id9／id14）只會給部分席次**（實測 2026-10-08 第 11 屆第 6 會期只有交通委員會 14 席、沒有召委），所以另有人工確認的補充表 `server/committee-seats.json`（照立法院公布的〈常設委員會召集委員、委員一覽表〉），只補上游還沒補齊的會期、上游補齊後自動失效；名字對不到名錄就整段同步失敗（見 DECISIONS D256–D260）。
 - `law_agencies` / `moj_law_agencies`：**法律 → 主管機關**，用來把「只寫法規名稱」的委員提案算到對的機關頁（例：「『氣候變遷因應法』部分條文修正草案」→ 環境部）。三個來源依序取用：g0v 上游有填 → 法務部全國法規資料庫 → `server/law-agencies.json` 手工補。全國法規資料庫那份（ZIP 內 `ChLaw.json`，約 6 MB、1,010 部法律）**只在法條真的更新時才重寫**，而且距上次檢查不到 `LY_MOJ_LAWS_INTERVAL_HOURS`（預設 12）小時就完全不抓（三層跳過，見 DECISIONS D248–D254）。
 - 2 位在本屆委員會欄位中無任何會期紀錄者（游錫堃、李貞秀）**不編造會期**，以屆次層級保留並發出警告（見 `/api/v1/health` 的 `warnings`）。
 

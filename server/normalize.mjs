@@ -8,7 +8,7 @@
  * ingest 用 `版本:來源 sha256` 判斷要不要重寫資料庫，否則「原始資料沒變、但解析邏輯變了」
  * 時新規則不會生效（實測踩過：把 photo_url 升級成 https 後仍顯示 http）。
  */
-export const NORMALIZER_VERSION = 2;
+export const NORMALIZER_VERSION = 3;
 
 /** "第11屆第3會期：內政委員會" → 乾淨的委員會名稱；這是舊版壞掉的地方。 */
 const SESSION_PREFIX = /^第(\d+)屆第(\d+)會期[：:]\s*/;

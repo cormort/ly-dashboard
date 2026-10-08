@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { CONFIG } from './config.mjs';
 import { openDb, recordSyncRun, saveSnapshot, applyDataset, applyBills, applyLawAgencies, applyBudget, applyBudgetReports, applyCommitteeMeets, applyCommitteeRecords, applyMeetings, applySocial, applyCouncilSocial, upsertNews, upsertTopicNews, upsertArticles, pruneNews, pruneLogs, getMeta, setMeta, upsertProgressOverride, getProgressOverrides, applyProgressOverrides, upsertBudgetCommittees, getBudgetCommittees } from './db.mjs';
 import { buildDataset, normalizeCouncilSocial, normalizeBills, normalizeBudget, normalizeBudgetReports, normalizeCommitteeMeets, normalizeCommitteeRecords, normalizeMeetings, normalizeSocial, newsName, parseNewsRss, DataValidationError, NORMALIZER_VERSION } from './normalize.mjs';
+import { applySeatOverrides, loadSeatOverrides, seatOverridesDigest } from './committee-overrides.mjs';
 import { fetchJson, FetchError, sha256 } from './fetch-ly.mjs';
 import { ambiguousCouncilorNames, currentCouncilors, entityNewsTerms, makeTagger, mentionsKnownEntity } from './queries.mjs';
 import { feedDate, feedFileUrl, outletLabel, parseFeedFile } from './news-feed.mjs';
@@ -18,7 +19,7 @@ import { syncMojLawAgencies } from './moj-law.mjs';
  * Ingestion 管線：FETCH → VALIDATE → NORMALIZE → PERSIST。
  * 失敗策略：驗證不過或抓取失敗 → 保留舊資料、記錄失敗、標記 stale；絕不寫入半套資料、絕不放假資料。
  */
-export async function runIngest(db, { logger = console, fetchImpl = fetchJson, now = () => new Date() } = {}) {
+export async function runIngest(db, { logger = console, fetchImpl = fetchJson, now = () => new Date(), seatOverrides = loadSeatOverrides() } = {}) {
   const startedAt = now();
   const startedMs = Date.now();
   const datasets = Object.entries(CONFIG.endpoints);
@@ -65,17 +66,23 @@ export async function runIngest(db, { logger = console, fetchImpl = fetchJson, n
   }
 
   const byDataset = Object.fromEntries(fetched.map((f) => [f.dataset, f]));
-  // 版本前綴：正規化邏輯改了也要重寫，不能只看來源內容是否相同
-  const combinedSha = `${NORMALIZER_VERSION}:${fetched.map((f) => f.sha256).join(':')}`;
+  // 版本前綴：正規化邏輯改了也要重寫，不能只看來源內容是否相同。
+  // 人工補充表（server/committee-seats.json）的指紋也要算進來，否則「只改補充表」會被當成內容未變更而略過。
+  const combinedSha = `${NORMALIZER_VERSION}:${seatOverridesDigest(seatOverrides)}:${fetched.map((f) => f.sha256).join(':')}`;
   const alreadyApplied = getMeta(db, 'applied_sha') === combinedSha;
 
   let dataset;
+  let overrides = null;
   try {
     dataset = buildDataset(byDataset.id9.json, byDataset.id14.json, { sourceUrl: CONFIG.source.url });
+    // 會期剛開始時名錄只給部分席次（實測 11-6 只有交通委員會 14 席、沒有召委）：
+    // 用人工確認過的官方一覽表補齊（server/committee-seats.json，規則見 committee-overrides.mjs）。
+    const seatOverrideReport = applySeatOverrides(dataset, seatOverrides, { logger });
     // B1：絕對下限（< 100）擋不住「id9 的 committee 欄位掉一半」這種部分回應：
     // 實測 783 筆席次掉到 367 筆仍會 status=success 並整批覆寫。改跟上次成功筆數比。
     guardShrink(db, 'seats', '委員會席次', dataset.stats.seats);
     guardShrink(db, 'legislators', '委員名錄', dataset.stats.legislators);
+    overrides = seatOverrideReport;
   } catch (error) {
     const message = error instanceof DataValidationError ? `資料驗證失敗：${error.message}` : String(error?.message || error);
     const finishedAt = now().toISOString();
@@ -132,8 +139,11 @@ export async function runIngest(db, { logger = console, fetchImpl = fetchJson, n
   }
 
   if (dataset.warnings.length) for (const w of dataset.warnings) logger.warn(`[ingest] 警告：${w}`);
+  const overrideNote = overrides?.applied?.length
+    ? `（委員會席次補充表：${overrides.applied.map((a) => `${a.session} 補 ${a.seats} 席`).join('、')}）`
+    : '';
   logger.log(
-    `[ingest] ${status === 'skipped' ? '內容未變更，略過寫入' : `已套用：${dataset.stats.legislators} 位委員、${dataset.stats.seats} 筆席次、${dataset.stats.sessions} 個會期、異動 ${applied.changes.length} 筆`}`,
+    `[ingest] ${status === 'skipped' ? '內容未變更，略過寫入' : `已套用：${dataset.stats.legislators} 位委員、${dataset.stats.seats} 筆席次、${dataset.stats.sessions} 個會期、異動 ${applied.changes.length} 筆`}${overrideNote}`,
   );
 
   return {
@@ -141,6 +151,7 @@ export async function runIngest(db, { logger = console, fetchImpl = fetchJson, n
     stats: dataset.stats,
     warnings: dataset.warnings,
     changes: applied.changes.length,
+    seat_overrides: overrides,
     runs,
     duration_ms: Date.now() - startedMs,
   };
