@@ -141,7 +141,9 @@ export function Hemicycle({ roster, matching, party, onPartyToggle, onOpen }: He
                 style={{ '--party': style.color } as CSSProperties}
               >
                 <span className="swatch" aria-hidden="true" />
-                <span className="party-name">{t.name}</span>
+                <span className="party-name" title={t.name}>
+                  {style.short}
+                </span>
                 <span className="party-count">
                   {matching ? `${t.lit}／${t.total}` : t.total}
                 </span>
