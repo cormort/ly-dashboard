@@ -7,6 +7,7 @@ import { buildDataset } from '../server/normalize.mjs';
 import { readZipEntry } from '../server/zip.mjs';
 import { agencyFromLawCategory, parseMojLaws, mojLawAgenciesUrl, mojMappingDigest, syncMojLawAgencies } from '../server/moj-law.mjs';
 import { canonicalAgency } from '../server/agency-names.mjs';
+import { CONFIG } from '../server/config.mjs';
 import { listFunds } from '../server/queries.mjs';
 
 const fixture = (name) => JSON.parse(readFileSync(fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url)), 'utf8'));
@@ -16,11 +17,21 @@ const repackedFixture = readFileSync(fileURLToPath(new URL('./fixtures/moj-law-s
 // 法條真的變了：電信管理法 通訊傳播委員會 → 數位發展部
 const updatedFixture = readFileSync(fileURLToPath(new URL('./fixtures/moj-law-sample-updated.zip', import.meta.url)));
 const silent = { log() {}, warn() {}, error() {} };
-const zipFetch = (buffer) => async (url, options) => {
-  assert.equal(url, mojLawAgenciesUrl());
-  assert.equal(options.raw, true, 'ZIP 要用 raw 抓（不能當 JSON 解析）');
-  return { buffer, bytes: buffer.length, status: 200, attempts: 1 };
-};
+const T0 = new Date('2026-10-08T10:00:00+08:00');
+/** 距 T0 幾小時後（要跨過檢查間隔，不然會被「N 小時內已檢查過」擋掉） */
+const at = (hours) => new Date(T0.getTime() + Math.round(hours * 3600 * 1000));
+/** 會數呼叫次數的假 fetch（「時間沒到就完全不抓」要看這個） */
+function countingFetch(buffer) {
+  const state = { calls: 0 };
+  state.fetchImpl = async (url, options) => {
+    state.calls += 1;
+    assert.equal(url, mojLawAgenciesUrl());
+    assert.equal(options.raw, true, 'ZIP 要用 raw 抓（不能當 JSON 解析）');
+    return { buffer, bytes: buffer.length, status: 200, attempts: 1 };
+  };
+  return state;
+}
+const zipFetch = (buffer) => countingFetch(buffer).fetchImpl;
 /** 記錄 log 的假 logger（要斷言「有沒有說沒有更新」） */
 function recording() {
   return {
@@ -70,20 +81,21 @@ test('解析法規資料檔：法規名稱→主管機關（同名去重、沒�
 test('同步全國法規資料庫：整批寫進 moj_law_agencies', async () => {
   const db = openDb(':memory:');
   const log = recording();
-  const result = await syncMojLawAgencies(db, { fetchImpl: zipFetch(zipFixture), logger: log });
+  const result = await syncMojLawAgencies(db, { fetchImpl: zipFetch(zipFixture), logger: log, now: at(0) });
   assert.equal(result.laws, 5);
   assert.equal(result.unchanged, false);
   assert.equal(db.prepare('SELECT count(*) AS n FROM moj_law_agencies').get().n, 5);
   assert.deepEqual(JSON.parse(db.prepare("SELECT agencies FROM moj_law_agencies WHERE law_name = '氣候變遷因應法'").get().agencies), ['環境部']);
   assert.ok(log.said(/全國法規資料庫主管機關：5 部法律/));
+  assert.equal(db.prepare("SELECT value FROM meta WHERE key = 'moj_law_agencies_checked_at'").get().value, T0.toISOString(), '檢查時間要記下來');
 });
 
 test('同一份檔案再同步一次：法條沒更新就不動資料庫', async () => {
   const db = openDb(':memory:');
-  await syncMojLawAgencies(db, { fetchImpl: zipFetch(zipFixture), logger: silent });
+  await syncMojLawAgencies(db, { fetchImpl: zipFetch(zipFixture), logger: silent, now: at(0) });
   plant(db);
   const log = recording();
-  const again = await syncMojLawAgencies(db, { fetchImpl: zipFetch(zipFixture), logger: log });
+  const again = await syncMojLawAgencies(db, { fetchImpl: zipFetch(zipFixture), logger: log, now: at(13) });
   assert.equal(again.unchanged, true);
   assert.equal(again.laws, 6, '回報的是資料表目前的列數（5 部法律 ＋ 人工補的那一列）');
   assert.equal(planted(db), 1, '跳過更新才留得住人工補的列（整批覆寫會洗掉）');
@@ -91,40 +103,86 @@ test('同一份檔案再同步一次：法條沒更新就不動資料庫', async
   assert.equal(log.said(/全國法規資料庫主管機關：/), false, '沒有重寫就不應該報「已套用」');
 });
 
+test('距上次檢查不到 12 小時：連抓都不抓（省下那 6 MB）', async () => {
+  const db = openDb(':memory:');
+  const first = countingFetch(zipFixture);
+  await syncMojLawAgencies(db, { fetchImpl: first.fetchImpl, logger: silent, now: at(0) });
+  assert.equal(first.calls, 1);
+  const log = recording();
+  const skipped = await syncMojLawAgencies(db, { fetchImpl: first.fetchImpl, logger: log, now: at(1) });
+  assert.equal(first.calls, 1, '時間還沒到就不該再抓');
+  assert.equal(skipped.skipped, true);
+  assert.equal(skipped.unchanged, true);
+  assert.ok(log.said(/12 小時內已檢查過/), `要講清楚為什麼沒抓：${log.logs.join(' / ')}`);
+  assert.ok(log.said(/沿用 5 部法律的主管機關/));
+  const later = await syncMojLawAgencies(db, { fetchImpl: first.fetchImpl, logger: silent, now: at(13) });
+  assert.equal(first.calls, 2, '超過 12 小時才再抓');
+  assert.equal(later.skipped, undefined);
+});
+
+test('間隔設 0（LY_MOJ_LAWS_INTERVAL_HOURS=0）＝每次都抓', async () => {
+  const db = openDb(':memory:');
+  const original = CONFIG.mojLaws.checkIntervalHours;
+  CONFIG.mojLaws.checkIntervalHours = 0;
+  try {
+    const fetchState = countingFetch(zipFixture);
+    await syncMojLawAgencies(db, { fetchImpl: fetchState.fetchImpl, logger: silent, now: at(0) });
+    const again = await syncMojLawAgencies(db, { fetchImpl: fetchState.fetchImpl, logger: silent, now: at(1) });
+    assert.equal(fetchState.calls, 2, '設 0 就不該有檢查間隔');
+    assert.equal(again.unchanged, true, '還是靠 ZIP 快照判斷沒有更新');
+  } finally {
+    CONFIG.mojLaws.checkIntervalHours = original;
+  }
+});
+
+test('抓失敗也算檢查過（法務部在鎖檔重生時不要每一輪同步都撞一次）', async () => {
+  const db = openDb(':memory:');
+  await syncMojLawAgencies(db, { fetchImpl: zipFetch(zipFixture), logger: silent, now: at(0) });
+  let calls = 0;
+  const boom = async () => { calls += 1; throw new Error('HTTP 500（嘗試 3 次）'); };
+  await assert.rejects(syncMojLawAgencies(db, { fetchImpl: boom, logger: silent, now: at(13) }), /HTTP 500/);
+  assert.equal(calls, 1);
+  const log = recording();
+  const skipped = await syncMojLawAgencies(db, { fetchImpl: boom, logger: log, now: at(14) });
+  assert.equal(calls, 1, '失敗後的一小時內不該再撞');
+  assert.equal(skipped.skipped, true);
+  assert.ok(log.said(/小時內已檢查過/));
+});
+
 test('他們重產檔、法條一樣（位元組不同但對照指紋相同）：也不寫資料庫', async () => {
   const db = openDb(':memory:');
-  await syncMojLawAgencies(db, { fetchImpl: zipFetch(zipFixture), logger: silent });
+  await syncMojLawAgencies(db, { fetchImpl: zipFetch(zipFixture), logger: silent, now: at(0) });
   plant(db);
   const log = recording();
-  const repacked = await syncMojLawAgencies(db, { fetchImpl: zipFetch(repackedFixture), logger: log });
+  const repacked = await syncMojLawAgencies(db, { fetchImpl: zipFetch(repackedFixture), logger: log, now: at(13) });
   assert.equal(repacked.unchanged, true);
   assert.equal(planted(db), 1);
   assert.ok(log.said(/重新產檔但法條沒變/), `要說明是「法條沒變」：${log.logs.join(' / ')}`);
-  // 這次把新 ZIP 也記下來了 → 再抓同一份就變成第 ① 層（連解析都省）
+  // 這次把新 ZIP 也記下來了 → 再抓同一份就變成第 ② 層（連解析都省）
   const log2 = recording();
-  await syncMojLawAgencies(db, { fetchImpl: zipFetch(repackedFixture), logger: log2 });
+  await syncMojLawAgencies(db, { fetchImpl: zipFetch(repackedFixture), logger: log2, now: at(26) });
   assert.ok(log2.said(/沒有更新（同一份檔案/));
 });
 
 test('法條真的變了（改了主管機關）才整批覆寫', async () => {
   const db = openDb(':memory:');
-  await syncMojLawAgencies(db, { fetchImpl: zipFetch(zipFixture), logger: silent });
+  await syncMojLawAgencies(db, { fetchImpl: zipFetch(zipFixture), logger: silent, now: at(0) });
   plant(db);
   const log = recording();
-  const changed = await syncMojLawAgencies(db, { fetchImpl: zipFetch(updatedFixture), logger: log });
+  const changed = await syncMojLawAgencies(db, { fetchImpl: zipFetch(updatedFixture), logger: log, now: at(13) });
   assert.equal(changed.unchanged, false);
   assert.equal(planted(db), 0, '真的變了才會 DELETE + INSERT');
   assert.deepEqual(JSON.parse(db.prepare("SELECT agencies FROM moj_law_agencies WHERE law_name = '電信管理法'").get().agencies), ['數位發展部']);
   assert.equal(db.prepare('SELECT count(*) AS n FROM moj_law_agencies').get().n, 5);
 });
 
-test('資料庫還是空的（換機器／重建）：就算有舊快照也要寫進去', async () => {
+test('資料庫還是空的（換機器／重建）：就算剛檢查過、有舊快照也要寫進去', async () => {
   const db = openDb(':memory:');
-  await syncMojLawAgencies(db, { fetchImpl: zipFetch(zipFixture), logger: silent });
-  db.exec('DELETE FROM moj_law_agencies'); // 快照與 meta 還在，但資料被清掉
+  await syncMojLawAgencies(db, { fetchImpl: zipFetch(zipFixture), logger: silent, now: at(0) });
+  db.exec('DELETE FROM moj_law_agencies'); // 快照、指紋、檢查時間都還在，但資料被清掉
   const log = recording();
-  const again = await syncMojLawAgencies(db, { fetchImpl: zipFetch(zipFixture), logger: log });
-  assert.equal(again.unchanged, false, '空的資料庫不能因為有快照就跳過');
+  const again = await syncMojLawAgencies(db, { fetchImpl: zipFetch(zipFixture), logger: log, now: at(1) });
+  assert.equal(again.unchanged, false, '空的資料庫不能因為有快照或剛檢查過就跳過');
   assert.equal(db.prepare('SELECT count(*) AS n FROM moj_law_agencies').get().n, 5);
 });
 
@@ -140,12 +198,12 @@ test('同步失敗時整段放棄（不清掉上一輪的對照）', async () =>
   const db = openDb(':memory:');
   applyMojLawAgencies(db, new Map([['氣候變遷因應法', ['環境部']]]));
   await assert.rejects(
-    syncMojLawAgencies(db, { fetchImpl: async () => ({ buffer: Buffer.from('不是 ZIP'), bytes: 8 }), logger: silent }),
+    syncMojLawAgencies(db, { fetchImpl: async () => ({ buffer: Buffer.from('不是 ZIP'), bytes: 8 }), logger: silent, now: at(0) }),
     /不是 ZIP 檔/,
   );
   // 法務部重新產檔時會鎖檔回 500（實測 2026-10-08）：fetchJson 重試完仍失敗 → 沿用上一輪
   await assert.rejects(
-    syncMojLawAgencies(db, { fetchImpl: async () => { throw new Error('HTTP 500（嘗試 3 次）'); }, logger: silent }),
+    syncMojLawAgencies(db, { fetchImpl: async () => { throw new Error('HTTP 500（嘗試 3 次）'); }, logger: silent, now: at(13) }),
     /HTTP 500/,
   );
   assert.equal(db.prepare('SELECT count(*) AS n FROM moj_law_agencies').get().n, 1);

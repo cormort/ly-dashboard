@@ -22,7 +22,7 @@
 # 1) 抓資料進 SQLite（打真實立法院 API，約 7 秒）
 node server/ingest.mjs
 
-# 2) 跑測試（98 項，不需要網路，用 test/fixtures 的真實 API 回應）
+# 2) 跑測試（目前 290 項，不需要網路，用 test/fixtures 的真實 API 回應）
 npm test
 
 # 3) 建置前端
@@ -34,7 +34,7 @@ node server/index.mjs
 ```
 
 - `--no-scheduler`：只開 API，不在啟動時自動同步（開發用）。
-- 環境變數：`PORT`、`LY_HOST`、`LY_SYNC_TOKEN`、`LY_DB`、`LY_UA`、`LY_STALE_HOURS`、`LY_SYNC_INTERVAL_MS`、`LY_FETCH_TIMEOUT_MS`、`LY_FETCH_RETRIES`、`LY_RETRY_AFTER_CAP_MS`、`LY_SHRINK_MIN_RATIO`、`LY_ALLOW_SHRINK`、`LY_STATIC_STALE_MONTHS`、`LY_SKIP_BUDGET`（跳過預算三個來源）。
+- 環境變數：`PORT`、`LY_HOST`、`LY_SYNC_TOKEN`、`LY_DB`、`LY_UA`、`LY_STALE_HOURS`、`LY_SYNC_INTERVAL_MS`、`LY_FETCH_TIMEOUT_MS`、`LY_FETCH_RETRIES`、`LY_RETRY_AFTER_CAP_MS`、`LY_SHRINK_MIN_RATIO`、`LY_ALLOW_SHRINK`、`LY_STATIC_STALE_MONTHS`、`LY_SKIP_BUDGET`（跳過預算三個來源）、`LY_MOJ_LAWS_INTERVAL_HOURS`（全國法規資料庫的檢查間隔，預設 12 小時、0 ＝ 每次都抓）。
 
 ### 讓伺服器一直活著（launchd 監管）
 
@@ -98,14 +98,15 @@ cron/啟動排程 (24h)                      server/ingest.mjs
 - `committee_seats`：事實表，`is_convener` 綁在會期上；跨會期去重後才是「曾任召委」。
 - `change_log`：每次同步與前一版比對，記錄 `is_convener`、黨籍、選區、離職狀態的變化。
 - `raw_snapshots`：原始 JSON gzip 保存（sha256 去重），可回溯、可重跑。
+- `law_agencies` / `moj_law_agencies`：**法律 → 主管機關**，用來把「只寫法規名稱」的委員提案算到對的機關頁（例：「『氣候變遷因應法』部分條文修正草案」→ 環境部）。三個來源依序取用：g0v 上游有填 → 法務部全國法規資料庫 → `server/law-agencies.json` 手工補。全國法規資料庫那份（ZIP 內 `ChLaw.json`，約 6 MB、1,010 部法律）**只在法條真的更新時才重寫**，而且距上次檢查不到 `LY_MOJ_LAWS_INTERVAL_HOURS`（預設 12）小時就完全不抓（三層跳過，見 DECISIONS D248–D254）。
 - 2 位在本屆委員會欄位中無任何會期紀錄者（游錫堃、李貞秀）**不編造會期**，以屆次層級保留並發出警告（見 `/api/v1/health` 的 `warnings`）。
 
 ## 驗證（可重跑）
 
 ```bash
-bash scripts/verify.sh                      # 一鍵（快速：跳過外部來源，約 15 秒）
-bash scripts/verify.sh --full               # 一鍵（完整：含 g0v／Google 新聞／試算表，約 4 分鐘）
-npm test                                    # 後端 135 passed（fail-closed、交易回滾、change_log、排行榜、M1–M5 與第三輪回歸）
+bash scripts/verify.sh                      # 一鍵（快速：跳過議案／新聞／社群等外部來源，但預算與委員會仍會打 g0v，實測約 8 分鐘）
+bash scripts/verify.sh --full               # 一鍵（完整：含議案／新聞／社群與試算表，比快速模式久得多；沒有固定秒數）
+npm test                                    # 後端 290 passed（fail-closed、交易回滾、change_log、排行榜、主管機關對照、M1–M5 與第三輪回歸）
 node scripts/verify-news-rss.mjs            # 媒體官方 RSS 打真網路逐家驗（抓得到／解析得出來／真的對得上委員）；只讀，不動 data/
 node scripts/verify-news-rss.mjs <url>      # 試別的 feed（例如比較 udn 的分類 id，見 DECISIONS D101）
 node scripts/import-news-csv.mjs --csv news-all.csv --out ../news-data   # 把「下載 CSV」的歷史新聞併進 news-data 分支的收集檔（只補還沒有的網址），推上去後任何伺服器第一次啟動都會匯入

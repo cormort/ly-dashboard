@@ -78,6 +78,21 @@ export function mojMappingDigest(laws) {
 
 const ZIP_SNAPSHOT_DATASET = 'moj_laws';
 const DIGEST_META_KEY = 'moj_law_agencies_digest';
+const CHECKED_AT_META_KEY = 'moj_law_agencies_checked_at';
+const DEFAULT_CHECK_INTERVAL_HOURS = 12;
+
+/** 兩次「去法務部看有沒有更新」之間最少隔多久（毫秒）；0 ＝ 每次都看 */
+function checkIntervalMs() {
+  const raw = CONFIG.mojLaws?.checkIntervalHours;
+  const hours = raw === undefined || raw === null || raw === '' ? DEFAULT_CHECK_INTERVAL_HOURS : Number(raw);
+  if (!Number.isFinite(hours) || hours <= 0) return 0;
+  return hours * 3600 * 1000;
+}
+
+/** 這個資料庫是不是已經有對照了（空的就什麼都不能跳） */
+function hasMapping(db) {
+  return db.prepare('SELECT 1 FROM moj_law_agencies LIMIT 1').get() !== undefined;
+}
 
 /** moj_law_agencies 目前的列數與機關數（跳過更新時要用來回報） */
 function currentMapping(db) {
@@ -91,17 +106,33 @@ function currentMapping(db) {
  * 只依賴 fetchJson 的 `raw` 選項（回 Buffer），失敗就整段放棄：主管機關只是加值，
  * 抓不到時機關頁沿用上一輪的對照，不能讓議案同步跟著失敗。
  *
- * **法條沒更新就不動**（使用者 2026-10-08 指定）：機關清單是從這張表長出來的，
- * 每次同步都重寫的話，機關清單會跟著法務部的產檔節奏（每天）變動，但內容其實一樣。
- * 兩層跳過：① ZIP 位元組與上次完全相同 → 連解析都省；② 位元組不同但對照指紋相同
- * （他們重產檔、法條沒動）→ 不寫資料庫。要重新寫入只有兩條路：對照真的變了，
- * 或資料庫裡本來就是空的（換機器／重建時不能因為有舊快照就跳過）。
+ * **法條沒更新就不動、時間沒到就不抓**（使用者 2026-10-08 指定）：
+ * 機關清單是從這張表長出來的，每次同步都重寫的話，機關清單會跟著法務部的產檔節奏（每天）變動，
+ * 但內容其實一樣；而且那份檔 6 MB，每輪議案同步都抓很浪費。
+ * 三層跳過，由便宜到貴：
+ *   ① 距上次檢查不到 `LY_MOJ_LAWS_INTERVAL_HOURS`（預設 12）小時 → **連抓都不抓**；
+ *   ② ZIP 位元組與上次完全相同 → 抓了但不解析；
+ *   ③ 位元組不同、但法條對照的指紋相同（他們重產檔）→ 解析了但不寫資料庫。
+ * 只有「對照真的變了」才會寫；另外資料庫本來就是空的（換機器／重建）一定寫。
+ * 檢查時間無論成敗都會記下來（`meta.moj_law_agencies_checked_at`）——法務部在鎖檔重生時
+ * 會回 500，不記的話每一輪同步都會再撞一次。
  */
-export async function syncMojLawAgencies(db, { fetchImpl, logger = console, fetchedAt } = {}) {
-  const response = await fetchImpl(mojLawAgenciesUrl(), { raw: true });
+export async function syncMojLawAgencies(db, { fetchImpl, logger = console, fetchedAt, now = new Date() } = {}) {
   const before = currentMapping(db);
+  const interval = checkIntervalMs();
+  const lastChecked = Date.parse(getMeta(db, CHECKED_AT_META_KEY) ?? '');
+  const sinceLastCheck = now.getTime() - lastChecked;
+  if (before.laws > 0 && interval > 0 && Number.isFinite(lastChecked) && sinceLastCheck >= 0 && sinceLastCheck < interval) {
+    const hours = (interval / 3600000).toFixed(interval % 3600000 === 0 ? 0 : 1);
+    logger.log?.(
+      `[bills] 全國法規資料庫 ${hours} 小時內已檢查過（上次 ${new Date(lastChecked).toISOString()}），這次不抓（沿用 ${before.laws} 部法律的主管機關）`,
+    );
+    return { laws: before.laws, agencies: before.agencies, unchanged: true, skipped: true };
+  }
+  setMeta(db, CHECKED_AT_META_KEY, now.toISOString());
+  const response = await fetchImpl(mojLawAgenciesUrl(), { raw: true });
   const kb = Math.round(response.bytes / 1024);
-  if (before.laws > 0 && hasSnapshot(db, ZIP_SNAPSHOT_DATASET, sha256(response.buffer))) {
+  if (hasMapping(db) && hasSnapshot(db, ZIP_SNAPSHOT_DATASET, sha256(response.buffer))) {
     logger.log?.(`[bills] 全國法規資料庫沒有更新（同一份檔案 ${kb} KB），沿用 ${before.laws} 部法律的主管機關`);
     return { laws: before.laws, agencies: before.agencies, bytes: response.bytes, unchanged: true };
   }

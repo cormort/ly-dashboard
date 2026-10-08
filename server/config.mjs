@@ -33,6 +33,10 @@ export const CONFIG = {
     url: 'https://law.moj.gov.tw/api/ch/law/json',
     name: '全國法規資料庫',
     homepage: 'https://law.moj.gov.tw/',
+    // 檢查頻率（小時）：法務部一天產一次檔，沒必要每次議案同步都去抓那 6 MB。
+    // 時間還沒到就完全不抓（省下載）；時間到了才抓，再用法條對照的指紋判斷有沒有更新
+    // （見 server/moj-law.mjs）。0 或負數 ＝ 每次都抓。
+    checkIntervalHours: process.env.LY_MOJ_LAWS_INTERVAL_HOURS ?? 12,
   },
   // 預算審議：同一個 g0v API，改抓政府／委員會送來的預算類議案（總預算案、法人預算、預算決議書面報告）
   budget: {
