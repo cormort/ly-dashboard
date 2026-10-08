@@ -137,7 +137,7 @@ trap 'kill $API_PID $TOKEN_PID 2>/dev/null || true' EXIT
 for _ in $(seq 1 40); do curl -sf "http://127.0.0.1:$((PORT + 1))/api/v1/health" >/dev/null && break; sleep 0.3; done
 printf "  沒有 token        → HTTP %s（預期 401）\n" "$(curl -s -o /dev/null -w '%{http_code}' -X POST "http://127.0.0.1:$((PORT + 1))/api/v1/sync?scope=roster")"
 printf "  錯誤 token        → HTTP %s（預期 401）\n" "$(curl -s -o /dev/null -w '%{http_code}' -H 'x-sync-token: wrong' -X POST "http://127.0.0.1:$((PORT + 1))/api/v1/sync?scope=roster")"
-printf "  正確 token        → HTTP %s（預期 202）\n" "$(curl -s -o /dev/null -w '%{http_code}' -H 'x-sync-token: verify-token' -X POST "http://127.0.0.1:$((PORT + 1))/api/v1/sync?scope=roster")"
+printf "  正確 token        → HTTP %s（預期 202：帶對 token 就接受；要 force=1 免得被「剛同步過」的防呆擋成 409）\n" "$(curl -s -o /dev/null -w '%{http_code}' -H 'x-sync-token: verify-token' -X POST "http://127.0.0.1:$((PORT + 1))/api/v1/sync?scope=roster&force=1")"
 printf "  GET 端點不受影響  → HTTP %s（預期 200）\n" "$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$((PORT + 1))/api/v1/legislators?limit=1")"
 kill $TOKEN_PID 2>/dev/null || true
 

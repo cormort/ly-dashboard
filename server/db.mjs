@@ -310,6 +310,10 @@ export function setMeta(db, key, value) {
   );
 }
 
+export function hasSnapshot(db, dataset, sha256) {
+  return Boolean(db.prepare('SELECT 1 FROM raw_snapshots WHERE dataset = ? AND sha256 = ?').get(dataset, sha256));
+}
+
 export function saveSnapshot(db, dataset, { fetchedAt, sha256, bytes, json }) {
   const existing = db.prepare('SELECT 1 FROM raw_snapshots WHERE dataset = ? AND sha256 = ?').get(dataset, sha256);
   if (existing) return false;
