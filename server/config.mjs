@@ -165,6 +165,10 @@ export const CONFIG = {
   // 這樣某輪失敗（fail closed 保留舊資料）會在一小時內自動重試，Mac 睡著／重開機後也會補上；
   // 資料新鮮時完全不會打政府 API，所以不會增加對方負擔。
   schedulerCheckMs: Number(process.env.LY_SCHEDULER_CHECK_MS ?? 60 * 60 * 1000),
+  // 新聞階段自動重跑的間隔（0＝停用，只跟著 24 小時的全同步）。
+  // Google 那一路一輪約 550 次請求、實測 4–14 分鐘，每小時跑等於整天持續敲同一個來源容易被限流；
+  // 而輕量的媒體 RSS 已經每小時了（見 news.outletIntervalMs），即時性不缺，所以預設 6 小時（一天 4 輪）。
+  newsRefreshMs: Number(process.env.LY_NEWS_REFRESH_MS ?? 6 * 60 * 60 * 1000),
   fetchTimeoutMs: Number(process.env.LY_FETCH_TIMEOUT_MS || 30_000),
   // 同一個 host 的最小請求間隔：g0v API 連續抓多頁會回 429（實測），溫和一點也保護對方
   minRequestIntervalMs: Number(process.env.LY_MIN_INTERVAL_MS ?? 400),
