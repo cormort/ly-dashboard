@@ -12,7 +12,11 @@ export interface PartyStyle {
 
 const PARTIES: Record<string, PartyStyle> = {
   民主進步黨: { short: '民進黨', color: '#1E7F45', order: 0 },
-  台灣民眾黨: { short: '民眾黨', color: '#137A77', order: 1 },
+  // 民眾黨用「青藍」不用「青綠」：原本的 #137A77 在螢幕上跟民進黨的綠幾乎分不出來
+  // （LAB ΔE76 只有 33，而且兩者明度相當）。改成 #19697D 之後離綠 49、離國民黨藍 38，
+  // 白底對比 6.25:1（仍可當文字色）；順便檢查過綠色盲（deutan 34／protan 39）也拉得開。
+  // 挑色的方法：把候選色做 CIELAB ΔE ＋ 色盲模擬（Viénot）＋ 白底對比三重篩選，取最小距離最大的。
+  台灣民眾黨: { short: '民眾黨', color: '#19697D', order: 1 },
   無黨籍: { short: '無黨籍', color: '#6B7480', order: 2 },
   中國國民黨: { short: '國民黨', color: '#1F5AA6', order: 3 },
 };
