@@ -34,8 +34,13 @@
         <key>SuccessfulExit</key>
         <false/>
     </dict>
+    <!-- 不要用 Background：macOS 會把整個行程降到背景服務品質（實測 ps -o pri 是 4，一般行程是 20）。
+         這顆伺服器有 CPU 密集的端點（/api/v1/funds 每請求要掃約 7.8 萬列＋一輪正規式標記），
+         在 Background 下同一個請求會從 2 秒膨脹到 21 秒，超過前端 15 秒逾時就直接顯示
+         「無法取得機關（/api/v1/funds）連線逾時」——實測 2026-10-08。
+         要驗證就用：ps -o pid,pri -p <pid>（應該是 20 而不是 4）。 -->
     <key>ProcessType</key>
-    <string>Background</string>
+    <string>Standard</string>
 
     <key>StandardOutPath</key>
     <string>__REPO_ROOT__/.cache/server.log</string>
