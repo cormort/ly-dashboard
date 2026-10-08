@@ -133,6 +133,9 @@ export const CONFIG = {
     staleDays: Number(process.env.LY_SOCIAL_STALE_DAYS ?? 7),
     // 議員臉書整理表（格式見 docs/social-sheet-spec.md「議員分頁」）的 CSV 匯出網址；空字串＝不匯入
     councilUrl: process.env.LY_COUNCIL_SOCIAL_CSV ?? 'https://docs.google.com/spreadsheets/d/17Aqrr2ThH3-V00ege6YtQzK2hguu3fSgfaY9QryZ11I/export?format=csv',
+    // 貼文層級（一列一則貼文）的資料分支：scripts/fetch-fb-posts.mjs 每日抓取 → scripts/push-fb-data.mjs 推上
+    // fb-data 分支的 posts-detail/latest.csv。整理表只有「最新一則」的 60 字摘要，機關比對幾乎命中不到。
+    postsUrl: process.env.LY_FB_POSTS_URL ?? 'https://raw.githubusercontent.com/cormort/ly-dashboard/fb-data',
   },
   source: {
     name: '立法院開放資料',

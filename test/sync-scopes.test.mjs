@@ -17,9 +17,9 @@ test('同步範圍：認不得的值一律退回全部（舊前端沒帶 scope �
 });
 
 test('同步範圍：只重讀社群粉專＝委員粉專＋議員粉專，不會拖著跑新聞', () => {
-  assert.deepEqual(scopeStages('social'), ['social', 'council_social']);
+  assert.deepEqual(scopeStages('social'), ['social', 'social_posts', 'council_social']);
   assert.ok(!scopeStages('social').includes('news'), '重讀粉專不該跑新聞（實測新聞 763 秒）');
-  assert.deepEqual(scopeDatasets('social'), ['social', 'council_social']);
+  assert.deepEqual(scopeDatasets('social'), ['social', 'social_posts', 'council_social']);
 });
 
 test('同步範圍：名錄這一項涵蓋官方兩個資料集（id9／id14）', () => {

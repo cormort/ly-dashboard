@@ -2071,9 +2071,17 @@ test('整理表日期：YYYY-MM-DD 為準，也接受 Google 試算表自動轉�
 /* ---------------- 同步範圍（下拉選單） ---------------- */
 
 /** 只服務整理表兩個來源（社群／議員），其他一律視為「不該被呼叫」 */
+const postsDetailCsv = readFileSync(fileURLToPath(new URL('./fixtures/posts-detail.csv', import.meta.url)), 'utf8');
 const sheetOnlyFetch = (urls) => async (url) => {
   urls.push(url);
-  const body = url === CONFIG.social.url ? socialCsv : url === CONFIG.social.councilUrl ? councilSheet() : null;
+  const body =
+    url === CONFIG.social.url
+      ? socialCsv
+      : url === CONFIG.social.councilUrl
+        ? councilSheet()
+        : url === `${CONFIG.social.postsUrl}/posts-detail/latest.csv`
+          ? postsDetailCsv
+          : null;
   if (body === null) throw new FetchError(`不該抓這個來源：${url}`, { status: 500, attempts: 1 });
   return { text: body, status: 200, headers: {}, bytes: body.length, sha256: 'x', attempts: 1 };
 };
@@ -2100,14 +2108,15 @@ test('同步範圍：只重讀社群粉專時，其他階段一個都不跑', as
 
   assert.equal(result.social.status, 'success');
   assert.equal(result.council_social.status, 'success');
+  assert.equal(result.social_posts.status, 'success', '貼文層級也在社群範圍內');
   assert.equal(result.news, undefined, '不該跑新聞（實測 763 秒）');
   assert.equal(result.bills, undefined);
   assert.equal(result.roster, undefined);
   const datasets = db.prepare('SELECT DISTINCT dataset FROM sync_runs').all().map((r) => r.dataset);
-  assert.deepEqual(datasets.sort(), ['council_social', 'social'], 'sync_runs 只該有這兩個來源');
+  assert.deepEqual(datasets.sort(), ['council_social', 'social', 'social_posts'], 'sync_runs 只該有這三個社群來源');
   assert.ok(
-    urls.every((url) => url === CONFIG.social.url || url === CONFIG.social.councilUrl),
-    `只該打整理表，實際打了：${urls.join('、')}`,
+    urls.every((url) => url === CONFIG.social.url || url === CONFIG.social.councilUrl || url === `${CONFIG.social.postsUrl}/posts-detail/latest.csv`),
+    `只該打社群來源（整理表／議員表／貼文層級），實際打了：${urls.join('、')}`,
   );
 });
 

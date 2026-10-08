@@ -42,9 +42,16 @@ export function runGit(args, cwd) {
 }
 
 /** 要寫進資料分支的檔案與內容。 */
-export function planFiles({ csvPath, date }) {
+export function planFiles({ csvPath, date, detailPath = null }) {
   const content = readFileSync(csvPath, 'utf8');
-  return { content, files: { [`posts/${date}.csv`]: content, 'posts/latest.csv': content } };
+  const files = { [`posts/${date}.csv`]: content, 'posts/latest.csv': content };
+  // 貼文層級（一列一則貼文）：有抓到才推，讓「機關」頁能把委員貼文歸到機關
+  if (detailPath && existsSync(detailPath)) {
+    const detail = readFileSync(detailPath, 'utf8');
+    files[`posts-detail/${date}.csv`] = detail;
+    files['posts-detail/latest.csv'] = detail;
+  }
+  return { content, files };
 }
 
 /** 檔名或 --date 取得日期（YYYY-MM-DD）；判斷「有幾列有日期」用同一套 CSV 解析。 */
@@ -95,8 +102,9 @@ export function syncFbData({
   dryRun = false,
   log = () => {},
   git = runGit,
+  detailPath = null,
 } = {}) {
-  const { content, files } = planFiles({ csvPath, date });
+  const { content, files } = planFiles({ csvPath, date, detailPath });
   const rows = rowsFromCsv(content).length;
 
   ensureWorkTree({ repoUrl, workDir, branch, git });
@@ -154,6 +162,7 @@ function parseArgs(argv) {
     else if (a === '--branch') args.branch = argv[++i];
     else if (a === '--date') args.date = argv[++i];
     else if (a === '--remote') args.remote = argv[++i];
+    else if (a === '--detail') args.detail = argv[++i];
     else if (!a.startsWith('--') && !args.csv) args.csv = a;
   }
   return args;
@@ -172,6 +181,8 @@ function main() {
     syncFbData({
       csvPath,
       date: dateOf(csvPath, args.date),
+      // 貼文層級 CSV：預設從檔名推（posts-YYYY-MM-DD.csv → posts-detail-YYYY-MM-DD.csv），有就用
+      detailPath: resolve(args.detail || csvPath.replace(/([\\/])posts-/, '$1posts-detail-')),
       repoUrl,
       workDir: resolve(args.dir || defaultWorkDir(args.branch)),
       branch: args.branch,

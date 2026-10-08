@@ -1,5 +1,6 @@
 import { DatabaseSync } from 'node:sqlite';
 import { gzipSync } from 'node:zlib';
+import { createHash } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 
@@ -179,6 +180,26 @@ CREATE TABLE IF NOT EXISTS council_social (
   latest_post_date TEXT,
   latest_post_summary TEXT
 );
+-- 貼文層級（一列一則貼文）：來源是 scripts/fetch-fb-posts.mjs 每日抓取後推到 fb-data 分支的
+-- posts-detail/latest.csv（見 server/ingest.mjs 的 runSocialPostsIngest）。
+-- 整理表只有「最新一則」的 60 字摘要，「機關」頁要把委員貼文歸到機關時幾乎比對不到（實測全站 1 筆），
+-- 所以另外留一份貼文層級的資料（摘要 400 字、每個粉專最多 5 則）。
+CREATE TABLE IF NOT EXISTS social_posts (
+  legislator_id TEXT NOT NULL,
+  platform TEXT NOT NULL,
+  -- 貼文日期；FB 的 DOM 只給相對時間，只有「最新一則」拿得到絕對日期，其餘留空（不猜，見 DECISIONS D264）
+  post_date TEXT,
+  summary TEXT NOT NULL,
+  url TEXT NOT NULL,
+  likes INTEGER,
+  comments INTEGER,
+  -- 同一則貼文的指紋（摘要的 sha256 前 16 碼）：來源是同一個粉專時，日期常拿不到，只能靠內容去重
+  fingerprint TEXT NOT NULL,
+  source TEXT,
+  PRIMARY KEY (legislator_id, platform, fingerprint)
+);
+CREATE INDEX IF NOT EXISTS idx_social_posts_legislator ON social_posts(legislator_id);
+CREATE INDEX IF NOT EXISTS idx_social_posts_date ON social_posts(post_date);
 CREATE TABLE IF NOT EXISTS budget_bills (
   id TEXT PRIMARY KEY,
   term INTEGER,
@@ -881,6 +902,85 @@ export function applySocial(db, accounts, { fetchedAt }) {
     setMeta(db, 'social_count', String(accounts.length));
     db.exec('COMMIT');
     return { added: added.length, removed: removed.length };
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
+}
+
+/** 貼文摘要的指紋（去重用；日期常常拿不到，只能靠內容） */
+export function postFingerprint(summary) {
+  return createHash('sha256').update(String(summary ?? '').trim()).digest('hex').slice(0, 16);
+}
+
+/**
+ * 貼文層級資料（`social_posts`）：**累積式 upsert**（同一天的同一則靠 fingerprint 去重），
+ * 不是每天把上一次的貼文換掉 —— 使用者要求「貼完也要累計」：機關頁的貼文數要能越積越多。
+ *
+ * 保留期（`keepDays`，預設 90 天）：
+ * - 有日期的：超過保留期的舊貼文刪掉（否則會無限成長）。
+ * - 沒有日期的（FB 的 DOM 只給相對時間，見 DECISIONS D264）：只保留「這一輪還有抓到」的那些，
+ *   抓取端的頁面只看得到最近幾則，掉出頁面的就代表已經不是近期貼文了。
+ */
+export function applySocialPosts(db, rows, { fetchedAt, source = 'fb-detail', keepDays = 90 } = {}) {
+  if (rows.length === 0) return { accumulated: Number(getMeta(db, 'social_posts_count', '0')) || 0, legislators: 0, added: 0, pruned: 0 };
+  const legislators = [...new Set(rows.map((r) => r.legislator_id))];
+  const before = Number(db.prepare('SELECT COUNT(*) AS n FROM social_posts').get().n);
+  const cutoff = new Date(Date.now() - keepDays * 86400000).toISOString().slice(0, 10);
+
+  db.exec('BEGIN');
+  try {
+    const insert = db.prepare(
+      `INSERT OR REPLACE INTO social_posts(legislator_id, platform, post_date, summary, url, likes, comments, fingerprint, source)
+       VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    );
+    const existing = new Set(
+      db.prepare('SELECT legislator_id, platform, fingerprint FROM social_posts').all().map((r) => `${r.legislator_id}|${r.platform}|${r.fingerprint}`),
+    );
+    let added = 0;
+    const keep = new Map(); // legislator|platform → Set(這一輪的 fingerprint)
+    for (const r of rows) {
+      const fingerprint = postFingerprint(r.summary);
+      const key = `${r.legislator_id}|${r.platform}`;
+      if (!existing.has(`${key}|${fingerprint}`)) added += 1;
+      (keep.get(key) ?? keep.set(key, new Set()).get(key)).add(fingerprint);
+      insert.run(
+        r.legislator_id,
+        r.platform,
+        r.post_date || null,
+        r.summary,
+        r.url,
+        Number.isFinite(r.likes) ? r.likes : null,
+        Number.isFinite(r.comments) ? r.comments : null,
+        fingerprint,
+        source,
+      );
+    }
+
+    // 清掉過期／已經不在頁面上的
+    const stale = db
+      .prepare(
+        `SELECT legislator_id, platform, fingerprint, post_date, summary FROM social_posts
+         WHERE legislator_id IN (${legislators.map(() => '?').join(',')})`,
+      )
+      .all(...legislators);
+    const del = db.prepare('DELETE FROM social_posts WHERE legislator_id = ? AND platform = ? AND fingerprint = ?');
+    let pruned = 0;
+    for (const row of stale) {
+      const key = `${row.legislator_id}|${row.platform}`;
+      const stillFresh = row.post_date ? row.post_date >= cutoff : (keep.get(key)?.has(row.fingerprint) ?? false);
+      if (!stillFresh) {
+        del.run(row.legislator_id, row.platform, row.fingerprint);
+        pruned += 1;
+      }
+    }
+
+    const total = Number(db.prepare('SELECT COUNT(*) AS n FROM social_posts').get().n);
+    setMeta(db, 'social_posts_fetched_at', fetchedAt);
+    setMeta(db, 'social_posts_count', String(total));
+    setMeta(db, 'social_posts_import_count', String(rows.length));
+    db.exec('COMMIT');
+    return { accumulated: total, legislators: legislators.length, added, pruned, imported: rows.length, before };
   } catch (error) {
     db.exec('ROLLBACK');
     throw error;

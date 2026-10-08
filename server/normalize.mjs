@@ -707,6 +707,61 @@ export function sheetDate(value) {
   return `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 }
 
+const SOCIAL_POST_COLUMNS = { name: '姓名', platform: '平台', date: '貼文日期', summary: '摘要', url: '貼文連結' };
+const SOCIAL_POST_ENGAGEMENT = { likes: '讚數', comments: '留言數' };
+
+/**
+ * 貼文層級 CSV（fb-data 分支的 `posts-detail/latest.csv`，由 scripts/fetch-fb-posts.mjs 產生）
+ * → `[{ legislator_id, platform, post_date, summary, url, likes, comments }]`。
+ *
+ * 和整理表（normalizeSocial）的差別：
+ * - **一列一則貼文**，不是每個粉專一列；每個粉專最多 5 則（抓取端的 `--posts`）。
+ * - **摘要有 400 字**（整理表只留 60 字）：機關名稱常出現在貼文的後段，60 字幾乎比對不到。
+ * - **日期可能是空的**：FB 的 DOM 只給「3小時」這種相對時間，只有最新一則拿得到絕對日期；
+ *   其餘留空，不猜（見 docs/social-sheet-spec.md 的「不要編造」）。
+ * - 姓名對不到委員的列略過（抓取名單含已離職者很常見），不因為對不到就整批拒收。
+ */
+export function normalizeSocialPosts(csvText, legislatorIdByNewsName, { minRows = 10 } = {}) {
+  const [header = [], ...rows] = parseCsv(csvText);
+  const col = Object.fromEntries(
+    Object.entries(SOCIAL_POST_COLUMNS).map(([key, label]) => [key, header.findIndex((h) => String(h ?? '').trim() === label)]),
+  );
+  const missing = Object.entries(col).filter(([, i]) => i < 0).map(([, label]) => label);
+  if (missing.length) throw new DataValidationError(`貼文層級 CSV 缺少欄位：${missing.join('、')}`);
+  const eng = Object.fromEntries(
+    Object.entries(SOCIAL_POST_ENGAGEMENT).map(([key, label]) => [key, header.findIndex((h) => String(h ?? '').trim() === label)]),
+  );
+
+  const posts = [];
+  const unmatched = [];
+  const seen = new Set();
+  for (const row of rows) {
+    const name = String(row[col.name] ?? '').trim();
+    const summary = String(row[col.summary] ?? '').trim();
+    if (!name || !summary) continue;
+    const legislatorId = legislatorIdByNewsName.get(newsName(name));
+    if (!legislatorId) {
+      if (!unmatched.includes(name)) unmatched.push(name);
+      continue;
+    }
+    const platform = (String(row[col.platform] ?? '').trim() || 'facebook').toLowerCase();
+    const key = `${legislatorId}|${platform}|${summary}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    posts.push({
+      legislator_id: legislatorId,
+      platform,
+      post_date: sheetDate(String(row[col.date] ?? '').trim()) || null,
+      summary,
+      url: String(row[col.url] ?? '').trim(),
+      likes: countCell(eng.likes >= 0 ? row[eng.likes] : ''),
+      comments: countCell(eng.comments >= 0 ? row[eng.comments] : ''),
+    });
+  }
+  if (posts.length < minRows) throw new DataValidationError(`貼文層級 CSV 可用貼文數異常（${posts.length} < ${minRows}）`);
+  return { posts, unmatched };
+}
+
 /** RFC 4180 CSV（含引號、跳脫引號、欄位內換行）。ponytail: 資料來源只有這一份試算表，不引入 CSV 套件。 */
 export function parseCsv(text) {
   const rows = [];

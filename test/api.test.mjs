@@ -119,7 +119,7 @@ test('health / meta / changes / sync-runs 端點形狀正確', () => {
   // db 欄位是固定清單產生（CR-9），不該因為沒有資料而少欄位
   assert.deepEqual(
     Object.keys(health.db),
-    ['legislators', 'memberships', 'committee_seats', 'sessions', 'committees', 'changes', 'snapshots', 'sync_runs', 'bills', 'budget_bills', 'budget_reports', 'committee_meetings', 'news', 'social_accounts'],
+    ['legislators', 'memberships', 'committee_seats', 'sessions', 'committees', 'changes', 'snapshots', 'sync_runs', 'bills', 'budget_bills', 'budget_reports', 'committee_meetings', 'news', 'social_accounts', 'social_posts'],
   );
 
   const meta = getMetaPayload(db);
@@ -495,6 +495,7 @@ test('health：回報各資料集的最後同步時間與新聞狀態（M4/M5 �
   assert.ok(health.datasets.bills.fetched_at);
   assert.ok(health.datasets.news.count > 0);
   assert.equal(health.datasets.social.count, health.db.social_accounts);
+  assert.equal(typeof health.db.social_posts, 'number', '貼文層級也要有筆數（健康頁顯示）');
   assert.equal(health.db.bills > 0, true);
   assert.ok(Array.isArray(health.warnings));
 });
@@ -1378,6 +1379,7 @@ test('同步範圍：每個範圍的「上次同步」取涵蓋來源裡最舊�
   const at = (iso) => ({ started_at: iso, finished_at: iso, ua: 'test' });
   recordSyncRun(db, { dataset: 'social', status: 'success', duration_ms: 1500, records: 113, attempt: 1, http_status: 200, ...at('2026-10-06T01:49:47.507Z') });
   recordSyncRun(db, { dataset: 'council_social', status: 'success', duration_ms: 900, records: 360, attempt: 1, http_status: 200, ...at('2026-10-06T02:10:00.000Z') });
+  recordSyncRun(db, { dataset: 'social_posts', status: 'success', duration_ms: 800, records: 540, attempt: 1, http_status: 200, ...at('2026-10-06T03:00:00.000Z') });
 
   const { scopes } = listSyncSources(db);
   assert.equal(scopes[0].id, 'all', '第一個是預設的「全部」');
@@ -1385,8 +1387,8 @@ test('同步範圍：每個範圍的「上次同步」取涵蓋來源裡最舊�
 
   const social = scopes.find((s) => s.id === 'social');
   assert.equal(social.last_run_at, '2026-10-06T01:49:47.507Z', '取較舊的那個（＝這範圍裡最久沒更新的來源）');
-  assert.equal(social.last_duration_ms, 2400, '上次耗時＝涵蓋來源相加');
-  assert.deepEqual(social.sources.map((x) => [x.label, x.status]), [['委員粉專', 'success'], ['議員粉專', 'success']]);
+  assert.equal(social.last_duration_ms, 3200, '上次耗時＝涵蓋來源相加（委員粉專 1500＋貼文層級 800＋議員粉專 900）');
+  assert.deepEqual(social.sources.map((x) => [x.label, x.status]), [['委員粉專', 'success'], ['委員貼文（貼文層級）', 'success'], ['議員粉專', 'success']]);
 
   const all = scopes.find((s) => s.id === 'all');
   assert.equal(all.last_run_at, null, '有來源從未同步 → 尚未同步（不要假裝有時間）');

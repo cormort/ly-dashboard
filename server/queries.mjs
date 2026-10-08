@@ -354,6 +354,7 @@ const HEALTH_TABLES = [
   ['committee_meetings', 'committee_meetings'],
   ['news', 'news'],
   ['social_accounts', 'social_accounts'],
+  ['social_posts', 'social_posts'],
 ];
 
 /**
@@ -2337,6 +2338,7 @@ function collectFundRows(db, resolvedType) {
   const latestSession = [...budgetRows, ...billRows].reduce((max, r) => Math.max(max, Number(r.session) || 0), 0);
   const people = new Map(db.prepare('SELECT id, name, party FROM legislators').all().map((l) => [l.id, { id: l.id, name: l.name, party: l.party }]));
   const lead = new Map(db.prepare('SELECT bill_id, legislator_id FROM bill_sponsors WHERE is_lead = 1').all().map((r) => [r.bill_id, people.get(r.legislator_id)]));
+  const socialPosts = db.prepare('SELECT * FROM social_posts').all();
   const rows = [
     ...db.prepare('SELECT * FROM news').all().map((r) => ({ kind: 'news', date: r.published_at.slice(0, 10), title: r.title, url: r.url, source: r.source, legislator: people.get(r.legislator_id) })),
     // 主計總處專頁另收不限委員的主計總處新聞（ingest 的 topic_news）
@@ -2345,10 +2347,22 @@ function collectFundRows(db, resolvedType) {
       : []),
     // 基金／機關／行政法人自己的新聞（ingest 的 topic_news 'entities'，不限委員）：與機關首長新聞同樣是專屬查詢，新舊才一致
     ...db.prepare("SELECT * FROM topic_news WHERE topic = 'entities'").all().map((r) => ({ kind: 'news', date: r.published_at.slice(0, 10), title: r.title, url: r.url, source: r.source })),
-    ...db
-      .prepare("SELECT * FROM social_accounts WHERE latest_post_summary <> ''")
-      .all()
-      .map((r) => ({ kind: 'post', date: r.latest_post_date, title: r.latest_post_summary, url: r.url, legislator: people.get(r.legislator_id) })),
+    // 委員貼文：優先用貼文層級（social_posts：每則摘要 400 字、每個粉專最多 5 則、來源是 fb-data 分支），
+    // 還沒有貼文層級資料時才退回整理表的「最新一則」（60 字）。
+    // 只比對整理表那 60 字時，「機關」頁的貼文幾乎命中不到（實測 2026-10-08 全站只有 1 筆）。
+    ...(socialPosts.length
+      ? socialPosts.map((r) => ({
+          kind: 'post',
+          date: r.post_date ?? '',
+          title: r.summary,
+          url: r.url,
+          likes: r.likes,
+          legislator: people.get(r.legislator_id),
+        }))
+      : db
+          .prepare("SELECT * FROM social_accounts WHERE latest_post_summary <> ''")
+          .all()
+          .map((r) => ({ kind: 'post', date: r.latest_post_date, title: r.latest_post_summary, url: r.url, legislator: people.get(r.legislator_id) }))),
     ...billRows.map((r) => ({ kind: 'bill', agencies: [...new Set(JSON.parse(r.laws || '[]').flatMap(agencyOfLaw))], attend: [...(attend.get(r.id) ?? [])], date: r.latest_date, sort_date: effectiveSortDate(r.latest_date, r.session, latestSession), title: r.name, url: r.url, status: r.status, legislator: lead.get(r.id) })),
     ...budgetRows.map((r) => ({ kind: 'budget', date: r.latest_date, sort_date: effectiveSortDate(r.latest_date, r.session, latestSession), title: r.name, url: r.url, status: r.status, source: r.proposer })),
     ...db.prepare('SELECT * FROM budget_reports').all().map((r) => ({ kind: 'report', date: r.completed, title: r.title, url: r.url, source: r.type })),

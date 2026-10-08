@@ -58,6 +58,10 @@ const { values: args } = parseArgs({
     key: { type: 'string' },
     gid: { type: 'string' },
     timeout: { type: 'string', default: '90' },
+    // 貼文層級輸出（posts-detail CSV）：每個粉專最多留幾則、要不要寫檔
+    posts: { type: 'string', default: '5' },
+    'detail-out': { type: 'string' },
+    'no-detail': { type: 'boolean', default: false },
   },
 });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -116,6 +120,9 @@ const epochToDate = (ts) => {
 };
 
 /** 摘要：單行、去掉 FB 的「查看更多」尾綴、上限 60 字（docs/social-sheet-spec.md 的建議） */
+/** 貼文層級資料（posts-detail CSV）的摘要上限：比整理表的 60 字長，因為機關名稱常出現在貼文的後段 */
+const DETAIL_SUMMARY_LIMIT = 400;
+
 export function cleanSummary(text, limit = 60) {
   const s = String(text ?? '')
     .replace(/\s+/g, ' ')
@@ -334,6 +341,9 @@ async function collect(rows, opts) {
       _pageName: '',
       _httpName: '',
       _followers: '',
+      // 貼文層級的資料（一列一則）。整理表只放「最新一則」，這裡把同一頁抓到的其他貼文也留下來：
+      // 「機關」頁要把委員貼文歸到機關，只比對最新一則的 60 字摘要幾乎比對不到（實測全站只有 1 筆命中）。
+      _posts: [],
     };
     const url = (row['貼文或粉專連結'] ?? '').trim();
     if (!/^https:\/\/(www\.|m\.)?facebook\.com\//.test(url)) {
@@ -405,6 +415,55 @@ async function collect(rows, opts) {
         if (rec.最新貼文日期) rec._status = 'OK';
         else if (rec.最新貼文主題摘要) rec._status = rel ? `只有相對時間（${rel}）` : '有內容但沒有日期';
         else rec._status = '看不到貼文（留空）';
+
+        // 貼文層級資料（一列一則）：「機關」頁要把委員貼文歸到機關，只比對整理表那 60 字摘要幾乎比對不到
+        // （實測全站只有 1 筆命中）。最新一則用上面算出來的真日期；其他貼文只有文字 ——
+        // FB 的 DOM 只給「3小時」這種相對時間，內嵌 JSON 的 creation_time 無法可靠對到「哪一則是哪一則」，
+        // 所以寧可留空日期，也不猜（見 docs/social-sheet-spec.md 的「不要編造」原則）。
+        const detailBase = {
+          編號: rec.編號,
+          姓名: rec.姓名,
+          政黨: rec.政黨,
+          '選區/類別': rec['選區/類別'],
+          臉書專頁名稱: rec.臉書專頁名稱,
+          平台: 'facebook',
+        };
+        const buildDetail = () => {
+          const seenSummaries = new Set();
+          return [
+          ...(rec.最新貼文日期 && summary
+            ? [
+                {
+                  ...detailBase,
+                  貼文日期: rec.最新貼文日期,
+                  摘要: cleanSummary(summary, DETAIL_SUMMARY_LIMIT),
+                  讚數: String(eng.likes ?? ''),
+                  留言數: String(eng.comments ?? ''),
+                  貼文連結: best?.href || url,
+                },
+              ]
+            : []),
+          ...(dump.messages ?? [])
+            .slice(0, (opts.posts ?? 5) + 1)
+            .filter((m) => cleanSummary(m, DETAIL_SUMMARY_LIMIT).length >= 20) // 濾掉「活力·進步·台北」這種看板文字
+            .map((m) => ({
+            ...detailBase,
+            貼文日期: '',
+            摘要: cleanSummary(m, DETAIL_SUMMARY_LIMIT),
+            讚數: '',
+            留言數: '',
+            貼文連結: url,
+          })),
+        ]
+          .filter((p) => p.摘要)
+          .filter((p) => {
+            if (seenSummaries.has(p.摘要)) return false;
+            seenSummaries.add(p.摘要);
+            return true;
+          })
+          .slice(0, opts.posts ?? 5);
+        };
+        rec._posts = buildDetail();
         // 什麼都沒拿到時，多半只是頁面還沒渲染完（批次的第一頁最常見）：重載一次再試一次
         if (!rec.最新貼文日期 && !rec.最新貼文主題摘要) {
           await page.reload({ waitUntil: 'domcontentloaded', timeout: opts.timeout * 1000 });
@@ -423,6 +482,7 @@ async function collect(rows, opts) {
           }
           if (rec.最新貼文日期) rec._status = 'OK（重載後取得）';
           else if (rec.最新貼文主題摘要) rec._status = '有內容但沒有日期（重載後）';
+          rec._posts = buildDetail(); // 重載後的值才是最終值
         }
       }
     } catch (err) {
@@ -575,6 +635,7 @@ async function main() {
     minDelay: num(args['min-delay'], 4),
     maxDelay: num(args['max-delay'], 9),
     timeout: num(args.timeout, 90),
+    posts: num(args.posts, 5),
   });
 
   const stamp = new Date().toISOString().slice(0, 10);
@@ -584,6 +645,19 @@ async function main() {
   const sheetCols = ['編號', '姓名', '政黨', '選區/類別', '臉書專頁名稱', '最新貼文日期', '最新貼文主題摘要', '貼文或粉專連結', 'Threads連結', 'Threads最新貼文日期', 'Threads最新貼文主題摘要', '最新貼文讚數', '最新貼文留言數'];
   writeFileSync(outPath, `${sheetCols.join(',')}\n${results.map((r) => sheetCols.map((c) => csvCell(r[c])).join(',')).join('\n')}\n`);
   console.log(`寫出 ${outPath}`);
+
+  // 貼文層級的輸出（一列一則貼文）：整理表只收「最新一則」，這裡把同一頁的其他貼文也留下來，
+  // 供「機關」頁把委員貼文歸到機關（只比對最新一則的 60 字摘要幾乎比對不到）。
+  if (!args['no-detail']) {
+    const detailRows = results.flatMap((r) => r._posts ?? []);
+    const detailPath = args['detail-out'] ?? resolve(ROOT, '.cache', `posts-detail-${stamp}.csv`);
+    const detailCols = ['編號', '姓名', '政黨', '選區/類別', '臉書專頁名稱', '平台', '貼文日期', '摘要', '讚數', '留言數', '貼文連結'];
+    writeFileSync(
+      detailPath,
+      `${detailCols.join(',')}\n${detailRows.map((p) => detailCols.map((c) => csvCell(p[c])).join(',')).join('\n')}\n`,
+    );
+    console.log(`寫出 ${detailPath}（${detailRows.length} 則貼文、${new Set(detailRows.map((p) => p.編號)).size} 位委員）`);
+  }
 
   if (args.verify) {
     const verifyPath = args['verify-out'] ?? resolve(ROOT, `docs/fb-verification-${stamp}.csv`);

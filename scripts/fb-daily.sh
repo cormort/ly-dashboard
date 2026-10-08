@@ -59,6 +59,10 @@ KEY="${LY_FB_SERVICE_ACCOUNT:-$ROOT/service_account.json}"
 STAMP="$(date '+%Y-%m-%d')"
 OUT_DATED="$LOG_DIR/posts-$STAMP.csv"
 OUT_LATEST="$LOG_DIR/posts-latest.csv"
+# 貼文層級（一列一則貼文）：整理表只收最新一則，這一份把同一頁的其他貼文也留下來，
+# 讓「機關」頁能把委員貼文歸到機關（只比對 60 字摘要幾乎比對不到）。
+OUT_DETAIL="$LOG_DIR/posts-detail-$STAMP.csv"
+OUT_DETAIL_LATEST="$LOG_DIR/posts-detail-latest.csv"
 
 log() { printf '%s %s\n' "$(date '+%Y-%m-%dT%H:%M:%S%z')" "$*" >>"$LOG"; }
 
@@ -121,7 +125,7 @@ fi
 
 # 驗證報告預設會寫進版控的 docs/fb-verification-<日期>.csv；排程每天跑的話會一直長新檔案，
 # 所以這裡改寫到 .cache/（已 gitignore）。要留哪一天的證據再自己搬進 docs/。
-ARGS=(--verify --verify-out "$LOG_DIR/fb-verification-$STAMP.csv" --profile "$PROFILE" --out "$OUT_DATED")
+ARGS=(--verify --verify-out "$LOG_DIR/fb-verification-$STAMP.csv" --profile "$PROFILE" --out "$OUT_DATED" --detail-out "$OUT_DETAIL")
 WRITE_SHEET=0
 if [ -f "$KEY" ]; then
   ARGS+=(--write-sheet --key "$KEY")
@@ -156,7 +160,13 @@ if [ -z "$FILLED" ]; then
 fi
 
 cp -f "$OUT_DATED" "$OUT_LATEST"
-log "完成：$FILLED 列有日期（${OUT_DATED}，另存一份 ${OUT_LATEST}）"
+[ -f "$OUT_DETAIL" ] && cp -f "$OUT_DETAIL" "$OUT_DETAIL_LATEST"
+DETAIL_LINE=""
+if [ -f "$OUT_DETAIL" ]; then
+  DETAIL_ROWS=$(( $(wc -l <"$OUT_DETAIL") - 1 ))
+  DETAIL_LINE="；貼文層級 ${DETAIL_ROWS} 則（${OUT_DETAIL}）"
+fi
+log "完成：$FILLED 列有日期（${OUT_DATED}，另存一份 ${OUT_LATEST}）${DETAIL_LINE}"
 
 if [ "$FILLED" -eq 0 ]; then
   # 抓不到任何日期最常見的原因就是設定檔沒登入：Facebook 對未登入的請求只回登入頁。
@@ -185,7 +195,7 @@ fi
 # 資料也推一份到遠端資料分支（預設 fb-data，比照 news-data）：遠端讀得到、也多一份備份。
 # 失敗只記 log，不讓每日排程整個失敗（本機 CSV 還在）。設 LY_FB_DATA_PUSH=0 可關掉。
 if [ "${LY_FB_DATA_PUSH:-1}" = "1" ]; then
-  if DATA_OUT="$("$NODE" scripts/push-fb-data.mjs "$OUT_DATED" 2>&1)"; then
+  if DATA_OUT="$("$NODE" scripts/push-fb-data.mjs "$OUT_DATED" --detail "$OUT_DETAIL" 2>&1)"; then
     printf '%s\n' "$DATA_OUT" >>"$LOG"
   else
     printf '%s\n' "$DATA_OUT" >>"$LOG"

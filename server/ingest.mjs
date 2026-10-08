@@ -1,8 +1,8 @@
 import { pathToFileURL } from 'node:url';
 import { readFileSync } from 'node:fs';
 import { CONFIG } from './config.mjs';
-import { openDb, recordSyncRun, saveSnapshot, applyDataset, applyBills, applyLawAgencies, applyBudget, applyBudgetReports, applyCommitteeMeets, applyCommitteeRecords, applyMeetings, applySocial, applyCouncilSocial, upsertNews, upsertTopicNews, upsertArticles, pruneNews, pruneLogs, getMeta, setMeta, upsertProgressOverride, getProgressOverrides, applyProgressOverrides, upsertBudgetCommittees, getBudgetCommittees } from './db.mjs';
-import { buildDataset, normalizeCouncilSocial, normalizeBills, normalizeBudget, normalizeBudgetReports, normalizeCommitteeMeets, normalizeCommitteeRecords, normalizeMeetings, normalizeSocial, newsName, parseNewsRss, DataValidationError, NORMALIZER_VERSION } from './normalize.mjs';
+import { openDb, recordSyncRun, saveSnapshot, applyDataset, applyBills, applyLawAgencies, applyBudget, applyBudgetReports, applyCommitteeMeets, applyCommitteeRecords, applyMeetings, applySocial, applySocialPosts, applyCouncilSocial, upsertNews, upsertTopicNews, upsertArticles, pruneNews, pruneLogs, getMeta, setMeta, upsertProgressOverride, getProgressOverrides, applyProgressOverrides, upsertBudgetCommittees, getBudgetCommittees } from './db.mjs';
+import { buildDataset, normalizeCouncilSocial, normalizeBills, normalizeBudget, normalizeBudgetReports, normalizeCommitteeMeets, normalizeCommitteeRecords, normalizeMeetings, normalizeSocial, normalizeSocialPosts, newsName, parseNewsRss, DataValidationError, NORMALIZER_VERSION } from './normalize.mjs';
 import { applySeatOverrides, loadSeatOverrides, seatOverridesDigest } from './committee-overrides.mjs';
 import { fetchJson, FetchError, sha256 } from './fetch-ly.mjs';
 import { ambiguousCouncilorNames, currentCouncilors, entityNewsTerms, makeTagger, mentionsKnownEntity } from './queries.mjs';
@@ -1097,6 +1097,53 @@ export async function runSocialIngest(db, { logger = console, fetchImpl = fetchJ
 }
 
 /**
+ * 貼文層級資料（`fb-data` 分支的 `posts-detail/latest.csv`）：抓 → 驗證 → 依委員套用；失敗保留舊資料。
+ *
+ * 來源是每日抓取推到資料分支的檔案（scripts/fetch-fb-posts.mjs → push-fb-data.mjs，見 scripts/fb-daily.sh）。
+ * 這個檔還沒產生過（第一次抓取前）會是 404，那不是錯誤、記 skipped 就好。
+ * 為什麼要有這一份：整理表只有每個粉專「最新一則」的 60 字摘要，「機關」頁把它歸到機關幾乎比對不到
+ * （實測 2026-10-08 全站只有 1 筆命中），貼文層級有 400 字、每個粉專最多 5 則。
+ */
+export async function runSocialPostsIngest(db, { logger = console, fetchImpl = fetchJson, now = () => new Date() } = {}) {
+  const startedAt = now().toISOString();
+  const startedMs = Date.now();
+  const record = (fields) =>
+    recordSyncRun(db, { dataset: 'social_posts', started_at: startedAt, finished_at: now().toISOString(), duration_ms: Date.now() - startedMs, ua: CONFIG.userAgent, ...fields });
+  const url = `${String(CONFIG.social.postsUrl ?? '').replace(/\/$/, '')}/posts-detail/latest.csv`;
+  try {
+    if (!url || url.startsWith('/posts-detail')) throw new FetchError('沒有設定貼文層級來源（LY_FB_POSTS_URL）', { attempts: 1 });
+    const result = await fetchImpl(url, { ua: CONFIG.userAgent, text: true });
+    const idByName = new Map(db.prepare('SELECT name, id FROM legislators WHERE leave_flag = 0').all().map((r) => [newsName(r.name), r.id]));
+    const { posts, unmatched } = normalizeSocialPosts(result.text, idByName);
+    // 抓取是分輪跑的：只抓到少數委員時不要把上一輪的貼文換掉。
+    // 注意：資料是**累積**的，所以要比的是「上一次匯入幾則」（social_posts_import_count），
+    // 不是資料庫裡的總則數（那個只會越積越多）。
+    const previousImport = Number(getMeta(db, 'social_posts_import_count', '0')) || 0;
+    if (previousImport >= 100 && posts.length < previousImport * 0.5) {
+      throw new DataValidationError(`貼文層級這次只匯入 ${posts.length} 則，低於上次 ${previousImport} 則的 50%，疑似抓取不完整`);
+    }
+    const applied = applySocialPosts(db, posts, { fetchedAt: now().toISOString() });
+    if (unmatched.length) logger.warn(`[fb-posts] 警告：有 ${unmatched.length} 個姓名對不到委員：${unmatched.slice(0, 5).join('、')}`);
+    logger.log(
+      `[fb-posts] 已累計：本次 ${posts.length} 則（新增 ${applied.added}、清掉 ${applied.pruned}；其中 ${posts.filter((p) => p.post_date).length} 則有日期）` +
+        `、共 ${applied.accumulated} 則、涵蓋 ${applied.legislators} 位委員`,
+    );
+    record({ status: 'success', records: posts.length, attempt: result.attempts ?? 1, http_status: result.status ?? 200 });
+    return { status: 'success', posts: posts.length, legislators: applied.legislators, accumulated: applied.accumulated, added: applied.added, pruned: applied.pruned, unmatched };
+  } catch (error) {
+    if (error?.status === 404) {
+      logger.log('[fb-posts] 資料分支上還沒有 posts-detail/latest.csv（還沒跑過抓取）→ 略過');
+      record({ status: 'skipped', error: null });
+      return { status: 'skipped', reason: '資料分支上還沒有貼文層級檔' };
+    }
+    const message = error instanceof FetchError ? `${error.message}（嘗試 ${error.attempts} 次）` : String(error?.message || error);
+    logger.error(`[fb-posts] 同步失敗，保留既有資料：${message}`);
+    record({ status: 'failed', http_status: error?.status ?? null, error: message });
+    return { status: 'failed', error: message };
+  }
+}
+
+/**
  * 議員臉書整理表（CONFIG.social.councilUrl，格式見 docs/social-sheet-spec.md）：抓 CSV → 驗證 → 整批覆寫；
  * 失敗保留舊資料。沒設網址就跳過（議員的粉專網址仍來自 server/council-facebook.json）。
  */
@@ -1236,6 +1283,7 @@ export async function runAll(db, options = {}) {
     meetings: () => (CONFIG.skip.budget ? skipped('meetings') : runMeetingsIngest(db, options)),
     records: () => (CONFIG.skip.bills ? skipped('records') : runRecordsIngest(db, options)),
     social: () => (CONFIG.skip.social ? skipped('social') : runSocialIngest(db, options)),
+    social_posts: () => (CONFIG.skip.social ? skipped('social_posts') : runSocialPostsIngest(db, options)),
     council_social: () => (CONFIG.skip.social ? skipped('council_social') : runCouncilSocialIngest(db, options)),
     news: () => (CONFIG.skip.news ? skipped('news') : runNewsIngest(db, options)),
     progress: () => runProgressDates(db, options),
