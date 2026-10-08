@@ -104,8 +104,8 @@ cron/啟動排程 (24h)                      server/ingest.mjs
 ## 驗證（可重跑）
 
 ```bash
-bash scripts/verify.sh                      # 一鍵（快速：跳過議案／新聞／社群等外部來源，但預算與委員會仍會打 g0v，實測約 8 分鐘）
-bash scripts/verify.sh --full               # 一鍵（完整：含議案／新聞／社群與試算表，比快速模式久得多；沒有固定秒數）
+bash scripts/verify.sh                      # 一鍵（快速：跳過議案／新聞／社群等外部來源，但預算與委員會仍會打 g0v；實測 2026-10-08 約 8 分半）
+bash scripts/verify.sh --full               # 一鍵（完整：含議案／新聞／社群與試算表；實測 2026-10-08 為 20 分 36 秒）
 npm test                                    # 後端 290 passed（fail-closed、交易回滾、change_log、排行榜、主管機關對照、M1–M5 與第三輪回歸）
 node scripts/verify-news-rss.mjs            # 媒體官方 RSS 打真網路逐家驗（抓得到／解析得出來／真的對得上委員）；只讀，不動 data/
 node scripts/verify-news-rss.mjs <url>      # 試別的 feed（例如比較 udn 的分類 id，見 DECISIONS D101）
