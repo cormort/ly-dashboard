@@ -487,12 +487,16 @@ header nav, .subnav-row { position: relative; }
   padding-top: var(--space-2);
   border-top: 1px solid var(--rule-soft);
   display: flex;
+  flex-wrap: wrap; /* 窄卡片時「統計」與「查看檔案」要能換行，否則統計文案會被切掉（實測 360px） */
   justify-content: space-between;
   align-items: center;
   gap: var(--space-2);
   color: var(--muted);
   font-size: var(--fs-sm);
 }
+/* 統計指標（提案／連署／新聞／貼文）：每個指標是不可分割的單位，只在指標之間換行。
+   空間不夠時整塊換到下一行，而不是把「貼文 10/05」折一半或截掉（實測 360px 卡片內寬 259、四項需要 190）。 */
+.member-card footer .member-stats { display: flex; flex-wrap: wrap; gap: 2px var(--space-3); min-width: 0; }
 .member-card footer button { padding: 4px 10px; font-size: var(--fs-sm); }
 .convener-mark {
   display: inline-block;

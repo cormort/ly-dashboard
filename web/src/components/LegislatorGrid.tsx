@@ -81,9 +81,13 @@ function LegislatorCard({
       <p className="member-committees">{committees}</p>
 
       <footer>
-        <span>
-          提案 {legislator.bill_count}　連署 {legislator.cosign_count ?? 0}　新聞 {legislator.news_count}
-          {latestPost ? `　貼文 ${formatDay(latestPost)}` : ''}
+        {/* 四個指標各自是不可分割的單位（提案 46 / 連署 889 / …），只在指標之間換行，
+            不要在「貼文」與日期之間斷開，也不要被 ellipsis 截掉（實測 360px 與窄卡片都會遇到）。 */}
+        <span className="member-stats">
+          <span>提案 {legislator.bill_count}</span>
+          <span>連署 {legislator.cosign_count ?? 0}</span>
+          <span>新聞 {legislator.news_count}</span>
+          {latestPost ? <span>貼文 {formatDay(latestPost)}</span> : null}
         </span>
         <button type="button" onClick={() => onOpen(legislator)}>
           查看檔案
