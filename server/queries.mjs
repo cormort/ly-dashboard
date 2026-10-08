@@ -1184,17 +1184,42 @@ const SOCIAL_WALL_MAX_LIMIT = 500;
  * 委員粉專牆（`/api/v1/social/wall`）：把在職委員的 Facebook 粉專攤成一面牆。
  *
  * - 預設只回**最近更新**的前 5 位（依 `latest_post_date` 新到舊，沒有日期的排最後）；
- *   套了黨籍／縣市條件才把整個篩選結果展開（limit 由呼叫端決定，上限 500）。
- * - 兩組 facet 互相交叉：選了黨籍時縣市只列該黨真的有的人（反之亦然），
- *   否則會出現「點了變成空牆」的選項。
+ *   套了黨籍／縣市／委員會條件才把整個篩選結果展開（limit 由呼叫端決定，上限 500）。
+ * - 三組 facet 互相交叉：每個 facet 只排除自己那一維、套用另外兩維，
+ *   否則會出現「點了變成空牆」的選項（只有一組條件時保證不會空）。
+ * - 委員會用**目前會期**的 `committee_seats`（跟委員頁的委員會篩選同一份資料）；
+ *   只列**常設委員會**：修憲／程序／經費稽核不是「選委員會」的語境，
+ *   而且補充表沒有它們的席位。聽不懂的委員會名稱一律當作沒篩（見 D271），
+ *   免得舊網址讓整面牆變空又看不出原因。
  * - 沒有粉專的委員不會出現（社群整理表沒有他的臉書網址），所以牆上的總數會小於委員總數。
  * - 這裡只讀整理表已經填好的日期，不猜、不補：抓不到貼文的委員就是沒有日期、排在最後。
  */
-export function listSocialWall(db, { party = '', region = '', limit = SOCIAL_WALL_DEFAULT_LIMIT, offset = 0 } = {}) {
+export function listSocialWall(db, { party = '', region = '', committee = '', limit = SOCIAL_WALL_DEFAULT_LIMIT, offset = 0 } = {}) {
   const resolvedLimit = Math.max(1, Math.min(Number(limit) || SOCIAL_WALL_DEFAULT_LIMIT, SOCIAL_WALL_MAX_LIMIT));
   const resolvedOffset = Math.max(0, Math.trunc(Number(offset) || 0));
   const wantedParty = String(party ?? '').trim();
   const wantedRegion = String(region ?? '').trim();
+
+  // 委員會：目前會期的常設委員會席位（同一人可能有多個委員會，所以是「清單對清單」）
+  const session = currentSession(db);
+  const seatRows = db
+    .prepare(
+      `SELECT s.legislator_id, s.committee_id
+       FROM committee_seats s JOIN committees c ON c.id = s.committee_id
+       WHERE s.session_id = ? AND c.kind = 'standing'`,
+    )
+    .all(session ?? '');
+  const committeesByLegislator = new Map();
+  const standingCommittees = new Set();
+  for (const seat of seatRows) {
+    standingCommittees.add(seat.committee_id);
+    const list = committeesByLegislator.get(seat.legislator_id) ?? [];
+    list.push(seat.committee_id);
+    committeesByLegislator.set(seat.legislator_id, list);
+  }
+  const askedCommittee = String(committee ?? '').trim();
+  // 不認識的委員會名稱當作沒篩（回應也回空字串，前端才不會顯示一個其實沒生效的條件）
+  const wantedCommittee = standingCommittees.has(askedCommittee) ? askedCommittee : '';
 
   const all = db
     .prepare(
@@ -1233,18 +1258,37 @@ export function listSocialWall(db, { party = '', region = '', limit = SOCIAL_WAL
     for (const row of rows) counts.set(row[key], (counts.get(row[key]) ?? 0) + 1);
     return [...counts].map(([name, count]) => ({ name, count }));
   };
-  const matched = all.filter((row) => (!wantedParty || row.party === wantedParty) && (!wantedRegion || row.region === wantedRegion));
+  /** 這一位符不符合條件；skip 是「這一維先不套用」（facet 交叉用） */
+  const matches = (row, skip = '') =>
+    (skip === 'party' || !wantedParty || row.party === wantedParty) &&
+    (skip === 'region' || !wantedRegion || row.region === wantedRegion) &&
+    (skip === 'committee' || !wantedCommittee || (committeesByLegislator.get(row.id) ?? []).includes(wantedCommittee));
+  const matched = all.filter((row) => matches(row));
+
+  // 委員會要照立法院的委員會順序排（同 CONFIG.committeeOrder），不是筆數多的排前面
+  const committeeOrder = CONFIG.committeeOrder ?? [];
+  const committeeCounts = new Map();
+  for (const row of all.filter((r) => matches(r, 'committee'))) {
+    for (const name of committeesByLegislator.get(row.id) ?? []) committeeCounts.set(name, (committeeCounts.get(name) ?? 0) + 1);
+  }
+  const committees = [...committeeCounts]
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => (committeeOrder.indexOf(a.name) + 1 || 99) - (committeeOrder.indexOf(b.name) + 1 || 99) || a.name.localeCompare(b.name, 'zh-Hant'));
 
   return {
-    meta: envelope(db, { term: currentTerm(db), session: currentSession(db) }),
+    meta: envelope(db, { term: currentTerm(db), session }),
     count: Math.max(0, Math.min(resolvedLimit, matched.length - resolvedOffset)),
     total: matched.length,
     default_limit: SOCIAL_WALL_DEFAULT_LIMIT,
     party: wantedParty,
     region: wantedRegion,
-    // 交叉 facet：各自排除自己那一維，只套用另一維
-    parties: countBy(all.filter((row) => !wantedRegion || row.region === wantedRegion), 'party').sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'zh-Hant')),
-    regions: countBy(all.filter((row) => !wantedParty || row.party === wantedParty), 'region').sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'zh-Hant')),
+    committee: wantedCommittee,
+    /** 委員會 facet 是哪一個會期的（畫面要寫出來，否則會以為是「所有會期」） */
+    committee_session: wantedCommittee || committees.length > 0 ? session : null,
+    // 交叉 facet：各自排除自己那一維，只套用另外兩維
+    parties: countBy(all.filter((row) => matches(row, 'party')), 'party').sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'zh-Hant')),
+    regions: countBy(all.filter((row) => matches(row, 'region')), 'region').sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'zh-Hant')),
+    committees,
     // 整理表是人工／AI 維護的：過期時前端要標出來，否則舊日期看起來像最新
     social: socialFreshness(db),
     items: matched.slice(resolvedOffset, resolvedOffset + resolvedLimit),

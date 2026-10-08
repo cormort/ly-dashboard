@@ -26,7 +26,7 @@ export interface SocialWallPageProps {
 const EXPANDED_LIMIT = 500;
 
 /** 一列標籤：第一個是「全部」，其餘是 facet 的選項與筆數（aria-pressed 表示目前選了哪一個） */
-function ChipRow({
+export function ChipRow({
   label,
   allLabel,
   items,
@@ -168,13 +168,15 @@ export function WallCard({
 export function SocialWallPage({ refreshToken, onOpenId }: SocialWallPageProps) {
   const [party, setParty] = useParam<string>('party', '');
   const [region, setRegion] = useParam<string>('region', '');
+  // 委員會：後端只認目前會期的常設委員會，聽不懂的名稱會回空字串（前端就跟著不顯示條件）
+  const [committee, setCommittee] = useParam<string>('committee', '');
   // 網址參數是使用者可以隨手改的：不認識的值一律落回 compact（見 useParam 的說明）
   const [view, setView] = useParam<'compact' | 'all'>('view', 'compact', ['compact', 'all']);
 
   // 沒套條件也沒按「展開」時不送 limit，讓後端用它自己的預設值（最近更新的 5 位）
-  const expanded = Boolean(party || region) || view === 'all';
+  const expanded = Boolean(party || region || committee) || view === 'all';
   const res = useApi<SocialWallResponse>(
-    buildUrl('/social/wall', { party, region, limit: expanded ? EXPANDED_LIMIT : undefined }),
+    buildUrl('/social/wall', { party, region, committee, limit: expanded ? EXPANDED_LIMIT : undefined }),
     { refreshToken },
   );
   const data = res.data;
@@ -183,12 +185,13 @@ export function SocialWallPage({ refreshToken, onOpenId }: SocialWallPageProps) 
   if (res.phase === 'error') return <ErrorState title="無法取得粉專牆（/api/v1/social/wall）" error={res.error} onRetry={res.reload} />;
   if (!data) return <EmptyState message="沒有粉專資料" />;
 
-  const filtered = Boolean(party || region);
+  const filtered = Boolean(party || region || committee);
   // 篩選／展開會讓卡片整批換掉（key 不同＝各自重新掛載），卡片自己的展開狀態也跟著重來
   const pick = (setter: (value: string) => void) => (value: string) => setter(value);
   const clear = () => {
     setParty('');
     setRegion('');
+    setCommittee('');
     setView('compact');
   };
 
@@ -204,8 +207,8 @@ export function SocialWallPage({ refreshToken, onOpenId }: SocialWallPageProps) 
 
         <p className="muted">
           {expanded
-            ? '依黨籍或縣市展開的粉專牆，新的貼文排在前面。卡片捲進畫面就會自動載入 Facebook 官方的粉專嵌入框（只對粉絲專頁有效，個人檔案請點「粉專」連結）。'
-            : `預設只顯示最近更新的 ${data.default_limit} 位委員；選黨籍或縣市就會展開整個粉專牆。卡片捲進畫面就會自動載入 Facebook 官方的粉專嵌入框。`}
+            ? '依黨籍、縣市或委員會展開的粉專牆，新的貼文排在前面。卡片捲進畫面就會自動載入 Facebook 官方的粉專嵌入框（只對粉絲專頁有效，個人檔案請點「粉專」連結）。'
+            : `預設只顯示最近更新的 ${data.default_limit} 位委員；選黨籍、縣市或委員會就會展開整個粉專牆。卡片捲進畫面就會自動載入 Facebook 官方的粉專嵌入框。`}
           {data.social.as_of ? `「最新貼文」來自委員臉書整理表，資料截至 ${formatDay(data.social.as_of, '—')}。` : ''}
         </p>
         {data.social.stale ? (
@@ -217,6 +220,13 @@ export function SocialWallPage({ refreshToken, onOpenId }: SocialWallPageProps) 
         <div className="wall-filters">
           <ChipRow label="依黨籍" allLabel="全部黨籍" items={data.parties} value={party} onPick={pick(setParty)} />
           <ChipRow label="依縣市" allLabel="全部縣市" items={data.regions} value={region} onPick={pick(setRegion)} />
+          <ChipRow
+            label={data.committee_session ? `依委員會（${data.committee_session} 會期）` : '依委員會'}
+            allLabel="全部委員會"
+            items={data.committees}
+            value={committee}
+            onPick={pick(setCommittee)}
+          />
         </div>
 
         {filtered || view === 'all' ? (
@@ -237,7 +247,7 @@ export function SocialWallPage({ refreshToken, onOpenId }: SocialWallPageProps) 
       {data.items.length === 0 ? (
         <EmptyState
           message="沒有符合條件的粉專"
-          hint="換一個黨籍或縣市，或按「清除條件」。沒有粉專資料的委員會整批不顯示（來源是委員臉書整理表）。"
+          hint="換一個黨籍、縣市或委員會，或按「清除條件」。沒有粉專資料的委員不會出現（來源是委員臉書整理表）。"
         />
       ) : (
         <ul className="fb-wall" role="list">

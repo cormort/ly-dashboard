@@ -49,7 +49,7 @@ import { BillStageBar } from '../src/components/BillStage';
 import { CountiesPage } from '../src/pages/CountiesPage';
 import { CouncilPage, marginText, upgradedNotes } from '../src/pages/CouncilPage';
 import { NewsPage } from '../src/pages/NewsPage';
-import { WallCard } from '../src/pages/SocialWallPage';
+import { WallCard, ChipRow } from '../src/pages/SocialWallPage';
 import { FacebookEmbed } from '../src/components/FacebookEmbed';
 import { embedButtonLabel, shouldMountEmbed } from '../src/lib/embedPolicy';
 import { ChoroplethMap } from '../src/components/ChoroplethMap';
@@ -307,6 +307,34 @@ const wallCardNoCounts = render(createElement(WallCard, { item: { ...wallItem, l
 check('粉專牆卡片：抓不到讚數／留言數時不畫互動數那一行（也不寫 0）', !wallCardNoCounts.includes('wall-engagement'));
 const wallCardNoDate = render(createElement(WallCard, { item: { ...wallItem, latest_post_date: null, latest_post_summary: '', latest_post_likes: null, latest_post_comments: null }, onOpenId: () => undefined }));
 check('粉專牆卡片：沒有貼文日期時不會畫出互動數', !wallCardNoDate.includes('wall-engagement') && wallCardNoDate.includes('整理表還沒有這一位的貼文日期'));
+
+// 粉專牆的篩選 chips（黨籍／縣市／委員會共用同一個元件）：委員會那一列要多標「哪個會期」
+console.log('\n— 粉專牆 › 篩選 chips —');
+const committeesFixture = [
+  { name: '內政委員會', count: 13 },
+  { name: '外交及國防委員會', count: 15 },
+  { name: '財政委員會', count: 14 },
+];
+const chipRowHtml = render(
+  createElement(ChipRow, {
+    label: '依委員會（11-6 會期）',
+    allLabel: '全部委員會',
+    items: committeesFixture,
+    value: '財政委員會',
+    onPick: () => undefined,
+  }),
+);
+expectAll('粉專牆 chips：標籤帶會期、第一個是「全部」、每個選項帶筆數', chipRowHtml, [
+  '依委員會（11-6 會期）',
+  '全部委員會',
+  '內政委員會 <span class="muted">13</span>',
+  '財政委員會 <span class="muted">14</span>',
+]);
+check('粉專牆 chips：只有目前選中的那一個 aria-pressed=true', (chipRowHtml.match(/aria-pressed="true"/g) ?? []).length === 1 && chipRowHtml.includes('aria-pressed="true"') && /財政委員會[\s\S]{0,40}aria-pressed="true"|aria-pressed="true"[\s\S]{0,40}財政委員會/.test(chipRowHtml));
+const chipRowAll = render(createElement(ChipRow, { label: '依委員會', allLabel: '全部委員會', items: committeesFixture, value: '', onPick: () => undefined }));
+check('粉專牆 chips：沒選任何委員會時「全部」是選中的', /全部委員會/.test(chipRowAll) && (chipRowAll.match(/aria-pressed="true"/g) ?? []).length === 1);
+check('粉專牆 chips：一個選項都沒有時整列不畫（不要留一個空的「全部委員會」）', render(createElement(ChipRow, { label: '依委員會', allLabel: '全部委員會', items: [], value: '', onPick: () => undefined })) === '');
+
 // server render 不執行 useEffect，所以這裡看到的是「還沒捲進畫面」的狀態：
 // 不得有 iframe，但要先把嵌入框的位置佔好（載入時瀑布流才不會跳）
 expectNone('粉專牆卡片：還沒捲進畫面時不載入 Facebook 嵌入框（iframe 不出現，佔位不算）', wallCardClosed, ['<iframe', 'plugins/page.php']);

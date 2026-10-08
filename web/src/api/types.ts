@@ -1066,16 +1066,22 @@ export interface SocialWallResponse {
   meta: Meta;
   /** 這一頁的筆數 */
   count: number;
-  /** 符合條件的全部筆數（套用黨籍／縣市條件之後） */
+  /** 符合條件的全部筆數（套用黨籍／縣市／委員會條件之後） */
   total: number;
   /** 沒有給 limit 時後端用的預設值（5＝最近更新的 5 位） */
   default_limit: number;
   party: string;
   region: string;
-  /** 黨籍 facet（已套用縣市條件），給篩選 chips 用 */
+  /** 目前生效的委員會條件（聽不懂的名稱後端會回空字串＝沒有篩） */
+  committee: string;
+  /** 委員會 facet 是哪一個會期的（null＝沒有委員會 facet 可選） */
+  committee_session: string | null;
+  /** 黨籍 facet（已套用縣市與委員會條件），給篩選 chips 用 */
   parties: { name: string; count: number }[];
-  /** 縣市 facet（已套用黨籍條件），給篩選 chips 用 */
+  /** 縣市 facet（已套用黨籍與委員會條件），給篩選 chips 用 */
   regions: { name: string; count: number }[];
+  /** 委員會 facet（已套用黨籍與縣市條件；只有常設委員會、目前會期），給篩選 chips 用 */
+  committees: { name: string; count: number }[];
   /** 整理表的新鮮度（as_of 為 null＝還沒有整理表） */
   social: SocialFreshness;
   items: SocialWallItem[];

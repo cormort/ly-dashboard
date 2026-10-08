@@ -176,5 +176,53 @@ test('粉專牆：沒有粉專資料時回空牆，不編造任何一筆', () =>
   assert.deepEqual(wall.items, []);
   assert.deepEqual(wall.parties, []);
   assert.deepEqual(wall.regions, []);
+  assert.deepEqual(wall.committees, []);
+  assert.equal(wall.committee_session, null, '沒有可選的委員會就不要標會期');
   assert.equal(wall.social.as_of, null);
+});
+
+test('粉專牆：委員會 facet 只列常設委員會、照委員會順序排，並標出是哪個會期', () => {
+  const wall = listSocialWall(seeded(ACCOUNTS), { limit: 100 });
+  assert.deepEqual(wall.committees, [
+    { name: '內政委員會', count: 3 },
+    { name: '外交及國防委員會', count: 2 },
+    { name: '財政委員會', count: 1 },
+    { name: '社會福利及衛生環境委員會', count: 1 },
+  ], '照立法院委員會順序，不是筆數多的排前面；沒有粉專的委員會不出現（避免點了變空牆）');
+  assert.equal(wall.committee_session, '11-5', '委員會席位用目前會期');
+  assert.ok(
+    !wall.committees.some((c) => c.name === '修憲委員會' || c.name === '程序委員會' || c.name === '經費稽核委員會'),
+    '特別委員會不列：不是「選委員會」的語境',
+  );
+});
+
+test('粉專牆：依委員會篩選只留該委員會的委員', () => {
+  const wall = listSocialWall(seeded(ACCOUNTS), { committee: '內政委員會', limit: 100 });
+  assert.equal(wall.committee, '內政委員會');
+  assert.equal(wall.total, 3);
+  assert.deepEqual(wall.items.map((i) => i.name).sort(), ['丁學忠', '王美惠', '王鴻薇']);
+});
+
+test('粉專牆：委員會與黨籍／縣市互相交叉（選了才不會看到空牆）', () => {
+  const db = seeded(ACCOUNTS);
+  const wall = listSocialWall(db, { committee: '內政委員會', limit: 100 });
+  assert.deepEqual(wall.parties.map((p) => [p.name, p.count]), [['中國國民黨', 2], ['民主進步黨', 1]], '內政委員會裡只有 2 藍 1 綠');
+  assert.deepEqual(wall.regions.map((r) => r.name).sort(), ['嘉義市', '臺北市', '雲林縣'], '縣市 facet 只列這三位真的有的縣市');
+  const dpp = listSocialWall(db, { party: '民主進步黨', limit: 100 });
+  assert.deepEqual(dpp.committees.map((c) => [c.name, c.count]), [['內政委員會', 1], ['外交及國防委員會', 1], ['財政委員會', 1]], '選了民進黨之後，委員會 facet 只剩民進黨有的');
+});
+
+test('粉專牆：聽不懂的委員會名稱當作沒篩（舊網址不會變成空牆）', () => {
+  // 程序委員會是特別委員會、內政是簡稱：兩者都不在 facet 裡
+  for (const value of ['程序委員會', '內政', '不存在的委員會']) {
+    const wall = listSocialWall(seeded(ACCOUNTS), { committee: value, limit: 100 });
+    assert.equal(wall.committee, '', `「${value}」應該被忽略，回應也回空字串`);
+    assert.equal(wall.total, 7, '忽略之後就是沒篩的結果');
+  }
+});
+
+test('粉專牆：委員會是有效條件時，limit 沒給也照樣展開（不是只回最近 5 位）', () => {
+  const wall = listSocialWall(seeded(ACCOUNTS), { committee: '內政委員會' });
+  assert.equal(wall.total, 3);
+  assert.equal(wall.count, 3, '只有 3 位時就全部回，不受預設 5 位影響');
 });
