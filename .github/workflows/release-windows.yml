@@ -1,0 +1,38 @@
+# Windows 免安裝版：推 v* 標籤（例：git tag v1.0.0 && git push origin v1.0.0）就會建置 zip 並掛到 GitHub Release。
+# 也可以在 Actions 頁手動執行（workflow_dispatch），此時只產出 zip 當作 artifact，不建立 Release。
+# zip 內含官方 node.exe，解壓縮後雙擊 windows\start.cmd（或 windows\install.cmd 一鍵安裝＋啟動）。
+# 打包細節見 scripts/pack-windows.mjs。
+name: release-windows
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  pack:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm --prefix web ci
+      - run: node scripts/pack-windows.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ly-dashboard-windows-x64
+          path: dist/ly-dashboard-windows-x64-*.zip
+          if-no-files-found: error
+      - name: 掛到 Release（只在推標籤時）
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/ly-dashboard-windows-x64-*.zip \
+            --title "$GITHUB_REF_NAME" \
+            --notes "Windows 免安裝版（內附 Node）。解壓縮後雙擊 \`ly-dashboard\windows\install.cmd\` 一鍵安裝並啟動；只想試用就雙擊 \`start.cmd\`。說明見 windows/README-zh-TW.md。"

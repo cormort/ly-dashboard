@@ -7,6 +7,26 @@
 前端是 Vite 產出的靜態檔；要處理的只有「排程」與「啟動腳本」這兩層作業系統的東西。
 macOS 專屬的部分（launchd 的 plist、bash 腳本）在 Windows 由這個資料夾取代，兩邊共用同一份 Node 程式。
 
+## 免安裝版（最省事：到 GitHub Release 下載 zip）
+
+不想裝 Node、Git、npm 的話，到 [Releases](https://github.com/cormort/ly-dashboard/releases) 下載
+`ly-dashboard-windows-x64-<日期>.zip`（約 35 MB，內附官方 Node，`runtime\node.exe`）。
+
+1. 解壓縮到固定的資料夾（例如 `C:\ly-dashboard`；**不要**放在會被清掉的暫存或下載資料夾）。
+2. 雙擊 `windows\install.cmd`：註冊工作排程器（登入時啟動伺服器、每天 08:05 抓粉專）並立刻啟動、開瀏覽器。
+   只想試用、不想常駐就雙擊 `windows\start.cmd`。
+3. 受管電腦註冊排程可能 `Access denied`：照畫面印出的 `schtasks` 指令請 IT 執行即可，伺服器仍會啟動。
+
+打包版不會 `git pull`、`npm ci`、重新建置，所以**更新 = 下載新版 zip 覆蓋**（`data\` 與 `.cache\` 不在 zip 內，資料與 log 會留著）。
+每日抓粉專需要 Chrome 與 playwright-core，不在免安裝版內；要用請改走下面的 clone 流程。
+
+維護者出新版：推標籤即可，GitHub Actions（`.github/workflows/release-windows.yml`）會打包並建立 Release：
+
+```bash
+git tag v1.0.0 && git push origin v1.0.0
+node scripts/pack-windows.mjs     # 想在本機先試打包時（macOS／Windows 都行），產物在 dist/
+```
+
 ## 0. 前置需求（各一次）
 
 | 項目 | 要求 | 備註 |

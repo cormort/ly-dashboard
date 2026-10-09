@@ -25,6 +25,11 @@ $ErrorActionPreference = 'Stop'
 $Root = Split-Path -Parent $PSScriptRoot
 Set-Location $Root
 
+# 打包版（scripts/pack-windows.mjs）內附 node：runtime\node.exe 優先，對方不必另外安裝 Node。
+$bundledNode = Join-Path $Root 'runtime\node.exe'
+if (Test-Path $bundledNode) { $env:PATH = (Split-Path $bundledNode) + ';' + $env:PATH }
+$Packaged = Test-Path (Join-Path $Root 'PACKAGED')
+
 # 伺服器讀的是 PORT（見 server/config.mjs）。一定要寫進環境變數給子行程，
 # 只改本檔的檢查值的話，「檢查的埠」跟「實際監聽的埠」會是兩個（2026-10-07 真的踩到）。
 if ($env:PORT) { $Port = [int]$env:PORT } else { $Port = 8787 }
@@ -115,7 +120,7 @@ if ((Test-PortListening $Port) -or (Test-ServerHealth $Port)) {
 }
 
 # ---- 先跟 GitHub 同步；離線或本機有衝突就跳過，用現有版本照常啟動 -------------------------
-if (-not $NoPull) {
+if ((-not $NoPull) -and (-not $Packaged)) {
   if (Get-Command git -ErrorAction SilentlyContinue) {
     Write-Step 'git pull --ff-only'
     & git pull --ff-only
@@ -132,13 +137,13 @@ $webIndex = Join-Path $Root 'web\dist\index.html'
 
 $needsInstall = (-not (Test-Path $webModulesStamp)) -or
   ((Test-Path $webLock) -and ((Get-Item $webLock).LastWriteTime -gt (Get-Item $webModulesStamp).LastWriteTime))
-if ($needsInstall) {
+if ($needsInstall -and (-not $Packaged)) {
   Write-Step 'npm --prefix web ci'
   & npm --prefix web ci
   if ($LASTEXITCODE -ne 0) { Write-Warn 'npm ci 失敗（見上面錯誤）；如果只是相依沒變，可以忽略' }
 }
 
-if (-not $NoBuild) {
+if ((-not $NoBuild) -and (-not $Packaged)) {
   $needsBuild = -not (Test-Path $webIndex)
   if (-not $needsBuild) {
     $distTime = (Get-Item $webIndex).LastWriteTime
