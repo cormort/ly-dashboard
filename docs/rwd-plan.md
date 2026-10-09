@@ -29,9 +29,9 @@
 | **T12 平板頁首** | ✅ 完成（頁首部分） | 761–1100px 只留兩列：搜尋框不再獨占一列、頁首間距 20→12px、導覽連結左右各收 3px。768px：**191 → 109–111px**；1024px：146 → 100–109px |
 | **T10 表格／卡片切換** | ✅ 查證後發現**本來就有了** | 委員頁的「卡片／列表」切換（`LegislatorGrid` ＋ localStorage preference `directory-mode`，預設卡片）——使用者在 390px 看到的正是它。所以規劃時提的「URL 參數 `view=cards`」不必做 |
 | **T6 圖表／地圖** | 🔶 只是「能看」 | 390px 實測：地圖會畫、不溢出，但整個台灣地圖縮到約 330px 寬，縣市標籤偏小；沒動它（要更好的話得做縮放或表格替代） |
-| **T11 PWA** | ⏳ 未動，卡在 HTTPS | Service Worker 只在安全來源註冊。**這台 Mac Mini 目前還沒裝 Tailscale**（2026-10-07 查過），所以先走區網模式；等 Tailscale 裝好、`tailscale serve` 起來就有 HTTPS |
-| **T5 觸控目標** | 🔶 部分 | 手機的主要控制項（chips／分段鈕／圖示鈕／導覽）加 `min-height: 40px`；表格列內連結不在此限 |
-| **T8 自動檢查** | ✅ 已做 | `scripts/check-rwd.mjs`、`npm run check:rwd`、`test/check-rwd.test.mjs`（純函式 4 條）；**現在 390／768 全綠** |
+| **T11 PWA** | ✅ 已做 | Service Worker 只在安全來源註冊；Tailscale 裝好、`tailscale serve` 起來後就有 HTTPS（`https://mac-mini.tail1ac930.ts.net/`，**tailnet only**：手機的 Tailscale 沒開就連不上，這是預期行為）。驗收用 `npm run verify:pwa` |
+| **T5 觸控目標** | ✅ 主要控制項已補 | 手機的主要控制項（chips／分段鈕／圖示鈕／導覽）加 `min-height: 40px`，表格列內連結不在此限；**2026-10-09 再補**：席次圖圖例鈕 38 → 44px，並把「圖例 ≥44px」變成 `check:rwd` 的失敗條件（見 D274） |
+| **T8 自動檢查** | ✅ 已做 | `scripts/check-rwd.mjs`、`npm run check:rwd`、`test/check-rwd.test.mjs`（純函式 5 條）；**現在 390／768 全綠**，量測項：橫向溢出、選取頁籤文字垂直置中、席次圖圖例觸控高度 ≥44px |
 
 **已改的檔案：** `web/src/styles.css`（新增一個 ≤760 的區塊）、`web/src/components/Header.tsx`（狀態鈕的長／短日期）、
 `web/scripts/render-smoke.ts`（狀態鈕的斷言改成驗兩種寫法）、新增 `scripts/check-rwd.mjs`、`test/check-rwd.test.mjs`、`package.json`（`check:rwd`）。

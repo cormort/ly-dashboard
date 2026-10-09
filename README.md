@@ -14,7 +14,7 @@
 | id14 涵蓋第 4–11 屆，只按姓名 join → 122/123 人被污染、召委 84 人 | 只取本屆（term 11），召委綁 `(session, committee, legislator)`，去重後 **68 人／本會期 23 人** |
 | 委員 id 用陣列索引 → 追蹤會錯人 | 用立院 `lgno`（退回 `ename`）當穩定 id |
 | 同步失敗就端出假資料 | **fail closed**：驗證不過就保留舊資料、記錄失敗、標記 stale，前端顯示「資料截至 …」 |
-| 無異動紀錄、無原始快照、無測試 | `change_log` + `raw_snapshots`(gzip) + 98 項後端測試＋58 項前端測試 |
+| 無異動紀錄、無原始快照、無測試 | `change_log` + `raw_snapshots`(gzip) + 後端 335 項測試＋前端煙霧（36）／渲染煙霧（197） |
 
 ## 快速開始
 
@@ -22,7 +22,7 @@
 # 1) 抓資料進 SQLite（打真實立法院 API，約 7 秒）
 node server/ingest.mjs
 
-# 2) 跑測試（目前 290 項，不需要網路，用 test/fixtures 的真實 API 回應）
+# 2) 跑測試（目前 335 項，不需要網路，用 test/fixtures 的真實 API 回應）
 npm test
 
 # 3) 建置前端
@@ -33,6 +33,8 @@ npm --prefix web run build
 node server/index.mjs
 ```
 
+- 需求：**Node ≥ 22.13**（`node:sqlite` 在 22.5–22.12 要 `--experimental-sqlite`；`engines` 寫的是 22.5）、
+  系統安裝的 Google Chrome（只有每日粉專抓取與 `npm run check:rwd` 需要）。後端零 runtime 相依，不必編原生模組。
 - `--no-scheduler`：只開 API，不在啟動時自動同步（開發用）。
 - 環境變數：`PORT`、`LY_HOST`、`LY_SYNC_TOKEN`、`LY_DB`、`LY_UA`、`LY_STALE_HOURS`、`LY_SYNC_INTERVAL_MS`、`LY_FETCH_TIMEOUT_MS`、`LY_FETCH_RETRIES`、`LY_RETRY_AFTER_CAP_MS`、`LY_SHRINK_MIN_RATIO`、`LY_ALLOW_SHRINK`、`LY_STATIC_STALE_MONTHS`、`LY_SKIP_BUDGET`（跳過預算三個來源）、`LY_MOJ_LAWS_INTERVAL_HOURS`（全國法規資料庫的檢查間隔，預設 12 小時、0 ＝ 每次都抓）。
 
@@ -111,7 +113,7 @@ cron/啟動排程 (24h)                      server/ingest.mjs
 ```bash
 bash scripts/verify.sh                      # 一鍵（快速：跳過議案／新聞／社群等外部來源，但預算與委員會仍會打 g0v；實測 2026-10-08 約 8 分半）
 bash scripts/verify.sh --full               # 一鍵（完整：含議案／新聞／社群與試算表；實測 2026-10-08 為 20 分 36 秒）
-npm test                                    # 後端 290 passed（fail-closed、交易回滾、change_log、排行榜、主管機關對照、M1–M5 與第三輪回歸）
+npm test                                    # 後端 335 passed（fail-closed、交易回滾、change_log、排行榜、主管機關對照、M1–M5 與第三輪回歸）
 node scripts/verify-news-rss.mjs            # 媒體官方 RSS 打真網路逐家驗（抓得到／解析得出來／真的對得上委員）；只讀，不動 data/
 node scripts/verify-news-rss.mjs <url>      # 試別的 feed（例如比較 udn 的分類 id，見 DECISIONS D101）
 node scripts/import-news-csv.mjs --csv news-all.csv --out ../news-data   # 把「下載 CSV」的歷史新聞併進 news-data 分支的收集檔（只補還沒有的網址），推上去後任何伺服器第一次啟動都會匯入
@@ -121,7 +123,9 @@ node scripts/fetch-fb-posts.mjs --login     # 第一次用（或登入失效）�
 node scripts/fetch-fb-posts.mjs --verify    # 另外輸出 docs/fb-verification-<日期>.csv（頁面顯示名稱／追蹤者／比對結果）
 node scripts/fetch-fb-posts.mjs --write-sheet --key service_account.json   # 直接把日期與摘要寫回試算表（服務帳號需對試算表有編輯權）
 # 執行方式、排程的真實行為（關機不跑、補跑規則）與這一輪踩到的坑：docs/fb-daily-update.md
-npm --prefix web test                       # 前端 tsc -b＋煙霧／渲染煙霧，58 項全過
+npm --prefix web test                       # 前端 tsc -b＋煙霧 36 項＋渲染煙霧 197 項全過
+npm run check:rwd                           # 逐路由量手機（390）橫向溢出、頁籤垂直置中、席次圖圖例觸控高度 ≥44px（需要本機伺服器＋系統 Chrome）
+npm run check:rwd -- --widths 360,390,768,1024,1280   # 多個寬度；--strict 才把手機頁首高度（≤160px）也當失敗條件
 node server/ingest.mjs                      # 123 位委員 / 783 席次 / 5 會期 / 113 本會期名錄 + 議案／社群／新聞
 node server/ingest.mjs                      # 第二次：名錄 status=skipped（sha256 + 正規化版本未變）
 LY_SKIP_NEWS=1 LY_SKIP_BILLS=1 node server/ingest.mjs   # 只同步名錄（秒級，不打第三方）
@@ -197,17 +201,54 @@ powershell -File windows\install-tasks.ps1 -Action status
 | `windows\install-tasks.ps1` | `scripts/launchd/install.sh`（產生並載入 plist） |
 | `windows\lint.ps1` | （macOS 沒有對應；`bash -n` 那類檢查）PSScriptAnalyzer，含 PowerShell 5.1 相容語法 |
 
+**這一套目前沒有啟用（2026-10-09 決定）**：程式與說明留在 repo，`.github/workflows/ci.yml` 也會在
+`windows-latest` 上跑 `npm test`（讓它不會默默腐化），但**沒有任何機器註冊過排程或服務** ——
+不主動執行 `install-tasks.ps1` 就不會生效。已驗證的部分（測試、PSScriptAnalyzer 含 5.1 相容語法）
+與還沒在真機跑過的部分都列在 `windows\README-zh-TW.md` 第 9 節。
+
 ── 完整說明（前置、環境變數、防火牆、疑難排解、**上線前該實測的步驟**）見 [`windows/README-zh-TW.md`](windows/README-zh-TW.md)。
 
 本機（macOS）的每日抓取也改用跨平台實作：`scripts/fb-daily.sh` 現在只是 `exec node scripts/fb-daily.mjs` 的薄殼，
-通知改由 `scripts/notify-telegram.mjs` 送出（Node 內建 fetch，不再需要 curl）。launchd 的 plist 與用法都不變。
+通知改由 `scripts/notify-telegram.mjs` 送出（Node 內建 fetch，不再需要 curl）。launchd 的 plist 與用法都不變，
+**這條在 macOS 上是已生效的**（與 Windows 是否啟用無關）。
+
+## 手機（RWD）與席次圖圖例
+
+`npm run check:rwd` 是這一塊的守門程式（需要本機伺服器＋系統 Chrome），逐路由量三件事，任一不合格就 exit 1：
+橫向溢出（`scrollWidth == clientWidth`，容許 1px 次像素）、選取頁籤的文字垂直置中（實測偏移 ≤2px）、
+**席次圖圖例鈕的觸控高度 ≥44px**。`--strict` 才把手機頁首高度（現況 149px，希望 ≤160px）也當失敗條件。
+
+- **點席次圖的圖例＝切換黨籍篩選**（委員頁唯一的黨籍入口，見 `FilterBar` 的註解）。桌機圖與名錄在同一個視野；
+  手機（≤760px）點完會**自動把名錄捲到頂端**，並在名錄上方出現「只看X ✕」的膠囊。理由是實測：390×844 下
+  圖例在 y=616–697、名錄第一張卡在 y=780 以下，而手機扣掉瀏覽器工具列後可視高度只剩 650–700px ——
+  不捲的話使用者只看到 12px 圓點由綠轉灰，會以為「點圖例沒用」。
+- 「要不要捲、要不要播動畫」是 `web/src/lib/scroll.ts` 的**純函式**（真值表在 `web/scripts/smoke.ts`）；
+  真實的捲動行為要用無頭瀏覽器量（render smoke 是 server render、不執行 `useEffect`，量不到）。
+- 圖例數字在篩選時是「符合目前條件／該黨總席次」，`aria-label` 會講成完整句（畫面上的 `0／8` 讀起來像「0 席」）。
+
+## 對外提供（目前：只有 Tailscale，沒有公網）
+
+實際情況（2026-10-09 實查）：**只透過 `tailscale serve` 在 tailnet 內提供**，不是對外公開。
+
+```bash
+tailscale serve status   # https://mac-mini.tail1ac930.ts.net (tailnet only)  →  proxy http://127.0.0.1:8787
+npm run verify:pwa       # 走這個 HTTPS 來源驗 PWA（SW 註冊、/api/* 不進快取、離線外框）：實測全過
+```
+
+- **手機的 Tailscale 沒開就連不上**（`*.ts.net` 是 tailnet 內部名稱）—— 這是預期行為，不是服務壞掉。
+  畫面上會是紅色的「無法取得同步狀態（`/api/v1/health`）網路錯誤」，因為 Service Worker 會先把外殼從快取畫出來，
+  但 `/api/v1/*` 一定連不上（SW 刻意不快取 API）。
+- 要讓「沒開 Tailscale 的人也能看」就改成 **Funnel**（`tailscale funnel 443 on`）：會有公開網址、任何人拿到就能讀；
+  `POST /api/v1/sync` 仍受 `LY_SYNC_TOKEN` 保護，但讀取端點沒有驗證 —— 資料本身是公開的政府開放資料，
+  要不要這樣做是隱私與便利的取捨，還沒決定。
+- 開發機上另有區網模式（`LY_HOST=0.0.0.0`）：同步 API 會自動要求 token，見下一段的必要設定。
 
 ## 部署（尚未執行，待決定）
 
 1. **排程宿主**：Cloudflare Worker + D1 + Cron，或小 VPS + SQLite + cron。兩者都必須先做 30 分鐘 spike：從目標 runtime 打一次 `data.ly.gov.tw`（帶具名 UA），確認 TLS 與 WAF 都過。
 2. **前端**：`web/dist` 是純靜態檔，放 Pages/Vercel/任何空間。
-3. **程式已推上 GitHub**（`main` → `0f96ff7`，2026-10-02；前一次是 `bce854c`）。**部署本身還沒做**：
-   建立 Worker／VPS／Pages、對外發布 API 都還沒執行，記錄於 `DECISIONS.md`（D9）。
+3. **程式都在 GitHub 的 `main`**（持續更新，例：2026-10-09 的 Windows 支援與手機圖例）。**部署本身還沒做**：
+   建立 Worker／VPS／Pages、對外發布 API 都還沒執行，記錄於 `DECISIONS.md`（D9）；目前只有 tailnet 內的 Tailscale serve（上一節）。
 
 部署到非 loopback 時的**必要設定**（CR-7 已實作，2026-10-02）：
 
@@ -592,7 +633,8 @@ build 腳本會用「候選人數對不對」確認自己抓對欄位，對不�
 - **人口與得票關聯**：人口為 2026-08，晚於 2020／2024 選舉；屬區域層級相關（生態謬誤），不代表個人行為或因果。
 
 ### 開發環境注意
-- `npm test`（`node --test test/`）在 Node 22.22 會找不到 `test` 模組而失敗；本機 Node 26.10 正常（99 項全過）。
+- `package.json` 的 `engines` 是 Node ≥ 22.5，**實際請用 ≥ 22.13**（`node:sqlite` 這個版本之後才不用 `--experimental-sqlite`；`npm test` 在 Node 22.22 會找不到 `test` 模組而失敗，本機 Node 26.10 正常）。
+- 前端 `web/dist` 是 gitignored：改完前端要自己 `npm --prefix web run build`，本機伺服器（指到 `web/dist`）與 `check:rwd` 才吃到新畫面。
 - ~~端對端截圖中 CSV 匯出的檔名在 headless Chromium 顯示為 `download`（`downloadCsv` 立即 revoke object URL）~~
   → 2026-10-02 已修：`downloadCsv` 改為下載後延遲 1 秒才 `revokeObjectURL`（同一個 tick revoke，Firefox／Safari 有機會取消下載）。
 ## 第三輪 Code Review（2026-10-02）
