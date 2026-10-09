@@ -26,6 +26,11 @@ $ErrorActionPreference = 'Continue'
 $Root = Split-Path -Parent $PSScriptRoot
 Set-Location $Root
 
+# 打包版（scripts/pack-windows.mjs）內附 node：runtime\node.exe 優先，對方不必另外安裝 Node。
+$bundledNode = Join-Path $Root 'runtime\node.exe'
+if (Test-Path $bundledNode) { $env:PATH = (Split-Path $bundledNode) + ';' + $env:PATH }
+$Packaged = Test-Path (Join-Path $Root 'PACKAGED')
+
 if ($Port -le 0) {
   if ($env:PORT) { $Port = [int]$env:PORT } else { $Port = 8787 }
 }
