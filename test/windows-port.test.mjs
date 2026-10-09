@@ -140,7 +140,10 @@ test('Chrome：不再寫死 macOS 的 Chromium 路徑，Windows 也找得到（�
   const win = chromeCandidates('win32', { PROGRAMFILES: 'C:\\Program Files', LOCALAPPDATA: 'C:\\Users\\someone\\AppData\\Local' }, 'C:\\Users\\someone');
   assert.ok(win.some((p) => p.endsWith('chrome.exe')), 'Windows 要找到 chrome.exe');
   assert.ok(findChromePath({ platform: 'win32', env: { CHROME_PATH: 'D:\\chrome.exe' }, home: '.' }) === 'D:\\chrome.exe', 'CHROME_PATH 永遠優先');
-  assert.equal(findChromePath({ platform: 'win32', env: {}, home: join(tmpdir(), 'ly-no-such-home') }), null);
+  // env 要明確指到不存在的地方：env 留空時會退回 C:\Program Files，裝了 Chrome 的機器（含 CI 的 windows-latest）就找得到
+  const nowhere = join(tmpdir(), 'ly-no-such-home');
+  const emptyEnv = { PROGRAMFILES: nowhere, 'PROGRAMFILES(X86)': nowhere, LOCALAPPDATA: nowhere };
+  assert.equal(findChromePath({ platform: 'win32', env: emptyEnv, home: nowhere }), null);
 });
 
 test('Chrome：scripts/ 底下不可以再出現寫死的 /Users/<名字> 路徑', () => {
