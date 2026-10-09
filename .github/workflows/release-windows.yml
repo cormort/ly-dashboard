@@ -1,6 +1,8 @@
 # Windows 免安裝版：推 v* 標籤（例：git tag v1.0.0 && git push origin v1.0.0）就會建置 zip 並掛到 GitHub Release。
 # 也可以在 Actions 頁手動執行（workflow_dispatch），此時只產出 zip 當作 artifact，不建立 Release。
-# zip 內含官方 node.exe，解壓縮後雙擊 windows\start.cmd（或 windows\install.cmd 一鍵安裝＋啟動）。
+# 同時產出兩個 zip（都內附官方 node.exe）：
+#   ly-dashboard-windows-x64-*     完整版，解壓縮後雙擊 windows\install.cmd（或 start.cmd）
+#   ly-news-collector-windows-x64-*  只含新聞收集（給別人單獨部署，見 news-collector/），雙擊 install.cmd
 # 打包細節見 scripts/pack-windows.mjs。
 name: release-windows
 
@@ -23,16 +25,23 @@ jobs:
           node-version: '24'
       - run: npm --prefix web ci
       - run: node scripts/pack-windows.mjs
+      - run: node scripts/pack-windows.mjs --target news
       - uses: actions/upload-artifact@v4
         with:
           name: ly-dashboard-windows-x64
-          path: dist/ly-dashboard-windows-x64-*.zip
+          path: dist/*.zip
           if-no-files-found: error
       - name: 掛到 Release（只在推標籤時）
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" dist/ly-dashboard-windows-x64-*.zip \
-            --title "$GITHUB_REF_NAME" \
-            --notes "Windows 免安裝版（內附 Node）。解壓縮後雙擊 \`ly-dashboard\windows\install.cmd\` 一鍵安裝並啟動；只想試用就雙擊 \`start.cmd\`。說明見 windows/README-zh-TW.md。"
+          cat > release-notes.md <<'EOF'
+          Windows 免安裝版（內附 Node），兩個 zip：
+
+          - `ly-dashboard-windows-x64-*.zip`：完整版。解壓縮後雙擊 `ly-dashboard\windows\install.cmd` 一鍵安裝並啟動；只想試用就雙擊 `start.cmd`。說明見 windows/README-zh-TW.md。
+          - `ly-news-collector-windows-x64-*.zip`：只含新聞收集（每小時抓媒體 RSS，存成 `data\news\日期.ndjson`）。解壓縮後雙擊 `ly-news-collector\install.cmd`。說明見包內 README.txt。
+          EOF
+          gh release create "$GITHUB_REF_NAME" \
+            dist/ly-dashboard-windows-x64-*.zip dist/ly-news-collector-windows-x64-*.zip \
+            --title "$GITHUB_REF_NAME" --notes-file release-notes.md
