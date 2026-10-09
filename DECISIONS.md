@@ -869,3 +869,12 @@ T6 圖表／地圖、T7 粉專牆嵌入框（已看過沒破版，但沒改任�
 | 「0／8」讀起來像「0 席」 | 數字補 `aria-label`（符合目前條件 N 席，共 M 席），並在篩選時於說明文字多一句數字的讀法 | 螢幕閱讀器與工具提示要能糾正這個直覺；改文案比改版面便宜，也不會在桌機多一顆看不懂的數字 |
 | 圖例鈕只有 38px | 手機一律 44px（圖例與膠囊），並把「圖例 ≥ 44px」變成 `npm run check:rwd` 的失敗條件 | 38px 比這個站自己用在頁首導覽的 40px 還小。這種「樣式被改回去沒人會發現」的規則要自動檢查，理由同 D270 |
 | 決策放哪裡 | `web/src/lib/scroll.ts` 的純函式（`shouldScrollToDirectory`／`scrollBehaviorFor`）＋ render smoke 不驗捲動、只驗文案與膠囊 | render smoke 是 server render、不跑 `useEffect`，量不到捲動；把「要不要捲」抽成真值表測，真實行為留給無頭瀏覽器（實測：手機點完 scrollY 834、錨點 top 0、膠囊 44px；桌機 scrollY 0） |
+
+## D275：連不上時，錯誤卡要講出原因（Tailscale）並自動恢復
+
+| 岔路 | 選擇 | 理由 |
+| --- | --- | --- |
+| 手機沒開 Tailscale 時的錯誤卡 | 新增 `lib/connectionHint.ts`（純判斷）＋`components/ConnectionHint`：`network_error`／`timeout` 且來源是 `*.ts.net` → 「這個站只在 Tailscale 網路內（主機名）。請確認這台裝置的 Tailscale 已開啟 —— 連上之後會自動重新載入」；其他來源改講伺服器與網路 | 畫面原本只有「無法連線到 API 伺服器（network_error）」，使用者看到的是「網站壞了」；2026-10-09 查到的真正原因是手機沒開 Tailscale app。**只認這兩種錯誤碼**：HTTP 4xx/5xx 或壞 JSON 給連線建議會誤導。掛在共用的 `ErrorState` 上，所以頁首橫幅與各區塊的錯誤卡都有 |
+| 要不要自動重抓 | `hooks/useReconnectRefresh.ts`：錯誤期間照 2 秒→60 秒退避輪詢，並在 `online` 與 `visibilitychange → visible` 時立刻試一次；成功（active 變 false）就停 | Service Worker 會先回快取的外殼，所以連不上時畫面**是完整的、只缺資料**；原本 Tailscale 打開後程式不會自己去抓，要手動重整，看起來就像壞掉。實測：只丟一個 `online` 事件、不做任何人工操作，畫面自行恢復（錯誤卡消失、數字從「—」變成 18） |
+| 那句說明在手機上的排版 | ≤760px 讓「重試」自己佔一列（`flex-wrap` ＋ 全寬按鈕） | 加了說明之後文字欄被右側按鈕擠到 168px、變成 6 行；折版後 258px、4 行，且仍然沒有橫向溢出（390=390） |
+| 主機名稱哪裡來 | `window.location.hostname`（server render 回空字串），元件保留 `hostname` 覆寫參數只給測試用 | render smoke 沒有 `window`；有覆寫參數才能把 tailnet／非 tailnet／HTTP 錯誤三條分支都測到（真值表在 `web/scripts/smoke.ts`） |

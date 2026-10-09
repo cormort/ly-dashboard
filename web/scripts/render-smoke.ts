@@ -34,6 +34,8 @@ import { LegislatorGrid } from '../src/components/LegislatorGrid';
 import { SessionSelector } from '../src/components/SessionSelector';
 import { Hemicycle, seatLayout } from '../src/components/Hemicycle';
 import { PartyFilterChip } from '../src/components/PartyFilterChip';
+import { ConnectionHint, currentHostname } from '../src/components/ConnectionHint';
+import { ErrorState } from '../src/components/DataStates';
 import { HomePage } from '../src/pages/HomePage';
 import { BillsPage } from '../src/pages/BillsPage';
 import { SyncStatusBanner } from '../src/components/SyncStatusBanner';
@@ -765,6 +767,45 @@ console.log('\n— PartyFilterChip —');
     '<button',
   ]);
   check('膠囊不是裝飾：沒有任何連結或假資料', !chipHtml.includes('<a '));
+}
+
+console.log('\n— ConnectionHint（連不上時的那句話）—');
+{
+  const tailnet = 'mac-mini.tail1ac930.ts.net';
+  expectAll(
+    'tailnet 的站（手機沒開 Tailscale 的情境）：直接叫使用者去開，並說會自動重載',
+    render(createElement(ConnectionHint, { code: 'network_error', hostname: tailnet })),
+    ['Tailscale', tailnet, '自動重新載入', 'class="connection-hint"'],
+  );
+  expectAll(
+    '非 tailnet（區網／本機）：提醒伺服器與網路，不要亂提 Tailscale',
+    render(createElement(ConnectionHint, { code: 'network_error', hostname: '192.168.1.20' })),
+    ['伺服器還在執行'],
+  );
+  check(
+    '非 tailnet 的說明不要提到 Tailscale',
+    !render(createElement(ConnectionHint, { code: 'network_error', hostname: '192.168.1.20' })).includes('Tailscale'),
+  );
+  check(
+    'HTTP 錯誤（不是連線問題）不給連線建議',
+    render(createElement(ConnectionHint, { code: 'http_500', hostname: tailnet })) === '',
+  );
+  check('沒有錯誤碼就不畫', render(createElement(ConnectionHint, { code: null, hostname: tailnet })) === '');
+  check('server render 沒有 window：主機名稱退回空字串而不是炸掉', currentHostname() === '');
+
+  const errorCard = render(
+    createElement(ErrorState, {
+      error: new ApiError('無法連線到 API 伺服器', { code: 'network_error' }),
+      onRetry: () => undefined,
+      title: '無法取得同步狀態（/api/v1/health）',
+    }),
+  );
+  expectAll('錯誤卡同時給出「怎麼了」與「該做什麼」', errorCard, [
+    '無法取得同步狀態（/api/v1/health）',
+    'network_error',
+    'class="connection-hint"',
+    '重試',
+  ]);
 }
 
 console.log('\n— CommitteeChart —');

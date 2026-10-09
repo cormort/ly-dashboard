@@ -1,5 +1,6 @@
 import { AlertTriangle, Inbox, Loader2, RotateCcw } from 'lucide-react';
 import type { ApiError } from '../api/client';
+import { ConnectionHint } from './ConnectionHint';
 
 /**
  * 每個資料區塊的四態（loading / ready / empty / error）共用元件。
@@ -43,6 +44,8 @@ export function ErrorState({
       <div>
         <b>{title}</b>
         <small>{detail}</small>
+        {/* 「連不上」時多講一句最可能的原因與該做什麼（例如：請開啟手機的 Tailscale） */}
+        <ConnectionHint code={error?.code ?? null} />
       </div>
       <button type="button" onClick={onRetry}>
         <RotateCcw aria-hidden="true" />

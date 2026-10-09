@@ -9,6 +9,7 @@ import { legislatorDetailUrl } from './lib/legislators';
 import { SyncStatusBanner } from './components/SyncStatusBanner';
 import { OfflineNotice } from './components/OfflineNotice';
 import { useApi } from './hooks/useApi';
+import { useReconnectRefresh } from './hooks/useReconnectRefresh';
 import { useQueryState } from './hooks/useQueryState';
 import { useSync } from './hooks/useSync';
 import { syncRunningText } from './lib/format';
@@ -69,6 +70,13 @@ export default function App() {
   const meta = useApi<MetaResponse>(buildUrl('/meta'), { refreshToken });
   // 同步範圍與各來源上次同步時間（下拉選單用）；同步結束後 refreshToken 會讓它重抓
   const syncSources = useApi<SyncSourcesResponse>(buildUrl('/sync-sources'), { refreshToken });
+
+  // 連不上時自動重抓（退避排程＋恢復網路／切回前景立刻試）。手機沒開 Tailscale 的情況，
+  // 使用者把 Tailscale 打開之後畫面會自己恢復，不必手動重新整理。
+  useReconnectRefresh({
+    active: health.phase === 'error' || meta.phase === 'error' || syncSources.phase === 'error',
+    onRefresh: () => setRefreshToken((value) => value + 1),
+  });
   const scopeLabelOf = (id: string | null) => syncSources.data?.scopes.find((scope) => scope.id === id)?.label ?? null;
 
   const source = health.data?.meta.source ?? meta.data?.meta.source ?? null;

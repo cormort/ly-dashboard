@@ -237,7 +237,10 @@ npm run verify:pwa       # 走這個 HTTPS 來源驗 PWA（SW 註冊、/api/* �
 
 - **手機的 Tailscale 沒開就連不上**（`*.ts.net` 是 tailnet 內部名稱）—— 這是預期行為，不是服務壞掉。
   畫面上會是紅色的「無法取得同步狀態（`/api/v1/health`）網路錯誤」，因為 Service Worker 會先把外殼從快取畫出來，
-  但 `/api/v1/*` 一定連不上（SW 刻意不快取 API）。
+  但 `/api/v1/*` 一定連不上（SW 刻意不快取 API）。**錯誤卡現在會直接講出原因與該做什麼**
+  （「這個站只在 Tailscale 網路內（…）。請確認這台裝置的 Tailscale 已開啟 —— 連上之後會自動重新載入」），
+  而且連不上期間會自己退避重試（2 秒→60 秒），Tailscale 一連上就自動恢復，不必手動重整。
+  （判定在 `web/src/lib/connectionHint.ts`、重試在 `web/src/hooks/useReconnectRefresh.ts`。）
 - 要讓「沒開 Tailscale 的人也能看」就改成 **Funnel**（`tailscale funnel 443 on`）：會有公開網址、任何人拿到就能讀；
   `POST /api/v1/sync` 仍受 `LY_SYNC_TOKEN` 保護，但讀取端點沒有驗證 —— 資料本身是公開的政府開放資料，
   要不要這樣做是隱私與便利的取捨，還沒決定。

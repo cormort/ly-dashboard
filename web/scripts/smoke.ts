@@ -30,6 +30,8 @@ import {
 import { legislatorDetailUrl } from '../src/lib/legislators.ts';
 import { billStage } from '../src/lib/billStage.ts';
 import { MOBILE_MAX_WIDTH, scrollBehaviorFor, shouldScrollToDirectory } from '../src/lib/scroll.ts';
+import { connectionHint, isTailnetHost } from '../src/lib/connectionHint.ts';
+import { RECONNECT_DELAYS_MS, isVisible, reconnectDelayMs } from '../src/hooks/useReconnectRefresh.ts';
 import { toCsv } from '../src/lib/csv.ts';
 import { DEFAULT_FONT_SCALE_INDEX, FONT_SCALES, loadFontScaleIndex } from '../src/lib/fontScale.ts';
 import { latestSessionId, sessionLabelIndex, sessionScopeLabel } from '../src/lib/sessions.ts';
@@ -539,6 +541,32 @@ async function main(): Promise<void> {
   await check('減少動態效果時仍然要捲，只是不播動畫', () => {
     assert.equal(scrollBehaviorFor(false), 'smooth');
     assert.equal(scrollBehaviorFor(true), 'auto', '捲動是功能不是裝飾，不取消');
+  });
+
+  await check('連不上的說明：tailnet 的站要提醒開 Tailscale，其他情況提醒伺服器與網路', () => {
+    const tailnet = 'mac-mini.tail1ac930.ts.net';
+    assert.equal(isTailnetHost(tailnet), true);
+    assert.equal(isTailnetHost('127.0.0.1'), false);
+    assert.equal(isTailnetHost(''), false);
+    assert.equal(isTailnetHost(undefined as unknown as string), false);
+    assert.match(String(connectionHint({ hostname: tailnet, code: 'network_error' })), /Tailscale 已開啟/);
+    assert.match(String(connectionHint({ hostname: tailnet, code: 'timeout' })), /Tailscale/, '同一個來源的兩種失敗都先指向 Tailscale');
+    assert.match(String(connectionHint({ hostname: '192.168.1.20', code: 'network_error' })), /伺服器還在執行/);
+    assert.match(String(connectionHint({ hostname: '192.168.1.20', code: 'timeout' })), /連線逾時/);
+    assert.equal(connectionHint({ hostname: tailnet, code: 'http_500' }), null, 'HTTP 錯誤不是連線問題，不要亂給建議');
+    assert.equal(connectionHint({ hostname: tailnet, code: 'bad_json' }), null);
+    assert.equal(connectionHint({ hostname: tailnet, code: null }), null);
+  });
+
+  await check('連不上時的自動重抓：先快後慢、上限 60 秒；只有切回前景才重抓', () => {
+    assert.deepEqual([...RECONNECT_DELAYS_MS], [2000, 5000, 10000, 20000, 30000, 60000]);
+    assert.equal(reconnectDelayMs(1), 2000);
+    assert.equal(reconnectDelayMs(3), 10000);
+    assert.equal(reconnectDelayMs(99), 60000, '超過表格長度就固定用最後一個（每分鐘試一次）');
+    assert.equal(reconnectDelayMs(0), 2000, '壞值退回第一個');
+    assert.equal(reconnectDelayMs(Number.NaN), 2000);
+    assert.equal(isVisible('visible'), true);
+    assert.equal(isVisible('hidden'), false, '背景分頁不要浪費請求');
   });
 
   console.log(`\n全部通過：${passed} 項`);

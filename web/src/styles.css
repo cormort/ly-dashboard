@@ -351,6 +351,8 @@ header nav, .subnav-row { position: relative; }
 .state-block.error small { color: var(--error); }
 .state-block > div { flex: 1; min-width: 0; }
 .state-block.error button { margin-left: auto; white-space: nowrap; flex: none; }
+/* 「連不上」的原因說明：跟錯誤訊息同一塊，用一條細線分隔，不要讓它看起來像另一個錯誤 */
+.connection-hint { display: block; margin-top: 6px; padding-top: 6px; border-top: 1px solid color-mix(in srgb, currentColor 30%, transparent); }
 .state-block.loading { background: var(--surface-2); color: var(--ink-2); }
 .state-block.empty { background: var(--surface-2); color: var(--ink-2); }
 .state-block.empty b { font-weight: 600; }
@@ -932,6 +934,10 @@ button.chip:hover:not(:disabled) { border-color: var(--accent-line); background:
      （`npm run check:rwd` 會把圖例高度當失敗條件，不再靠肉眼。） */
   .party-legend button { min-height: 44px; }
   .active-filter .chip { min-height: 44px; }
+  /* 「連不上」的說明在手機上是一句長話：讓「重試」自己佔一列，文字才不會被擠成 6 行
+     （實測 390px：不折的話說明只有 168px 寬、6 行；折了之後約 250px、行數少一半） */
+  .state-block.error { flex-wrap: wrap; }
+  .state-block.error button { width: 100%; justify-content: center; margin-top: 8px; }
   .panel { padding: 14px var(--space-4); }
   .overlay aside { padding: 20px var(--space-4) 40px; }
   .detail-head img { width: 80px; height: 100px; }
