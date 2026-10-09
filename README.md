@@ -182,7 +182,9 @@ bash termux/install-shortcuts.sh     # 建立三個桌面捷徑（只需一次�
 ## Windows
 
 **免安裝版**：到 [Releases](https://github.com/cormort/ly-dashboard/releases) 下載 `ly-dashboard-windows-x64-*.zip`（內附 Node），
-解壓縮後雙擊 `windows\install.cmd` 一鍵安裝並啟動（細節見 `windows/README-zh-TW.md`）。以下是用 clone 的方式：
+解壓縮後雙擊 `windows\install.cmd` 一鍵安裝並啟動（細節見 `windows/README-zh-TW.md`）。
+只想要「每小時收集媒體 RSS 新聞」的話，改下載同一個 Release 裡的 `ly-news-collector-windows-x64-*.zip`
+（原始檔在 `news-collector/`，解壓縮後雙擊 `install.cmd`，不需系統管理員，資料存成 `data\news\日期.ndjson`）。以下是用 clone 的方式：
 
 需求：Windows 10/11、**Node.js 22.13 以上**（建議 24 LTS；22.5–22.12 的 `node:sqlite` 要 `--experimental-sqlite`）、
 Git（選用）、Google Chrome（只有每日抓粉專需要）。程式碼本身零 runtime 相依，不必編原生模組。
