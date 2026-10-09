@@ -118,7 +118,9 @@ test('launchd：plist 樣板要合法、要有 RunAtLoad 與 KeepAlive，且不�
   }
 });
 
-test('API 伺服器包裝腳本：連接埠已被占用時要 exit 0（否則 launchd 會 crash-loop）', { skip: NO_BASH }, async () => {
+// 這支是 launchd 的包裝，檢查埠用 lsof；Windows（Git Bash）沒有 lsof，對應的是 windows\server-supervisor.ps1。
+const NO_LSOF = process.platform === 'win32' ? 'Windows 沒有 lsof（macOS 的 launchd 包裝才用）' : false;
+test('API 伺服器包裝腳本：連接埠已被占用時要 exit 0（否則 launchd 會 crash-loop）', { skip: NO_BASH || NO_LSOF }, async () => {
   const server = createServer();
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const port = server.address().port;
