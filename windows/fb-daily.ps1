@@ -21,6 +21,11 @@ $ErrorActionPreference = 'Stop'
 $Root = Split-Path -Parent $PSScriptRoot
 Set-Location $Root
 
+# 打包版（scripts/pack-windows.mjs）內附 node：runtime\node.exe 優先，對方不必另外安裝 Node。
+$bundledNode = Join-Path $Root 'runtime\node.exe'
+if (Test-Path $bundledNode) { $env:PATH = (Split-Path $bundledNode) + ';' + $env:PATH }
+$Packaged = Test-Path (Join-Path $Root 'PACKAGED')
+
 $logDir = Join-Path $Root '.cache'
 if (-not (Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir -Force | Out-Null }
 $logPath = Join-Path $logDir 'fb-daily.log'
