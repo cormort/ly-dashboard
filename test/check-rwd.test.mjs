@@ -1,6 +1,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ROUTES, OVERFLOW_TOLERANCE, HEADER_MAX_PX, TAG_CENTER_MAX_PX, overflowOf, failures } from '../scripts/check-rwd.mjs';
+import {
+  ROUTES,
+  OVERFLOW_TOLERANCE,
+  HEADER_MAX_PX,
+  TAG_CENTER_MAX_PX,
+  TAP_TARGET_MIN_PX,
+  overflowOf,
+  failures,
+  tapTargetTooSmall,
+} from '../scripts/check-rwd.mjs';
 
 /**
  * 這支測試只驗「純函式」的部分（路由清單、溢出量、失敗判定）——
@@ -52,4 +61,26 @@ test('check-rwd：選取頁籤的文字偏離膠囊中心太多就算失敗（�
   ];
   assert.deepEqual(failures(rows).map((r) => r.route), ['/agencies'], '2px 以內算中文字墨跡的正常偏移，6px 就是真的沒置中');
   assert.deepEqual(failures(rows, { strict: true }).map((r) => r.route), ['/agencies'], '--strict 不影響這個判定');
+});
+
+test('check-rwd：圖例鈕（手機上的黨籍篩選入口）小於 44px 就算失敗', () => {
+  // 2026-10-09 實測：390px 下只有 38px。這條是那次回報的守門 —— 沒有它，樣式被人改回去不會有人發現。
+  assert.equal(TAP_TARGET_MIN_PX, 44);
+  assert.equal(tapTargetTooSmall(TAP_TARGET_MIN_PX), false, '剛好 44 可以');
+  assert.equal(tapTargetTooSmall(38), true);
+  assert.equal(tapTargetTooSmall(null), false, '量不到（其他路由沒有圖例）不算失敗');
+  assert.equal(tapTargetTooSmall(undefined), false);
+  assert.equal(tapTargetTooSmall('38'), false, '不是數字就不是我們量的值，不要亂判');
+
+  const rows = [
+    { width: 390, route: '/', overflow: 0, legendTap: null },
+    { width: 390, route: '/legislators', overflow: 0, legendTap: 44 },
+    { width: 390, route: '/legislators', overflow: 0, legendTap: 38 },
+  ];
+  assert.deepEqual(failures(rows.slice(0, 2)), [], '沒有圖例、或剛好 44px：都算過');
+  assert.deepEqual(
+    failures(rows).map((r) => r.legendTap),
+    [38],
+  );
+  assert.deepEqual(failures(rows, { strict: true }).map((r) => r.route), ['/legislators'], '--strict 不影響這個判定');
 });

@@ -6,12 +6,20 @@ import { CommitteeChart } from '../components/CommitteeChart';
 import { FilterBar } from '../components/FilterBar';
 import { Hemicycle } from '../components/Hemicycle';
 import { LegislatorGrid, type DirectoryMode } from '../components/LegislatorGrid';
+import { PartyFilterChip } from '../components/PartyFilterChip';
 import { SessionSelector } from '../components/SessionSelector';
 import { useApi, type ApiResource } from '../hooks/useApi';
 import type { QueryStateApi } from '../hooks/useQueryState';
 import type { TrackedApi } from '../hooks/useTracked';
 import { downloadCsv } from '../lib/csv';
 import { deriveRegions } from '../lib/legislators';
+import {
+  DIRECTORY_ANCHOR_ID,
+  prefersReducedMotion,
+  scrollBehaviorFor,
+  scrollToDirectory,
+  shouldScrollToDirectory,
+} from '../lib/scroll';
 import { latestSessionId, sessionScopeLabel } from '../lib/sessions';
 import { readPreference, writePreference } from '../lib/storage';
 import { ALL_SESSIONS, resetForSessionChange, resetForTermChange, type FilterState } from '../lib/urlState';
@@ -106,6 +114,22 @@ export function LegislatorsPage({ query, meta, tracked, refreshToken, onOpen }: 
     writePreference('directory-mode', next);
   };
 
+  /**
+   * 圖例點擊＝切換黨籍篩選。手機上點完要把名錄捲到眼前：
+   * 圖例在名錄上方，清單被篩掉的變化整個落在首屏之外（實測 390×844：圖例在 y=616–697、
+   * 名錄第一張卡在 y=780 以下，而手機實際可視高度只剩 650–700px）。
+   * 取消篩選時不捲 —— 那時候使用者正在圖上比較數字，把畫面拉走會干擾。
+   */
+  const handlePartyToggle = (next: string) => {
+    const party = filters.party === next ? null : next;
+    update({ party }, 'push');
+    if (!shouldScrollToDirectory({ selected: party !== null, viewportWidth: typeof window === 'undefined' ? 0 : window.innerWidth })) return;
+    // 等 React 重繪完再捲：清單高度會跟著篩選改變，太早捲會落在錯的位置
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => scrollToDirectory({ behavior: scrollBehaviorFor(prefersReducedMotion()) }));
+    });
+  };
+
   return (
     <>
       <div className="page-head">
@@ -136,44 +160,49 @@ export function LegislatorsPage({ query, meta, tracked, refreshToken, onOpen }: 
           roster={roster.data.items}
           matching={matching}
           party={filters.party}
-          onPartyToggle={(party) => update({ party: filters.party === party ? null : party }, 'push')}
+          onPartyToggle={handlePartyToggle}
           onOpen={onOpen}
         />
       ) : null}
 
-      <LegislatorGrid
-        legislators={list}
-        visible={visible}
-        isTracked={tracked.isTracked}
-        onToggleTrack={(l) => tracked.toggle(l.id)}
-        onOpen={onOpen}
-        sessionScopeLabel={scopeLabel}
-        hasFilters={hasFilters}
-        mode={mode}
-        onModeChange={changeMode}
-        onDownload={() => {
-          const items = (list.data?.items ?? []).filter(visible ?? (() => true));
-          downloadCsv(`legislators-${effectiveSession ?? 'all'}.csv`, [
-            ['姓名', '黨籍', '選區', '委員會', '召委', '提案數', '新聞數', '當選年', '得票數', '得票率', '領先票數', '領先百分點', '個人比政黨票（百分點）', '委員識別碼'],
-            ...items.map((l) => [
-              l.name,
-              l.party,
-              l.area_name,
-              l.committees.map((c) => c.id).join('、'),
-              l.is_convener ? '是' : '',
-              l.bill_count,
-              l.news_count,
-              l.election ? `${l.election.year}${l.election.by_election ? ' 補選' : ''}` : '',
-              l.election?.votes ?? '',
-              l.election?.pct ?? '',
-              l.election?.margin ?? '',
-              l.election?.margin_pct ?? '',
-              l.election?.party_list_over_pct ?? '',
-              l.id,
-            ]),
-          ]);
-        }}
-      />
+      {/* 名錄錨點：黨籍篩選的膠囊與名錄放在同一塊，手機點完圖例捲下來時兩者一起進到視野
+          （id 由 lib/scroll.ts 提供，捲動邏輯靠它找位置） */}
+      <div className="directory-anchor" id={DIRECTORY_ANCHOR_ID}>
+        {filters.party ? <PartyFilterChip party={filters.party} onClear={() => update({ party: null }, 'push')} /> : null}
+        <LegislatorGrid
+          legislators={list}
+          visible={visible}
+          isTracked={tracked.isTracked}
+          onToggleTrack={(l) => tracked.toggle(l.id)}
+          onOpen={onOpen}
+          sessionScopeLabel={scopeLabel}
+          hasFilters={hasFilters}
+          mode={mode}
+          onModeChange={changeMode}
+          onDownload={() => {
+            const items = (list.data?.items ?? []).filter(visible ?? (() => true));
+            downloadCsv(`legislators-${effectiveSession ?? 'all'}.csv`, [
+              ['姓名', '黨籍', '選區', '委員會', '召委', '提案數', '新聞數', '當選年', '得票數', '得票率', '領先票數', '領先百分點', '個人比政黨票（百分點）', '委員識別碼'],
+              ...items.map((l) => [
+                l.name,
+                l.party,
+                l.area_name,
+                l.committees.map((c) => c.id).join('、'),
+                l.is_convener ? '是' : '',
+                l.bill_count,
+                l.news_count,
+                l.election ? `${l.election.year}${l.election.by_election ? ' 補選' : ''}` : '',
+                l.election?.votes ?? '',
+                l.election?.pct ?? '',
+                l.election?.margin ?? '',
+                l.election?.margin_pct ?? '',
+                l.election?.party_list_over_pct ?? '',
+                l.id,
+              ]),
+            ]);
+          }}
+        />
+      </div>
 
       {/* 委員會組成與最近異動是補充資訊，預設收合，名錄才是這一頁的重點 */}
       <details className="panel secondary-details">

@@ -40,11 +40,23 @@ export const HEADER_MAX_PX = 160;
 /** 選取頁籤的文字中心允許偏離膠囊中心幾 px（中文字墨跡本身會偏 0.5px，所以留 2px） */
 export const TAG_CENTER_MAX_PX = 2;
 
+/**
+ * 觸控目標的最小高度（行動版公認值）。目前只量席次圖的圖例鈕（`/legislators`）：
+ * 2026-10-09 實測 390px 下只有 38px —— 比這個站自己用在頁首導覽的 40px 還小。
+ * 只有出現在該頁時才檢查（其他路由量到 null，不算失敗）。
+ */
+export const TAP_TARGET_MIN_PX = 44;
+
 /** 這條路由溢出幾 px（0＝沒有橫向捲動） */
 export function overflowOf(metrics) {
   const scroll = Number(metrics?.scrollWidth ?? 0);
   const client = Number(metrics?.clientWidth ?? 0);
   return Math.max(0, Math.round(scroll - client));
+}
+
+/** 量到的觸控目標高度夠不夠（量不到＝null，不判失敗） */
+export function tapTargetTooSmall(legendTap) {
+  return typeof legendTap === 'number' && Number.isFinite(legendTap) && legendTap < TAP_TARGET_MIN_PX;
 }
 
 /** 這條路由算不算失敗（只有「真的可以左右捲」才算；頁首高度另外用 --strict 判） */
@@ -53,6 +65,7 @@ export function failures(rows, { strict = false } = {}) {
     (r) =>
       r.overflow > OVERFLOW_TOLERANCE ||
       (r.tagOffset ?? 0) > TAG_CENTER_MAX_PX ||
+      tapTargetTooSmall(r.legendTap) ||
       (strict && (r.headerH ?? 0) > HEADER_MAX_PX),
   );
 }
@@ -91,6 +104,10 @@ const AUDIT = `(() => {
   }
   const worst = centers.slice().sort((x, y) => Math.abs(y.offset) - Math.abs(x.offset))[0] ?? null;
   const header = document.querySelector('header');
+  // 席次圖圖例鈕的觸控高度（只有 /legislators 有）：手機上這是切換黨籍唯一的入口，
+  // 實測 38px 比頁首導覽的 40px 還小。
+  const legend = [...document.querySelectorAll('.party-legend button')];
+  const legendTap = legend.length ? Math.round(Math.min(...legend.map((b) => b.getBoundingClientRect().height))) : null;
   return JSON.stringify({
     clientWidth: cw,
     scrollWidth: document.documentElement.scrollWidth,
@@ -98,6 +115,7 @@ const AUDIT = `(() => {
     top: over,
     tagOffset: worst ? Math.abs(worst.offset) : 0,
     tagWorst: worst,
+    legendTap: legendTap,
   });
 })()`;
 
@@ -163,23 +181,24 @@ async function main() {
           metrics = JSON.parse(await page.evaluate(AUDIT));
         } catch (error) {
           console.error(`✗ ${width}px ${route}：量不到（${String(error?.message ?? error).slice(0, 80)}）`);
-          rows.push({ width, route, overflow: -1, error: true, headerH: null, top: [], tagOffset: 0, tagWorst: null });
+          rows.push({ width, route, overflow: -1, error: true, headerH: null, top: [], tagOffset: 0, tagWorst: null, legendTap: null });
           continue;
         }
         const overflow = overflowOf(metrics);
-        const row = { width, route, overflow, headerH: metrics.headerH, top: metrics.top, tagOffset: metrics.tagOffset, tagWorst: metrics.tagWorst };
+        const row = { width, route, overflow, headerH: metrics.headerH, top: metrics.top, tagOffset: metrics.tagOffset, tagWorst: metrics.tagWorst, legendTap: metrics.legendTap ?? null };
         rows.push(row);
         const offCenter = (metrics.tagOffset ?? 0) > TAG_CENTER_MAX_PX;
-        const bad = overflow > OVERFLOW_TOLERANCE || offCenter;
+        const smallTap = tapTargetTooSmall(row.legendTap);
+        const bad = overflow > OVERFLOW_TOLERANCE || offCenter || smallTap;
         const tag = bad ? '✗' : '✓';
-        const detail = bad
-          ? `（${overflow > OVERFLOW_TOLERANCE ? `最寬：${metrics.top.map((t) => `${t.sel} ${t.w}px${t.nowrap ? ' nowrap' : ''}`).join('、')}` : ''}${
-              offCenter && metrics.tagWorst
-                ? `${overflow > OVERFLOW_TOLERANCE ? '；' : ''}頁籤「${metrics.tagWorst.label}」文字偏 ${metrics.tagWorst.offset}px（膠囊 ${metrics.tagWorst.pill}px／文字 ${metrics.tagWorst.line}px）`
-                : ''
-            }）`
-          : '';
-        console.log(`${tag} ${String(width).padStart(4)}px ${route.padEnd(22)} 溢出 ${String(overflow).padStart(4)}px  頁首 ${String(metrics.headerH ?? '-').padStart(4)}px  頁籤偏移 ${String(metrics.tagOffset ?? 0).padStart(4)}px ${detail}`);
+        const notes = [];
+        if (overflow > OVERFLOW_TOLERANCE) notes.push(`最寬：${metrics.top.map((t) => `${t.sel} ${t.w}px${t.nowrap ? ' nowrap' : ''}`).join('、')}`);
+        if (offCenter && metrics.tagWorst) notes.push(`頁籤「${metrics.tagWorst.label}」文字偏 ${metrics.tagWorst.offset}px（膠囊 ${metrics.tagWorst.pill}px／文字 ${metrics.tagWorst.line}px）`);
+        if (smallTap) notes.push(`圖例鈕只有 ${row.legendTap}px（要 ≥ ${TAP_TARGET_MIN_PX}px）`);
+        const detail = notes.length ? `（${notes.join('；')}）` : '';
+        console.log(
+          `${tag} ${String(width).padStart(4)}px ${route.padEnd(22)} 溢出 ${String(overflow).padStart(4)}px  頁首 ${String(metrics.headerH ?? '-').padStart(4)}px  頁籤偏移 ${String(metrics.tagOffset ?? 0).padStart(4)}px  圖例 ${String(row.legendTap ?? '-').padStart(3)}px ${detail}`,
+        );
         if (bad || opts.shots) {
           mkdirSync(shotsDir, { recursive: true });
           const name = `${width}${route.replace(/\//g, '_') || '_root'}.png`;
@@ -197,16 +216,27 @@ async function main() {
   if (!failed.length) {
     const tallest = rows.reduce((max, r) => Math.max(max, r.headerH ?? 0), 0);
     const worstTag = rows.reduce((max, r) => Math.max(max, r.tagOffset ?? 0), 0);
-    console.log(`✅ ${rows.length} 個「寬度 × 路由」組合都沒有橫向捲動、頁籤也都垂直置中（最高的頁首 ${tallest}px、頁籤最大偏移 ${worstTag}px）`);
+    const taps = rows.map((r) => r.legendTap).filter((v) => typeof v === 'number');
+    const tapText = taps.length ? `、最小的圖例觸控高度 ${Math.min(...taps)}px` : '';
+    console.log(`✅ ${rows.length} 個「寬度 × 路由」組合都沒有橫向捲動、頁籤也都垂直置中${tapText}（最高的頁首 ${tallest}px、頁籤最大偏移 ${worstTag}px）`);
     if (tallest > HEADER_MAX_PX && !opts.strict) {
       console.log(`ℹ️ 有頁首高於 ${HEADER_MAX_PX}px（手機希望 ≤128px）；要用它當失敗條件請加 --strict`);
     }
     return;
   }
   const overflowed = failed.filter((r) => r.error || r.overflow > OVERFLOW_TOLERANCE);
-  const offCenter = failed.filter((r) => !r.error && r.overflow <= OVERFLOW_TOLERANCE && (r.tagOffset ?? 0) > TAG_CENTER_MAX_PX);
-  const tooTall = failed.filter((r) => !r.error && r.overflow <= OVERFLOW_TOLERANCE && (r.tagOffset ?? 0) <= TAG_CENTER_MAX_PX);
+  const smallTap = failed.filter((r) => !overflowed.includes(r) && tapTargetTooSmall(r.legendTap));
+  const offCenter = failed.filter(
+    (r) => !overflowed.includes(r) && !smallTap.includes(r) && (r.tagOffset ?? 0) > TAG_CENTER_MAX_PX,
+  );
+  const tooTall = failed.filter((r) => !overflowed.includes(r) && !smallTap.includes(r) && !offCenter.includes(r));
   if (overflowed.length) console.log(`❌ ${overflowed.length} 個組合會橫向捲動：${overflowed.map((r) => `${r.width}px ${r.route}`).join('、')}`);
+  if (smallTap.length)
+    console.log(
+      `❌ ${smallTap.length} 個組合的圖例鈕小於 ${TAP_TARGET_MIN_PX}px（手指按不準）：${smallTap
+        .map((r) => `${r.width}px ${r.route}（${r.legendTap}px）`)
+        .join('、')}`,
+    );
   if (offCenter.length)
     console.log(
       `❌ ${offCenter.length} 個組合的選取頁籤文字沒垂直置中：${offCenter

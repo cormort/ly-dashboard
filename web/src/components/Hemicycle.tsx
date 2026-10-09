@@ -144,7 +144,12 @@ export function Hemicycle({ roster, matching, party, onPartyToggle, onOpen }: He
                 <span className="party-name" title={t.name}>
                   {style.short}
                 </span>
-                <span className="party-count">
+                {/* 有篩選時顯示「符合／該黨總席次」。aria-label 講清楚是哪一個數字 ——
+                    畫面上的「0／8」讀起來像「0 席」，螢幕閱讀器與工具提示要能糾正這個印象。 */}
+                <span
+                  className="party-count"
+                  aria-label={matching ? `符合目前條件 ${t.lit} 席，共 ${t.total} 席` : `共 ${t.total} 席`}
+                >
                   {matching ? `${t.lit}／${t.total}` : t.total}
                 </span>
               </button>
@@ -152,7 +157,12 @@ export function Hemicycle({ roster, matching, party, onPartyToggle, onOpen }: He
           );
         })}
       </ul>
-      <p className="hemicycle-note muted">外圈加框為本會期召委。滑鼠可直接點席次開啟委員檔案；鍵盤使用者請用下方名錄或列表檢視。</p>
+      {/* 手機上圖例是唯一能切換黨籍的地方，但「點下去會發生什麼」看不出來 —— 明講一次。 */}
+      <p className="hemicycle-note muted">
+        {`點上方圖例可只看該黨（再點一次取消）${
+          matching ? '；數字為「符合目前條件／該黨總席次」' : ''
+        }。外圈加框為本會期召委。滑鼠可直接點席次開啟委員檔案；鍵盤使用者請用下方名錄或列表檢視。`}
+      </p>
     </section>
   );
 }

@@ -29,6 +29,7 @@ import {
 } from '../src/api/client.ts';
 import { legislatorDetailUrl } from '../src/lib/legislators.ts';
 import { billStage } from '../src/lib/billStage.ts';
+import { MOBILE_MAX_WIDTH, scrollBehaviorFor, shouldScrollToDirectory } from '../src/lib/scroll.ts';
 import { toCsv } from '../src/lib/csv.ts';
 import { DEFAULT_FONT_SCALE_INDEX, FONT_SCALES, loadFontScaleIndex } from '../src/lib/fontScale.ts';
 import { latestSessionId, sessionLabelIndex, sessionScopeLabel } from '../src/lib/sessions.ts';
@@ -523,6 +524,21 @@ async function main(): Promise<void> {
   });
   await check('CSV：逗號、引號、換行要跳脫', () => {
     assert.equal(toCsv([['a,b', 'say "hi"', 'x\ny', null, 3]]), '"a,b","say ""hi""","x\ny",,3');
+  });
+
+  await check('點圖例之後要不要把名錄捲到眼前：只有手機，而且只有「選」的時候', () => {
+    // 390×844 實測：圖例在 y=616–697、名錄第一張卡在 y=780 以下，而手機可視高度只剩 650–700px
+    // —— 點下去真正變的是看不到的清單，所以要捲（見 lib/scroll.ts）。
+    assert.equal(shouldScrollToDirectory({ selected: true, viewportWidth: 390 }), true);
+    assert.equal(shouldScrollToDirectory({ selected: true, viewportWidth: MOBILE_MAX_WIDTH }), true, '760 是界線本身，算手機');
+    assert.equal(shouldScrollToDirectory({ selected: true, viewportWidth: 761 }), false, '桌機／平板圖與清單同一個視野，捲動只會干擾');
+    assert.equal(shouldScrollToDirectory({ selected: false, viewportWidth: 390 }), false, '取消篩選時不捲（使用者正在圖上比較數字）');
+    assert.equal(shouldScrollToDirectory({ selected: true, viewportWidth: 0 }), false, '量不到寬度（SSR）就不要捲');
+  });
+
+  await check('減少動態效果時仍然要捲，只是不播動畫', () => {
+    assert.equal(scrollBehaviorFor(false), 'smooth');
+    assert.equal(scrollBehaviorFor(true), 'auto', '捲動是功能不是裝飾，不取消');
   });
 
   console.log(`\n全部通過：${passed} 項`);

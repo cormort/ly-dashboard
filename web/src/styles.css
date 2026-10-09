@@ -445,6 +445,21 @@ header nav, .subnav-row { position: relative; }
 .party-legend button[aria-pressed='true'] .swatch { background: #fff; }
 .hemicycle-note { grid-column: 1 / -1; margin: 0; font-size: var(--fs-sm); }
 
+/* 「目前只看某個黨」的膠囊：手機點完圖例、畫面捲到名錄之後，圖例已經在螢幕外，
+   這一顆就是那時候唯一看得到、也唯一能一眼取消的地方（見 lib/scroll.ts 的理由）。 */
+.directory-anchor { display: grid; gap: var(--space-3); }
+.active-filter { display: flex; flex-wrap: wrap; gap: 6px; }
+.active-filter .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 36px;
+  color: var(--accent-ink);
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+.active-filter .chip svg { width: 14px; height: 14px; }
+
 /* ---------- 名錄 ---------- */
 .segmented { display: inline-flex; }
 .segmented button { border-radius: 0; }
@@ -911,6 +926,12 @@ button.chip:hover:not(:disabled) { border-color: var(--accent-line); background:
   h1 { font-size: var(--fs-2xl); }
   .hemicycle { grid-template-columns: 1fr; padding: var(--space-4); }
   .party-legend { grid-template-columns: 1fr 1fr; }
+  /* 觸控目標：圖例鈕實測只有 38px，比這個站自己用在頁首導覽的 40px 還小；
+     46→44px 是行動版公認的最小值，這裡一次補到 44。膠囊也一起放大 ——
+     它是畫面捲到名錄之後唯一的「取消只看某黨」入口。
+     （`npm run check:rwd` 會把圖例高度當失敗條件，不再靠肉眼。） */
+  .party-legend button { min-height: 44px; }
+  .active-filter .chip { min-height: 44px; }
   .panel { padding: 14px var(--space-4); }
   .overlay aside { padding: 20px var(--space-4) 40px; }
   .detail-head img { width: 80px; height: 100px; }

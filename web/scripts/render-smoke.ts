@@ -33,6 +33,7 @@ import { FundsPage } from '../src/pages/FundsPage';
 import { LegislatorGrid } from '../src/components/LegislatorGrid';
 import { SessionSelector } from '../src/components/SessionSelector';
 import { Hemicycle, seatLayout } from '../src/components/Hemicycle';
+import { PartyFilterChip } from '../src/components/PartyFilterChip';
 import { HomePage } from '../src/pages/HomePage';
 import { BillsPage } from '../src/pages/BillsPage';
 import { SyncStatusBanner } from '../src/components/SyncStatusBanner';
@@ -737,11 +738,34 @@ expectAll('席次圖：文字替代、亮起數、圖例按鈕狀態、召委外
   'aria-label="依黨籍篩選"',
   'aria-pressed="true"',
   '<title>測試委員乙',
+  // 「0／8」讀起來像「0 席」：畫面上的分數要用 aria-label 講清楚它是「符合／全部」
+  'aria-label="符合目前條件 0 席，共 1 席"',
+  // 圖例是手機上唯一能切換黨籍的地方，說明文字要把這件事講出來
+  '點上方圖例可只看該黨（再點一次取消）',
+  '數字為「符合目前條件／該黨總席次」',
 ]);
 check('不符合的席次變淡', hemiHtml.includes('var(--seat-off)'));
 check('無篩選時全部亮起', !render(
   createElement(Hemicycle, { roster: [LEGISLATOR, B], matching: null, party: null, onPartyToggle: () => undefined, onOpen: () => undefined }),
 ).includes('var(--seat-off)'));
+check(
+  '無篩選時不談「符合／全部」的讀法（數字就是席次數）',
+  !render(
+    createElement(Hemicycle, { roster: [LEGISLATOR, B], matching: null, party: null, onPartyToggle: () => undefined, onOpen: () => undefined }),
+  ).includes('數字為「符合目前條件／該黨總席次」'),
+);
+
+console.log('\n— PartyFilterChip —');
+{
+  // 手機點完圖例、畫面捲到名錄之後，圖例已經在螢幕外 —— 這一顆是那時候唯一的取消入口
+  const chipHtml = render(createElement(PartyFilterChip, { party: '測試政黨B', onClear: () => undefined }));
+  expectAll('黨籍膠囊：寫出被選的黨，而且本身是可點的清除鈕', chipHtml, [
+    '只看測試政黨B',
+    'aria-label="清除只看測試政黨B"',
+    '<button',
+  ]);
+  check('膠囊不是裝飾：沒有任何連結或假資料', !chipHtml.includes('<a '));
+}
 
 console.log('\n— CommitteeChart —');
 const chartHtml = render(
