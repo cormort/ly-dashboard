@@ -11,11 +11,15 @@
 import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { findChromePath } from './find-chrome.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const EXE =
-  process.env.CHROME_PATH ||
-  '/Users/hermes/Library/Caches/ms-playwright/chromium-1223/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing';
+// 不再寫死某一台 Mac 的 Chromium 路徑（Windows 版一定找不到）；照平台找系統 Chrome。
+const EXE = findChromePath();
+if (!EXE) {
+  console.error('找不到 Chrome 執行檔。請安裝 Chrome，或用 CHROME_PATH 指定執行檔路徑。');
+  process.exit(1);
+}
 const TARGET = process.env.PWA_URL || 'https://mac-mini.tail1ac930.ts.net/';
 const SHOT = process.env.PWA_SHOT || join(HERE, '..', '.cache', 'pwa-offline.png');
 

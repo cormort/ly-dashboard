@@ -846,3 +846,15 @@ T6 圖表／地圖、T7 粉專牆嵌入框（已看過沒破版，但沒改任�
 | 會不會與預算審議重複算 | 從 `budget` 拆出來變成新的 `submitted` 來源，**件數相加不變**（主計總處：預算審議 18 ＋ 機關檢送 90 ＝ 原本 108） | 預算頁本來就預設「只算預算案」（`scopeCategories`），決議案與定期報告要切「含報告類」才看得到 —— 兩個頁面跟預算頁用同一套語意才不會互相打臉；另外兩個區塊如果把同一批資料各算一次，使用者（審計背景）會立刻發現數字對不上 |
 | 「看更多」連到哪 | `/budget?category=預(決) 算決議案、定期報告&proposer=<機關>&scope=all` | 這一類在預算頁有完整的清單與審議進度。**必須帶 `scope=all`**：只帶 category 的話預設範圍仍是「只算預算案」，使用者會看到一件都沒有的空頁（實測踩到過） |
 | 前端怎麼共用類別字串 | 由 `BudgetPage` 匯出 `AGENCY_REPORT_CATEGORY`，總覽與我的機關都 import | 這個類別名稱是上游（g0v）的分類值，前端原本就有一份（`CATEGORY_LABEL`）；集中在一個常數，改上游分類時只改一處 |
+
+## D273：Windows 部署（同一份 Node 實作，只有排程與啟動腳本分平台）
+
+| 岔路 | 選擇 | 理由 |
+| --- | --- | --- |
+| 每日抓取要為 Windows 再寫一份 PowerShell 嗎 | **不寫**：把它搬到 Node（`scripts/fb-daily.mjs`），`scripts/fb-daily.sh` 縮成 `exec node …` 的薄殼；Windows 由 `windows\fb-daily.ps1` 呼叫同一支 | 原本那 250 行用的是 Windows 沒有的東西（`source`、`mkdir` 當鎖、`find -mmin`、`sed`、`awk`、`trap`）。寫第二份等於同一套邏輯兩個檔案，之後修一邊忘一邊；搬到 Node 後兩平台共用，且既有 launchd plist 與 shell 測試都還指著 `fb-daily.sh`，薄殼讓它們一行都不用改 |
+| 通知怎麼送 | 新增 `scripts/notify-telegram.mjs`（Node 內建 fetch），`.sh` 版留著不刪 | 行為要一致（`--dry-run`、沒有憑證只印不送、離開碼 0/1/2），介面也一致；另外 `.sh` 版的 `source` 會把憑證檔當程式執行，`.mjs` 只認 `KEY=VALUE` |
+| 常駐機制 | 工作排程器 + `windows\server-supervisor.ps1`（自己寫重啟迴圈），不用 NSSM／pm2 | 那些是第三方相依，而這裡要的只是「非 0 離開就重啟、睡一下、最多 60 秒」；`ly-dashboard-server.sh` 的關鍵語意（埠已被占用就 exit 0，不搶、不當失敗）照樣搬過來，否則排程器的「失敗重試」會變成無限迴圈 |
+| 排程的觸發方式 | 兩個工作都設 `LogonType Interactive`（只在使用者登入時執行）；每日抓取加 `-StartWhenAvailable`（錯過補跑） | 抓粉專要讀**已登入的 Chrome**，伺服器也要在使用者工作階段裡（跟 LaunchAgent 同一個語意）；`-StartWhenAvailable` 對應 macOS `StartCalendarInterval` 的「睡著錯過、醒來補跑」 |
+| Chrome 執行檔路徑 | 新增 `scripts/find-chrome.mjs`，`gen-pwa-icons.mjs`／`verify-pwa.mjs` 不再寫死 Playwright 快取的 Chromium 路徑 | 原本那條是某一台 Mac 的路徑，換機器（更不用說 Windows）就找不到；改成照平台找系統 Chrome，`CHROME_PATH` 仍可覆寫 |
+| Windows 上沒有 bash／plutil 的測試 | `test/shell-scripts.test.mjs` 偵測不到工具就**跳過那幾條**，純 JS 的檢查照跑；另加 `test/windows-port.test.mjs` 守住平台假設（不寫死路徑、單一實作、排程設定、鎖的三態、通知離開碼） | 「紅燈但其實沒壞」會讓人開始忽略 CI，久了真的壞掉也看不出來 |
+| 沒在真機驗證怎麼辦 | 加 `.github/workflows/ci.yml`：ubuntu／macos／**windows** 三個平台都跑 `npm test`；`windows/README-zh-TW.md` 明列「上線前該實測的五步」與「還沒驗證的三件事」 | 這一份是照 macOS 行為逐項對照寫的，沒把握的地方要標明而不是假裝驗過；CI 是唯一能真的在 Windows 上跑一次的路徑 |

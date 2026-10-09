@@ -175,6 +175,33 @@ bash termux/install-shortcuts.sh     # 建立三個桌面捷徑（只需一次�
 注意：伺服器要保持執行，每日排程才會跑；`git pull` 需要 GitHub Token（私有儲存庫），可用 `git config --global credential.helper store` 記住。
 捷徑視窗可能帶 `NODE_ENV=production`，`launch.sh` 已明確覆寫，否則 npm 會略過 `tsc`/`vite` 導致 build 失敗。
 
+## Windows
+
+需求：Windows 10/11、**Node.js 22.13 以上**（建議 24 LTS；22.5–22.12 的 `node:sqlite` 要 `--experimental-sqlite`）、
+Git（選用）、Google Chrome（只有每日抓粉專需要）。程式碼本身零 runtime 相依，不必編原生模組。
+
+```powershell
+git clone https://github.com/cormort/ly-dashboard.git C:\ly-dashboard
+cd C:\ly-dashboard
+windows\start.cmd                                  # 雙擊也可以；只綁 127.0.0.1
+windows\start-lan.cmd                              # 同一個區網的人可以連（防火牆要放行 8787）
+powershell -File windows\install-tasks.ps1         # 常駐：登入時啟動伺服器 + 每天 08:05 抓粉專
+powershell -File windows\install-tasks.ps1 -Action status
+```
+
+| 檔案 | 對應 macOS |
+| --- | --- |
+| `windows\start.ps1` / `start.cmd` / `start-lan.cmd` | `start.command` / `start-lan.command` |
+| `windows\server-supervisor.ps1` | launchd `KeepAlive` + `scripts/ly-dashboard-server.sh` |
+| `windows\fb-daily.ps1` | `scripts/fb-daily.sh`（薄殼，同一份 `scripts/fb-daily.mjs`） |
+| `windows\install-tasks.ps1` | `scripts/launchd/install.sh`（產生並載入 plist） |
+| `windows\lint.ps1` | （macOS 沒有對應；`bash -n` 那類檢查）PSScriptAnalyzer，含 PowerShell 5.1 相容語法 |
+
+── 完整說明（前置、環境變數、防火牆、疑難排解、**上線前該實測的步驟**）見 [`windows/README-zh-TW.md`](windows/README-zh-TW.md)。
+
+本機（macOS）的每日抓取也改用跨平台實作：`scripts/fb-daily.sh` 現在只是 `exec node scripts/fb-daily.mjs` 的薄殼，
+通知改由 `scripts/notify-telegram.mjs` 送出（Node 內建 fetch，不再需要 curl）。launchd 的 plist 與用法都不變。
+
 ## 部署（尚未執行，待決定）
 
 1. **排程宿主**：Cloudflare Worker + D1 + Cron，或小 VPS + SQLite + cron。兩者都必須先做 30 分鐘 spike：從目標 runtime 打一次 `data.ly.gov.tw`（帶具名 UA），確認 TLS 與 WAF 都過。

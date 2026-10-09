@@ -9,12 +9,12 @@
 import { mkdirSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { findChromePath } from './find-chrome.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const OUT = join(HERE, '..', 'web', 'public');
-const EXE =
-  process.env.CHROME_PATH ||
-  '/Users/hermes/Library/Caches/ms-playwright/chromium-1223/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing';
+// 不再寫死某一台 Mac 的 Chromium 路徑（Windows 版一定找不到）；照平台找系統 Chrome，找不到就報錯。
+const EXE = findChromePath();
 
 const PAPER = '#f5f7fa'; // = styles.css --paper
 const ACCENT = '#2563eb'; // = styles.css --accent
@@ -49,8 +49,8 @@ const ICONS = [
 ];
 
 async function main() {
-  if (!existsSync(EXE)) {
-    console.error(`找不到 Chromium 執行檔：${EXE}\n請設定 CHROME_PATH 或安裝 Chrome。`);
+  if (!EXE) {
+    console.error('找不到 Chrome 執行檔。請安裝 Chrome，或用 CHROME_PATH 指定執行檔路徑。');
     process.exit(1);
   }
   mkdirSync(OUT, { recursive: true });

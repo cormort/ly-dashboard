@@ -1,0 +1,30 @@
+name: ci
+
+# 為什麼要在 Windows 上跑測試：這個專案原本是 macOS only（launchd、bash、curl、sed、awk），
+# 2026-10 加上 Windows 部署（windows\*.ps1）。程式碼本身是純 Node，所以「跑不跑得動」可以直接量：
+# 三個平台都 `npm test`，讓 `test/windows-port.test.mjs` 的守門條款在真的 Windows 上執行一次。
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      # 24 LTS：node:sqlite 在 22.13 之後才不用 --experimental-sqlite
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      # 根目錄只有 devDependencies（playwright-core）；測試不會下載瀏覽器
+      - run: npm ci
+      - run: npm --prefix web ci
+      - run: npm --prefix web run build
+      - run: npm test
