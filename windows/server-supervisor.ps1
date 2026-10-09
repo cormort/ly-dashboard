@@ -74,6 +74,9 @@ $backoff = $BackoffSeconds
 while ($true) {
   $process = Start-Process -FilePath 'node' -ArgumentList 'server/index.mjs' -WorkingDirectory $Root `
     -NoNewWindow -PassThru -RedirectStandardOutput $outPath -RedirectStandardError $errPath
+  # PowerShell 5.1：-PassThru 的行程若沒先取得 Handle，結束後 ExitCode 會是空的（$null -eq 0 為 false，
+  # 於是「exit 0 = 正常停掉」永遠不成立）。先碰一下 Handle 讓 .NET 持有它。
+  $null = $process.Handle
   $process.WaitForExit()
   $code = $process.ExitCode
   Write-SupervisorLog "node 結束（exit $code）"
