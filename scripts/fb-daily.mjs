@@ -29,6 +29,7 @@
  *   LY_SYNC_SCOPE           寫回表之後要觸發哪一種同步（預設 social：只重讀整理表）
  *   LY_SYNC_TOKEN           本機伺服器有設 token 時，觸發同步要帶同一組
  *   LY_SYNC_TRIGGER_ATTEMPTS / LY_SYNC_TRIGGER_DELAY_MS   觸發同步的等待：次數／間隔（預設 10 次／60 秒）
+ *   LY_FB_LOCAL_INGEST      抓完直接寫進本機資料庫（預設 1；設 0 就只寫回試算表並觸發同步）
  *   LY_FB_LOG_DIR           輸出目錄（log／CSV／鎖；預設 <repo>/.cache）。測試要用免洗目錄，見下面 LOG_DIR
  *   LY_FB_LOCK              要不要用「同時只允許一輪」的抓取鎖（預設 1；測試或刻意並行時設 0）
  *   LY_FB_LOCK_STALE_MIN    超過幾分鐘的鎖視為殘留（預設 90）
@@ -105,6 +106,33 @@ export async function triggerSync(port, scope, log, {
   }
   log(`本機伺服器（:${port}）一直沒能觸發同步；它自己的排程會讀到同一份試算表`);
   return `未觸發（${lastReason}）`;
+}
+
+/**
+ * 把剛抓到的結果**直接寫進本機資料庫**，不繞 Google 整理表。
+ *
+ * 原本的路徑是：抓完 → 寫回整理表（Apps Script）→ 觸發伺服器 → 伺服器再把整理表抓回來。
+ * 中間有三個會壞的地方（寫回、伺服器有沒有在跑、同步的 409 排隊），而抓取端手上本來就有
+ * 完整、格式相同的兩份 CSV（`posts-<日期>.csv` 是整理表格式、`posts-detail-<日期>.csv`
+ * 是貼文層級），直接匯入就少掉這些環節；整理表照樣會寫（人工要看的紀錄）。
+ *
+ * 驗證（筆數掉太多就 fail closed）與人工更正表都在 `runSocialIngest`／`runSocialPostsIngest`
+ * 裡，這裡只是把來源從網路換成檔案。
+ */
+export async function ingestLocally({ accountsCsv, postsCsv = null, dbPath = null, logger = console } = {}) {
+  const { CONFIG } = await import('../server/config.mjs');
+  const { openDb } = await import('../server/db.mjs');
+  const { runSocialIngest, runSocialPostsIngest } = await import('../server/ingest.mjs');
+  const db = openDb(dbPath ?? CONFIG.dbPath);
+  try {
+    const accounts = await runSocialIngest(db, { logger, csvText: readFileSync(accountsCsv, 'utf8') });
+    const posts = postsCsv && existsSync(postsCsv)
+      ? await runSocialPostsIngest(db, { logger, csvText: readFileSync(postsCsv, 'utf8') })
+      : null;
+    return { accounts, posts };
+  } finally {
+    db.close();
+  }
 }
 
 /** `date '+%Y-%m-%dT%H:%M:%S%z'` 的對應（本機時區、`+0800` 這種格式）。 */
@@ -386,9 +414,35 @@ async function main(argv) {
       if (push.status !== 0) log(`推 ${process.env.LY_FB_DATA_BRANCH || 'fb-data'} 分支失敗（見上面幾行）；本機 CSV 仍在 ${outDated}`);
     }
 
-    // 只有真的把新資料寫回試算表時才觸發同步：沒寫回的話，伺服器重讀試算表也不會有新東西。
-    let syncLine = '未觸發（沒有寫回試算表）';
-    if (wroteSheet === 1) {
+    // 直接把結果寫進本機資料庫（見 ingestLocally 的說明）：抓取端手上就有完整 CSV，
+    // 不必等「寫回整理表 → 伺服器再抓回來」那條路，也不會被同步的 409 排隊卡住。
+    // 寫成功就不必再觸發同步（伺服器是直接查資料庫的，沒有快取）。設 LY_FB_LOCAL_INGEST=0 可關掉。
+    let localLine = '';
+    let ingested = false;
+    if ((process.env.LY_FB_LOCAL_INGEST ?? '1') === '1') {
+      try {
+        const result = await ingestLocally({
+          accountsCsv: outDated,
+          postsCsv: outDetail,
+          logger: { log, warn: (m) => log(m), error: (m) => log(m) },
+        });
+        writeFileSync(logPath, `[本機] 帳號 ${result.accounts?.status}${result.posts ? `、貼文層級 ${result.posts.status}` : ''}\n`, { flag: 'a' });
+        ingested = result.accounts?.status === 'success';
+        localLine = ingested
+          ? `已寫入（帳號 ${result.accounts.accounts} 筆`
+            + `${result.posts?.status === 'success' ? `、貼文層級 ${result.posts.posts} 則` : ''}）`
+          : `❌ 失敗（${result.accounts?.error ?? '看 log'}）`;
+      } catch (error) {
+        log(`寫入本機資料庫失敗：${error?.stack ?? error}`);
+        localLine = `❌ 失敗（${error?.message ?? error}）`;
+      }
+    } else {
+      localLine = '（已用 LY_FB_LOCAL_INGEST=0 關掉）';
+    }
+
+    // 真的寫不進本機時才回頭走舊路：觸發伺服器重讀整理表。
+    let syncLine = ingested ? '不必觸發（本機已直接寫入）' : '未觸發（沒有寫回試算表）';
+    if (!ingested && wroteSheet === 1) {
       const port = process.env.PORT || 8787;
       // 只觸發 social 範圍：這一輪改動的是 Google 整理表，跑「全部」等於白等 13 分鐘
       // （新聞一個階段就 763 秒）。完整同步交給伺服器自己的 24 小時排程。
@@ -413,6 +467,7 @@ async function main(argv) {
     notify(
       `✅ 立委粉專每日更新完成（${startedLabel}，約 ${minutes} 分）\n` +
         `· 有日期 ${filled}${totalRows === null ? '' : ` / ${totalRows}`} 列\n` +
+        `· 本機資料庫：${localLine || '（未寫入）'}\n` +
         `· 寫回整理表：${writeLine || '（未設定 Web App，只產生本機 CSV）'}\n` +
         `· 資料分支 ${process.env.LY_FB_DATA_BRANCH || 'fb-data'}：${dataLine || '（未推，設定 LY_FB_DATA_PUSH=0？）'}\n` +
         `· 本機同步：${syncLine}`,

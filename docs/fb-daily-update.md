@@ -24,10 +24,12 @@ scripts/fetch-fb-posts.mjs
               · Apps Script Web App（目前用這條）：node scripts/push-posts-to-sheet.mjs
                 → POST 到 apps-script/ 部署的 Web App，只更新 F／G 兩欄
               · 服務帳號（有 service_account.json 時）：--write-sheet --key
-              → 寫回成功後叫本機伺服器重新同步（只帶 scope=social：改的是整理表，
-                跑「全部」要等 13 分鐘；`LY_SYNC_SCOPE=all` 可改回全部）
        ④  推一份到遠端資料分支（fb-data，見第六節）：node scripts/push-fb-data.mjs
               → posts/YYYY-MM-DD.csv ＋ posts/latest.csv（沒有變動就不 commit）
+       ⑤  直接寫進本機資料庫（2026-10-10 起；LY_FB_LOCAL_INGEST=0 可關）
+              → ingestLocally()：把②的兩份 CSV 匯入 data/ly.db 的 social_accounts／social_posts
+              → 這一步成功就不必再叫伺服器重讀試算表；失敗才回頭做下面這件事：
+                 POST /api/v1/sync?scope=social（只帶 social：跑「全部」要等 13 分鐘）
 ```
 
 - 一次跑 113 位，每位間隔隨機 4–9 秒，約 **25–35 分鐘**。
@@ -177,7 +179,7 @@ fixed-rate 是「advances directly past missed occurrences」——也就是**�
 - 這三層都寫在 `scripts/social-source.mjs`（單一來源：整理表網址、`describeError`、`waitForCsv`），
   測試在 `test/social-source.test.mjs`（連線恢復／試滿失敗／回傳不是 CSV 三種情境）。
 - 診斷用的一行：`grep -E "連線檢查失敗|重跑|抓取失敗" .cache/fb-daily.log`。
-- 手動補跑當天：`cd ~/ly-dashboard && npm run fb-daily`（會寫回試算表、推 fb-data、觸發 social 同步）。
+- 手動補跑當天：`cd ~/ly-dashboard && npm run fb-daily`（會寫回試算表、推 fb-data、**直接寫進本機資料庫**）。
 
 ### 抓取成功、站上卻沒更新：觸發同步被 409 擋掉（2026-10-10）
 
@@ -201,6 +203,29 @@ fixed-rate 是「advances directly past missed occurrences」——也就是**�
   （資料已經在試算表與 `fb-data`，不會不見）。
 - 驗收方式：`node -e` 直接呼叫 `triggerSync` 看回傳，並確認 `social_posts` 的 `MAX(post_date)`
   是今天（本機 DB 在 `data/ly.db`）。
+
+### 抓完直接寫進本機資料庫（2026-10-10）
+
+原本的路徑是四段接力：**抓取 → 寫回 Google 整理表 → 觸發本機伺服器 → 伺服器再把整理表抓回來**。
+每一段都可能壞（Apps Script、伺服器沒開、同步被 409 擋），而抓取端手上本來就有**格式相同**的兩份 CSV
+（`posts-<日期>.csv` 是整理表欄位、`posts-detail-<日期>.csv` 是貼文層級），繞這一圈沒有換到什麼。
+
+現在 `fb-daily.mjs` 在抓取成功後直接呼叫 `ingestLocally()`（`server/ingest.mjs` 的
+`runSocialIngest`／`runSocialPostsIngest` 加上 `csvText` 參數：來源從網路換成檔案），順序是：
+
+1. 寫回整理表（人工要看的紀錄，維持不變）
+2. 推 `fb-data` 分支（跨機器／重建時的備援，維持不變）
+3. **寫進本機 `data/ly.db`**：帳號（`social_accounts`）＋貼文層級（`social_posts`）
+4. 只有在第 3 步失敗時，才回頭觸發伺服器重讀整理表（`triggerSync()`）
+
+驗證機制沒有放鬆：`normalizeSocial`／`normalizeSocialPosts` 的筆數門檻（掉太多就 fail closed）、
+人工更正表（`server/social-overrides.json`）在這一條路上照樣套用；`sync_runs` 會記
+`http_status = null`（來源是檔案，不是 HTTP）。
+
+- 關掉它（回到舊路）：`LY_FB_LOCAL_INGEST=0`。
+- 伺服器是**每個請求直接查資料庫**、沒有記憶體快取，所以寫進去畫面就是新的。
+- 手動只寫本機（用當天的 CSV、不重跑抓取）：呼叫 `ingestLocally({ accountsCsv, postsCsv })`，
+  測試與範例見 `test/fb-daily-local-ingest.test.mjs`。
 
 ## 四、立委這一輪的實戰經驗（踩到的坑）
 

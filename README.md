@@ -104,7 +104,7 @@ cron/啟動排程 (24h)                      server/ingest.mjs
 - `raw_snapshots`：原始 JSON gzip 保存（sha256 去重），可回溯、可重跑。
 - `committee_seats` / `memberships`：會期 × 委員會 × 委員（`is_convener` 綁在會期上）。
   **會期剛開始時上游（data.ly.gov.tw 的 id9／id14）只會給部分席次**（實測 2026-10-08 第 11 屆第 6 會期只有交通委員會 14 席、沒有召委），所以另有人工確認的補充表 `server/committee-seats.json`（照立法院公布的〈常設委員會召集委員、委員一覽表〉），只補上游還沒補齊的會期、上游補齊後自動失效；名字對不到名錄就整段同步失敗（見 DECISIONS D256–D260）。
-- `social_posts`：委員**貼文層級**資料（一列一則貼文、摘要 400 字、每個粉專最多 5 則），來源是每日抓取推到 `fb-data` 分支的 `posts-detail/latest.csv`。「機關」頁把它跟機關清單比對（整理表只有最新一則的 60 字，實測全站只命中 1 筆）；貼文**累計**保存，有日期的留 90 天。
+- `social_posts`：委員**貼文層級**資料（一列一則貼文、摘要 400 字、每個粉專最多 5 則）。**主要來源是每日抓取直接寫入本機資料庫**（`scripts/fb-daily.mjs` → `ingestLocally()`，2026-10-10 起），跨機器／重建時的備援來源是 `fb-data` 分支的 `posts-detail/latest.csv`。「機關」頁把它跟機關清單比對（整理表只有最新一則的 60 字，實測全站只命中 1 筆）；貼文**累計**保存，有日期的留 90 天。
 - `law_agencies` / `moj_law_agencies`：**法律 → 主管機關**，用來把「只寫法規名稱」的委員提案算到對的機關頁（例：「『氣候變遷因應法』部分條文修正草案」→ 環境部）。三個來源依序取用：g0v 上游有填 → 法務部全國法規資料庫 → `server/law-agencies.json` 手工補。全國法規資料庫那份（ZIP 內 `ChLaw.json`，約 6 MB、1,010 部法律）**只在法條真的更新時才重寫**，而且距上次檢查不到 `LY_MOJ_LAWS_INTERVAL_HOURS`（預設 12）小時就完全不抓（三層跳過，見 DECISIONS D248–D254）。
 - 2 位在本屆委員會欄位中無任何會期紀錄者（游錫堃、李貞秀）**不編造會期**，以屆次層級保留並發出警告（見 `/api/v1/health` 的 `warnings`）。
 
@@ -119,6 +119,8 @@ node scripts/verify-news-rss.mjs <url>      # 試別的 feed（例如比較 udn 
 node scripts/import-news-csv.mjs --csv news-all.csv --out ../news-data   # 把「下載 CSV」的歷史新聞併進 news-data 分支的收集檔（只補還沒有的網址），推上去後任何伺服器第一次啟動都會匯入
 node scripts/backfill-news.mjs              # 一次性回補近 180 天的委員／首長／主計／機關新聞（Google 日期區間查詢）；預設跑 30 分鐘、可中斷接續（--minutes、--delay-ms、--reset、--status）
 node scripts/fetch-fb-posts.mjs             # 抓 113 位委員粉專的「最新一則貼文」→ .cache/posts-YYYY-MM-DD.csv（整理表的欄位格式，可直接貼回試算表）
+# 每日排程（npm run fb-daily）另外會把結果**直接寫進本機資料庫**（不必等寫回試算表再被讀回來）；
+#   關掉它：LY_FB_LOCAL_INGEST=0（就會回到「觸發伺服器重讀整理表」的舊路）。細節見 docs/fb-daily-update.md
 node scripts/fetch-fb-posts.mjs --login     # 第一次用（或登入失效）時先跑這個：開有畫面的瀏覽器登入一次，狀態存進 ~/.ly-dashboard/fb-profile
 node scripts/fetch-fb-posts.mjs --verify    # 另外輸出 docs/fb-verification-<日期>.csv（頁面顯示名稱／追蹤者／比對結果）
 node scripts/fetch-fb-posts.mjs --write-sheet --key service_account.json   # 直接把日期與摘要寫回試算表（服務帳號需對試算表有編輯權）

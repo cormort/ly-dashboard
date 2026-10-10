@@ -1056,14 +1056,22 @@ export async function runNewsIngest(
   return { status, added, pruned, failures: failures.length, processed, total: legislators.length, partial, entity, council, outlet, feed };
 }
 
-/** 社群帳號整理表：抓 CSV → 驗證 → 整批覆寫；失敗保留舊資料。 */
-export async function runSocialIngest(db, { logger = console, fetchImpl = fetchJson, now = () => new Date() } = {}) {
+/**
+ * 社群帳號整理表：抓 CSV → 驗證 → 整批覆寫；失敗保留舊資料。
+ *
+ * `csvText` 是給「本機直接寫入」用的（scripts/fb-daily.mjs）：抓取端手上已經有同一份格式的 CSV，
+ * 用它就能跳過 Google 這一趟（少一個會壞的環節），驗證與人工更正照樣套用。
+ */
+export async function runSocialIngest(db, { logger = console, fetchImpl = fetchJson, now = () => new Date(), csvText = null } = {}) {
   const startedAt = now().toISOString();
   const startedMs = Date.now();
   const record = (fields) =>
     recordSyncRun(db, { dataset: 'social', started_at: startedAt, finished_at: now().toISOString(), duration_ms: Date.now() - startedMs, ua: CONFIG.userAgent, ...fields });
   try {
-    const result = await fetchImpl(CONFIG.social.url, { ua: CONFIG.userAgent, text: true });
+    const result = csvText
+      ? { text: csvText, status: null, attempts: 1, local: true }
+      : await fetchImpl(CONFIG.social.url, { ua: CONFIG.userAgent, text: true });
+    if (csvText) logger.log('[social] 來源：本機剛抓完的 CSV（跳過 Google 整理表）');
     const idByName = new Map(db.prepare('SELECT name, id FROM legislators WHERE leave_flag = 0').all().map((r) => [newsName(r.name), r.id]));
     const { accounts, warnings, overridesApplied } = normalizeSocial(result.text, idByName, { overrides: SOCIAL_OVERRIDES });
     if (overridesApplied.length) logger.log(`[social] 已套用 ${overridesApplied.length} 筆人工更正：${overridesApplied.join('、')}`);
@@ -1086,7 +1094,7 @@ export async function runSocialIngest(db, { logger = console, fetchImpl = fetchJ
     logger.log(
       `[social] 已套用：${accounts.length} 個社群帳號（新增 ${applied.added}、移除 ${applied.removed}；快照${snapshotted ? '已保存' : '已存在'}）`,
     );
-    record({ status: 'success', records: accounts.length, attempt: result.attempts ?? 1, http_status: result.status ?? 200 });
+    record({ status: 'success', records: accounts.length, attempt: result.attempts ?? 1, http_status: result.status ?? null });
     return { status: 'success', accounts: accounts.length, changes: applied.added + applied.removed, warnings };
   } catch (error) {
     const message = error instanceof FetchError ? `${error.message}（嘗試 ${error.attempts} 次）` : String(error?.message || error);
@@ -1103,16 +1111,23 @@ export async function runSocialIngest(db, { logger = console, fetchImpl = fetchJ
  * 這個檔還沒產生過（第一次抓取前）會是 404，那不是錯誤、記 skipped 就好。
  * 為什麼要有這一份：整理表只有每個粉專「最新一則」的 60 字摘要，「機關」頁把它歸到機關幾乎比對不到
  * （實測 2026-10-08 全站只有 1 筆命中），貼文層級有 400 字、每個粉專最多 5 則。
+ *
+ * `csvText` 同 `runSocialIngest`：本機抓完直接寫入時用（跳過 GitHub 資料分支這一趟）。
  */
-export async function runSocialPostsIngest(db, { logger = console, fetchImpl = fetchJson, now = () => new Date() } = {}) {
+export async function runSocialPostsIngest(db, { logger = console, fetchImpl = fetchJson, now = () => new Date(), csvText = null } = {}) {
   const startedAt = now().toISOString();
   const startedMs = Date.now();
   const record = (fields) =>
     recordSyncRun(db, { dataset: 'social_posts', started_at: startedAt, finished_at: now().toISOString(), duration_ms: Date.now() - startedMs, ua: CONFIG.userAgent, ...fields });
   const url = `${String(CONFIG.social.postsUrl ?? '').replace(/\/$/, '')}/posts-detail/latest.csv`;
   try {
-    if (!url || url.startsWith('/posts-detail')) throw new FetchError('沒有設定貼文層級來源（LY_FB_POSTS_URL）', { attempts: 1 });
-    const result = await fetchImpl(url, { ua: CONFIG.userAgent, text: true });
+    if (!csvText) {
+      if (!url || url.startsWith('/posts-detail')) throw new FetchError('沒有設定貼文層級來源（LY_FB_POSTS_URL）', { attempts: 1 });
+    }
+    const result = csvText
+      ? { text: csvText, status: null, attempts: 1, local: true }
+      : await fetchImpl(url, { ua: CONFIG.userAgent, text: true });
+    if (csvText) logger.log('[fb-posts] 來源：本機剛抓完的檔案（跳過 GitHub 資料分支）');
     const idByName = new Map(db.prepare('SELECT name, id FROM legislators WHERE leave_flag = 0').all().map((r) => [newsName(r.name), r.id]));
     const { posts, unmatched } = normalizeSocialPosts(result.text, idByName);
     // 抓取是分輪跑的：只抓到少數委員時不要把上一輪的貼文換掉。
@@ -1128,7 +1143,7 @@ export async function runSocialPostsIngest(db, { logger = console, fetchImpl = f
       `[fb-posts] 已累計：本次 ${posts.length} 則（新增 ${applied.added}、清掉 ${applied.pruned}；其中 ${posts.filter((p) => p.post_date).length} 則有日期）` +
         `、共 ${applied.accumulated} 則、涵蓋 ${applied.legislators} 位委員`,
     );
-    record({ status: 'success', records: posts.length, attempt: result.attempts ?? 1, http_status: result.status ?? 200 });
+    record({ status: 'success', records: posts.length, attempt: result.attempts ?? 1, http_status: result.status ?? null });
     return { status: 'success', posts: posts.length, legislators: applied.legislators, accumulated: applied.accumulated, added: applied.added, pruned: applied.pruned, unmatched };
   } catch (error) {
     if (error?.status === 404) {
