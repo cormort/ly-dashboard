@@ -154,6 +154,31 @@ fixed-rate 是「advances directly past missed occurrences」——也就是**�
 - 一次跑 25–35 分鐘，**不要排在上線或備份的同一時段**；期間會持續打 Facebook（這是被限流的主因）。
 - 排程跑完的結果會記在 `.cache/node_run_log.txt` 與 `docs/fb-verification-*.csv`。
 
+### 連線層的暫時性失敗不會吃掉一整天（2026-10-10）
+
+**症狀**：08:00 的排程 6 秒就結束，Telegram 收到「抓取腳本失敗（exit 1）」，
+`fb-daily.log` 裡只有一行 `fetch failed`，當天完全沒有新資料（前一天也一樣）。
+
+**原因**：抓取腳本的第一步是讀整理表 CSV，那一次 `fetch` 碰到
+`UND_ERR_CONNECT_TIMEOUT`（Google 那一端連不上，隔幾分鐘再試就正常）。
+原本一失敗就 `abort`，而 Node 的 `fetch` 失敗時 `message` 一律是 `fetch failed`，
+真正的原因在 `err.cause`（`code: UND_ERR_CONNECT_TIMEOUT`）—— log 看不到，所以像無頭案。
+
+**現在的處理（三層，都在同一次執行內完成）**：
+
+| 位置 | 行為 | 調整用的環境變數 |
+|---|---|---|
+| `fb-daily.mjs` 開跑前 | 先確認整理表連得到才開始抓（連不上就一直等到連上） | `LY_FB_PROBE_ATTEMPTS`（5）、`LY_FB_PROBE_DELAY_MS`（30000） |
+| `fetch-fb-posts.mjs` 讀來源 | 讀 CSV 失敗會重試，不會一次就放棄 | `LY_FB_FETCH_ATTEMPTS`（3）、`LY_FB_FETCH_DELAY_MS`（10000） |
+| `fb-daily.mjs` 抓取結束 | 跑不到 90 秒就失敗且沒有產出 → 90 秒後自動重跑一次 | — |
+
+連不上整理表時的通知會直接寫出網址與修復指令，不再誤導成「Chrome 設定檔被佔用」。
+
+- 這三層都寫在 `scripts/social-source.mjs`（單一來源：整理表網址、`describeError`、`waitForCsv`），
+  測試在 `test/social-source.test.mjs`（連線恢復／試滿失敗／回傳不是 CSV 三種情境）。
+- 診斷用的一行：`grep -E "連線檢查失敗|重跑|抓取失敗" .cache/fb-daily.log`。
+- 手動補跑當天：`cd ~/ly-dashboard && npm run fb-daily`（會寫回試算表、推 fb-data、觸發 social 同步）。
+
 ## 四、立委這一輪的實戰經驗（踩到的坑）
 
 ### 1. Facebook 只有「已登入的瀏覽器」看得到內容
@@ -260,6 +285,8 @@ Web App 的權限邊界反而更清楚（一組 token、只能寫那一張表的
 - [ ] 執行紀錄有沒有「登入失效」→ 跑一次 `--login` 重新登入
 - [ ] 有日期的列數是不是和平常差不多（驟降通常是 FB 版面變動或限流）
 - [ ] 有沒有明顯不合理的日期（腳本已用 `saneDate` 擋，但換版後要重新確認）
+- [ ] `fb-daily.log` 有沒有「整理表連線檢查失敗」或「秒內失敗且沒有產出」→ 那是連線層的暫時性失敗，
+      腳本已自動重試／重跑過；同一週出現很多次才需要查網路（見第三節的 2026-10-10 說明）
 - [ ] 新抓到的網址與更正表有沒有衝突（更正表優先，且會清掉舊網址的貼文摘要）
 
 ## 八、為什麼議員分頁先不做（2026-10-06 決定）
