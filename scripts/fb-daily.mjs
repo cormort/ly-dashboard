@@ -31,6 +31,8 @@
  *   LY_FB_LOG_DIR           輸出目錄（log／CSV／鎖；預設 <repo>/.cache）。測試要用免洗目錄，見下面 LOG_DIR
  *   LY_FB_LOCK              要不要用「同時只允許一輪」的抓取鎖（預設 1；測試或刻意並行時設 0）
  *   LY_FB_LOCK_STALE_MIN    超過幾分鐘的鎖視為殘留（預設 90）
+ *   LY_FB_PROBE_ATTEMPTS / LY_FB_PROBE_DELAY_MS   開跑前的整理表連線檢查：次數／間隔（預設 5 次／30 秒）
+ *   LY_FB_FETCH_ATTEMPTS / LY_FB_FETCH_DELAY_MS   抓取腳本讀來源 CSV 的重試：次數／間隔（預設 3 次／10 秒）
  *
  * 寫回用的網址與密鑰放在 ~/.ly-dashboard/sheet.env（repo 外、權限 600），下面會自動載入。
  */
@@ -40,10 +42,17 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { parseEnvFile } from './notify-telegram.mjs';
+import { sheetCsvUrl, sleep, waitForCsv } from './social-source.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 const NOTIFY_SCRIPT = join(ROOT, 'scripts', 'notify-telegram.mjs');
+
+/** 手動試跑常帶 --csv：連線檢查要跟抓取腳本看同一份來源。 */
+export function argvCsv(argv) {
+  const i = argv.indexOf('--csv');
+  return i >= 0 ? argv[i + 1] : undefined;
+}
 
 /** `date '+%Y-%m-%dT%H:%M:%S%z'` 的對應（本機時區、`+0800` 這種格式）。 */
 export function stampLocal(date = new Date()) {
@@ -192,6 +201,18 @@ async function main(argv) {
       return 1;
     }
 
+    // 開跑前先確認整理表連得到：**連線層的暫時性失敗不該吃掉一整天**。
+    // 2026-10-10 08:00 就是這樣：一開跑 `fetch failed`（UND_ERR_CONNECT_TIMEOUT），
+    // 秒殺結束，當天完全沒有新資料（前一天也一樣）。這裡等到連上為止（預設 5 次／30 秒）。
+    const sourceUrl = argvCsv(argv) ?? sheetCsvUrl(process.env);
+    if (/^https?:/.test(sourceUrl) && !(await waitForCsv(sourceUrl, log))) {
+      notifyFail(
+        `連不上社群整理表（${sourceUrl}）`,
+        `確認這台機器連得到網路與 docs.google.com 之後手動跑一次：cd ${ROOT} && npm run fb-daily`,
+      );
+      return 1;
+    }
+
     // 驗證報告預設會寫進版控的 docs/fb-verification-<日期>.csv；排程每天跑的話會一直長新檔案，
     // 所以這裡改寫到 .cache/（已 gitignore）。要留哪一天的證據再自己搬進 docs/。
     const fetchArgs = [
@@ -220,14 +241,28 @@ async function main(argv) {
       log(`額外參數：${argv.join(' ')}`);
     }
 
-    const fetch = spawnSync(process.execPath, fetchArgs, { cwd: ROOT, encoding: 'utf8' });
-    const fetchOutput = `${fetch.stdout ?? ''}${fetch.stderr ?? ''}`;
+    const startedFetchAt = Date.now();
+    let fetch = spawnSync(process.execPath, fetchArgs, { cwd: ROOT, encoding: 'utf8' });
+    let fetchOutput = `${fetch.stdout ?? ''}${fetch.stderr ?? ''}`;
+    // 秒殺型失敗（跑不到 90 秒、又沒有「完成：」）幾乎都是連線或 Chrome 一時被佔用 ——
+    // 直接再跑一次；真的跑滿 30 分鐘才失敗就不要再重試。
+    if ((fetch.status ?? 1) !== 0 && Date.now() - startedFetchAt < 90_000 && !fetchOutput.includes('完成：')) {
+      log(`抓取在 ${Math.round((Date.now() - startedFetchAt) / 1000)} 秒內失敗且沒有產出 → 90 秒後重跑一次`);
+      await sleep(90_000);
+      fetch = spawnSync(process.execPath, fetchArgs, { cwd: ROOT, encoding: 'utf8' });
+      fetchOutput += `${fetch.stdout ?? ''}${fetch.stderr ?? ''}`;
+    }
     writeFileSync(logPath, fetchOutput, { flag: 'a' });
     const status = fetch.status ?? 1;
 
     if (status !== 0) {
       log(`抓取失敗（exit ${status}）；中止`);
-      notifyFail(`抓取腳本失敗（exit ${status}）`, `看 ${logPath} 最後幾行；常見原因是 Chrome 設定檔被另一輪佔用`);
+      notifyFail(
+        `抓取腳本失敗（exit ${status}）`,
+        fetchOutput.includes('完成：')
+          ? `看 ${logPath} 最後幾行（跑到最後才出問題）`
+          : `連線類的失敗已自動重跑過一次；再看一次 log 最後幾行的原因，或用 cd ${ROOT} && npm run fb-daily 手動跑`,
+      );
       return 1;
     }
 

@@ -34,12 +34,11 @@ import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
+import { describeError, sheetCsvUrl } from './social-source.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '..');
-const SHEET_ID = process.env.LY_SOCIAL_SHEET_ID ?? '11XrvNGMKZb_8rekFdGIg5VsXcV8rdJkZjyzd1I4gAMM';
-const SHEET_GID = Number(process.env.LY_SOCIAL_GID ?? 1325033898);
-const DEFAULT_CSV = process.env.LY_SOCIAL_CSV ?? `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${SHEET_GID}`;
+const DEFAULT_CSV = sheetCsvUrl();
 
 const { values: args } = parseArgs({
   options: {
@@ -227,6 +226,37 @@ async function httpPageTitle(url, attempt = 0) {
   } catch {
     return '';
   }
+}
+
+/**
+ * 抓一段文字，失敗會重試。
+ *
+ * 2026-10-10 實例：08:00 的排程一開跑就在這一步 `fetch failed`（UND_ERR_CONNECT_TIMEOUT，
+ * 見 scripts/social-source.mjs 的說明），一行就結束、整天沒有資料。連線層的暫時性錯誤
+ * 不該讓整個抓取直接放棄 —— 重試比叫人隔天再看一次便宜。
+ * 次數／間隔可用 LY_FB_FETCH_ATTEMPTS、LY_FB_FETCH_DELAY_MS 調整。
+ */
+async function fetchText(url, { label = '來源', attempts, delayMs } = {}) {
+  const n = Number(attempts ?? process.env.LY_FB_FETCH_ATTEMPTS ?? 3);
+  const wait = Number(delayMs ?? process.env.LY_FB_FETCH_DELAY_MS ?? 10_000);
+  let last;
+  for (let i = 1; i <= n; i++) {
+    try {
+      const res = await fetch(url, {
+        redirect: 'follow',
+        signal: AbortSignal.timeout(30_000),
+        headers: { 'user-agent': BROWSER_UA, 'accept-language': 'zh-TW,zh;q=0.9' },
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.text();
+    } catch (err) {
+      last = err;
+      console.warn(`${label} 讀取失敗（第 ${i}/${n} 次）：${describeError(err)}`
+        + (i < n ? `；${wait / 1000} 秒後重試` : ''));
+      if (i < n) await sleep(wait);
+    }
+  }
+  throw last;
 }
 
 /**
@@ -613,7 +643,9 @@ async function main() {
   }
 
   const source = args.csv ?? DEFAULT_CSV;
-  const text = /^https?:/.test(source) ? await (await fetch(source)).text() : readFileSync(source, 'utf8');
+  const text = /^https?:/.test(source)
+    ? await fetchText(source, { label: '整理表 CSV' })
+    : readFileSync(source, 'utf8');
   const [header, ...body] = parseCsv(text);
   const col = Object.fromEntries(header.map((h, i) => [h.trim(), i]));
   if (!('姓名' in col) || !('貼文或粉專連結' in col)) {
@@ -690,5 +722,5 @@ async function main() {
 }
 
 if (import.meta.url === `file://${process.argv[1]?.replace(/\\/g, '/')}` || process.argv[1]?.endsWith('fetch-fb-posts.mjs')) {
-  main().catch((err) => { console.error(err.message); process.exit(1); });
+  main().catch((err) => { console.error(describeError(err)); process.exit(1); });
 }
