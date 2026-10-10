@@ -28,6 +28,7 @@
  *   LY_NOTIFY_ENV           通知憑證檔（預設 ~/.ly-dashboard/notify.env）
  *   LY_SYNC_SCOPE           寫回表之後要觸發哪一種同步（預設 social：只重讀整理表）
  *   LY_SYNC_TOKEN           本機伺服器有設 token 時，觸發同步要帶同一組
+ *   LY_SYNC_TRIGGER_ATTEMPTS / LY_SYNC_TRIGGER_DELAY_MS   觸發同步的等待：次數／間隔（預設 10 次／60 秒）
  *   LY_FB_LOG_DIR           輸出目錄（log／CSV／鎖；預設 <repo>/.cache）。測試要用免洗目錄，見下面 LOG_DIR
  *   LY_FB_LOCK              要不要用「同時只允許一輪」的抓取鎖（預設 1；測試或刻意並行時設 0）
  *   LY_FB_LOCK_STALE_MIN    超過幾分鐘的鎖視為殘留（預設 90）
@@ -42,7 +43,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { parseEnvFile } from './notify-telegram.mjs';
-import { sheetCsvUrl, sleep, waitForCsv } from './social-source.mjs';
+import { describeError, sheetCsvUrl, sleep, waitForCsv } from './social-source.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -52,6 +53,58 @@ const NOTIFY_SCRIPT = join(ROOT, 'scripts', 'notify-telegram.mjs');
 export function argvCsv(argv) {
   const i = argv.indexOf('--csv');
   return i >= 0 ? argv[i + 1] : undefined;
+}
+
+/**
+ * 觸發本機伺服器重新同步（只跑指定範圍），回傳給通知用的短句。
+ *
+ * 2026-10-10 實例：排程在 08:55 觸發時，伺服器正在跑**新聞同步**（單一同步原則），
+ * 端點回 409 `sync_in_progress`；舊程式把任何失敗都寫成「沒有回應」就放棄 ——
+ * 結果資料庫裡還是兩天前的貼文，站上看不到當天抓到的東西（後來手動觸發才補上）。
+ *
+ * 現在的行為：
+ *   ‧ 一律帶 `force=1`：這一輪才剛把新資料寫回試算表，就算同一個範圍 5 分鐘內同步過，
+ *     也必須再讀一次（冷卻防呆是給人按按鈕用的，見 server/sync-guard.mjs）。
+ *   ‧ `409 sync_in_progress` 不是失敗，是「排隊」：等它跑完再試，預設最多等 10 分鐘
+ *     （`LY_SYNC_TRIGGER_ATTEMPTS`／`LY_SYNC_TRIGGER_DELAY_MS` 可調）。
+ *   ‧ 最後仍失敗就照實寫出來，並說明伺服器自己的排程會接手。
+ */
+export async function triggerSync(port, scope, log, {
+  attempts,
+  timeoutMs,
+  delayMs,
+} = {}) {
+  const n = Number(attempts ?? process.env.LY_SYNC_TRIGGER_ATTEMPTS ?? 10);
+  const wait = Number(delayMs ?? process.env.LY_SYNC_TRIGGER_DELAY_MS ?? 60_000);
+  const timeout = Number(timeoutMs ?? process.env.LY_SYNC_TRIGGER_TIMEOUT_MS ?? 60_000);
+  const url = `http://127.0.0.1:${port}/api/v1/sync?scope=${scope}&force=1`;
+  let lastReason = '';
+  for (let i = 1; i <= n; i++) {
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: process.env.LY_SYNC_TOKEN ? { 'x-sync-token': process.env.LY_SYNC_TOKEN } : {},
+        signal: AbortSignal.timeout(timeout),
+      });
+      const body = await response.text().catch(() => '');
+      if (response.status === 202) {
+        log(`已觸發本機伺服器（:${port}，範圍 ${scope}）重新同步，畫面會拿到剛寫回試算表的貼文`);
+        return `已觸發（${scope}）`;
+      }
+      if (response.status === 409 && /sync_in_progress/.test(body)) {
+        lastReason = '伺服器正在跑其他同步（等一下再試）';
+      } else {
+        lastReason = `HTTP ${response.status}${body ? ` ${body.slice(0, 100)}` : ''}`;
+      }
+    } catch (err) {
+      lastReason = describeError(err);
+    }
+    log(`觸發同步未成（第 ${i}/${n} 次）：${lastReason}`
+      + (i < n ? `；${Math.round(wait / 1000)} 秒後再試` : ''));
+    if (i < n) await sleep(wait);
+  }
+  log(`本機伺服器（:${port}）一直沒能觸發同步；它自己的排程會讀到同一份試算表`);
+  return `未觸發（${lastReason}）`;
 }
 
 /** `date '+%Y-%m-%dT%H:%M:%S%z'` 的對應（本機時區、`+0800` 這種格式）。 */
@@ -340,19 +393,7 @@ async function main(argv) {
       // 只觸發 social 範圍：這一輪改動的是 Google 整理表，跑「全部」等於白等 13 分鐘
       // （新聞一個階段就 763 秒）。完整同步交給伺服器自己的 24 小時排程。
       const scope = process.env.LY_SYNC_SCOPE || 'social';
-      try {
-        const response = await fetch(`http://127.0.0.1:${port}/api/v1/sync?scope=${scope}`, {
-          method: 'POST',
-          headers: process.env.LY_SYNC_TOKEN ? { 'x-sync-token': process.env.LY_SYNC_TOKEN } : {},
-          signal: AbortSignal.timeout(10_000),
-        });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        log(`已觸發本機伺服器（:${port}，範圍 ${scope}）重新同步，畫面會拿到剛寫回試算表的貼文`);
-        syncLine = `已觸發（${scope}）`;
-      } catch {
-        log(`本機伺服器（:${port}）沒有回應，略過觸發同步；它下次同步時會讀到同一份試算表`);
-        syncLine = `伺服器沒回應（:${port}），下次同步會讀到`;
-      }
+      syncLine = await triggerSync(port, scope, log);
     }
 
     // 收尾通知：把「抓到幾列／寫回結果／資料分支／同步」一次講完，成功失敗都送。

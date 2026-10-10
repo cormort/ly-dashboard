@@ -179,6 +179,29 @@ fixed-rate 是「advances directly past missed occurrences」——也就是**�
 - 診斷用的一行：`grep -E "連線檢查失敗|重跑|抓取失敗" .cache/fb-daily.log`。
 - 手動補跑當天：`cd ~/ly-dashboard && npm run fb-daily`（會寫回試算表、推 fb-data、觸發 social 同步）。
 
+### 抓取成功、站上卻沒更新：觸發同步被 409 擋掉（2026-10-10）
+
+補跑那一輪（08:21–08:55）抓取、寫回試算表、推 `fb-data` 全部成功，但 log 出現
+
+```
+本機伺服器（:8787）沒有回應，略過觸發同步；它下次同步時會讀到同一份試算表
+```
+
+而 `social_posts` 的最新日期還是兩天前 —— 站上真的沒更新。原因是**同一個時間點伺服器正在跑新聞同步**
+（`[scheduler] 新聞已超過 6 小時未成功更新，開始新聞同步`），`POST /api/v1/sync` 依
+「同時只允許一個同步」的原則回了 **409 `sync_in_progress`**；舊程式把任何失敗都寫成「沒有回應」就放棄，
+所以看起來像伺服器掛了，其實只是排隊。
+
+現在的 `triggerSync()`：
+
+- 一律帶 **`force=1`**：剛寫回試算表就必須重讀，不能因為冷卻防呆（social 範圍 `cooldownMinutes: 5`）被擋。
+- 把 **409 `sync_in_progress` 當成「排隊」**而不是失敗：預設每 60 秒試一次、最多 10 次
+  （`LY_SYNC_TRIGGER_ATTEMPTS`／`LY_SYNC_TRIGGER_DELAY_MS`），等前面那個同步跑完就輪到它。
+- HTTP 202 才算觸發成功；其他狀態碼連同回應內容寫進 log，最後仍失敗才照實回報
+  （資料已經在試算表與 `fb-data`，不會不見）。
+- 驗收方式：`node -e` 直接呼叫 `triggerSync` 看回傳，並確認 `social_posts` 的 `MAX(post_date)`
+  是今天（本機 DB 在 `data/ly.db`）。
+
 ## 四、立委這一輪的實戰經驗（踩到的坑）
 
 ### 1. Facebook 只有「已登入的瀏覽器」看得到內容

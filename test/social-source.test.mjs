@@ -9,6 +9,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { describeError, sheetCsvUrl, waitForCsv } from '../scripts/social-source.mjs';
+import { triggerSync } from '../scripts/fb-daily.mjs';
 
 const URL_DEFAULT = 'https://docs.google.com/spreadsheets/d/11XrvNGMKZb_8rekFdGIg5VsXcV8rdJkZjyzd1I4gAMM/export?format=csv&gid=1325033898';
 
@@ -74,4 +75,60 @@ test('連得到但不是整理表（例如被導到登入頁）也要算失敗',
   const { ok, lines } = await runWait(async () => ({ ok: true, status: 200, text: async () => '<html>登入</html>' }));
   assert.equal(ok, false);
   assert.match(lines[0], /回傳內容不是整理表 CSV/);
+});
+
+// ── 觸發本機伺服器同步（2026-10-10 在 08:55 被 409 擋掉就放棄，站上因此兩天沒更新）────
+
+async function runTrigger(fetchImpl, attempts = 3) {
+  const original = globalThis.fetch;
+  const lines = [];
+  const calls = [];
+  globalThis.fetch = async (url, options) => { calls.push({ url, options }); return fetchImpl(url, options); };
+  try {
+    const line = await triggerSync(8787, 'social', (m) => lines.push(m), { attempts, timeoutMs: 50, delayMs: 1 });
+    return { line, lines, calls };
+  } finally {
+    globalThis.fetch = original;
+  }
+}
+
+const accepted = () => ({ status: 202, ok: true, text: async () => '{"accepted":true,"started":true}' });
+const busy = () => ({
+  status: 409,
+  ok: false,
+  text: async () => '{"reason":"sync_in_progress","message":"已經有同步在跑（新聞），同時只會跑一個"}',
+});
+
+test('觸發同步：帶 force=1（剛寫回試算表，不能因為冷卻防呆就不重讀）', async () => {
+  const { line, calls } = await runTrigger(accepted);
+  assert.equal(line, '已觸發（social）');
+  assert.match(calls[0].url, /\/api\/v1\/sync\?scope=social&force=1$/);
+  assert.equal(calls[0].options.method, 'POST');
+});
+
+test('觸發同步：伺服器正在跑別的同步（409 sync_in_progress）要排隊重試，不是失敗', async () => {
+  let n = 0;
+  const { line, lines, calls } = await runTrigger(async () => {
+    n += 1;
+    return n < 3 ? busy() : accepted();
+  });
+  assert.equal(line, '已觸發（social）');
+  assert.equal(calls.length, 3, '兩次 409 之後第三次成功');
+  assert.match(lines[0], /觸發同步未成（第 1\/3 次）：伺服器正在跑其他同步/);
+  assert.match(lines.at(-1), /已觸發本機伺服器/);
+});
+
+test('觸發同步：一直失敗要照實回報（含原因），並說伺服器排程會接手', async () => {
+  const { line, lines } = await runTrigger(async () => { throw new Error('connect ECONNREFUSED 127.0.0.1:8787'); });
+  assert.match(line, /^未觸發（connect ECONNREFUSED/);
+  assert.equal(lines.filter((l) => l.includes('觸發同步未成')).length, 3);
+  assert.match(lines.at(-1), /自己的排程會讀到同一份試算表/);
+});
+
+test('觸發同步：HTTP 不是 202 也要留下狀態碼與訊息（不能靜靜地當成已觸發）', async () => {
+  const { line } = await runTrigger(async () => ({
+    status: 409, ok: false, text: async () => '{"reason":"sync_too_soon","message":"剛剛才同步過"}',
+  }), 1);
+  assert.match(line, /^未觸發（HTTP 409/);
+  assert.match(line, /sync_too_soon/);
 });
