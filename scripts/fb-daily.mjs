@@ -231,8 +231,10 @@ async function main(argv) {
     if (existsSync(keyPath)) {
       fetchArgs.push('--write-sheet', '--key', keyPath);
       wroteSheet = 1;
-    } else {
-      log(`沒有服務帳號金鑰（${keyPath}）→ 只產生本機 CSV，不寫回試算表`);
+    } else if (!(process.env.LY_SHEET_WEBAPP_URL && process.env.LY_SHEET_TOKEN)) {
+      // 有 Web App 設定時（~/.ly-dashboard/sheet.env）走的是 Apps Script，這裡不必嚇人：
+      // 之前的寫法會在有 Web App 的情況下也印「不寫回試算表」，診斷時容易誤判。
+      log(`沒有服務帳號金鑰（${keyPath}），也沒有 Web App 設定 → 只產生本機 CSV，不寫回試算表`);
     }
 
     // 呼叫端給的參數（例如手動試跑的 --ids）一律優先，方便縮小範圍
