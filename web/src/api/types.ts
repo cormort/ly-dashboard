@@ -856,6 +856,8 @@ export interface CountyItem {
   county: string;
   households: number;
   population: number;
+  /** 面積（平方公里）；由 scripts/build-county-stats.mjs 把鄉鎮市區面積加總而來，前端用它算人口密度 */
+  area_km2: number;
   /** 20 歲以上（選舉年齡）人口 */
   voting_age: number;
   /** 65 歲以上人口 */

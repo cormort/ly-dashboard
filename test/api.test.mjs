@@ -935,6 +935,28 @@ test('S2: 險勝榜的 intensity 不可以隨 ?limit= 改變', () => {
   }
 });
 
+test('資料檔不變量：縣市面積與人口密度', () => {
+  const cs = dataFile('../../server/county-stats.json');
+  const pt = dataFile('../../server/population-trend.json');
+
+  // 面積是「鄉鎮市區面積加總」：與人口趨勢檔的鄉鎮面積加總必須一致。
+  // 兩邊都來自戶政司縣市月報的 size 欄位，分岔就代表 join／改名壞了（例如 桃園縣→桃園市）。
+  const byTown = new Map();
+  for (const t of pt.towns) byTown.set(t.county, Math.round(((byTown.get(t.county) ?? 0) + t.size) * 100) / 100);
+
+  let total = 0;
+  for (const c of cs.counties) {
+    assert.ok(c.area_km2 > 0, `${c.county} 面積要大於 0`);
+    assert.equal(c.area_km2, byTown.get(c.county), `${c.county} 面積要等於鄉鎮面積加總`);
+    const density = c.population / c.area_km2;
+    assert.ok(Number.isFinite(density) && density > 0, `${c.county} 人口密度要算得出來`);
+    total += c.area_km2;
+  }
+  assert.ok(total > 36000 && total < 36500, `22 縣市面積合計在 3.6 萬平方公里上下（實得 ${total}）`);
+  const densest = [...cs.counties].sort((a, b) => b.population / b.area_km2 - a.population / a.area_km2)[0];
+  assert.equal(densest.county, '臺北市', '人口密度最高一直是臺北市');
+});
+
 test('資料檔不變量：margin_pct 與 margin 一致、2012 總統的政黨標籤正確', () => {
   const cs = dataFile('../../server/county-stats.json');
   const lv = dataFile('../../server/legislator-votes.json');

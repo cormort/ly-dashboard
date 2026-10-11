@@ -326,7 +326,9 @@ Query 參數（全部可選）：
 
 縣市分頁用。22 縣市（北到南、離島）的靜態人口與選舉資料（`server/county-stats.json`，由 `scripts/build-county-stats.mjs` 產生，更新方式見該檔開頭），加上該縣市在職區域立委。
 回應：`population_month`（人口統計年月）、`elections`（各場選舉的 `{ label, date }`）、`sources`、`items[]`：
-`{ county, households, population, voting_age（20 歲以上）, elderly（65 歲以上）, elections, path（地圖 SVG path）, legislators[] }`。
+`{ county, households, population, area_km2（面積，平方公里）, voting_age（20 歲以上）, elderly（65 歲以上）, elections, path（地圖 SVG path）, legislators[] }`。
+`area_km2` 是該縣市**鄉鎮市區面積的加總**（戶政司縣市月報的 `size` 欄位；22 縣市合計 36,194.18 平方公里）。
+**人口密度不在 API 裡**：前端用 `population ÷ area_km2` 自己算（與其他比率指標一致，見 `web/src/pages/CountiesPage.tsx` 的 `perArea`）。
 `elections` 有 `president_2024`、`president_2020`、`mayor_2022`、`mayor_2018`，各為 `{ electorate, turnout, valid, candidates[{ name, party, votes, pct }], margin, margin_pct }`，
 候選人依票數排序，`margin`／`margin_pct` 為第一名與第二名的票數差與得票率差（百分點）。2018 起改用中選會原始檔，四場皆有選舉人數與投票率；嘉義市 2022 為 12/18 延期選舉。
 

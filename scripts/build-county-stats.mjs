@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 /**
  * 產生「縣市」分頁用的靜態資料 server/county-stats.json（人口、選舉、地圖輪廓）。
- * 這些資料一年才變一次，不放進同步流程，需要更新時手動重跑：
+ * 這些資料一年才變一次，不放進同步流程，需要更新時手動重跑。
+ * **最省事的做法是跑 scripts/refresh-county-stats.sh**（自動 clone／更新轉存、挑最新月份、跑完體檢）；
+ * 下面是它背後實際做的事：
  *
  *   git clone --depth 1 --filter=blob:none https://github.com/kiang/db.cec.gov.tw.git cec
  *   git clone --depth 1 --filter=blob:none https://github.com/kiang/data.moi.gov.tw.git moi
@@ -158,13 +160,20 @@ function loadCec(dir) {
   const file = (...prefixes) => join(dir, files.find((f) => prefixes.some((p) => f.startsWith(p)) && f.endsWith('.csv')));
   const names = new Map(rows(file('elbase', 'elbese')).map((r) => [r.slice(0, 5).join(''), r[5]]));
   const parties = new Map(rows(file('elpaty')).map((r) => [r[0], r[1]]));
+  /**
+   * 中選會原始檔的已知錯誤（只蓋總統選舉檔）：2012 總統宋楚瑜在 elcand.csv 的政黨代號是
+   * 999「無黨籍及未經政黨推薦」，但他其實是親民黨提名（elpaty.csv 的 90 才是親民黨）。
+   * 不蓋的話，重跑建置會把 369,588 票標成「無黨籍」——上一版是**手改資料檔**修掉的，
+   * 手改的會在下次重跑時消失，所以要在這裡蓋回來（D60／D278，測試會擋）。
+   */
+  const partyOverride = dir.includes('總統') ? new Map([['宋楚瑜', '親民黨']]) : new Map();
   // 號次 → 候選人（只留正手）。全國性選舉以號次對應，地方選舉加上縣市（與選區）代碼
   const cands = new Map();
   // 號次在部分檔案補零（'001'），一律轉成數字字串
   const no = (v) => String(Number(v));
   for (const r of rows(file('elcand'))) {
     if (r[15] === 'Y') continue;
-    const cand = { name: r[6], party: party(parties.get(r[7])) };
+    const cand = { name: r[6], party: partyOverride.get(r[6]) ?? party(parties.get(r[7])) };
     if (r[0] === '00') cands.set(`#${no(r[5])}`, cand);
     else {
       cands.set(`${r[0]}${r[1]}${r[2]}#${no(r[5])}`, cand);
@@ -379,6 +388,31 @@ function townPaths(file) {
 
 /* ---------- 組合 ---------- */
 const cec = (path) => join(args.cec, 'voteData', path);
+// --moi 指向 moi/raw/population/年/月/data.csv，往上五層是轉存 repo 的根目錄
+const moiRoot = join(args.moi, '../../../../..');
+
+/**
+ * 縣市面積（平方公里）：戶政司的縣市月報（docs/json/population/city）每一筆鄉鎮市區都帶
+ * 「面積」欄位，把同一個縣市的鄉鎮市區加總就是縣市面積（22 縣市合計 36,194.18 km²，
+ * 與內政部公布的土地面積一致）。前端用人口 ÷ 面積自己算密度（跟其他比率指標一致）。
+ *
+ * 缺任何一個縣市就整支失敗：寧可不要出檔，也不要產出「面積 0 → 密度 Infinity」的圖。
+ */
+function countyAreas() {
+  const cityDir = join(moiRoot, 'docs/json/population/city');
+  const years = readdirSync(cityDir).sort();
+  const monthDir = join(cityDir, years[years.length - 1]);
+  const months = readdirSync(monthDir).sort();
+  const latest = join(monthDir, months[months.length - 1]);
+  const out = new Map();
+  for (const t of Object.values(JSON.parse(readFileSync(latest, 'utf8')))) {
+    const county = fixName(t.area.slice(0, 3));
+    out.set(county, Math.round(((out.get(county) ?? 0) + t.size) * 100) / 100);
+  }
+  for (const county of COUNTIES) if (!out.get(county)) throw new Error(`縣市面積缺漏：${county}（讀 ${latest}）`);
+  return out;
+}
+
 const PRESIDENT = { 2012: '20120114-總統及立委', 2016: '2016總統立委', 2020: '2020總統立委', 2024: '2024總統立委' };
 const both = (...maps) => new Map(maps.flatMap((m) => [...m]));
 
@@ -401,6 +435,7 @@ const mayor = new Map([
 ]);
 const trends = { president: series(president), mayor: series(mayor), party_list: series(partyList) };
 const paths = mapPaths(args.geo);
+const areas = countyAreas();
 
 const counties = COUNTIES.map((county) => {
   const elections = {
@@ -415,6 +450,7 @@ const counties = COUNTIES.map((county) => {
   return {
     county,
     ...p,
+    area_km2: areas.get(county),
     elections,
     trends: Object.fromEntries(Object.entries(trends).map(([type, t]) => [type, t.get(county)])),
     path: paths[county],
@@ -500,8 +536,6 @@ out(
 console.log(`wrote ${args['demographics-out']}: ${townItems.length} 鄉鎮市區`);
 
 /* ---------- 人口趨勢：2016 起每月鄉鎮人口（docs/json），每年 12 月的年齡結構（raw 村里單一年齡） ---------- */
-// --moi 指向 moi/raw/population/年/月/data.csv，往上五層是 repo 根目錄
-const moiRoot = join(args.moi, '../../../../..');
 const cityDir = join(moiRoot, 'docs/json/population/city');
 const months = readdirSync(cityDir)
   .sort()

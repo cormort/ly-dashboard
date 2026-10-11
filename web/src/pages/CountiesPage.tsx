@@ -22,16 +22,23 @@ export interface CountiesPageProps {
 
 /* ---------- 指標 ---------- */
 
-type Unit = '人' | '戶' | '%' | '票' | '百分點';
+type Unit = '人' | '戶' | '%' | '票' | '百分點' | '平方公里' | '人／平方公里';
 
 interface Metric {
   key: string;
   label: string;
   unit: Unit;
+  /** 非比率的小數位數（面積 2 位、密度 1 位）；比率固定 2 位 */
+  digits?: number;
   value: (c: CountyItem) => number | null;
   /** 選舉指標：所屬選舉與欄位，用來配對前後兩次（時間差異） */
   election?: CountyElectionKey;
   field?: string;
+  /**
+   * 加總沒有意義的指標（例如人口密度）用這個取代「全國加總」那一格：
+   * 22 個縣市密度的和沒有意義，全國要一起算（總人口 ÷ 總面積）。
+   */
+  national?: { value: (items: CountyItem[]) => number | null; label: string };
 }
 
 const ELECTIONS: CountyElectionKey[] = ['president_2024', 'president_2020', 'mayor_2022', 'mayor_2018'];
@@ -46,8 +53,15 @@ const numOrDash = (n: number | null, digits = 0) => (n === null || !Number.isFin
 // 這個檔案其他地方都用 `?? null` 表示缺值，比率也該一致。
 const ratio = (part: number, whole: number) => (Number.isFinite(part) && Number.isFinite(whole) && whole !== 0 ? (part / whole) * 100 : null);
 const isRate = (unit: Unit) => unit === '%' || unit === '百分點';
-const fmt = (value: number | null, unit: Unit) =>
-  value === null ? '—' : isRate(unit) ? `${num(value, 2)}${unit === '%' ? '%' : ' 個百分點'}` : `${num(value)} ${unit}`;
+const fmt = (value: number | null, unit: Unit, digits = 0) =>
+  value === null ? '—' : isRate(unit) ? `${num(value, 2)}${unit === '%' ? '%' : ' 個百分點'}` : `${num(value, digits)} ${unit}`;
+/**
+ * 人口密度（人/km²）：面積缺值或 0 時回 null（＝「無資料」）。
+ * 理由同 ratio()：不要讓 Infinity／NaN 流進色階與排名。
+ */
+const perArea = (population: number, area: number | null | undefined) =>
+  Number.isFinite(population) && Number.isFinite(area) && (area ?? 0) > 0 ? Math.round((population / (area as number)) * 10) / 10 : null;
+export { perArea };
 const signed = (value: number, digits = 0) => `${value > 0 ? '+' : ''}${num(value, digits)}`;
 
 function partyVotes(e: CountyElection, party: string): { votes: number; pct: number } | null {
@@ -56,8 +70,8 @@ function partyVotes(e: CountyElection, party: string): { votes: number; pct: num
   return { votes: list.reduce((s, c) => s + c.votes, 0), pct: list.reduce((s, c) => s + c.pct, 0) };
 }
 
-/** 由資料列出所有可分析的數值指標（相當於 tw_statistic_map 的「數值欄位」） */
-function buildMetrics(data: CountiesResponse): Metric[] {
+/** 由資料列出所有可分析的數值指標（相當於 tw_statistic_map 的「數值欄位」）；匯出給 render smoke 驗指標清單 */
+export function buildMetrics(data: CountiesResponse): Metric[] {
   const metrics: Metric[] = [
     { key: 'population', label: '人口數', unit: '人', value: (c) => c.population },
     { key: 'households', label: '戶數', unit: '戶', value: (c) => c.households },
@@ -65,6 +79,21 @@ function buildMetrics(data: CountiesResponse): Metric[] {
     { key: 'voting_age_ratio', label: '選舉年齡人口比率', unit: '%', value: (c) => ratio(c.voting_age, c.population) },
     { key: 'elderly', label: '老年人口（65 歲以上）', unit: '人', value: (c) => c.elderly },
     { key: 'elderly_ratio', label: '老年人口比率', unit: '%', value: (c) => ratio(c.elderly, c.population) },
+    { key: 'area_km2', label: '面積', unit: '平方公里', digits: 2, value: (c) => c.area_km2 },
+    {
+      key: 'density',
+      label: '人口密度',
+      unit: '人／平方公里',
+      value: (c) => perArea(c.population, c.area_km2),
+      // 22 個縣市密度相加沒有意義：全國那一格改成「總人口 ÷ 總面積」
+      national: {
+        label: '全國（總人口 ÷ 總面積）',
+        value: (items) => perArea(
+          items.reduce((s, c) => s + c.population, 0),
+          items.reduce((s, c) => s + c.area_km2, 0),
+        ),
+      },
+    },
   ];
   for (const election of ELECTIONS) {
     const label = data.elections[election].label;
@@ -236,6 +265,10 @@ function CountyDetail({ county, data, onOpenId }: { county: CountyItem; data: Co
           <b className="stat-value">{num(county.elderly)}</b>
           <span className="stat-label">老年人口（65 歲以上，{numOrDash(ratio(county.elderly, county.population), 2)}%）</span>
         </div>
+        <div className="stat-tile">
+          <b className="stat-value">{numOrDash(perArea(county.population, county.area_km2))}</b>
+          <span className="stat-label">人口密度（人／平方公里；面積 {num(county.area_km2, 2)} 平方公里）</span>
+        </div>
       </div>
       <div className="county-legislators">
         <h3>區域立委</h3>
@@ -295,10 +328,14 @@ function Overview({ metric, items }: { metric: Metric; items: CountyItem[] }) {
   if (!rows.length) return null;
   const sum = rows.reduce((s, r) => s + r.v, 0);
   const tiles = [
-    ...(isRate(metric.unit) ? [] : [{ value: fmt(sum, metric.unit), label: `全國加總（${rows.length} 縣市）` }]),
-    { value: fmt(sum / rows.length, metric.unit), label: '縣市平均' },
-    { value: fmt(rows[0].v, metric.unit), label: `最高：${rows[0].county}` },
-    { value: fmt(rows[rows.length - 1].v, metric.unit), label: `最低：${rows[rows.length - 1].county}` },
+    ...(isRate(metric.unit)
+      ? []
+      : [metric.national
+          ? { value: fmt(metric.national.value(items), metric.unit, metric.digits), label: metric.national.label }
+          : { value: fmt(sum, metric.unit, metric.digits), label: `全國加總（${rows.length} 縣市）` }]),
+    { value: fmt(sum / rows.length, metric.unit, metric.digits), label: '縣市平均' },
+    { value: fmt(rows[0].v, metric.unit, metric.digits), label: `最高：${rows[0].county}` },
+    { value: fmt(rows[rows.length - 1].v, metric.unit, metric.digits), label: `最低：${rows[rows.length - 1].county}` },
   ];
   return (
     <div className="stat-row stat-overview" aria-label={`數據總覽：${metric.label}`}>
@@ -329,7 +366,7 @@ function Ranking({ metric, items, top, onSelect }: { metric: Metric; items: Coun
           <span className="stat-bar" aria-hidden="true">
             <i style={{ width: `${Math.max(2, (r.v / max) * 100)}%`, background: colorAt('Viridis', max === min ? 1 : (r.v - min) / (max - min)) }} />
           </span>
-          <span className="stat-bar-value">{fmt(r.v, metric.unit)}</span>
+          <span className="stat-bar-value">{fmt(r.v, metric.unit, metric.digits)}</span>
         </li>
       ))}
     </ol>
@@ -381,7 +418,7 @@ export function CountiesPage({ refreshToken, onOpenId }: CountiesPageProps) {
     return <EmptyState message="目前沒有可對比的兩場選舉" hint="需要同一類選舉至少兩屆的資料。" />;
   }
   const mapValues = (m: Metric) => new Map(items.map((c) => [c.county, m.value(c)]));
-  const formatOf = (m: Metric) => (v: number | null) => fmt(v, m.unit);
+  const formatOf = (m: Metric) => (v: number | null) => fmt(v, m.unit, m.digits);
 
   // 時間差異：變化率 =（新 − 舊）÷ 舊
   const compareRows = items.map((c) => {
@@ -398,7 +435,7 @@ export function CountiesPage({ refreshToken, onOpenId }: CountiesPageProps) {
         c.county,
         ...metrics.map((m) => {
           const v = m.value(c);
-          return v === null ? '' : isRate(m.unit) ? v.toFixed(2) : v;
+          return v === null ? '' : isRate(m.unit) ? v.toFixed(2) : m.digits ? v.toFixed(m.digits) : v;
         }),
       ]),
     ]);
@@ -572,7 +609,7 @@ export function CountiesPage({ refreshToken, onOpenId }: CountiesPageProps) {
                     <td>{c.county}</td>
                     {tableMetrics.map((m) => (
                       <td key={m.key} className="num">
-                        {fmt(m.value(c), m.unit)}
+                        {fmt(m.value(c), m.unit, m.digits)}
                       </td>
                     ))}
                   </tr>

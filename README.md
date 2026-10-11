@@ -627,7 +627,7 @@ build 腳本會用「候選人數對不對」確認自己抓對欄位，對不�
   修法後改成「同意票須達選舉人總數 1/4」（且同意 > 不同意）。所以蔡正元 2015 拿到 **97% 同意卻沒過**
   （投票率只有 24.98%）、黃國昌與林昶佐也都是同意多於不同意但沒過四分之一門檻；
   35 案裡只有陳柏惟（2021）通過。測試會用票數**重算門檻**並要求與中選會記載的結果一致。
-- **人口與選舉為靜態檔**（`server/county-stats.json`、`server/legislator-votes.json`），不在同步流程內，需手動重跑 build 腳本；人口目前為 2026-08。
+- **人口與選舉為靜態檔**（`server/county-stats.json`、`server/legislator-votes.json`），不在同步流程內，更新時跑 `scripts/refresh-county-stats.sh`（自動 clone／更新轉存、挑最新月份、跑完體檢；人口每個月會動，其餘一年一次）；人口目前為 2026-09。
   它們**不在 `/health` 的 `datasets`**（沒有 `fetched_at`，不是抓來的），改列在 `static_data`：只有「資料截止 `as_of`」與筆數。人口月報超過 `LY_STATIC_STALE_MONTHS`（預設 3）個月沒更新、或任一個檔讀不到／是空的，都會出現在 `/health` 的 `warnings`。
 - **人口與選舉資料取自 GitHub 轉存**（kiang/data.moi.gov.tw、kiang/db.cec.gov.tw），非直接取自政府網站；縣市界為 ronnywang/twgeojson（2010 版，以縣市名對應）。
   **例外：罷免案直接取自中選會官方**（`db.cec.gov.tw`，見上一條）。兩者的差別在可回溯性：GitHub 轉存可以被改寫歷史，官方端點則是原始來源。

@@ -51,7 +51,7 @@ import { DashboardPage } from '../src/pages/DashboardPage';
 import { CommitteesPage } from '../src/pages/CommitteesPage';
 import { legacyRedirect, pathFor, routeOf, type Route } from '../src/hooks/useRoute';
 import { BillStageBar } from '../src/components/BillStage';
-import { CountiesPage } from '../src/pages/CountiesPage';
+import { CountiesPage, buildMetrics, perArea } from '../src/pages/CountiesPage';
 import { CouncilPage, marginText, upgradedNotes } from '../src/pages/CouncilPage';
 import { NewsPage } from '../src/pages/NewsPage';
 import { WallCard, ChipRow } from '../src/pages/SocialWallPage';
@@ -1502,6 +1502,25 @@ const sampleCounties = [{ county: '基隆市' }, { county: '臺北市' }];
 check('resolveCounty：查得到就回該筆', resolveCounty(sampleCounties, '臺北市')?.county === '臺北市');
 check('resolveCounty：原住民的 region 不是縣市名 → null', resolveCounty(sampleCounties, '山地原住民') === null);
 check('resolveCounty：空字串／null → null', resolveCounty(sampleCounties, '') === null && resolveCounty(sampleCounties, null) === null);
+
+// D1：縣市指標多了「面積」與「人口密度」（2026-10-11；人口密度＝人口 ÷ 面積）
+// 密度用真實資料驗：最高一定是臺北市（8 千多人/km²），最低在花蓮／臺東之間。
+const countyMetrics = buildMetrics({ ...countyStatsData, items: countyStatsData.counties } as never);
+const densityMetric = countyMetrics.find((m) => m.key === 'density');
+const areaMetric = countyMetrics.find((m) => m.key === 'area_km2');
+check('縣市指標：面積（平方公里）與人口密度（人／平方公里）都在指標清單裡', Boolean(areaMetric && densityMetric) && areaMetric!.unit === '平方公里' && densityMetric!.unit === '人／平方公里');
+check('人口密度：人口 ÷ 面積；面積缺值或 0 回 null（不要 Infinity）', perArea(23_213_251, 36_194.18) === 641.4 && perArea(1_000, 0) === null && perArea(1_000, undefined) === null);
+check('人口密度：最高是臺北市、最低是花蓮縣或臺東縣', (() => {
+  const rows = countyStatsData.counties
+    .map((c: { county: string; population: number; area_km2: number }) => ({ county: c.county, d: perArea(c.population, c.area_km2) ?? 0 }))
+    .sort((a: { d: number }, b: { d: number }) => b.d - a.d);
+  return rows[0].county === '臺北市' && ['花蓮縣', '臺東縣'].includes(rows[rows.length - 1].county);
+})());
+check('人口密度的「全國」不是 22 個縣市相加，是總人口 ÷ 總面積', (() => {
+  const national = densityMetric!.national!.value(countyStatsData.counties);
+  const naive = countyStatsData.counties.reduce((s: number, c: { population: number; area_km2: number }) => s + (perArea(c.population, c.area_km2) ?? 0), 0);
+  return national !== null && national > 600 && national < 700 && naive > 15_000;
+})());
 
 // C4：?scale= 是任意字串，未知色階不可以丟例外（會讓整頁被 ErrorBoundary 蓋掉）
 let scaleThrew = false;
