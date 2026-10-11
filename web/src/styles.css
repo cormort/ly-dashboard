@@ -313,6 +313,22 @@ header nav, .subnav-row { position: relative; }
 .info-tip .info-line + .info-line { margin-top: 2px; color: #e2e8f0; }
 /* 上下留白對稱：不然頁籤會被 padding-bottom 往上推（實測比列中心高 3–4px） */
 .subnav-row { display: flex; align-items: center; gap: var(--space-2); max-width: 1240px; margin: 0 auto; padding: var(--space-1) var(--space-6); border-bottom: 1px solid var(--rule); }
+/* 手機／平板：次級導覽固定在頂端（2026-10-11）。
+   這一條是捲動之後還看得到的「我在哪一頁、可以換到哪一頁」——頁首在 ≤1100px 是刻意 static 的
+   （捲動時讓出畫面），所以第二層導覽改由自己固定。
+   純 CSS（position: sticky），沒有 JS 捲動監聽、沒有 scroll 事件，成本是固定佔約 40px 的畫面高度。
+   桌機（≥1101px）不動：那裡本來就有 sticky 的頁首，次級導覽跟著它，不需要另一條固定列。 */
+@media (max-width: 1100px) {
+  .subnav-row {
+    position: sticky;
+    top: 0;
+    z-index: 9; /* 低於頁首的 10、高於內容；說明提示自己是 30 */
+    background: var(--surface);
+  }
+  /* 這一條會蓋住捲過去的內容：程式把名錄捲到視窗頂端時要留它的高度（見 lib/scroll.ts）。
+     實測手機的這一條高 49px（40px 的膠囊＋上下 padding），留 52 才真的不會蓋到第一張卡。 */
+  #directory { scroll-margin-top: 52px; }
+}
 .subnav-row .subnav { flex: 1 1 auto; min-width: 0; max-width: none; margin: 0; padding: 0; border-bottom: 0; }
 /* 次級導覽裡的跨主題捷徑（NavGroup.lead）：跟右邊「本主題自己的頁籤」之間畫一條線 */
 .subnav-divider { flex: 0 0 auto; align-self: center; width: 1px; height: 18px; margin: 0 var(--space-1); background: var(--rule); }
