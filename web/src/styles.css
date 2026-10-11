@@ -765,6 +765,11 @@ button.chip:hover:not(:disabled) { border-color: var(--accent-line); background:
 
 /* ---------- 委員檔案側欄 ---------- */
 .overlay { position: fixed; inset: 0; background: rgba(16, 24, 40, 0.5); z-index: 20; }
+/* 第二層頁籤的卡片（手機，PageCard）：同一個 .overlay，但
+   ① z-index 低一級 —— 在卡片裡點委員時，委員檔案要疊在它上面，關掉再回到這一張；
+   ② 開卡片時把 top 設成次級導覽的底緣，那一條頁籤才留著（還可以直接點別格換卡片內容）。 */
+.overlay.page-card { z-index: 19; }
+.page-card-title { margin: 0 0 var(--space-2); padding-bottom: var(--space-2); border-bottom: 1px solid var(--rule); font-size: var(--fs-xl); }
 .overlay aside {
   position: absolute;
   right: 0;

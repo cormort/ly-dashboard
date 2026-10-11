@@ -22,6 +22,7 @@ import { FontSizeControl } from './FontSizeControl';
 import { InfoTip } from './InfoTip';
 import { Magnifier } from './Magnifier';
 import { PAGE_HINTS } from '../lib/pageHints';
+import { shouldOpenInCard } from '../lib/nav';
 import { SearchField } from './SearchField';
 
 export interface HeaderProps {
@@ -47,6 +48,11 @@ export interface HeaderProps {
   /** 同步進度／結果文字（如「同步中…（已完成 2 個來源）」）；無則不顯示 */
   syncMessage?: string | null;
   syncTone?: 'running' | 'ok' | 'error' | 'blocked';
+  /**
+   * 手機：第二層頁籤點下去改成開卡片（見 lib/nav.ts 與 PageCard）。
+   * 沒給就維持原本的直接換頁（桌機、以及測試都是這條路）。
+   */
+  onOpenCard?: (route: Route) => void;
   /** 可選的同步範圍（/sync-sources）；只有一個或還沒載到時不顯示下拉 */
   syncScopes?: SyncScope[];
   /** 目前選的同步範圍 id（預設 'all'） */
@@ -179,6 +185,19 @@ const NAV: NavGroup[] = [
 const groupOf = (route: Route): NavGroup =>
   NAV.find((group) => group.routes.some((item) => item.route === (route === 'dgbas' ? 'my' : route))) ?? NAV[0];
 
+/**
+ * 這個路由在頁籤上的名字（卡片標題要用）。找不到就退回所屬主題的名稱，
+ * 再找不到回 null（呼叫端自己決定要不要開卡片）。
+ */
+export function navLabelOf(route: Route): string | null {
+  for (const group of NAV) {
+    const item = group.routes.find((entry) => entry.route === route);
+    if (item) return item.label;
+    if (group.lead?.route === route) return group.lead.label;
+  }
+  return null;
+}
+
 /** 頁首：站名、三頁導覽、委員搜尋、資料狀態（有問題才用警示色）。 */
 export function Header({
   route,
@@ -196,6 +215,7 @@ export function Header({
   refreshing,
   syncMessage = null,
   syncTone = 'running',
+  onOpenCard,
   syncScopes = [],
   syncScope = 'all',
   onSyncScopeChange,
@@ -237,6 +257,17 @@ export function Header({
   const hasSubnav = activeGroup.routes.length > 1;
   // 先取出成 const：TS 的屬性縮窄不會進到 onClick 的閉包裡
   const subnavLead = activeGroup.lead;
+
+  /**
+   * 第二層頁籤的點擊行為：手機開卡片、其餘直接換頁。
+   * `typeof window` 的守衛是為了非瀏覽器環境（render smoke 只做靜態渲染、不會點）。
+   */
+  const subnavClick = (target: Route) => (event: React.MouseEvent) => {
+    event.preventDefault();
+    const width = typeof window === 'undefined' ? 0 : window.innerWidth;
+    if (onOpenCard && shouldOpenInCard({ viewportWidth: width })) onOpenCard(target);
+    else onNavigate(pathFor(target));
+  };
 
   return (
     <>
@@ -385,13 +416,7 @@ export function Header({
           <nav className="subnav" aria-label={`${activeGroup.label}的頁面`}>
             {subnavLead ? (
               <>
-                <a
-                  href={pathFor(subnavLead.route)}
-                  onClick={(event) => {
-                    event.preventDefault();
-                    onNavigate(pathFor(subnavLead.route));
-                  }}
-                >
+                <a href={pathFor(subnavLead.route)} onClick={subnavClick(subnavLead.route)}>
                   {subnavLead.label}
                 </a>
                 {/* 這條線左邊是「別的」主題的頁面，右邊才是「新聞」自己的頁籤 */}
@@ -403,10 +428,7 @@ export function Header({
                 key={item.route}
                 href={pathFor(item.route)}
                 aria-current={route === item.route ? 'page' : undefined}
-                onClick={(event) => {
-                  event.preventDefault();
-                  onNavigate(pathFor(item.route));
-                }}
+                onClick={subnavClick(item.route)}
               >
                 {item.label}
               </a>

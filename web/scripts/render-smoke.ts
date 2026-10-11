@@ -23,7 +23,9 @@ import { AppShell } from '../src/components/AppShell';
 import { ChangesPanel } from '../src/components/ChangesPanel';
 import { CommitteeChart } from '../src/components/CommitteeChart';
 import { FacetChips } from '../src/components/FacetChips';
-import { Header, scopeCadenceText, scopeDetailText, scopeOptionLabel } from '../src/components/Header';
+import { Header, navLabelOf, scopeCadenceText, scopeDetailText, scopeOptionLabel } from '../src/components/Header';
+import { PageCard } from '../src/components/PageCard';
+import { shouldOpenInCard } from '../src/lib/nav';
 import { formatDateTime, formatDay, formatDuration } from '../src/lib/format';
 import type { SyncScope } from '../src/api/types';
 import { MyAgencyPage, WatcherDetail, watchUrl } from '../src/pages/MyAgencyPage';
@@ -239,6 +241,32 @@ check(
 );
 check('不含示範／假資料字串', !/甲黨|示範資料|林怡安|陳宏宇|乙黨/.test(homeHtml));
 check('/funds、/agencies、/foundations、/administrative 各對應一頁', routeOf('/funds') === 'funds' && routeOf('/agencies') === 'agencies' && routeOf('/foundations') === 'foundations' && routeOf('/administrative') === 'administrative' && routeOf('/dgbas') === 'dgbas');
+
+// 第二層頁籤的卡片（2026-10-11）：手機點頁籤開卡片、桌機直接換頁；卡片標題取自頁籤名稱
+check(
+  '手機才用卡片開第二層頁籤（≤760px），平板與桌機維持直接換頁',
+  shouldOpenInCard({ viewportWidth: 390 }) && shouldOpenInCard({ viewportWidth: 760 })
+    && !shouldOpenInCard({ viewportWidth: 761 }) && !shouldOpenInCard({ viewportWidth: 1280 })
+    && !shouldOpenInCard({ viewportWidth: 0 }),
+);
+check(
+  '卡片標題用頁籤上的名字（子頁與跨主題捷徑都查得到；查不到回 null）',
+  navLabelOf('bills' as const) === '法案查詢' && navLabelOf('agencies' as const) === '機關'
+    && navLabelOf('my' as const) === '我的機關' && navLabelOf('council' as const) === '總覽'
+    && navLabelOf('news' as const) === '委員新聞' && navLabelOf('dgbas' as const) === null,
+);
+check(
+  '卡片：同樣是 .overlay，有標題與右上角關閉鈕，內容是一整頁',
+  (() => {
+    const html = render(createElement(PageCard, { title: '法案查詢', onClose: () => undefined },
+      createElement('div', { className: 'inside-card' }, '內容')));
+    return html.includes('class="overlay page-card"')
+      && html.includes('>法案查詢</h2>')
+      && /aria-label="關閉法案查詢"/.test(html)
+      && html.includes('inside-card')
+      && /role="dialog"/.test(html);
+  })(),
+);
 check('/activity 對應最近動態、舊網址 /dashboard 仍是總覽', routeOf('/activity') === 'home' && routeOf('/dashboard') === 'dashboard' && routeOf('/') === 'dashboard');
 
 (window as unknown as { location: { pathname: string } }).location.pathname = '/legislators';

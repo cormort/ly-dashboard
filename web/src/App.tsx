@@ -3,7 +3,8 @@ import { buildUrl } from './api/client';
 import type { HealthResponse, Legislator, LegislatorsResponse, MetaResponse, SyncSourcesResponse } from './api/types';
 import { AppShell } from './components/AppShell';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { Header } from './components/Header';
+import { Header, navLabelOf } from './components/Header';
+import { PageCard } from './components/PageCard';
 import { LegislatorDetail } from './components/LegislatorDetail';
 import { legislatorDetailUrl } from './lib/legislators';
 import { SyncStatusBanner } from './components/SyncStatusBanner';
@@ -14,6 +15,7 @@ import { useQueryState } from './hooks/useQueryState';
 import { useSync } from './hooks/useSync';
 import { syncRunningText } from './lib/format';
 import { pathFor, useRoute } from './hooks/useRoute';
+import type { Route } from './hooks/useRoute';
 import { useTracked } from './hooks/useTracked';
 import { sessionLabelIndex } from './lib/sessions';
 import { BillsPage } from './pages/BillsPage';
@@ -60,6 +62,8 @@ export default function App() {
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [missingId, setMissingId] = useState<string | null>(null);
   const [syncOpen, setSyncOpen] = useState(false);
+  // 手機：第二層頁籤的卡片（存的是「卡片裡開哪一頁」）；關掉就回到原本那一頁
+  const [cardRoute, setCardRoute] = useState<Route | null>(null);
   // 同步範圍（下拉選單）：預設「全部」；每次開頁都回到全部，不記得上次選什麼
   const [syncScope, setSyncScope] = useState('all');
   const tracked = useTracked();
@@ -92,6 +96,52 @@ export default function App() {
     else navigate(pathFor('legislators', { q: value.trim() }));
   };
 
+  // 卡片開著時，如果底下的頁面換了（例如在卡片裡點了連結），卡片就關掉：
+  // 不然會變成「卡片顯示 A、底下其實是 B」，關掉卡片時使用者會嚇一跳。
+  useEffect(() => {
+    if (cardRoute) setCardRoute(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 只在 route 變動時關卡片
+  }, [route]);
+
+  /**
+   * 依路由畫出對應頁面。抽成函式是因為現在有兩個地方要畫同一頁：
+   * 主要內容區，以及手機的「第二層頁籤卡片」（見 PageCard）。
+   */
+  const renderPage = (target: Route) => (
+    <>
+      {target === 'home' ? <HomePage refreshToken={refreshToken} onOpenId={setPendingId} onNavigate={navigate} tracked={tracked} /> : null}
+      {target === 'legislators' ? (
+        <LegislatorsPage query={query} meta={meta} tracked={tracked} refreshToken={refreshToken} onOpen={setSelected} />
+      ) : null}
+      {target === 'socialwall' ? <SocialWallPage refreshToken={refreshToken} onOpenId={setPendingId} /> : null}
+      {target === 'bills' ? <BillsPage refreshToken={refreshToken} onOpenId={setPendingId} /> : null}
+      {target === 'dashboard' ? <DashboardPage refreshToken={refreshToken} onOpenId={setPendingId} onNavigate={navigate} /> : null}
+      {target === 'budget' ? <BudgetPage refreshToken={refreshToken} onOpenId={setPendingId} /> : null}
+      {target in FUND_TYPE ? (
+        <FundsPage key={target} type={FUND_TYPE[target as keyof typeof FUND_TYPE]} refreshToken={refreshToken} onOpenId={setPendingId} onNavigate={navigate} />
+      ) : null}
+      {target === 'counties' ? <CountiesPage refreshToken={refreshToken} onOpenId={setPendingId} /> : null}
+      {target === 'my' ? <MyAgencyPage refreshToken={refreshToken} onOpenId={setPendingId} onNavigate={navigate} /> : null}
+      {target === 'council' ? <CouncilPage refreshToken={refreshToken} /> : null}
+      {target === 'councilactivity' ? <CouncilActivityPage refreshToken={refreshToken} /> : null}
+      {target === 'committees' ? <CommitteesPage refreshToken={refreshToken} onOpenId={setPendingId} /> : null}
+      {target === 'news' ? <NewsPage refreshToken={refreshToken} onOpenId={setPendingId} /> : null}
+      {target === 'agencynews' ? <NewsPage scope="agencies" refreshToken={refreshToken} onOpenId={setPendingId} /> : null}
+      {target === 'allnews' ? <NewsPage scope="all" refreshToken={refreshToken} onOpenId={setPendingId} onNavigate={navigate} /> : null}
+      {target === 'officials' ? <NewsPage scope="officials" refreshToken={refreshToken} onOpenId={setPendingId} /> : null}
+      {target === 'compare' ? <ComparePage refreshToken={refreshToken} onOpenId={setPendingId} onNavigate={navigate} /> : null}
+      {target === 'rankings' ? <RankingsPage refreshToken={refreshToken} onOpenId={setPendingId} onNavigate={navigate} /> : null}
+    </>
+  );
+
+  /**
+   * 點第二層頁籤：手機開卡片，桌機直接換頁（Header 判斷寬度）。
+   * 點到「就是現在這一頁」的那一格＝把卡片關掉（不要用卡片重複顯示同一頁）。
+   */
+  const onOpenCard = (target: Route) => {
+    setCardRoute(target === route ? null : target);
+  };
+
   return (
     <ErrorBoundary>
       <AppShell
@@ -99,6 +149,7 @@ export default function App() {
           <Header
             route={route}
             onNavigate={navigate}
+            onOpenCard={onOpenCard}
             source={source}
             fetchedAt={fetchedAt}
             stale={stale}
@@ -188,28 +239,15 @@ export default function App() {
           </div>
         ) : null}
 
-        {route === 'home' ? <HomePage refreshToken={refreshToken} onOpenId={setPendingId} onNavigate={navigate} tracked={tracked} /> : null}
-        {route === 'legislators' ? (
-          <LegislatorsPage query={query} meta={meta} tracked={tracked} refreshToken={refreshToken} onOpen={setSelected} />
-        ) : null}
-        {route === 'socialwall' ? <SocialWallPage refreshToken={refreshToken} onOpenId={setPendingId} /> : null}
-        {route === 'bills' ? <BillsPage refreshToken={refreshToken} onOpenId={setPendingId} /> : null}
-        {route === 'dashboard' ? <DashboardPage refreshToken={refreshToken} onOpenId={setPendingId} onNavigate={navigate} /> : null}
-        {route === 'budget' ? <BudgetPage refreshToken={refreshToken} onOpenId={setPendingId} /> : null}
-        {route in FUND_TYPE ? (
-          <FundsPage key={route} type={FUND_TYPE[route as keyof typeof FUND_TYPE]} refreshToken={refreshToken} onOpenId={setPendingId} onNavigate={navigate} />
-        ) : null}
-        {route === 'counties' ? <CountiesPage refreshToken={refreshToken} onOpenId={setPendingId} /> : null}
-        {route === 'my' ? <MyAgencyPage refreshToken={refreshToken} onOpenId={setPendingId} onNavigate={navigate} /> : null}
-        {route === 'council' ? <CouncilPage refreshToken={refreshToken} /> : null}
-        {route === 'councilactivity' ? <CouncilActivityPage refreshToken={refreshToken} /> : null}
-        {route === 'committees' ? <CommitteesPage refreshToken={refreshToken} onOpenId={setPendingId} /> : null}
-        {route === 'news' ? <NewsPage refreshToken={refreshToken} onOpenId={setPendingId} /> : null}
-        {route === 'agencynews' ? <NewsPage scope="agencies" refreshToken={refreshToken} onOpenId={setPendingId} /> : null}
-        {route === 'allnews' ? <NewsPage scope="all" refreshToken={refreshToken} onOpenId={setPendingId} onNavigate={navigate} /> : null}
-        {route === 'officials' ? <NewsPage scope="officials" refreshToken={refreshToken} onOpenId={setPendingId} /> : null}
-        {route === 'compare' ? <ComparePage refreshToken={refreshToken} onOpenId={setPendingId} onNavigate={navigate} /> : null}        {route === 'rankings' ? <RankingsPage refreshToken={refreshToken} onOpenId={setPendingId} onNavigate={navigate} /> : null}
+        {renderPage(route)}
       </AppShell>
+
+      {/* 手機的第二層頁籤卡片：內容就是那一頁（與主要內容區共用 renderPage） */}
+      {cardRoute ? (
+        <PageCard title={navLabelOf(cardRoute) ?? '這一頁'} onClose={() => setCardRoute(null)}>
+          {renderPage(cardRoute)}
+        </PageCard>
+      ) : null}
     </ErrorBoundary>
   );
 }
