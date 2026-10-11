@@ -224,8 +224,17 @@ check(
   '上層導覽的順序是 總覽→我的機關→議事→委員→議員→社群→縣市地圖→新聞→機關／基金',
   (() => {
     const nav = dashboardHtml.match(/<nav aria-label="主要頁面">([\s\S]*?)<\/nav>/)?.[1] ?? '';
-    const labels = [...nav.matchAll(/>([^<>]+)<\/a>/g)].map((m) => m[1].trim()).filter(Boolean);
+    // 2026-10-11：頁籤加了圖示（手機顯示）與 label 的 span，標籤要從 .nav-label 取
+    const labels = [...nav.matchAll(/<span class="nav-label">([^<]+)<\/span>/g)].map((m) => m[1].trim()).filter(Boolean);
     return labels.join('→') === '總覽→我的機關→議事→委員→議員→社群→縣市地圖→新聞→機關／基金';
+  })(),
+);
+check(
+  '每個上層頁籤都有圖示（手機版頁籤列用；桌機隱藏）',
+  (() => {
+    const nav = dashboardHtml.match(/<nav aria-label="主要頁面">([\s\S]*?)<\/nav>/)?.[1] ?? '';
+    const tabs = [...nav.matchAll(/<a [^>]*>([\s\S]*?)<\/a>/g)].map((m) => m[1]);
+    return tabs.length === 9 && tabs.every((tab) => tab.includes('class="nav-icon"') && /<svg/.test(tab));
   })(),
 );
 check('不含示範／假資料字串', !/甲黨|示範資料|林怡安|陳宏宇|乙黨/.test(homeHtml));
@@ -481,7 +490,10 @@ expectNone('機關／基金的頁籤不再有行政院主計總處', orgsHeader,
 expectAll('機關／基金的頁籤仍有基金、機關、財團法人、行政法人', orgsHeader, ['基金', '機關', '財團法人', '行政法人']);
 check(
   '/dgbas 仍可開啟，導覽高亮「我的機關」',
-  routeOf('/dgbas') === 'dgbas' && /aria-current="page"[^>]*>我的機關</.test(render(createElement(Header, { ...headerProps, route: 'dgbas' as const }))),
+  routeOf('/dgbas') === 'dgbas'
+    && /aria-current="page"[\s\S]*?<span class="nav-label">我的機關<\/span>/.test(
+      render(createElement(Header, { ...headerProps, route: 'dgbas' as const })),
+    ),
 );
 
 // 子頁也依首長與幕僚的使用頻率排，主題的預設頁就是第一個子頁

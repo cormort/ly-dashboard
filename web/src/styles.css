@@ -238,6 +238,9 @@ header nav a, .subnav a {
 }
 header nav a:hover, .subnav a:hover { background: var(--rule-soft); color: var(--ink); }
 header nav a[aria-current='page'], .subnav a[aria-current='page'] { color: var(--accent-ink); background: var(--accent-soft); font-weight: 600; }
+/* 頁籤的圖示只在手機顯示（2026-10-11）。桌機那一條是「一行 9 個標籤」的緊湊配置，
+   高度與寬度都算過（768px 實測 706/728），加圖示會把算好的預算擠掉。 */
+.nav-icon { display: none; }
 .search { position: relative; flex: 1 1 220px; min-width: 200px; max-width: 420px; margin-left: auto; }
 .search > svg { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); width: 16px; color: var(--muted); }
 .search input {
@@ -1515,6 +1518,48 @@ a.stat-tile:hover { border-color: #98a2b3; box-shadow: var(--card-base-hover); t
   /* 7) 表格已在 .table-wrap／.table-scroll 內橫向捲動（2026-10-07 實測，父層寬度是對的），
         這裡只補觸控捲動與細捲軸，讓「右邊還有欄位」比較看得出來 */
   .table-wrap, .table-scroll { -webkit-overflow-scrolling: touch; scrollbar-width: thin; }
+
+  /* 8) 主導覽改成頁籤列：圖示在上、文字在下，選取用底線（2026-10-11，使用者給的參考畫面）。
+        為什麼：390px 只有 5 個半標籤看得到，一行純文字標籤（我的機關／機關／基金…）得逐字讀才知道是哪一頁；
+        加了圖示後每一格一眼可辨，選取狀態也不再靠底色（底色在橫向捲動時容易跟 hover 混淆）。
+        桌機不動：.nav-icon 在桌機是 display:none，桌機那條導覽的寬度預算（768px 實測 706/728）不受影響。 */
+  header nav { gap: 0; scroll-behavior: smooth; }
+  header nav a {
+    position: relative;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+    /* 左右 13px：指頭好按（相鄰兩個標籤間距 26px），也讓底線不會貼到隔壁 */
+    padding: 5px 13px 7px;
+    min-height: 47px;
+    border-radius: var(--radius-sm);
+    background: none;
+  }
+  /* 選取的那一格：文字與圖示都用 accent 色，底色歸零，改成底下一條短線 */
+  header nav a[aria-current='page'] { background: none; }
+  header nav a[aria-current='page']::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    bottom: 0;
+    width: 60%;
+    max-width: 46px;
+    height: 3px;
+    border-radius: 3px 3px 0 0;
+    background: var(--accent);
+    transform: translateX(-50%);
+  }
+  .nav-icon { display: inline-flex; }
+  .nav-label { font-size: var(--fs-2xs); line-height: 1.15; }
+  /* 頁面說明 ⓘ 排在選取頁籤後面，但它不是一個頁籤：縮小、變灰、前面加一條分隔線，
+     免得看起來像「一個沒有文字的頁籤」（桌機是一條連續的文字列，不會有這個問題） */
+  header nav .info-wrap {
+    padding-left: 6px;
+    margin-left: 4px;
+    border-left: 1px solid var(--rule);
+  }
+  header nav .info-wrap .info-button { min-width: 34px; min-height: 34px; }
+  header nav .info-wrap .info-button svg { width: 16px; height: 16px; color: var(--muted); }
 }
 
 /* 手機放大鏡（Magnifier.tsx）：透明蓋板接手觸控，鏡片浮在手指上方 */

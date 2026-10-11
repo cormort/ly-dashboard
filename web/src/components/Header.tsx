@@ -1,5 +1,19 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
-import { RefreshCw, Search, X } from 'lucide-react';
+import {
+  Building2,
+  Gavel,
+  Landmark,
+  LayoutDashboard,
+  Map as MapIcon,
+  MessageCircle,
+  Newspaper,
+  RefreshCw,
+  Search,
+  Users,
+  Vote,
+  X,
+} from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import type { SourceInfo, SyncScope } from '../api/types';
 import type { Route } from '../hooks/useRoute';
 import { pathFor } from '../hooks/useRoute';
@@ -73,6 +87,12 @@ export function scopeCadenceText(scope: SyncScope): string {
 interface NavGroup {
   id: string;
   label: string;
+  /**
+   * 手機版頁籤列的小圖示（桌機不顯示，見 styles.css 的 .nav-icon）。
+   * 2026-10-11：手機把主導覽改成「圖示＋文字、選取用底線」的頁籤列（使用者給的參考畫面），
+   * 一行 9 個純文字標籤太難掃讀，加了圖示後每一格一眼可辨。
+   */
+  icon: LucideIcon;
   home: Route;
   routes: { route: Route; label: string }[];
   /**
@@ -84,11 +104,12 @@ interface NavGroup {
 }
 
 const NAV: NavGroup[] = [
-  { id: 'overview', label: '總覽', home: 'dashboard', routes: [{ route: 'dashboard', label: '總覽' }] },
-  { id: 'my', label: '我的機關', home: 'my', routes: [{ route: 'my', label: '我的機關' }] },
+  { id: 'overview', label: '總覽', icon: LayoutDashboard, home: 'dashboard', routes: [{ route: 'dashboard', label: '總覽' }] },
+  { id: 'my', label: '我的機關', icon: Building2, home: 'my', routes: [{ route: 'my', label: '我的機關' }] },
   {
     id: 'agenda',
     label: '議事',
+    icon: Gavel,
     home: 'budget',
     routes: [
       { route: 'budget', label: '預算審議' },
@@ -99,6 +120,7 @@ const NAV: NavGroup[] = [
   {
     id: 'members',
     label: '委員',
+    icon: Users,
     home: 'legislators',
     routes: [
       { route: 'legislators', label: '委員查詢' },
@@ -110,22 +132,25 @@ const NAV: NavGroup[] = [
   {
     id: 'council',
     label: '議員',
+    icon: Vote,
     home: 'council',
     routes: [{ route: 'council', label: '總覽' }],
   },
   {
     id: 'facebook',
     label: '社群',
+    icon: MessageCircle,
     home: 'socialwall',
     routes: [
       { route: 'socialwall', label: '委員粉專牆' },
       { route: 'councilactivity', label: '議員近期動態' },
     ],
   },
-  { id: 'map', label: '縣市地圖', home: 'counties', routes: [{ route: 'counties', label: '縣市地圖' }] },
+  { id: 'map', label: '縣市地圖', icon: MapIcon, home: 'counties', routes: [{ route: 'counties', label: '縣市地圖' }] },
   {
     id: 'news',
     label: '新聞',
+    icon: Newspaper,
     home: 'officials',
     // 看新聞時最常回頭查的就是自己機關，所以在最前面放一個捷徑（用分隔線隔開，見 NavGroup.lead）
     lead: { route: 'my', label: '我的機關' },
@@ -139,6 +164,7 @@ const NAV: NavGroup[] = [
   {
     id: 'orgs',
     label: '機關／基金',
+    icon: Landmark,
     home: 'agencies',
     routes: [
       { route: 'agencies', label: '機關' },
@@ -182,6 +208,23 @@ export function Header({
     if (searchOpen) searchInputRef.current?.focus();
   }, [searchOpen]);
 
+  // 手機的頁籤列一次只看得到 5 格半：換頁後把選取的那一格捲進視線（例如 /funds 在第 9 格）。
+  // 只在真的溢出時才動（桌機不會溢出，等於 no-op），並且用 block:'nearest' 避免連整頁也跟著捲。
+  const navRef = useRef<HTMLElement>(null);
+  const navScrolled = useRef(false);
+  useEffect(() => {
+    const nav = navRef.current;
+    if (!nav || nav.scrollWidth <= nav.clientWidth + 1) return;
+    const current = nav.querySelector<HTMLElement>("a[aria-current='page']");
+    if (!current) return;
+    const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+    // 第一次（剛進站／剛載入）直接就定位：不然一進站就看到頁籤列自己滑一段，很像壞掉；
+    // 之後換頁才用平滑捲動，讓「被移到中間的是我剛點的那一格」看得出來。
+    const behavior = navScrolled.current && !reduced ? 'smooth' : 'auto';
+    navScrolled.current = true;
+    current.scrollIntoView({ inline: 'center', block: 'nearest', behavior });
+  }, [route]);
+
   // 目前選的同步範圍（說明與提示都要用同一份）
   const currentScope = syncScopes.find((scope) => scope.id === syncScope) ?? syncScopes[0] ?? null;
   const tone = failed ? 'error' : stale ? 'warning' : 'ok';
@@ -210,9 +253,10 @@ export function Header({
         <small>{source?.name ?? '立法院開放資料'}</small>
       </a>
 
-      <nav aria-label="主要頁面">
+      <nav aria-label="主要頁面" ref={navRef}>
         {NAV.map((group) => {
           const active = activeGroup.id === group.id;
+          const Icon = group.icon;
           return (
             <Fragment key={group.id}>
               <a
@@ -223,7 +267,11 @@ export function Header({
                   onNavigate(pathFor(group.home));
                 }}
               >
-                {group.label}
+                {/* 圖示只在手機顯示（桌機那條導覽的高度與寬度都算得很緊，見 styles.css） */}
+                <span className="nav-icon" aria-hidden="true">
+                  <Icon size={20} strokeWidth={1.8} />
+                </span>
+                <span className="nav-label">{group.label}</span>
               </a>
               {active && !hasSubnav && hint ? <InfoTip>{hint}</InfoTip> : null}
             </Fragment>

@@ -32,6 +32,12 @@
 | **T11 PWA** | ✅ 已做 | Service Worker 只在安全來源註冊；Tailscale 裝好、`tailscale serve` 起來後就有 HTTPS（`https://mac-mini.tail1ac930.ts.net/`，**tailnet only**：手機的 Tailscale 沒開就連不上，這是預期行為）。驗收用 `npm run verify:pwa` |
 | **T5 觸控目標** | ✅ 主要控制項已補 | 手機的主要控制項（chips／分段鈕／圖示鈕／導覽）加 `min-height: 40px`，表格列內連結不在此限；**2026-10-09 再補**：席次圖圖例鈕 38 → 44px，並把「圖例 ≥44px」變成 `check:rwd` 的失敗條件（見 D274） |
 | **T8 自動檢查** | ✅ 已做 | `scripts/check-rwd.mjs`、`npm run check:rwd`、`test/check-rwd.test.mjs`（純函式 5 條）；**現在 390／768 全綠**，量測項：橫向溢出、選取頁籤文字垂直置中、席次圖圖例觸控高度 ≥44px |
+| **T13 頁籤列（手機）** | ✅ 已做（2026-10-11） | 主導覽改成「圖示在上、文字在下、選取用底線」的可橫向捲動頁籤列（使用者提供的參考畫面）。390px 實測：頁籤列可捲（內容 554px／視窗 358px）、選取的那一格自動捲進視線、頁首 156px（上限 160px）、**桌機完全不動**（`.nav-icon` 在 ≥761px 是 `display:none`，實測 1280px 的頁籤高度與改動前同為 38px）。截圖：`docs/shot-tabs-mobile-390.png` |
+
+**已知未達（2026-10-11 發現，尚未決定怎麼修）：** 席次圖圖例鈕 ≥44px 的規則寫在 `@media (max-width: 760px)` 裡，
+所以 `node scripts/check-rwd.mjs --widths 768,1024,1280 --routes /legislators` 會判失敗（三個寬度實測都是 38px；
+這條是 2026-10-09 加上去的量測項，加上去時只跑了 390px）。兩個方向：(a) 把 44px 推到所有寬度（桌機圖例每列高 6px），
+或 (b) 把「觸控高度」這條判準限定在手指會用到的寬度。**未動程式，等決定。**
 
 **已改的檔案：** `web/src/styles.css`（新增一個 ≤760 的區塊）、`web/src/components/Header.tsx`（狀態鈕的長／短日期）、
 `web/scripts/render-smoke.ts`（狀態鈕的斷言改成驗兩種寫法）、新增 `scripts/check-rwd.mjs`、`test/check-rwd.test.mjs`、`package.json`（`check:rwd`）。
