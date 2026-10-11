@@ -21,7 +21,6 @@ import { formatDateTime, formatRelative } from '../lib/format';
 import { FontSizeControl } from './FontSizeControl';
 import { InfoTip } from './InfoTip';
 import { Magnifier } from './Magnifier';
-import { PAGE_HINTS } from '../lib/pageHints';
 import { shouldOpenInCard } from '../lib/nav';
 import { SearchField } from './SearchField';
 
@@ -252,8 +251,6 @@ export function Header({
   // L6：同步面板是條件式 render，只有它存在時 aria-controls 才指得到東西
   const syncPanelExists = syncOpen || failed || stale;
   const activeGroup = groupOf(route);
-  // 目前頁面的功能說明：掛在分頁導覽上（頁面本身不再有重複分頁名稱的標題列）
-  const hint = PAGE_HINTS[route];
   const hasSubnav = activeGroup.routes.length > 1;
   // 先取出成 const：TS 的屬性縮窄不會進到 onClick 的閉包裡
   const subnavLead = activeGroup.lead;
@@ -304,7 +301,6 @@ export function Header({
                 </span>
                 <span className="nav-label">{group.label}</span>
               </a>
-              {active && !hasSubnav && hint ? <InfoTip>{hint}</InfoTip> : null}
             </Fragment>
           );
         })}
@@ -434,7 +430,6 @@ export function Header({
               </a>
             ))}
           </nav>
-          {hint ? <InfoTip align="end">{hint}</InfoTip> : null}
         </div>
       ) : null}
     </>

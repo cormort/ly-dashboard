@@ -32,7 +32,7 @@
 | **T11 PWA** | ✅ 已做 | Service Worker 只在安全來源註冊；Tailscale 裝好、`tailscale serve` 起來後就有 HTTPS（`https://mac-mini.tail1ac930.ts.net/`，**tailnet only**：手機的 Tailscale 沒開就連不上，這是預期行為）。驗收用 `npm run verify:pwa` |
 | **T5 觸控目標** | ✅ 主要控制項已補 | 手機的主要控制項（chips／分段鈕／圖示鈕／導覽）加 `min-height: 40px`，表格列內連結不在此限；**2026-10-09 再補**：席次圖圖例鈕 38 → 44px，並把「圖例 ≥44px」變成 `check:rwd` 的失敗條件（見 D274） |
 | **T8 自動檢查** | ✅ 已做 | `scripts/check-rwd.mjs`、`npm run check:rwd`、`test/check-rwd.test.mjs`（純函式 5 條）；量測項：橫向溢出、選取頁籤文字垂直置中、席次圖圖例觸控高度 ≥44px。**溢出與置中：360／390／768 全綠**；「圖例鈕 ≥44px」這一條目前只有 ≤760px 過（見下面的已知未達） |
-| **T13 頁籤列（手機）** | ✅ 已做（2026-10-11） | 主導覽改成「圖示在上、文字在下、選取用底線」的可橫向捲動頁籤列（使用者提供的參考畫面）。390px 實測：頁籤列可捲（內容 554px／視窗 358px）、選取的那一格自動捲進視線、頁首 156px（上限 160px）、**桌機完全不動**（`.nav-icon` 在 ≥761px 是 `display:none`，實測 1280px 的頁籤高度與改動前同為 38px）。截圖：`docs/shot-tabs-mobile-390.png` |
+| **T13 頁籤列（手機）** | ✅ 已做（2026-10-11） | 主導覽改成「圖示在上、文字在下、選取用底線」的可橫向捲動頁籤列（使用者提供的參考畫面）；同日再依要求移除導覽上的「頁面說明 ⓘ」（見 D277）。390px 實測：頁籤列可捲（內容 554px／視窗 358px）、選取的那一格自動捲進視線、頁首 156px（上限 160px）、**桌機完全不動**（`.nav-icon` 在 ≥761px 是 `display:none`，實測 1280px 的頁籤高度與改動前同為 38px）。截圖：`docs/shot-tabs-mobile-390.png` |
 | **T14 次級導覽固定在頂端** | ✅ 已做（2026-10-11） | ≤1100px 時 `.subnav-row` 改 `position: sticky; top: 0`（純 CSS，無 JS 捲動監聽）。390／768px 實測：捲 1200px 後仍固定在 `top: 0`、無橫向溢出、頁首高度不變；**1280px 維持 `position: relative`（桌機本來就有 sticky 頁首，不動）**。副作用一併處理：`#directory { scroll-margin-top: 52px }`，讓「點圖例後把名錄捲到眼前」不會被這一條蓋住（實測 `directoryTop 52 > subnavBottom 49`）|
 
 **已知未達（2026-10-11 發現；使用者當日決定「暫時不用管」）：** 席次圖圖例鈕 ≥44px 的規則寫在 `@media (max-width: 760px)` 裡，

@@ -562,24 +562,30 @@ check('新聞的次級導覽：我的機關在最前面，後面接一條分隔�
   return expected && !budgetSub.includes('subnav-divider');
 }));
 
-// 功能說明掛在分頁導覽上：單頁主題（總覽）在頂層導覽、有子頁的主題在次級導覽那一列右端
-console.log('\n— 導覽列上的說明提示 —');
-const hintOf = (html: string, where: 'top' | 'sub') => {
-  const m = where === 'top' ? html.match(/<nav aria-label="主要頁面">([\s\S]*?)<\/nav>/) : html.match(/<div class="subnav-row">([\s\S]*)$/);
-  return m?.[1] ?? '';
-};
+// 導覽上的功能說明 ⓘ 已移除（2026-10-11，使用者要求）：留一條守門測試，
+// 免得哪天又被加回來（那一顆在頁籤列裡看起來像一個沒有文字的頁籤）。
+console.log('\n— 導覽列上的說明提示（已移除）—');
 const dashHeader = render(createElement(Header, { ...headerProps, route: 'dashboard' as const }));
-expectAll('總覽（單頁主題）：說明在頂層導覽，預設不展開', hintOf(dashHeader, 'top'), ['role="tooltip"', PAGE_HINTS.dashboard!.slice(0, 12), 'class="info-tip"']);
+expectNone('總覽：頂層導覽不再有說明 ⓘ', dashHeader, ['role="tooltip"', 'info-button']);
 expectNone('總覽：沒有次級導覽那一列', dashHeader, ['subnav-row']);
 const billsHeader = render(createElement(Header, { ...headerProps, route: 'bills' as const }));
-expectAll('法案查詢（有子頁的主題）：說明在次級導覽那一列右端', hintOf(billsHeader, 'sub'), ['role="tooltip"', '本屆委員提案', 'info-wrap end']);
-expectNone('法案查詢：頂層導覽裡沒有說明（不重複）', hintOf(billsHeader, 'top'), ['role="tooltip"']);
-expectNone('委員查詢沒有說明條目：不顯示 ⓘ', render(createElement(Header, { ...headerProps, route: 'legislators' as const })), ['role="tooltip"', 'info-button']);
-expectNone('/dgbas 不顯示說明（它不在任何分頁上）', render(createElement(Header, { ...headerProps, route: 'dgbas' as const })), ['role="tooltip"']);
-check('說明條目只對應存在的頁面，且不含 legislators／dgbas', (() => {
+expectNone('法案查詢：次級導覽那一列不再有說明 ⓘ', billsHeader, ['role="tooltip"', 'info-button']);
+expectAll('法案查詢：次級導覽仍然畫得出來（移除的是 ⓘ，不是那一列）', billsHeader, ['class="subnav"', '預算審議', '委員會']);
+check('說明文字還在 lib/pageHints.ts（只是不再渲染）：清單沒有被清掉', (() => {
   const keys = Object.keys(PAGE_HINTS);
   return keys.length >= 14 && !keys.includes('legislators') && !keys.includes('dgbas') && keys.every((k) => (PAGE_HINTS as Record<string, string>)[k].length > 10);
 })());
+// 同步範圍的 ⓘ（更新頻率與上次同步）跟頁面說明無關，它還在
+check('同步範圍的 ⓘ 保留（那是「更新頻率」，不是頁面說明）', render(createElement(Header, {
+  ...headerProps,
+  route: 'dashboard' as const,
+  syncEnabled: true,
+  syncScope: 'all',
+  syncScopes: [
+    { id: 'all', label: '全部', stages: [], sources: [], last_run_at: null, cadence: '每天', cooldown_minutes: 5 },
+    { id: 'social', label: '只重讀社群粉專', stages: [], sources: [], last_run_at: null, cadence: '一天一輪', cooldown_minutes: 5 },
+  ],
+})).includes('info-button'));
 const tipHtml = render(createElement(InfoTip, null, '說明文字'));
 expectAll('InfoTip：提示文字在 DOM 裡但預設不展開', tipHtml, ['aria-label="這個頁面的說明"', 'aria-expanded="false"', 'role="tooltip"', '說明文字', 'class="info-tip"']);
 check('InfoTip：aria-describedby 指向提示（讀螢幕程式讀得到）', (() => {

@@ -1572,15 +1572,6 @@ a.stat-tile:hover { border-color: #98a2b3; box-shadow: var(--card-base-hover); t
   }
   .nav-icon { display: inline-flex; }
   .nav-label { font-size: var(--fs-2xs); line-height: 1.15; }
-  /* 頁面說明 ⓘ 排在選取頁籤後面，但它不是一個頁籤：縮小、變灰、前面加一條分隔線，
-     免得看起來像「一個沒有文字的頁籤」（桌機是一條連續的文字列，不會有這個問題） */
-  header nav .info-wrap {
-    padding-left: 6px;
-    margin-left: 4px;
-    border-left: 1px solid var(--rule);
-  }
-  header nav .info-wrap .info-button { min-width: 34px; min-height: 34px; }
-  header nav .info-wrap .info-button svg { width: 16px; height: 16px; color: var(--muted); }
 }
 
 /* 手機放大鏡（Magnifier.tsx）：透明蓋板接手觸控，鏡片浮在手指上方 */
