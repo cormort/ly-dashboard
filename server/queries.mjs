@@ -2441,6 +2441,19 @@ export function listFunds(db, { type = 'fund', fund = '', kind = '', limit = 30,
   const rows = collectFundRows(db, resolvedType);
   // 委員提案另外看「修的法律歸哪個機關主管」：標題沒寫機關名也算（例如修農業發展條例 → 農業部）
   const tag = resolvedType === 'dgbas' ? dgbasOf : ((t) => (r) => t(r.agencies?.length ? `${r.title} ${r.agencies.join(' ')}` : r.title)[resolvedType])(makeTagger(rows.map((r) => r.title)));
+  /**
+   * 預算類議案（`budget`＝預算審議、`submitted`＝機關自己檢送的報告）的**提案單位就是送件的機關**
+   * （見 CONFIG.budget.agencyReportPattern 的說明），但名稱常常不提自己的機關
+   * （實例：主計總處「函送「115年度中央政府預算截至第1季執行情形書面報告」，請查照案。」
+   *   ／「函送115年第2季媒體政策及業務宣導執行情形表，請查照案。」）。
+   * 只比標題時這些案件一件都掛不到機關：實測「機關」頁的主計總處「機關檢送報告」只剩 5 件
+   * （還全是立法院委員會的處理函件）、「預算審議」只剩 1 件，而「我的機關」是 90／18 件。
+   * 標題認不出機關時，退回看提案單位；立法院委員會的提案單位（「本院…委員會」）與「行政院」
+   * 在機關清單裡都沒有對應名稱，不會誤掛。
+   */
+  const BUDGET_KINDS = new Set(['budget', 'submitted']);
+  const tagByProposer =
+    resolvedType === 'agency' ? ((t) => (r) => (BUDGET_KINDS.has(r.kind) ? t(String(r.source ?? ''))[resolvedType] : []))(makeTagger(rows.map((r) => r.source ?? ''))) : null;
   // 各來源的資料期間（全部資料，不只命中的）：新聞只保留近一個月，件數少要看得出原因
   const periods = {};
   for (const r of rows) {
@@ -2453,9 +2466,11 @@ export function listFunds(db, { type = 'fund', fund = '', kind = '', limit = 30,
   const tagged = rows
     .map((r) => {
       const funds = tag(r);
-      // 審查會議列席的機關：只在「機關」頁加進來，且只標沒有別的關聯（標題／主管機關）的那些
-      const attendOnly = resolvedType === 'agency' ? (r.attend ?? []).filter((a) => !funds.includes(a)) : [];
-      return { ...r, date: r.date ?? '', legislator: r.legislator ?? null, funds: [...funds, ...attendOnly], attend_only: attendOnly };
+      // 預算審議／機關檢送報告：標題認不出機關時用提案單位補（見上面的 tagByProposer）
+      const own = funds.length || !tagByProposer ? [] : tagByProposer(r);
+      // 審查會議列席的機關：只在「機關」頁加進來，且只標沒有別的關聯（標題／主管機關／提案單位）的那些
+      const attendOnly = resolvedType === 'agency' ? (r.attend ?? []).filter((a) => !funds.includes(a) && !own.includes(a)) : [];
+      return { ...r, date: r.date ?? '', legislator: r.legislator ?? null, funds: [...funds, ...own, ...attendOnly], attend_only: attendOnly };
     })
     // 同一則新聞會掛在每位被提到的委員底下，只留一則
     .filter((r, i, all) => r.funds.length && (r.kind !== 'news' || all.findIndex((x) => x.kind === 'news' && x.url === r.url) === i))

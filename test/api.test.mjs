@@ -616,6 +616,42 @@ test('基金／機關／財團法人／行政法人：名稱與簡稱歸到正�
   assert.deepEqual(dgbas.items.map((x) => x.funds), [['地方主計處'], ['僅提及主計'], ['主計總處提送']], '只說主計的另外標示，地方主計處單獨一類');
 });
 
+test('機關頁的「機關檢送報告」與「預算審議」：名稱不提自己的機關也掛得到（用提案單位補）', () => {
+  const { db } = withActivity();
+  const insert = (id, name, proposer, date) =>
+    db
+      .prepare('INSERT INTO budget_bills (id, category, name, status, proposer, latest_date, url) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .run(id, '預(決) 算決議案、定期報告', name, '交付查照', proposer, date, `https://example.com/${id}`);
+  // ① 機關自己的報告，名稱裡沒有自己的機關名（實例：主計總處）
+  insert('s1', '函送「115年度中央政府預算截至第1季執行情形書面報告」，請查照案。', '行政院主計總處', '2026-08-07');
+  // ② 立法院委員會的處理函件：名稱提到主計總處，提案單位是委員會（不該再多掛一個機關）
+  insert('s2', '函，為院會交付審查行政院主計總處函為112年度中央政府總預算決議，檢送全球通膨對國內民生經濟的影響書面報告案等11案，均已逾年度預算執行期間，請查照案。', '本院財政委員會', '2025-10-14');
+  // ③ 名稱已認出機關（教育部）的案件：標題優先，不重複掛提案單位
+  insert('s3', '函送教育部「高教深耕計畫」執行情形書面報告，請查照案。', '教育部', '2026-09-01');
+  // ④ 預算審議（`budget`，名稱不符檢送報告規則）也同一條規則：名稱不提機關、提案單位是自己
+  db.prepare('INSERT INTO budget_bills (id, category, name, status, proposer, latest_date, url) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
+    's4',
+    '預(決) 算決議案、定期報告',
+    '函送115年第2季媒體政策及業務宣導執行情形表，請查照案。',
+    '交付查照',
+    '行政院主計總處',
+    '2026-08-27',
+    'https://example.com/s4',
+  );
+
+  const dgbas = listFunds(db, { type: 'agency', fund: '行政院主計總處', kind: 'submitted' });
+  assert.deepEqual(dgbas.items.map((i) => i.url).sort(), ['https://example.com/s1', 'https://example.com/s2'], '自己的報告掛回自己，委員會函件照原樣');
+  assert.equal(dgbas.kinds.submitted, 2);
+  assert.equal(listFunds(db, { type: 'agency', fund: '行政院主計總處', kind: 'budget' }).kinds.budget, 1, '預算審議的「執行情形表」也掛回送件的機關');
+  assert.equal(listFunds(db, { type: 'agency', fund: '本院財政委員會', kind: 'submitted' }).total, 0, '委員會不是機關，不會被當成機關掛上去');
+
+  const moe = listFunds(db, { type: 'agency', fund: '教育部', kind: 'submitted' });
+  assert.equal(moe.kinds.submitted, 1);
+  assert.deepEqual(moe.items[0]?.funds, ['教育部'], '標題已認出機關就不再重複掛提案單位');
+
+  assert.equal(listFunds(db, { fund: '行政院主計總處' }).total, 0, '基金頁不看提案單位，不受影響');
+});
+
 test('委員會動態：公報只留委員會紀錄、依委員會篩選（聯席會議兩邊都算）', async () => {
   const { committeesOf, normalizeCommitteeRecords } = await import('../server/normalize.mjs');
   const { applyCommitteeRecords, applyMeetings } = await import('../server/db.mjs');

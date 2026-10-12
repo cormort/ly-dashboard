@@ -426,6 +426,11 @@ Query 參數（全部可選）：
 `fund` 精確篩選（上述名稱）、`kind`（`news|post|bill|budget|submitted|report`）。回傳 `kinds`（套用 `fund` 後各來源件數）、`periods`（各來源全部資料的期間 `{ from, to }`，YYYY-MM-DD）、
 `funds`（套用 `kind` 後最常出現的前 40 個）、`items`（`{ kind, date, title, url, source?, status?, legislator, funds }`）。
 
+「機關」頁（`type=agency`）的來源歸屬是**標題優先**；預算類議案（`kind=budget` 預算審議、`kind=submitted` 機關檢送報告）
+名稱常常不提自己的機關，所以**標題認不出機關時退回看提案單位**（預算類議案的提案單位就是送件的機關，
+見預算審議那節的 `agencyReportPattern`；立法院委員會的提案單位「本院…委員會」與「行政院」不在機關清單內，不會被當成機關）。
+其餘來源一律只看標題。
+
 ## GET /api/v1/cosponsors
 
 共同提案網絡（本屆議案的提案人對應）。
@@ -747,6 +752,6 @@ Query 參數（全部可選）：
 ```
 
 - `meetings` 只含**已開過**且議程提到該機關者；資料中沒有未來行事曆。
-- `kinds.submitted`＝**機關自己函送立法院的書面報告**（依預算決議檢送、定期報告；提案單位就是該機關），2026-10-08 從 `budget` 拆出來單獨一個來源（件數相加不變）。規則見 `server/config.mjs` 的 `budget.agencyReportPattern`。
+- `kinds.submitted`＝**機關自己函送立法院的書面報告**（依預算決議檢送、定期報告；提案單位就是該機關），2026-10-08 從 `budget` 拆出來單獨一個來源（件數相加不變）。規則見 `server/config.mjs` 的 `budget.agencyReportPattern`。實測主計總處：預算審議 18 ＋ 機關檢送 90 ＝ 原本的 108。
 - `watchers` 次數 = 新聞／臉書／提案（首位提案人）掛名次數（新聞同一則掛在多位委員底下時每人各算一次）＋提到該機關的會議中登記發言的次數。
 
