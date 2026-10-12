@@ -2,13 +2,14 @@
  * 純函式正規化層：不碰網路、不碰資料庫，只吃立法院 API 的原始 JSON，吐出結構化資料。
  * 這一層的所有行為都由 test/normalize.test.mjs 用真實 API fixture 驗證。
  */
+import { CONFIG } from './config.mjs';
 
 /**
  * 正規化版本。改變 normalize*.mjs 的行為時**一定要 +1**：
  * ingest 用 `版本:來源 sha256` 判斷要不要重寫資料庫，否則「原始資料沒變、但解析邏輯變了」
  * 時新規則不會生效（實測踩過：把 photo_url 升級成 https 後仍顯示 http）。
  */
-export const NORMALIZER_VERSION = 3;
+export const NORMALIZER_VERSION = 4;
 
 /** "第11屆第3會期：內政委員會" → 乾淨的委員會名稱；這是舊版壞掉的地方。 */
 const SESSION_PREFIX = /^第(\d+)屆第(\d+)會期[：:]\s*/;
@@ -397,6 +398,9 @@ export function normalizeBills(pages, legislatorIdByName) {
 /**
  * 預算類議案：總預算案、法人預算、預算決議書面報告。沒有提案委員（提案單位是機關或委員會），
  * 只取顯示需要的欄位，並從名稱抽出預算年度（「115年度」→ 115）。驗證規則與委員提案相同。
+ *
+ * 有些類別抓回來後只留一部分（`CONFIG.budget.categoryNameFilters`）：例如「行政命令(層級)」
+ * 只留像報告／表的查照案，其餘 2,570 筆法規命令（辦法／規程／標準…）不收——見 config 的說明（D281）。
  */
 export function normalizeBudget(pages, expectedTotal = pages?.[0]?.total) {
   if (!Array.isArray(pages) || pages.length === 0) throw new DataValidationError('budget 沒有任何分頁');
@@ -412,7 +416,15 @@ export function normalizeBudget(pages, expectedTotal = pages?.[0]?.total) {
   if (!Number.isFinite(total) || total === 0 || rows.size < total * 0.95) {
     throw new DataValidationError(`budget 筆數異常（取得 ${rows.size}，API total ${total}）`, { got: rows.size, total });
   }
-  return [...rows.values()].map((row) => {
+  // 筆數驗證用**濾掉之前**的筆數（上游給的總數含被排除的法規命令），所以驗證要在這裡做
+  const keep = (row) => {
+    const rule = CONFIG.budget.categoryNameFilters?.[field(row, '議案類別')];
+    if (!rule) return true;
+    const name = field(row, '議案名稱') ?? '';
+    if (rule.drop && new RegExp(rule.drop).test(name)) return false;
+    return rule.keep ? new RegExp(rule.keep).test(name) : true;
+  };
+  return [...rows.values()].filter(keep).map((row) => {
     const name = field(row, '議案名稱');
     return {
       id: field(row, '議案編號'),

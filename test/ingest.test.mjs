@@ -448,7 +448,7 @@ test('預算同步：三種類別一次抓、寫入、抽出預算年度', async
   // 預設也會排除附件（勘誤表／預算書案／營運及資金運用計畫），要看全部 80 筆要明講 includeAttachments
   const all = listBudget(db, { scope: 'all', merge: 'none', limit: 200, includeAttachments: true });
   assert.equal(all.total, 80);
-  assert.deepEqual(all.categories.map((c) => c.count), [20, 20, 40]);
+  assert.deepEqual(all.categories.map((c) => c.count), [20, 20, 40, 0], '第四類（行政命令(層級)）fixture 沒有，計數 0');
   assert.ok(all.items.some((b) => b.fiscal_year >= 113), '名稱含「115年度」要抽出年度');
   const p = all.progress;
   assert.equal(p.reviewed + p.in_review + p.pending + p.letter + p.returned, 80, '五級加起來要是全部');
@@ -477,6 +477,51 @@ test('預算查詢：類別、機關、狀態可組合，統計在各自條件�
   assert.equal(budgetState('審查完畢(逾審查期限)'), 'reviewed');
   assert.equal(budgetState('退回程序委員會'), 'returned');
   assert.equal(budgetState('從來沒見過的狀態'), 'pending', '認不得的狀態不可以謊稱審竣');
+});
+
+test('預算同步：「行政命令(層級)」只收像報告／表的查照案——主計總處的三張優先順序總表要進得來', async () => {
+  const db = seeded();
+  const adm = (id, name, proposer = '行政院主計總處', date = '2026-10-01') => ({
+    屆: 11,
+    議案編號: id,
+    最新進度日期: date,
+    議案名稱: name,
+    '提案單位/提案委員': proposer,
+    議案狀態: '交付查照',
+    議案類別: '行政命令(層級)',
+    會期: 6,
+    url: `https://ppg.ly.gov.tw/ppg/bills/${id}/details`,
+  });
+  const bills = [
+    // 主計總處每年送的「優先順序總表」（114／115／116 年度）——這種案件立法院歸在「行政命令(層級)」
+    adm('A114', '函送114年度中央政府總預算案優先順序總表及各主管機關概算計畫優先順序排列表，請查照案。', '行政院主計總處', '2024-10-01'),
+    adm('A115', '函送115年度中央政府總預算案優先順序總表及各主管機關概算計畫優先順序排列表，請查照案。', '行政院主計總處', '2025-10-07'),
+    // 使用者 2026-10-12 回報的那一筆：院會還沒處理，上游沒有進度日期（站上要當成最新排最前面，不是藏起來）
+    adm('A116', '函送116年度中央政府總預算案優先順序總表及各主管機關概算計畫優先順序排列表，請查照案。', '行政院主計總處', ''),
+    adm('A補助', '函送截至115年5月「直轄市及縣市政府一般性補助款－其他」經費執行情形表，請查照案。', '行政院主計總處', '2026-08-14'),
+    // 法規命令：同一類別有兩千多筆這種的，不可以收
+    adm('L1', '函，為修正「主計機構編制訂定及人員任免遷調辦法」第八條條文，請查照案。'),
+    adm('L2', '函送「友善海洋標章規費收費標準」，請查照案。', '海洋委員會'),
+  ];
+  const fetchImpl = async (url) =>
+    url.includes('agg=')
+      ? { json: { total: bills.length, aggs: [{ buckets: [{ 會期: 6, count: bills.length }] }] }, attempts: 1 }
+      : { json: { total: bills.length, total_page: 1, page: 1, bills }, status: 200, headers: {}, bytes: 1, sha256: 'x', attempts: 1 };
+
+  const result = await runBudgetIngest(db, { logger: silent, fetchImpl });
+  assert.equal(result.status, 'success');
+  assert.equal(result.items, 4, '六筆裡只留四筆（兩筆法規命令不收）');
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM budget_bills WHERE name LIKE '%辦法%' OR name LIKE '%標準%'").get().n, 0, '法規命令不進資料庫');
+
+  const dgbas = listBudget(db, { scope: 'all', proposer: '行政院主計總處', merge: 'none', all: true });
+  assert.deepEqual(
+    dgbas.items.filter((b) => b.name.includes('優先順序總表')).map((b) => b.fiscal_year).sort(),
+    [114, 115, 116],
+    '三張優先順序總表都要進得來',
+  );
+  assert.equal(dgbas.items[0].fiscal_year, 116, '沒有進度日期的 116 年度那筆排最前面（不是被藏起來）');
+  assert.equal(dgbas.items[0].latest_date, '', '上游沒給日期就留白');
+  assert.equal(listBudget(db, { scope: 'all', category: '行政命令(層級)' }).total, 4, '類別導覽看得到這 4 筆');
 });
 
 test('預算同步：失敗保留舊資料；筆數不足 fail closed', async () => {
