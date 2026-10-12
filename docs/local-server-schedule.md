@@ -174,6 +174,6 @@ tailscale serve status                     # 會給 https://<機器名>.<tailnet
 | `LY_SCHEDULER_CHECK_MS` | 1 小時 | 多久檢查一次「該不該同步」 |
 | `LY_NEWS_OUTLET_INTERVAL_MS` | 1 小時 | 媒體 RSS 輪詢間隔（`0`＝只隨全同步抓） |
 | `LY_NEWS_PUSH` / `LY_NEWS_PUSH_DAYS` | 關／7 天 | 本機抓到的新聞推回 `news-data` |
-| `LY_NEWS_REFRESH_MS` | **尚未存在** | §3 選項 A 要新增：新聞階段自動重跑的間隔 |
+| `LY_NEWS_REFRESH_MS` | 6 小時 | §3 選項 A 要新增：新聞階段自動重跑的間隔（**2026-10-13 已實作**，見 `docs/OPS.md` §1.3） |
 | `LY_NEWS_BUDGET_MS` / `LY_NEWS_ENTITY_BUDGET_MS` / `LY_NEWS_COUNCIL_BUDGET_MS` | 5／4／8 分 | 新聞各段的時間預算 |
 | `LY_NEWS_FEED_STALE_HOURS` | 6 小時 | 收集端超過這麼久沒動就在備註提醒 |
