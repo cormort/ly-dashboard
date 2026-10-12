@@ -344,3 +344,17 @@ test('預算年度：名稱含「N至M年度」的區間要取起始年', () => 
   assert.equal(budgetFiscalYear('「114年度中央政府總預算案（含附屬單位預算及綜計表－營業及非營業部分）」及「中央政府前瞻基礎建設計畫第5期特別預算案」案。'), 114);
   assert.equal(budgetFiscalYear('沒有年度的案子。'), null);
 });
+
+test('預算年度：只有「年」沒有「年度」的定期報告（第N季／N月）也算那一年', () => {
+  // 實例（主計總處 115 年度的定期報告，名稱裡沒有「年度」兩個字）
+  assert.equal(budgetFiscalYear('函送115年第2季媒體政策及業務宣導執行情形表，請查照案。'), 115);
+  assert.equal(budgetFiscalYear('函送115年第2季因公派員出國考察費用執行情形表，請查照案。'), 115);
+  assert.equal(budgetFiscalYear('函送截至115年6月底「直轄市及縣市政府一般性補助款－其他」經費執行情形表，請查照案。'), 115);
+  assert.equal(budgetFiscalYear('函送「晶創臺灣方案執行情形」114年7月書面報告，請查照案。'), 114);
+  assert.equal(budgetFiscalYear('函送113年第4季辦理各類媒體政策及業務宣導執行情形表，請查照案。'), 113);
+  // 名稱已經有「N年度」的以它為準（不會被後面的月份蓋掉）
+  assert.equal(budgetFiscalYear('函，為114年度中央政府總預算決議，檢送114年第3季因公派員出國考察費用執行情形表，請查照案。'), 114);
+  // 「自N年M月起」這種跟預算年度無關的句子不算（沒有「N年」緊接「N月」以外的型態）
+  assert.equal(budgetFiscalYear('函送業務執行現況報告，自115年7月起適用。'), null);
+  assert.equal(budgetFiscalYear('沒有年度的案子。'), null);
+});

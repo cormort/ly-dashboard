@@ -2241,6 +2241,29 @@ test('一案一列：同一個預算案的多筆議案紀錄要合成一列（�
   assert.equal(one.id, 'a2', '代表紀錄取最有進展的（審查完畢）');
 });
 
+test('一案一列：不同機關的同名定期報告不可以併成一列', () => {
+  // 「函送115年第2季媒體政策及業務宣導執行情形表，請查照案。」各部會各自送一份，名稱一模一樣。
+  const mk = (id, proposer, status = '交付查照', date = '2026-08-27') => ({
+    id,
+    category: '預(決) 算決議案、定期報告',
+    name: '函送115年第2季媒體政策及業務宣導執行情形表，請查照案。',
+    status,
+    proposer,
+    fiscal_year: 115,
+    session: 5,
+    latest_date: date,
+    url: `https://example.com/${id}`,
+    types: [],
+  });
+  const merged = mergeBudgetUnits([mk('m1', '行政院主計總處'), mk('m2', '總統府'), mk('m3', '財政部')]);
+  assert.equal(merged.length, 3, '三個機關 → 三列（以前併成一列，只剩一家查得到）');
+  assert.deepEqual(new Set(merged.map((u) => u.proposer)), new Set(['行政院主計總處', '總統府', '財政部']));
+  // 同一個機關同一份文件的多筆紀錄還是要合併
+  const same = mergeBudgetUnits([mk('m1', '行政院主計總處', '交付查照', '2026-06-23'), mk('m4', '行政院主計總處')]);
+  assert.equal(same.length, 1);
+  assert.equal(same[0].records, 2);
+});
+
 test('一案一列：查詢預設合併，merge=none 才逐筆列', async () => {
   const db = seeded();
   await runBudgetIngest(db, { logger: silent, fetchImpl: budgetOk });

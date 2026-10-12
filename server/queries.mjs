@@ -1922,15 +1922,25 @@ export const budgetUnitState = (states) => {
 /** 進度排序（取代表紀錄用）：越前面越「有進展」 */
 const BUDGET_STATE_RANK = { reviewed: 4, in_review: 3, pending: 2, letter: 1, returned: 0 };
 
+/** 一案一列的鍵：類別＋提案單位＋名稱（見 mergeBudgetUnits 的說明；`merged_total` 也要用同一個鍵） */
+const budgetUnitKey = (r) => `${r.category}\u0000${r.proposer ?? ''}\u0000${r.name}`;
+
 /**
- * 一案一列：依（類別＋名稱）合併議案紀錄。
+ * 一案一列：依（類別＋提案單位＋名稱）合併議案紀錄。
  * 代表紀錄取最有進展的（同狀態再比最新進度日期、議案編號），日期取全部紀錄的最新。
+ *
+ * **提案單位也要進 key**：定期報告的名稱是固定的（「函送115年第2季媒體政策及業務宣導執行情形表，
+ * 請查照案。」），各部會各自函送一份同名文件；只比（類別＋名稱）會把不同機關的送件併成一列，
+ * 代表紀錄只留一家（實測 133 組、462 列受影響），被併掉的機關在預算頁就查不到自己的送件——
+ * 主計總處選「115年度」只剩 1 件，就是它的媒體宣導表／出國考察表被併進總統府、財政部那幾列
+ * （使用者 2026-10-12 回報「115年度不可能只有一件」）。
+ * 同一份預算案的多筆議案紀錄（同類別＋同名＋同提案單位）照樣合併（實測 115 年度總預算案 24 筆 → 1 列）。
  */
 export const mergeBudgetUnits = (list) => {
   const map = new Map();
   for (const r of list) {
     const state = budgetState(r.status);
-    const key = `${r.category}\u0000${r.name}`;
+    const key = budgetUnitKey(r);
     const hit = map.get(key);
     if (!hit) {
       map.set(key, { ...r, state, records: 1, states: { [state]: 1 }, ids: [r.id] });
@@ -2143,7 +2153,7 @@ export function listBudget(
     attachment_label: CONFIG.budget.attachmentLabel ?? '附件',
     include_attachments: Boolean(includeAttachments),
     // 兩種模式下都要給「合併後會是幾件」，否則切到每筆議案時一案一列那顆鈕會顯示 0
-    merged_total: mergeUnits ? matching.length : new Set(matching.map((r) => `${r.category}\u0000${r.name}`)).size,
+    merged_total: mergeUnits ? matching.length : new Set(matching.map(budgetUnitKey)).size,
     records_total: sumRecords(matching),
     // 兩個範圍在目前篩選下各有幾件（單位／紀錄），給「只算預算案／含報告類」開關
     scope_totals: {
