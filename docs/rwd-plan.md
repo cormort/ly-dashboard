@@ -269,7 +269,8 @@ const audit = `(() => { const cw = document.documentElement.clientWidth;
 
 **做法：**
 - manifest：`name`／`short_name`／`start_url: '/'`／`display: 'standalone'`／`theme_color`／`background_color`／
-  `icons`（192、512、maskable 各一份；用現有的 🐴 與站名做一組）。
+  `icons`（192、512、maskable 各一份）。**2026-10-13 改版**：原本是「🐴 emoji ＋站名」的臨時做法，
+  使用者看過四個候選後選了「議事殿堂（柱廊＋底座）」，改由 `scripts/gen-pwa-icons.mjs` 直接畫 SVG（見 D283）。
 - Service Worker：**只快取靜態資源（app shell：HTML／JS／CSS／字型／圖示）**，採 stale-while-revalidate。
   **絕對不快取 `/api/v1/*`** —— 這個站的內容是每天更新的資料，快取 API 回應會讓人看到過期的數字而不自知；
   離線時顯示「目前離線，資料需連線取得」而不是拿舊資料假裝是最新。
@@ -367,6 +368,6 @@ T10／T11／T12 是使用者額外要求的加值項，可以之後再排。
 ### 還剩下的問題
 
 1. **Tailscale 要裝嗎？**（§0.5 的建議做法）沒裝的話手機只能用「只在家裡 Wi-Fi」那條，而且 PWA 不會生效。
-2. 圖示要用什麼？（PWA 需要 192／512／maskable 各一份；可以沿用 🐴 與站名做一組）
+2. 圖示要用什麼？（PWA 需要 192／512／maskable 各一份）→ **2026-10-13 已解決**：議事殿堂（柱廊＋底座），見 D283。
 3. 平板 768–1024 的粉專牆要兩欄還是三欄？（現在 `<600` 是一欄；平板兩欄通常最好讀）
 
