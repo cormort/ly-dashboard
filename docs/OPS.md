@@ -3,6 +3,7 @@
 > 這份給「站掛掉要有人處理」的人看：跑在哪、什麼時候在做事、壞掉時先看什麼、怎麼修、怎麼確認修好了。
 > 開發面的規格（模組職責、資料規則、API 契約）在 `docs/SPEC.md`；**每個語意決定的理由**在 `DECISIONS.md`
 > （D 編號，用 `grep -n "D282：" DECISIONS.md` 找）。
+> 要搬到 Linux VM／雲端主機：`docs/DEPLOY-VM.md`（這份的指令換成 `systemctl`／`journalctl` 即可，其他都一樣）。
 > 相關：`docs/fb-daily-update.md`（粉專抓取的實戰細節）、`docs/local-server-schedule.md`（排程與對外連線的設計背景）、
 > `docs/social-sheet-spec.md`（整理表格式）、`windows/README-zh-TW.md`（Windows 版）。
 
@@ -39,6 +40,9 @@
 ## 1. 服務與排程清單
 
 ### 1.1 API 伺服器（launchd）
+
+> **在 Linux（VM／雲端主機）上**：同一個服務換成 systemd —— `deploy/linux/ly-dashboard-server.service`
+> ＋`deploy/linux/install.sh`，指令從 `launchctl` 換成 `systemctl`／`journalctl`。完整對照表在 `docs/DEPLOY-VM.md`。
 
 - Label：`com.hermes.ly-dashboard-server`（樣板 `scripts/launchd/com.hermes.ly-dashboard-server.plist`）
 - 實際跑的：`/bin/bash scripts/ly-dashboard-server.sh` → `exec node server/index.mjs`

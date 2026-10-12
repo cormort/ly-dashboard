@@ -1,0 +1,40 @@
+[Unit]
+Description=立委觀測站 API 伺服器（ly-dashboard）
+Documentation=https://github.com/cormort/ly-dashboard/blob/main/docs/DEPLOY-VM.md
+# 這份是「樣板」：ExecStart 的 node 路徑、User、家目錄與 WorkingDirectory 由 deploy/linux/install.sh 換成實際值。
+# 不要直接手改 /etc/systemd/system 下的檔案就期待生效 —— 改完要 systemctl daemon-reload（或重跑 install.sh）。
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__USER__
+WorkingDirectory=__ROOT__
+
+# 預設值（要覆寫就放 __HOME__/.ly-dashboard/server.env，每行 KEY=value）
+Environment=NODE_ENV=production
+Environment=TZ=Asia/Taipei
+Environment=PORT=__PORT__
+Environment=LY_HOST=__HOST__
+# 可選的覆寫檔（`-`＝不存在也不報錯）
+EnvironmentFile=-__HOME__/.ly-dashboard/server.env
+
+ExecStart=__NODE__ server/index.mjs
+
+# node 當掉（非 0 離開）自動拉起來；正常結束（例如手動 stop）不重啟。
+Restart=on-failure
+RestartSec=5s
+
+# 為什麼要給 CPU 權重：這個站的 /api/v1/funds 每請求要掃約 7.8 萬列＋一輪正規式標記，是單執行緒 CPU 密集。
+# 在 macOS 上踩過一次（launchd 的 ProcessType=Background 讓同一個請求從 2 秒變 21 秒、前端 15 秒逾時就顯示錯誤），
+# VM 上的等價陷阱是把服務放進 CPU 被壓縮的 cgroup、或超賣的 vCPU。這裡給 200 只是「不要讓它跟雜事同權重」。
+# systemd ≥ 240（Ubuntu 20.04／Debian 10 以後）才有 CPUWeight，舊版請刪掉這行。
+CPUWeight=200
+
+# 日誌進 journal：journalctl -u ly-dashboard-server -f
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=ly-dashboard
+
+[Install]
+WantedBy=multi-user.target

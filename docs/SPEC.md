@@ -88,6 +88,7 @@
 | `scripts/` | 抓取與建置腳本（見 §6.3）、launchd 樣板（`scripts/launchd/`）、驗收腳本（`verify.sh`／`verify-pwa.mjs`／`check-rwd.mjs`）、shell 入口（`fb-daily.sh`／`ly-dashboard-server.sh`／`notify-telegram.sh`） |
 | `test/` | `node --test` 的回歸測試，fixture 是**真實 API 回應** |
 | `windows/` | PowerShell 版（啟動、工作排程、supervisor、lint）；`README-zh-TW.md` 是完整說明 |
+| `deploy/linux/` | Linux VM 的 systemd unit（伺服器／每日抓取＋timer）、`install.sh`（環境檢查＋安裝）、`verify-vm.sh`（裝機前後一次檢查，`--live` 會實打來源）；說明在 `docs/DEPLOY-VM.md` |
 | `termux/` | Android 捷徑腳本（啟動／更新／回補新聞） |
 | `news-collector/` | 獨立的「只收媒體 RSS」Windows 版（給別人單獨部署） |
 | `apps-script/` | 寫回 Google 試算表的 Apps Script（`Code.js` 含密鑰，**不進版控**） |

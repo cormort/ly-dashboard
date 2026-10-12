@@ -1,0 +1,24 @@
+[Unit]
+Description=立委粉專每日貼文抓取（ly-dashboard）
+Documentation=https://github.com/cormort/ly-dashboard/blob/main/docs/DEPLOY-VM.md
+# 由 ly-dashboard-fb-daily.timer 觸發（不要 enable 這個 service，enable timer）。
+# 需要 __HOME__/.ly-dashboard/fb-profile 這個「已登入 Facebook 的 Chrome 設定檔」；
+# 沒登入時整輪會抓到 0 列並以 exit 2 失敗（見 docs/fb-daily-update.md）。
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=__USER__
+WorkingDirectory=__ROOT__
+Environment=TZ=Asia/Taipei
+Environment=LY_FB_LOG_DIR=__ROOT__/.cache
+EnvironmentFile=-__HOME__/.ly-dashboard/fb-daily.env
+
+ExecStart=__NODE__ scripts/fb-daily.mjs
+
+# 一輪 25–35 分鐘（113 位委員），給 3 小時上限；逾時會被 systemd 砍掉，log 留在 .cache/fb-daily.log 與 journal。
+TimeoutStartSec=3h
+
+# 這個工作會寫回 Google 試算表、推 fb-data 分支、並直接寫進本機 DB；
+# 失敗時的判讀與處置見 docs/OPS.md §4.3。

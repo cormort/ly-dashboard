@@ -28,3 +28,60 @@ jobs:
       - run: npm --prefix web ci
       - run: npm --prefix web run build
       - run: npm test
+
+  # 為什麼要這一個：專案正式的宿主是 macOS（launchd），但「能不能搬到 Linux VM」不該用推論回答。
+  # 這裡在 ubuntu 上真的把服務跑起來（空資料庫）並打 API，另外驗 deploy/linux 的腳本與 systemd unit 語法。
+  # 沒驗到的部分（真的 VM 上的來源可達性、systemd 補跑行為）寫在 docs/DEPLOY-VM.md 第 7 節。
+  deploy-linux:
+    name: deploy (ubuntu-latest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci
+      - run: npm --prefix web ci
+      - run: npm --prefix web run build
+
+      # 空資料庫冷啟動（＝VM 第一次跑、還沒 ingest 的狀態）：伺服器要能起來、API 不能 500
+      - name: 空資料庫冷啟動＋打 API
+        run: |
+          set -eu
+          export LY_DB="$RUNNER_TEMP/ci.db" PORT=8799
+          node server/index.mjs --no-scheduler > "$RUNNER_TEMP/server.log" 2>&1 &
+          server_pid=$!
+          for i in $(seq 1 30); do
+            curl -sf "http://127.0.0.1:8799/api/v1/health" >/dev/null && break
+            sleep 1
+          done
+          curl -sf "http://127.0.0.1:8799/api/v1/health" | head -c 200; echo
+          for path in / /icon-192.png /manifest.webmanifest /api/v1/legislators /api/v1/bills /api/v1/budget /api/v1/counties "/api/v1/news/articles"; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:8799$path")
+            echo "$path → $code"
+            [ "$code" = "200" ] || { cat "$RUNNER_TEMP/server.log"; kill "$server_pid" || true; exit 1; }
+          done
+          kill "$server_pid" || true
+          # 乾淨的空庫：29 張表（28 + sqlite_sequence）、WAL 開著
+          node -e 'const {DatabaseSync}=require("node:sqlite");const d=new DatabaseSync(process.env.RUNNER_TEMP+"/ci.db");const n=d.prepare("SELECT COUNT(*) n FROM sqlite_master WHERE type=\u0027table\u0027").get().n;const m=d.prepare("PRAGMA journal_mode").get().journal_mode;console.log("tables",n,"journal",m);if(n<28||m!=="wal")process.exit(1)'
+
+      - name: deploy/linux 腳本語法
+        run: |
+          bash -n deploy/linux/install.sh
+          bash -n deploy/linux/verify-vm.sh
+
+      # 用真的 node 路徑渲染一次 unit，再交給 systemd 自己驗語法（GitHub 的 ubuntu runner 有 systemd 工具）
+      - name: systemd unit 語法驗證
+        run: |
+          set -eu
+          bash deploy/linux/install.sh --render-dir "$RUNNER_TEMP/units" --with-fb \
+            --node "$(command -v node)" --root "$PWD" --user runner --port 8787
+          ls -l "$RUNNER_TEMP/units"
+          ! grep -rq '__' "$RUNNER_TEMP/units"     # 不可以有沒被替換掉的佔位符
+          # SYSTEMD_UNIT_PATH 讓 verify 只在這個目錄找相依的 unit（timer 的 Unit= 才解析得到，
+          # 不然它會去找系統路徑、說找不到 ly-dashboard-fb-daily.service）
+          export SYSTEMD_UNIT_PATH="$RUNNER_TEMP/units"
+          for u in "$RUNNER_TEMP"/units/*.service "$RUNNER_TEMP"/units/*.timer; do
+            echo "── systemd-analyze verify $u"
+            systemd-analyze verify "$u"
+          done

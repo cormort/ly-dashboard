@@ -1,0 +1,18 @@
+[Unit]
+Description=每天 08:00 觸發立委粉專抓取（ly-dashboard）
+Documentation=https://github.com/cormort/ly-dashboard/blob/main/docs/DEPLOY-VM.md
+
+[Timer]
+# 與 macOS 版一致：每天 08:00。
+OnCalendar=*-*-* 08:00:00
+# 機器關機／休眠錯過時間 → 開機後補跑一次。
+# 這正是 macOS 版刻意選 launchd StartCalendarInterval 而不是「伺服器內 setInterval」的原因，
+# 在 systemd 就是 Persistent=true（伺服器內的排程器不會補跑）。
+Persistent=true
+# 這是「跟 Facebook 講話」的工作，不要為了分散負載而隨機延後（預設會延最多 5 分鐘）。
+RandomizedDelaySec=0
+AccuracySec=1min
+Unit=ly-dashboard-fb-daily.service
+
+[Install]
+WantedBy=timers.target

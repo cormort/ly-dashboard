@@ -989,3 +989,18 @@ T6 圖表／地圖、T7 粉專牆嵌入框（已看過沒破版，但沒改任�
 | 事實怎麼確認 | 規格書的事實來自**三個平行調查子代理＋我自己的複查**：每個數字（28 張表、12 個階段、`NORMALIZER_VERSION = 4`、`0.95`／`0.8` 的門檻）都回到原始碼確認；手冊裡每一條 `curl`／`jq`／`node -e` 都實跑過 | 先寫了 `jq '.[0:5]'` 才發現 `/api/v1/sync-runs` 回的是 `{count, items, meta}`（不是陣列）、`health` 的「資料截至」在 `meta.fetched_at`（不在最外層）——**文件裡不能有沒跑過的指令** |
 | 已寫的文件裡有錯怎麼辦 | 修掉並在文件內註明：`docs/local-server-schedule.md` 附錄還把 `LY_NEWS_REFRESH_MS` 記成「尚未存在」，手冊標明它**已經實作**（預設 6 小時） | 舊的規劃文件不刪（那是當時的狀態），但現役手冊不能沿用過期結論 |
 | 兩份文件的維護 | 寫進 SOP：**改到規則／排程／憑證時，順手改對應那一節**；`DECISIONS.md` 仍然是「為什麼」的唯一來源，兩份文件只放「是什麼、怎麼做」＋指向 D 編號 | 避免出現第三、第四份會過期的說明（這個 repo 已經踩過：同一件事在 README 與 docs 各寫一份，其中一份沒跟上） |
+
+## D285：部署到 Linux VM（systemd 版）與「混合拓撲」
+
+使用者 2026-10-13：「如果我要部署在 vm 上面的虛擬機的話要怎麼處理」。這個專案原本是三套宿主
+（macOS／Windows／Termux），Linux 一直只被 CI 的 `npm test` 走過、沒有「怎麼裝成服務」的那一層。
+
+| 岔路 | 選擇 | 理由 |
+| --- | --- | --- |
+| 程式碼要不要改 | **不改**。要換的只有生命週期機制與啟動腳本那一層 | 純 Node ＋ `node:sqlite`、後端零 runtime 相依（Windows／Termux 版已經證明過一次），CI 三個平台也一直在跑 `npm test`。真正的可攜成本集中在 launchd／systemd 的差異 |
+| 服務怎麼跑 | 新增 `deploy/linux/`：`ly-dashboard-server.service`（`Restart=on-failure`、`TZ=Asia/Taipei`、`EnvironmentFile=-~/.ly-dashboard/server.env`、`CPUWeight=200`）、`ly-dashboard-fb-daily.service`（`Type=oneshot`、`TimeoutStartSec=3h`）＋`ly-dashboard-fb-daily.timer`（`Persistent=true`、`RandomizedDelaySec=0`） | 與 macOS 一對一對應：`KeepAlive SuccessfulExit=false` ↔ `Restart=on-failure`；`StartCalendarInterval`（睡著會補跑）↔ `Persistent=true`。**刻意不用 `scripts/ly-dashboard-server.sh`**：那支的存在理由是 launchd 沒有 PATH／沒有埠碰撞保護，systemd 用 `User=`／`WorkingDirectory=`／`Environment=` 就講完了，多一層 shell 只是多一個壞掉的地方 |
+| `CPUWeight=200` 為什麼要寫進 unit | 寫，並在註解說明理由 | 這個 repo 踩過等價的坑：macOS 的 `ProcessType=Background` 讓同一個 `/api/v1/funds` 請求從 2 秒變 21 秒（前端 15 秒逾時就顯示錯誤）。VM 上的版本是超賣的 vCPU 或 CPU 被壓縮的 cgroup —— 把它寫在 unit 裡並附上診斷指令（`time curl …/api/v1/funds`） |
+| 要推薦哪種拓撲 | **B：VM 跑站台＋政府資料／新聞，每日粉專抓取留在 Mac Mini**（A 全搬、C 只放前端也寫在文件裡） | Facebook 從機房 IP 的風控比家用高，而且 VM 通常沒有桌面可以跑 `--login`（要改走 cookies 匯入）。而「跨機器」這條路本來就有：貼文走 `fb-data`、新聞走 `news-data` 分支 —— B 沒有犧牲任何資料，只少了一項最脆弱的環節 |
+| 對外（VM 可能有公網 IP） | 預設 `LY_HOST=127.0.0.1` ＋ `tailscale serve`；要公網就 Caddy ＋ `basic_auth` ＋ HTTPS | 讀取端點沒有驗證（資料是公開的政府開放資料，但等於把儀表板也公開）；寫入端點在非 loopback 沒 token 時已經 403。這個取捨要明講給使用者決定，不能默默綁到 0.0.0.0 |
+| 「可以搬」怎麼證明，而不是我說可以 | ① `.github/workflows/ci.yml` 新增 `deploy-linux` job：ubuntu 上空資料庫冷啟動、八條路徑都要 200、29 張表／`journal_mode=wal`、`bash -n` 兩支腳本、渲染 unit 後 `systemd-analyze verify` ② `deploy/linux/verify-vm.sh --live` 讓使用者在真 VM 上實打來源（立法院／g0v／法務部／RSS 各一次） ③ **未實測項明列在 `docs/DEPLOY-VM.md` §7**（真的 VM 的來源可達性、systemd 補跑行為、機房 IP 抓 FB） | 可攜性這種事最容易被講成「理論上可以」。能進 CI 的就進 CI（冷啟動與 unit 語法），不能進 CI 的（真 VM、真來源、Facebook 風控）就誠實標 🔶 並附上第一天要跑的指令 |
+| 順手踩到並記下來的坑 | bash 在 `set -u` 下：`$VAR` **緊接中文字元**會被當成變數名的一部分（`$NODE）` → `NODE）: unbound variable`）→ 一律寫 `${VAR}（…）`；另外 `install.sh` 在 macOS 上 `--dry-run` 要先有 `getent` 的退路 | 這支腳本要在 Linux 跑、但通常先在 macOS 上看過一次，所以兩個平台都要能執行到「印出 unit」那一步 |
