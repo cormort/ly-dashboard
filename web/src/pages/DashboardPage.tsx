@@ -197,7 +197,7 @@ export function DashboardPage({ refreshToken, onOpenId, onNavigate }: DashboardP
         >
           {(data) => (
             <>
-              <p className="muted">本機關自己函送立法院的書面報告（依預算決議檢送、定期報告）；原本算在「預算審議」裡，現在單獨列出來。</p>
+              <p className="muted">本機關自己函送立法院的書面報告與定期報告（依預算決議檢送、「…執行情形表」「…彙總表」也包含）；原本算在「預算審議」裡，現在單獨列出來。</p>
               <ul className="dash-list">
                 {(data.kinds?.submitted?.items ?? []).map((r) => (
                   <li key={`${r.url}-${r.title}`}>

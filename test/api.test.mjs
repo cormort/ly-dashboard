@@ -629,20 +629,19 @@ test('機關頁的「機關檢送報告」與「預算審議」：名稱不提�
   // ③ 名稱已認出機關（教育部）的案件：標題優先，不重複掛提案單位
   insert('s3', '函送教育部「高教深耕計畫」執行情形書面報告，請查照案。', '教育部', '2026-09-01');
   // ④ 預算審議（`budget`，名稱不符檢送報告規則）也同一條規則：名稱不提機關、提案單位是自己
-  db.prepare('INSERT INTO budget_bills (id, category, name, status, proposer, latest_date, url) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
-    's4',
-    '預(決) 算決議案、定期報告',
-    '函送115年第2季媒體政策及業務宣導執行情形表，請查照案。',
-    '交付查照',
-    '行政院主計總處',
-    '2026-08-27',
-    'https://example.com/s4',
-  );
+  //    （名稱含「表」的定期報告 2026-10-12 起算「機關檢送報告」，見 D282，所以這裡用別的例子）
+  insert('s4', '函，為該部115年度第2季未核列管制預算案，請查照案。', '行政院主計總處', '2026-08-27');
+  // ⑤ 名稱含「表」的定期報告也是機關檢送報告（D282），一樣靠提案單位補回來
+  insert('s5', '函送115年第2季媒體政策及業務宣導執行情形表，請查照案。', '行政院主計總處', '2026-08-27');
 
   const dgbas = listFunds(db, { type: 'agency', fund: '行政院主計總處', kind: 'submitted' });
-  assert.deepEqual(dgbas.items.map((i) => i.url).sort(), ['https://example.com/s1', 'https://example.com/s2'], '自己的報告掛回自己，委員會函件照原樣');
-  assert.equal(dgbas.kinds.submitted, 2);
-  assert.equal(listFunds(db, { type: 'agency', fund: '行政院主計總處', kind: 'budget' }).kinds.budget, 1, '預算審議的「執行情形表」也掛回送件的機關');
+  assert.deepEqual(
+    dgbas.items.map((i) => i.url).sort(),
+    ['https://example.com/s1', 'https://example.com/s2', 'https://example.com/s5'],
+    '自己的報告掛回自己（含「…執行情形表」），委員會函件照原樣',
+  );
+  assert.equal(dgbas.kinds.submitted, 3);
+  assert.equal(listFunds(db, { type: 'agency', fund: '行政院主計總處', kind: 'budget' }).kinds.budget, 1, '預算審議的「未核列管制預算案」也掛回送件的機關');
   assert.equal(listFunds(db, { type: 'agency', fund: '本院財政委員會', kind: 'submitted' }).total, 0, '委員會不是機關，不會被當成機關掛上去');
 
   const moe = listFunds(db, { type: 'agency', fund: '教育部', kind: 'submitted' });

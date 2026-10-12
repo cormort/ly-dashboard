@@ -417,7 +417,7 @@ export function MyAgencyPage({ refreshToken, onOpenId, onNavigate }: MyAgencyPag
                 total={data.kinds.submitted.total}
                 href={pathFor('budget', { category: AGENCY_REPORT_CATEGORY, proposer: data.agency.name, scope: 'all' })}
                 onNavigate={onNavigate}
-                note="本機關自己函送立法院的書面報告（依預算決議檢送、定期報告）；看更多開的是預算頁同一類別再加上本機關"
+                note="本機關自己函送立法院的書面報告與定期報告（「…執行情形表」「…彙總表」也包含）；看更多開的是預算頁同一類別再加上本機關"
               >
                 <ItemList items={data.kinds.submitted.items} tag={(i) => i.status} />
               </Block>

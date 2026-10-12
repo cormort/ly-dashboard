@@ -225,6 +225,20 @@ test('我的機關：機關自己檢送的報告單獨一個來源，不再混�
   assert.equal(r.kinds.budget.total, 1, '預算審議只剩原本那筆總預算案');
 });
 
+test('機關檢送報告：名稱是「…執行情形表／彙總表」的定期報告也算（2026-10-12 使用者決定）', () => {
+  const { db } = seeded();
+  const ins = db.prepare('INSERT INTO budget_bills(id, term, session, category, name, status, proposer, fiscal_year, latest_date, url) VALUES(?,?,?,?,?,?,?,?,?,?)');
+  ins.run('T1', 11, 5, '預(決) 算決議案、定期報告', '函送115年第2季媒體政策及業務宣導執行情形表，請查照案。', '交付查照', '行政院主計總處', 115, '2026-08-27', 'https://b/t1');
+  ins.run('T2', 11, 6, '行政命令(層級)', '函送116年度中央政府總預算案優先順序總表及各主管機關概算計畫優先順序排列表，請查照案。', '交付查照', '行政院主計總處', 116, '', 'https://b/t2');
+  const r = getAgencyHome(db, { name: '行政院主計總處' });
+  assert.equal(r.kinds.submitted.total, 2, '「執行情形表」「優先順序總表」都算機關自己檢送');
+  assert.deepEqual(r.kinds.submitted.items.map((i) => i.url), ['https://b/t2', 'https://b/t1'], '沒有進度日期的排最前面');
+  assert.equal(r.kinds.budget.total, 0, '拆出來之後預算審議不再重複算');
+  // 決算書這種「送件」不是報告，仍然不算
+  ins.run('T3', 11, 5, '預(決) 算決議案、定期報告', '函送財團法人國際合作發展基金會113年度決算書案。', '審查完畢', '行政院主計總處', 115, '2026-09-26', 'https://b/t3');
+  assert.equal(getAgencyHome(db, { name: '行政院主計總處' }).kinds.submitted.total, 2, '決算書案不算機關檢送報告');
+});
+
 test('機關檢送報告：立法院委員會的處理函件與決算書都不算', () => {
   const { db } = seeded();
   const ins = db.prepare('INSERT INTO budget_bills(id, term, session, category, name, status, proposer, fiscal_year, latest_date, url) VALUES(?,?,?,?,?,?,?,?,?,?)');
