@@ -25,9 +25,14 @@ const FB_TIMER = 'ly-dashboard-fb-daily.timer';
 
 const template = (name) => readFileSync(join(DEPLOY, name), 'utf8');
 
-/** 有沒有可以跑 bash 的環境（Windows 的 CI 沒有）。 */
+/**
+ * 有沒有可以跑 bash 的環境（Windows 的 CI 沒有）。
+ * Windows 的 runner 其實有 Git Bash，但那裡的 `bash` 跑 deploy/linux 的腳本意義不大
+ * （那支腳本是寫給 Linux 的，路徑與 getent 都不一樣），而且會讓 `npm test` 在 Windows 紅掉 ——
+ * 這一塊由 CI 的 deploy-linux job（ubuntu）負責，Windows 只跑上面的文字層斷言。
+ */
 function hasBash() {
-  return !spawnSync('bash', ['-c', 'exit 0']).error;
+  return process.platform !== 'win32' && !spawnSync('bash', ['-c', 'exit 0']).error;
 }
 
 test('deploy：三份 systemd 樣板都在（服務＋抓取＋timer）', () => {
