@@ -1004,3 +1004,19 @@ T6 圖表／地圖、T7 粉專牆嵌入框（已看過沒破版，但沒改任�
 | 對外（VM 可能有公網 IP） | 預設 `LY_HOST=127.0.0.1` ＋ `tailscale serve`；要公網就 Caddy ＋ `basic_auth` ＋ HTTPS | 讀取端點沒有驗證（資料是公開的政府開放資料，但等於把儀表板也公開）；寫入端點在非 loopback 沒 token 時已經 403。這個取捨要明講給使用者決定，不能默默綁到 0.0.0.0 |
 | 「可以搬」怎麼證明，而不是我說可以 | ① `.github/workflows/ci.yml` 新增 `deploy-linux` job：ubuntu 上空資料庫冷啟動、八條路徑都要 200、29 張表／`journal_mode=wal`、`bash -n` 兩支腳本、渲染 unit 後 `systemd-analyze verify` ② `deploy/linux/verify-vm.sh --live` 讓使用者在真 VM 上實打來源（立法院／g0v／法務部／RSS 各一次） ③ **未實測項明列在 `docs/DEPLOY-VM.md` §7**（真的 VM 的來源可達性、systemd 補跑行為、機房 IP 抓 FB） | 可攜性這種事最容易被講成「理論上可以」。能進 CI 的就進 CI（冷啟動與 unit 語法），不能進 CI 的（真 VM、真來源、Facebook 風控）就誠實標 🔶 並附上第一天要跑的指令 |
 | 順手踩到並記下來的坑 | bash 在 `set -u` 下：`$VAR` **緊接中文字元**會被當成變數名的一部分（`$NODE）` → `NODE）: unbound variable`）→ 一律寫 `${VAR}（…）`；另外 `install.sh` 在 macOS 上 `--dry-run` 要先有 `getent` 的退路 | 這支腳本要在 Linux 跑、但通常先在 macOS 上看過一次，所以兩個平台都要能執行到「印出 unit」那一步 |
+
+## D286：PWA 圖示檔名帶版本（讓 Android 察覺 manifest 有變）
+
+使用者 2026-10-13：「手機上面 pwa 的 icon 還沒有更新，需要我移除重新安裝嗎？」
+先查伺服器端（手機實際連的 HTTPS 來源）：四張圖示與 manifest／sw.js 的 sha256 都等於本機檔案、`cache-control: no-cache`、
+SW 已是 `ly-shell-v2` —— 所以不是服務沒更新，是手機端的**桌面圖示快取**。使用者接著選「一起改」（把檔名加版本）。
+
+| 岔路 | 選擇 | 理由 |
+| --- | --- | --- |
+| 為什麼要動檔名（而不是再等） | 四顆圖示一起加上版本：`icon-192-v2.png`、`icon-512-v2.png`、`icon-maskable-512-v2.png`、`apple-touch-icon-v2.png`（舊檔名刪掉不留） | Android 的 Chrome **只在 manifest 有變動時**才重建 WebAPK；上一版只換了 PNG 的內容、檔名與 manifest 都一模一樣 → 主畫面的圖示幾乎不會自己更新（iOS 更是一定要移除再重新加入）。檔名版本化是唯一能讓 Android 察覺的手段 |
+| `v2` 是什麼意思 | v1＝早期 emoji 佔位版（檔名不帶版本號）、v2＝議事殿堂柱廊。版本常數是 `scripts/gen-pwa-icons.mjs` 的 `ICON_VERSION` | 使用者要的是「以後改圖示能被手機看到」，所以規則要一眼可讀：**改圖示 → `ICON_VERSION` +1 → 刪舊檔 → 同步五處** |
+| 一致性怎麼保證 | `test/pwa-icons.test.mjs` 釘住五處並互相對照：`ICON_FILES`（產生器）／`web/public` 的實際 PNG（含尺寸）／`manifest.webmanifest`／`web/index.html`／`sw.js` 的 SHELL；另外禁止 `web/public` 留下不帶版本號的舊圖示 | 只要有一處忘了跟著 +1，症狀是「手機上的圖示或離線外框壞掉」，而且**只有在手機上才會發現**（伺服器端 curl 全部正常） |
+| Service Worker | `CACHE` v2 → **v3**（SHELL 的四個 URL 也換成新版） | 外框資源改了不換快取名就不會重新 precache —— 這一條 D283 已經寫過，這次是它第一次真的被觸發 |
+| iOS 還需要移除重加嗎 | **要**。檔名版本化只對 Android 有效 | iOS 在「加入主畫面」那一刻就把 `apple-touch-icon` 寫死，沒有 API 可以把新圖示推給既有捷徑；舊圖示很黏時還要先清 Safari 網站資料＋重開機再重加 |
+| 順帶發現（這次沒動） | 舊檔名路徑（`/icon-192.png`）現在會落到 SPA fallback，回 **200 `text/html`** 而不是 404 | 這是既有的靜態檔行為（任何找不到的路徑都回 `index.html`）；對「manifest 已指向新檔名」的客戶端沒有影響，所以不在這一輪改。要不要讓「帶副檔名的路徑一律 404」是另一個決定 |
+| 驗收 | `npm run gen:pwa-icons`（新檔名、對稱自檢）、`npm test`（含新的五處一致性）、`npm --prefix web test`、重建 `web/dist`、重啟伺服器、本機與 Tailscale HTTPS 的 sha256 逐檔比對、`npm run verify:pwa`（SW 快取 8 項全是 `-v2`、`/api/` 0 項） | 「改完了」要用「手機連的那個來源」證明，不是用本機檔案證明 |

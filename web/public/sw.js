@@ -10,18 +10,19 @@
  * 卻以為是最新的。凡是 /api/ 一律直接放行給網路，不進快取、也不回舊值。
  */
 // app shell 的快取名。**改了任何外框資源（尤其是圖示）就要 +1**：
-// 圖示的檔名沒有版本號，不換快取名就不會重新 precache，主畫面上的 icon 會一直用舊的
+// 不換快取名就不會重新 precache，主畫面上的 icon 會一直用舊的
 // （跟 meowdoku 那次的 shell-v52→v53 同一個坑）。
-const CACHE = 'ly-shell-v2';
+// 2026-10-13 v2→v3：圖示改版（議事殿堂柱廊）且檔名加上版本（icon-192-v2.png…）。
+const CACHE = 'ly-shell-v3';
 
 // 安裝時先塞一份外框，確保「第一次離線就有東西」。
 const SHELL = [
   '/',
   '/manifest.webmanifest',
-  '/icon-192.png',
-  '/icon-512.png',
-  '/icon-maskable-512.png',
-  '/apple-touch-icon.png',
+  '/icon-192-v2.png',
+  '/icon-512-v2.png',
+  '/icon-maskable-512-v2.png',
+  '/apple-touch-icon-v2.png',
 ];
 
 self.addEventListener('install', (event) => {

@@ -7,7 +7,13 @@
  * 又不像傳統官方徽章的鷹／盾／旗那樣帶政治符號。整顆圖示只用站上色票（--accent 系），
  * 用 Chromium 把同一份 SVG 畫成各尺寸 PNG，不抓任何外部圖、不用 emoji。
  *
- * 產出：icon-192.png、icon-512.png、icon-maskable-512.png、apple-touch-icon.png。
+ * **檔名帶版本（ICON_VERSION）**：改圖示時一定要 +1，並同步改
+ * web/public/manifest.webmanifest、web/index.html、web/public/sw.js 的 SHELL（以及 sw.js 的 CACHE）。
+ * 為什麼要這樣：Android 的 Chrome 只在 **manifest 有變動**時才重建 WebAPK —— 只換 PNG 內容、
+ * 檔名與 manifest 都沒變的話，主畫面上的圖示會一直是舊的（iOS 更是一定要移除再重新「加到主畫面」）。
+ * 這四處的一致性由 test/pwa-icons.test.mjs 釘住，改一個地方沒改其他會被測到。
+ *
+ * 產出：ICON_FILES 的四個檔（見下）。
  * 三種畫法（差別只在圓角與安全區）：
  *   any      → 圓角藍底（四角透明），mark 滿版
  *   maskable → 滿版藍底（不可有圓角／透明），mark 縮到安全圓內（Android 會裁成各種形狀）
@@ -17,6 +23,17 @@ import { mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { findChromePath } from './find-chrome.mjs';
+
+/** 圖示改版就 +1（v1＝早期 emoji 佔位版、v2＝議事殿堂柱廊）。 */
+export const ICON_VERSION = 2;
+const v = `-v${ICON_VERSION}`;
+/** 四顆圖示的檔名（唯一來源；manifest／index.html／sw.js 由測試確保一致）。 */
+export const ICON_FILES = {
+  '192': `icon-192${v}.png`,
+  '512': `icon-512${v}.png`,
+  maskable: `icon-maskable-512${v}.png`,
+  apple: `apple-touch-icon${v}.png`,
+};
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const OUT = join(HERE, '..', 'web', 'public');
@@ -91,13 +108,13 @@ function iconSvg({ size, radius, scale }) {
 
 const ICONS = [
   // any：圓角藍底，四角透明
-  { file: 'icon-192.png', size: 192, radius: Math.round(192 * 0.2266), scale: 1 },
+  { file: ICON_FILES['192'], size: 192, radius: Math.round(192 * 0.2266), scale: 1 },
   // any：512 與 192 同一份構圖（不帶站名 —— 主畫面上縮到 96px 時字一定讀不出來）
-  { file: 'icon-512.png', size: 512, radius: Math.round(512 * 0.2266), scale: 1 },
+  { file: ICON_FILES['512'], size: 512, radius: Math.round(512 * 0.2266), scale: 1 },
   // maskable：滿版藍底 + 安全區內
-  { file: 'icon-maskable-512.png', size: 512, radius: 0, scale: maskableScale() },
+  { file: ICON_FILES.maskable, size: 512, radius: 0, scale: maskableScale() },
   // iOS 加到主畫面：滿版（iOS 自己上圓角），180×180
-  { file: 'apple-touch-icon.png', size: 180, radius: 0, scale: maskableScale() },
+  { file: ICON_FILES.apple, size: 180, radius: 0, scale: maskableScale() },
 ];
 
 /** 讀 PNG 的 IHDR 拿實際尺寸（確認 Chrome 真的吐對大小，不是只看 exit code）。 */

@@ -1,19 +1,25 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ICONS, iconSvg, mark, MARK_BOX } from '../scripts/gen-pwa-icons.mjs';
+import { ICON_FILES, ICON_VERSION, ICONS, iconSvg, mark, MARK_BOX } from '../scripts/gen-pwa-icons.mjs';
 
 /**
  * PWA 圖示（T11）的產物本身也要釘住。
- * 這裡只驗「檔案／manifest／幾何」這些不需要瀏覽器就能查的東西；
+ * 這裡驗「檔案／manifest／index.html／sw.js／產生器」這五處的一致性，以及不需要瀏覽器就能查的幾何；
  * 真正把圖畫出來、量左右對稱的那一段在 `npm run gen:pwa-icons`（會自己 red 起來）。
+ *
+ * **為什麼要釘這五處**：圖示檔名帶版本（`-v2`）是為了讓 Android 的 Chrome 察覺 manifest 有變而重建 WebAPK。
+ * 只要有一處忘了跟著 +1（例如改了檔名、sw.js 的 SHELL 還指著舊檔），症狀是「手機上的圖示或離線外框壞掉」，
+ * 而且只有真的在手機上才會發現。
  */
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PUBLIC = join(ROOT, 'web', 'public');
 const manifest = JSON.parse(readFileSync(join(PUBLIC, 'manifest.webmanifest'), 'utf8'));
+const sw = readFileSync(join(PUBLIC, 'sw.js'), 'utf8');
+const indexHtml = readFileSync(join(ROOT, 'web', 'index.html'), 'utf8');
 
 /** 讀 PNG 的 IHDR（不引入影像套件）。 */
 function pngSize(file) {
@@ -23,21 +29,30 @@ function pngSize(file) {
   return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
 }
 
+test('PWA 圖示：檔名一律帶版本，且 web/public 不留舊版', () => {
+  for (const [key, file] of Object.entries(ICON_FILES)) {
+    assert.match(file, new RegExp(`-v${ICON_VERSION}\\.png$`), `${key} 的檔名要帶 -v${ICON_VERSION}`);
+    assert.ok(readdirSync(PUBLIC).includes(file), `web/public 少了 ${file}`);
+  }
+  // 舊版（沒帶版本號、或別版）的圖示不可以留在 web/public：留著會讓人以為還在用
+  const stray = readdirSync(PUBLIC).filter((f) => /^(icon-|apple-touch-icon)/.test(f) && !/-v\d+\.png$/.test(f));
+  assert.deepEqual(stray, [], `web/public 有不帶版本號的舊圖示：${stray.join('、')}（改版時要一起刪掉）`);
+});
+
 test('PWA 圖示：四顆檔案的實際像素尺寸（iOS 少了 apple-touch-icon 就不會全螢幕）', () => {
   const expected = {
-    'icon-192.png': 192,
-    'icon-512.png': 512,
-    'icon-maskable-512.png': 512,
-    'apple-touch-icon.png': 180,
+    [ICON_FILES['192']]: 192,
+    [ICON_FILES['512']]: 512,
+    [ICON_FILES.maskable]: 512,
+    [ICON_FILES.apple]: 180,
   };
   assert.deepEqual(
     ICONS.map((i) => i.file).sort(),
     Object.keys(expected).sort(),
-    '產生器的檔案清單要和這裡一致',
+    '產生器的檔案清單要和 ICON_FILES 一致',
   );
   for (const [file, size] of Object.entries(expected)) {
-    const got = pngSize(file);
-    assert.deepEqual({ file, ...got }, { file, width: size, height: size });
+    assert.deepEqual({ file, ...pngSize(file) }, { file, width: size, height: size });
   }
 });
 
@@ -45,20 +60,32 @@ test('PWA 圖示：manifest 宣告的圖示與檔案對得上（含 maskable 的
   const icons = manifest.icons;
   assert.equal(icons.length, 3, 'manifest 應該有 192／512／maskable 三顆');
   const bySrc = Object.fromEntries(icons.map((i) => [i.src, i]));
-  for (const [src, size, purpose] of [
-    ['/icon-192.png', '192x192', 'any'],
-    ['/icon-512.png', '512x512', 'any'],
-    ['/icon-maskable-512.png', '512x512', 'maskable'],
+  for (const [file, size, purpose] of [
+    [ICON_FILES['192'], '192x192', 'any'],
+    [ICON_FILES['512'], '512x512', 'any'],
+    [ICON_FILES.maskable, '512x512', 'maskable'],
   ]) {
-    const icon = bySrc[src];
-    assert.ok(icon, `manifest 少了 ${src}`);
+    const icon = bySrc[`/${file}`];
+    assert.ok(icon, `manifest 少了 /${file}`);
     assert.equal(icon.sizes, size);
     assert.equal(icon.purpose, purpose);
     assert.equal(icon.type, 'image/png');
     // 宣告的尺寸要和檔案裡的實際尺寸一致（改產生器忘了改 manifest 時會紅）
-    const [w] = size.split('x');
-    assert.equal(pngSize(src.slice(1)).width, Number(w));
+    assert.equal(pngSize(file).width, Number(size.split('x')[0]));
   }
+});
+
+test('PWA 圖示：index.html 與 sw.js 指到同一版的檔名（改版時四處都要跟著 +1）', () => {
+  assert.match(indexHtml, new RegExp(`rel="apple-touch-icon" href="/${ICON_FILES.apple}"`));
+  assert.match(indexHtml, new RegExp(`sizes="192x192" href="/${ICON_FILES['192']}"`));
+
+  const shell = sw.match(/const SHELL = \[([^\]]+)\]/)?.[1] ?? '';
+  assert.ok(shell, 'sw.js 找不到 SHELL 清單');
+  for (const file of Object.values(ICON_FILES)) {
+    assert.ok(shell.includes(`'/${file}'`), `sw.js 的 SHELL 少了 /${file}（離線時圖示會 404）`);
+  }
+  // 外框資源改了就要換快取名，否則舊的 precache 不會更新
+  assert.match(sw, /const CACHE = 'ly-shell-v\d+';/);
 });
 
 test('PWA 圖示：柱廊的四根柱子左右對稱（使用者 2026-10-13：「柱子沒有對稱」）', () => {
@@ -102,8 +129,11 @@ test('PWA 圖示：不用 emoji、也不在圖示上刻站名（縮到 96px 讀�
   assert.ok(svg.includes('#2563eb') || svg.includes('#3b82f6'), '要用站上的 accent 色系');
 });
 
-test('PWA 圖示：index.html 有 apple-touch-icon（iOS 加到主畫面）', () => {
-  const html = readFileSync(join(ROOT, 'web', 'index.html'), 'utf8');
-  assert.match(html, /rel="apple-touch-icon" href="\/apple-touch-icon\.png"/);
-  assert.match(html, /rel="manifest" href="\/manifest\.webmanifest"/);
+test('PWA 圖示：manifest 與 index.html 的 PWA 基本設定還在', () => {
+  assert.equal(manifest.name, '立委觀測站');
+  assert.equal(manifest.display, 'standalone');
+  assert.equal(manifest.start_url, '/');
+  assert.equal(manifest.theme_color, '#2563eb');
+  assert.match(indexHtml, /rel="manifest" href="\/manifest\.webmanifest"/);
+  assert.match(indexHtml, /apple-mobile-web-app-capable" content="yes"/);
 });

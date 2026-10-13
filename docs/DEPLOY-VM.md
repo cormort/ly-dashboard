@@ -249,7 +249,7 @@ bash deploy/linux/verify-vm.sh
 **已驗證（可重跑）**
 
 - ✅ Linux 上冷啟動：空 `LY_DB` 直接跑 `node server/index.mjs --no-scheduler` → 建出 29 張表（`journal_mode=wal`）、
-  `/api/v1/health`、`/`、`/icon-192.png`、`/api/v1/{legislators,bills,budget,committees,rankings,counties,news/articles}` 全部 200。
+  `/api/v1/health`、`/`、`/icon-192-v2.png`、`/api/v1/{legislators,bills,budget,committees,rankings,counties,news/articles}` 全部 200。
 - ✅ `npm test`（373 項）在 ubuntu／macos／windows 三個平台都跑（`.github/workflows/ci.yml`）。
 - ✅ 來源可達性：以本專案的 `fetch-ly.mjs` 實打 `id9`（HTTP 200、123 筆、0.1 秒）。
 - ✅ `deploy/linux/*.service|timer` 的語法與 `install.sh --dry-run` 的替換結果（CI 用 `systemd-analyze verify` 檢查）。

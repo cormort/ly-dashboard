@@ -350,9 +350,13 @@
 ### 9.4 PWA
 
 - `web/public/manifest.webmanifest`：`name`／`short_name` 立委觀測站、`start_url: '/'`、`display: standalone`、`theme_color #2563eb`、`background_color #f5f7fa`、三顆圖示（192 any／512 any／512 maskable）。
-- `web/public/sw.js`：`CACHE='ly-shell-v2'`；install 用 `Promise.allSettled` 逐筆 precache app shell（容忍個別失敗）；activate 清掉舊 cache 並 `clients.claim`；
+- `web/public/sw.js`：`CACHE='ly-shell-v3'`；install 用 `Promise.allSettled` 逐筆 precache app shell（容忍個別失敗）；activate 清掉舊 cache 並 `clients.claim`；
   **`/api/` 一律不進快取**（本站數字每天更新）；導覽請求一律對到 `/`；策略是 stale-while-revalidate。
 - **改了 app shell 資源（尤其圖示）要 `CACHE` +1**，否則既有安裝會一直吃舊快取。
+- **圖示檔名帶版本（`ICON_VERSION`）**：`icon-192-v2.png`、`icon-512-v2.png`、`icon-maskable-512-v2.png`、`apple-touch-icon-v2.png`。
+  改圖示時的固定動作：`ICON_VERSION` +1、刪掉舊版檔案、同步改 `manifest.webmanifest`／`web/index.html`／`sw.js` 的 SHELL 與 `CACHE`。
+  為什麼要版本化：Android 的 Chrome **只在 manifest 有變動時**才重建 WebAPK（只換 PNG 內容、檔名不變的話主畫面圖示會一直是舊的）；
+  iOS 更是「加入主畫面」當下就寫死，一定要移除再重新加入。這四處的一致性由 `test/pwa-icons.test.mjs` 釘住。
 - 圖示由 `scripts/gen-pwa-icons.mjs` 用 Chromium 畫同一份 SVG（議事殿堂）：192／512 同構圖（不印站名）、maskable／apple 滿版藍底且 mark 縮到安全圓內；產生器會驗 PNG 實際尺寸與「mark 左右對稱（質量中心）」。
 - `web/index.html` 的 iOS meta（`apple-mobile-web-app-capable` 等）不能拿掉，否則「加到主畫面」不會全螢幕。
 

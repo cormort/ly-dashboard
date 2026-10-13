@@ -152,7 +152,7 @@ else
       if (h.warnings?.length) line("警告", h.warnings.join("；"));
     });' 2>/dev/null || warn "health 回來的內容不是預期 JSON"
 fi
-for path in / /icon-192.png /manifest.webmanifest; do
+for path in / /icon-192-v2.png /manifest.webmanifest; do
   code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "http://$HOST:$PORT$path")"
   [ "$code" = "200" ] && ok "$path → 200" || bad "$path → $code"
 done

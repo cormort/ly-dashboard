@@ -115,6 +115,9 @@ launchctl list | grep ly-dashboard
 # ② 抓取有沒有跑完（要看到「完成：N 列有日期」與「已觸發」或「已直接寫入本機資料庫」）
 tail -20 ~/ly-dashboard/.cache/fb-daily.log
 
+# ②' 手機端圖示／前端外框：圖示檔名帶版本，確認線上服務的是這一版
+curl -s -o /dev/null -w "icon-192-v2.png → %{http_code}\n" https://mac-mini.tail1ac930.ts.net/icon-192-v2.png
+
 # ③ 站上看到的社群最新日期是不是今天
 cd ~/ly-dashboard && node -e "
 const {DatabaseSync}=require('node:sqlite');

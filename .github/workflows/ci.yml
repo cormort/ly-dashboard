@@ -56,7 +56,7 @@ jobs:
             sleep 1
           done
           curl -sf "http://127.0.0.1:8799/api/v1/health" | head -c 200; echo
-          for path in / /icon-192.png /manifest.webmanifest /api/v1/legislators /api/v1/bills /api/v1/budget /api/v1/counties "/api/v1/news/articles"; do
+          for path in / /icon-192-v2.png /manifest.webmanifest /api/v1/legislators /api/v1/bills /api/v1/budget /api/v1/counties "/api/v1/news/articles"; do
             code=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:8799$path")
             echo "$path → $code"
             [ "$code" = "200" ] || { cat "$RUNNER_TEMP/server.log"; kill "$server_pid" || true; exit 1; }
