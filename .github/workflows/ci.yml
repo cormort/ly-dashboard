@@ -78,10 +78,18 @@ jobs:
             --node "$(command -v node)" --root "$PWD" --user runner --port 8787
           ls -l "$RUNNER_TEMP/units"
           ! grep -rq '__' "$RUNNER_TEMP/units"     # 不可以有沒被替換掉的佔位符
-          # SYSTEMD_UNIT_PATH 讓 verify 只在這個目錄找相依的 unit（timer 的 Unit= 才解析得到，
-          # 不然它會去找系統路徑、說找不到 ly-dashboard-fb-daily.service）
-          export SYSTEMD_UNIT_PATH="$RUNNER_TEMP/units"
+          # SYSTEMD_UNIT_PATH 要在尾端留一個冒號＝「接在預設搜尋路徑前面」，不是取代它。
+          # 取代掉的話 multi-user.target／timers.target／network-online.target 會找不到，
+          # verify 會因為相依解析失敗而紅（第一次就是這樣紅的）。
+          export SYSTEMD_UNIT_PATH="$RUNNER_TEMP/units:"
           for u in "$RUNNER_TEMP"/units/*.service "$RUNNER_TEMP"/units/*.timer; do
             echo "── systemd-analyze verify $u"
-            systemd-analyze verify "$u"
+            if ! systemd-analyze verify "$u" > "$RUNNER_TEMP/verify.out" 2>&1; then
+              cat "$RUNNER_TEMP/verify.out"
+              # 用 ::error:: 讓失敗原因出現在 run 的 annotation 裡（公開 repo 可以用 API 讀，不必登入看 log）
+              echo "::error::systemd-analyze verify 失敗（$(basename "$u")）：$(tr '\n' ' ' < "$RUNNER_TEMP/verify.out" | head -c 600)"
+              exit 1
+            fi
+            # 成功也印出來：verify 會對「找不到 ExecStart 的相依」之類的事給警告，值得看一眼
+            cat "$RUNNER_TEMP/verify.out"
           done
