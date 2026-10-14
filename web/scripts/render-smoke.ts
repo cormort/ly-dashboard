@@ -1524,6 +1524,13 @@ check('人口密度的「全國」不是 22 個縣市相加，是總人口 ÷ �
   return national !== null && national > 600 && national < 700 && naive > 15_000;
 })());
 
+// 縣市頁的「議員選舉與席次」連結：清單讀 /api/v1/council（不是寫死六都），而且只抓 only=counties
+// （2026-10-15；以前寫死六都，之後多建置一個縣市就會少一個連結，讀清單時又會多拉 131 KB 的整包選舉資料）。
+check('縣市頁：議員頁連結讀 /council 的縣市清單，且只抓 only=counties', (() => {
+  const src = readFileSync(new URL('../src/pages/CountiesPage.tsx', import.meta.url), 'utf8');
+  return src.includes("buildUrl('/council', { only: 'counties' })") && !src.includes('COUNCIL_COUNTIES');
+})());
+
 // C4：?scale= 是任意字串，未知色階不可以丟例外（會讓整頁被 ErrorBoundary 蓋掉）
 let scaleThrew = false;
 let fallbackColor = '';

@@ -348,13 +348,16 @@ Query 參數（全部可選）：
   `items[]`：`{ url, title, source, published_at, councilors[{ id, name, county, district, party }] }`。
 - 臉書：只有粉專網址（`facebook`），沒有貼文資料；前端以 Facebook 官方的粉專嵌入框（Page Plugin）按需顯示最近貼文。
 
-## GET /api/v1/council?county=新北市
+## GET /api/v1/council?county=新北市&only=counties
 
 議員分頁用。直轄市議員選舉結果（`server/council-stats.json`，由 `scripts/fetch-cec-council.mjs` + `scripts/build-council-stats.mjs` 產生，四年一次、需手動重跑），資料來源為中選會選舉資料庫。
 `county` 省略時用資料檔裡的第一個縣市；**目前建置六都**（新北市、臺北市、桃園市、臺中市、臺南市、高雄市），其他縣市回 `404 county_not_found`
 （不是空殼，前端才分得出「沒這個縣市」與「這個縣市沒有議員」），訊息會列出實際有建置的縣市。臺／台視為同一個字。
 
-回應：`{ meta, source: { label, url }, note, county, counties[], terms[], warnings[] }`。
+- `only=counties`：**只回 `{ counties[] }`**（有建置議員頁的縣市清單，實測 86 bytes），不碰資料庫、不算選舉資料，也不回其他欄位。
+  縣市地圖用它決定「這個縣市要不要連到議員頁」（不帶時是 131,661 bytes 的整包）。帶了它時 `county` 等其他參數一律忽略 ——
+  沒建置的縣市也回 200 的清單，不 404（地圖在任何一頁都拿得到清單）。`only` 認不得的值退回原本行為（回整包），不是 400。
+- 回應：`{ meta, source: { label, url }, note, county, counties[], terms[], warnings[] }`。
 `counties` 是有建置的縣市清單（前端拿它做縣市切換），`terms` 由新到舊。
 **屆次編號與屆數各縣市不同**：新北市 2010 是第 1 屆、臺北市同一年是第 11 屆；桃園市 2014 才升格，只有三屆
 （2022／2018／2014）。`term`／`label` 直接取自資料檔，不要用「第幾次選舉」推算。

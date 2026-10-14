@@ -7,7 +7,7 @@ import { openDb, applyDataset, applyBills, applySocial, applyCommitteeMeets, ups
 import { buildDataset, normalizeBills, normalizeSocial, newsName } from '../server/normalize.mjs';
 import { billsCsv, compareLegislators, csvRow, makeTagger, listCommitteeActivity, listCosponsors, listFunds, listRegions, getHealth, getMetaPayload, listActivity, listBills, listBudget, listTopics, listNews, listNewsArticles, listChanges, listCommittees, listLegislators, listRankings, listSyncRuns, listCounties, listDemographics, getTownMap, monthsSince, listLegislatorVotes, listSplitTicket, listRecalls, listCouncil, councilCounties, listSyncSources } from '../server/queries.mjs';
 import { regionOf } from '../server/normalize.mjs';
-import { authorizeSync, shouldSyncNow } from '../server/index.mjs';
+import { authorizeSync, shouldSyncNow, createServer } from '../server/index.mjs';
 import { runNewsIngest } from '../server/ingest.mjs';
 import { getProgress, clearProgress } from '../server/sync-progress.mjs';
 import { FetchError } from '../server/fetch-ly.mjs';
@@ -1377,6 +1377,43 @@ test('議員資料：縣市名支援臺／台，沒有建置的縣市回 null', 
   // 回 null 而不是空殼：API 層才分得出「沒建置這個縣市」（404）與「有建置但沒有議員」（空陣列）
   assert.equal(listCouncil(db, { county: '基隆市' }), null, '非直轄市沒有議員資料');
   assert.deepEqual(councilCounties(), ['新北市', '臺北市', '桃園市', '臺中市', '臺南市', '高雄市'], '404 的訊息要列出真的有哪些縣市');
+});
+
+// 縣市地圖只需要「哪些縣市有議員頁」，不該為此拉整包選舉資料（131,661 bytes → 86 bytes，2026-10-15）。
+// 這是第一條真的打 HTTP 的測試：`createServer(db)` 可以獨立起（排程只在直接執行 index.mjs 時才會開）。
+test('路由：/api/v1/council?only=counties 只回縣市清單', async () => {
+  const { db } = seeded();
+  const server = createServer(db);
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  try {
+    const res = await fetch(`${base}/api/v1/council?only=counties`);
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.deepEqual(Object.keys(body), ['counties'], '只回 counties：沒有 meta／terms／warnings');
+    assert.deepEqual(body.counties, councilCounties());
+    assert.ok(Number(res.headers.get('content-length')) < 512, '縣市地圖不該為了這份清單抓整包選舉資料');
+
+    // 帶了 only=counties 時 county 一律忽略：縣市地圖在任何一頁都要拿得到清單（選到沒建置的縣市不可以讓連結整批消失）
+    const withCounty = await fetch(`${base}/api/v1/council?county=${encodeURIComponent('花蓮縣')}&only=counties`);
+    assert.equal(withCounty.status, 200);
+    assert.deepEqual((await withCounty.json()).counties, councilCounties());
+
+    // 認不得的 only 值退回原本行為：打錯字不會靜默拿到一份缺欄位的資料
+    const unknown = await fetch(`${base}/api/v1/council?only=foo`);
+    const unknownBody = await unknown.json();
+    assert.equal(unknown.status, 200);
+    assert.ok(Array.isArray(unknownBody.terms) && unknownBody.county, 'only 不是 counties → 照舊回整包');
+
+    // 沒建置的縣市仍然是 404（前端「找不到縣市」的文案綁著這個碼，不能被 only 參數改掉）
+    const missing = await fetch(`${base}/api/v1/council?county=${encodeURIComponent('花蓮縣')}`);
+    assert.equal(missing.status, 404);
+    const err = await missing.json();
+    assert.equal(err.error.code, 'county_not_found');
+    assert.ok(err.error.message.includes('新北市'), '訊息要列出真的有哪些縣市');
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
 });
 
 test('議員資料：婦女保障名額當選（當選註記 !）不可以被當成落選', () => {

@@ -1020,3 +1020,18 @@ SW 已是 `ly-shell-v2` —— 所以不是服務沒更新，是手機端的**�
 | iOS 還需要移除重加嗎 | **要**。檔名版本化只對 Android 有效 | iOS 在「加入主畫面」那一刻就把 `apple-touch-icon` 寫死，沒有 API 可以把新圖示推給既有捷徑；舊圖示很黏時還要先清 Safari 網站資料＋重開機再重加 |
 | 順帶發現（這次沒動） | 舊檔名路徑（`/icon-192.png`）現在會落到 SPA fallback，回 **200 `text/html`** 而不是 404 | 這是既有的靜態檔行為（任何找不到的路徑都回 `index.html`）；對「manifest 已指向新檔名」的客戶端沒有影響，所以不在這一輪改。要不要讓「帶副檔名的路徑一律 404」是另一個決定 |
 | 驗收 | `npm run gen:pwa-icons`（新檔名、對稱自檢）、`npm test`（含新的五處一致性）、`npm --prefix web test`、重建 `web/dist`、重啟伺服器、本機與 Tailscale HTTPS 的 sha256 逐檔比對、`npm run verify:pwa`（SW 快取 8 項全是 `-v2`、`/api/` 0 項） | 「改完了」要用「手機連的那個來源」證明，不是用本機檔案證明 |
+
+## D287：`/council?only=counties`（縣市地圖只要清單，不拉整包）與它的兩條測試
+
+2026-10-15 使用者把縣市頁的議員連結改成讀 `/council` 回的縣市清單（不再寫死六都）之後，部署時量到那時候
+縣市地圖每開一次要拉 **131,661 bytes** 的整包選舉資料，只為了裡面 4 個縣市名字。
+
+| 岔路 | 選擇 | 理由 |
+| --- | --- | --- |
+| 怎麼只拿清單 | 在既有端點加 `only=counties`，**不**新增 `/api/v1/council/counties` | 清單本來就是 `/council` 回應的一部分（`counties[]`），語意上是同一個資源的投影；新增端點要多一條路由、一段 API.md、一組 404 語意，而這裡要的只是「不要算那份大東西」（實測 131,661 → **86 bytes**） |
+| `only` 認不得的值 | 一律退回原本行為（回整包），不是 400、也不是只回清單 | 與 `county` 的處理刻意不同：`county=花蓮縣` 回 404 是因為「查一個不存在的縣市」是真錯誤；`only` 只決定要不要多算，打錯字時回完整資料是安全的方向 —— 前端不會拿到一份缺欄位的物件 |
+| `only=counties` 又帶 `county=花蓮縣` | 忽略 `county`，回 200 的清單（不 404） | 縣市地圖在任何一頁都要拿得到清單；兩件事綁在一起的話，使用者選到沒建置的縣市時整份清單會消失，**連結也跟著不見**（那正是這次要修的病） |
+| 後端怎麼釘住 | `test/api.test.mjs` 新增一條真的打 HTTP 的測試（`createServer(db)` 起在 port 0）：① 回應只有 `counties` 一個鍵、`content-length < 512` ② `county=花蓮縣&only=counties` 仍 200 且清單完整 ③ `only=foo` 回整包（有 `terms`／`county`）④ `county=花蓮縣` 仍是 404 `county_not_found` 且訊息列出可查縣市 | 這是這個 repo 第一條 HTTP 層測試（`createServer` 可獨立起，排程只在直接執行 `index.mjs` 時才開）。「效能用的參數」最容易在重構時被改回整包而沒有人發現 —— 資料是對的、只是變慢變貴 |
+| 前端怎麼釘住 | `web/scripts/render-smoke.ts` 掃 `CountiesPage.tsx` 原始碼：必須有 `buildUrl('/council', { only: 'counties' })`，且不得再出現 `COUNCIL_COUNTIES` | 兩邊各自會退化：後端參數被移除、前端改回抓整包或改回寫死六都。這個 repo 已有「掃原始碼」的先例（誰在關注的件數連到明細網址那條），照同一招 |
+| `docs/API.md` | `/api/v1/council` 那節的標題與參數說明補上 `only=counties`，並寫明「帶了它就忽略 `county`、認不得的值回整包」 | 手冊是給下一個人（或下一輪的自己）看的：沒寫等於這個參數不存在 |
+| 兩條測試都證明不是空轉 | 把 `server/index.mjs` 的那兩行拿掉 → HTTP 那條紅；把 `CountiesPage.tsx` 改回 `COUNCIL_COUNTIES` → 前端那條紅（實測後已還原） | 「測試會過」不等於「測試抓得到」；新增的斷言要在舊行為上紅過一次才算數 |
