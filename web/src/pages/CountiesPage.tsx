@@ -1,6 +1,6 @@
 import { useMemo, type CSSProperties } from 'react';
 import { buildUrl } from '../api/client';
-import type { CountiesResponse, CountyElection, CountyElectionKey, CountyItem } from '../api/types';
+import type { CountiesResponse, CountyElection, CountyElectionKey, CountyItem, CouncilResponse } from '../api/types';
 import { EmptyState, ErrorState, LoadingState } from '../components/DataStates';
 import { useApi } from '../hooks/useApi';
 import { useParam } from '../hooks/useParam';
@@ -22,9 +22,6 @@ export interface CountiesPageProps {
   onOpenId: (id: string) => void;
   onNavigate: (href: string) => void;
 }
-
-// ponytail: 議員頁目前只建置直轄市（見 pageHints.council）；之後擴到其他縣市再改成看 /council 回的 counties
-const COUNCIL_COUNTIES = new Set(['臺北市', '新北市', '桃園市', '臺中市', '臺南市', '高雄市']);
 
 /* ---------- 指標 ---------- */
 
@@ -253,12 +250,12 @@ function ElectionTable({ title, current, previous, previousLabel }: { title: str
   );
 }
 
-function CountyDetail({ county, data, onOpenId, onNavigate }: { county: CountyItem; data: CountiesResponse; onOpenId: (id: string) => void; onNavigate: (href: string) => void }) {
+function CountyDetail({ county, data, councilCounties, onOpenId, onNavigate }: { county: CountyItem; data: CountiesResponse; councilCounties: string[]; onOpenId: (id: string) => void; onNavigate: (href: string) => void }) {
   const e = data.elections;
   return (
     <section className="panel county-detail" aria-label={`${county.county}詳細資料`}>
       <h2>{county.county}</h2>
-      {COUNCIL_COUNTIES.has(county.county) ? (
+      {councilCounties.includes(county.county) ? (
         <p>
           <RouteLink href={pathFor('council', { county: county.county })} onNavigate={onNavigate}>
             {county.county}議員選舉與席次 →
@@ -399,6 +396,8 @@ function Ranking({ metric, items, top, onSelect }: { metric: Metric; items: Coun
  */
 export function CountiesPage({ refreshToken, onOpenId, onNavigate }: CountiesPageProps) {
   const res = useApi<CountiesResponse>(buildUrl('/counties'), { refreshToken });
+  // 有建置議員頁的縣市（連到議員頁用）；ponytail: 為了這份清單會多抓預設縣市的整包議員資料（約 110 KB），嫌重再給 /council 加只回清單的參數
+  const council = useApi<CouncilResponse>(buildUrl('/council'), { refreshToken });
   const [metricKey, setMetricKey] = useParam<string>('metric', 'population');
   const [metric2Key, setMetric2Key] = useParam<string>('metric2', 'elderly_ratio');
   const [pairKey, setPairKey] = useParam<string>('pair', 'president_2024.民主進步黨.votes');
@@ -488,7 +487,7 @@ export function CountiesPage({ refreshToken, onOpenId, onNavigate }: CountiesPag
             </div>
             <ChoroplethMap items={items} values={mapValues(metric)} scale={scale} format={formatOf(metric)} title={`${metric.label} - 地理分布圖`} selected={current.county} onSelect={setSelected} />
           </section>
-          <CountyDetail county={current} data={data} onOpenId={onOpenId} onNavigate={onNavigate} />
+          <CountyDetail county={current} data={data} councilCounties={council.data?.counties ?? []} onOpenId={onOpenId} onNavigate={onNavigate} />
         </div>
       ) : null}
 
