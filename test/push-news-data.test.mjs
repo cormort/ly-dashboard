@@ -16,6 +16,8 @@ import { mergeFeedFile, parseFeedFile } from '../server/news-feed.mjs';
 
 const GOOGLE_URL = 'https://news.google.com/rss/articles/CBMiAAA?oc=5';
 const OUTLET_URL = 'https://www.cna.com.tw/news/aipl/202610060001.aspx';
+// 固定「現在」：資料日期寫死在 2026-10-06，用真實時鐘的話過了 7 天就全落在「近 N 天」窗口外（2026-10-13 起整批變 unchanged）
+const FIXED_NOW = () => new Date('2026-10-07T00:00:00.000Z');
 const row = (url, title, published = '2026-10-06T03:00:00.000Z', extra = {}) => ({
   url,
   title,
@@ -141,10 +143,10 @@ test('news-data：兩台裝置各自抓到的都會在（合併而不是覆蓋�
   const f = fixture();
   try {
     // 裝置 A（Mac Mini）抓到媒體 RSS
-    const a = await syncNewsData({ db: fakeDb([row(OUTLET_URL, 'A 抓到的')]), repoUrl: f.url, workDir: f.workDir('work-a') });
+    const a = await syncNewsData({ now: FIXED_NOW,  db: fakeDb([row(OUTLET_URL, 'A 抓到的')]), repoUrl: f.url, workDir: f.workDir('work-a') });
     assert.equal(a.status, 'pushed');
     // 裝置 B（筆電）抓到 Google 那一則
-    const b = await syncNewsData({ db: fakeDb([], [row(GOOGLE_URL, 'B 抓到的')]), repoUrl: f.url, workDir: f.workDir('work-b') });
+    const b = await syncNewsData({ now: FIXED_NOW,  db: fakeDb([], [row(GOOGLE_URL, 'B 抓到的')]), repoUrl: f.url, workDir: f.workDir('work-b') });
     assert.equal(b.status, 'pushed');
     const items = parseFeedFile(f.file('news/2026-10-06.ndjson'));
     assert.deepEqual(
@@ -162,14 +164,14 @@ test('news-data：內容沒變就不 commit、不 push；--dry-run 也不 push',
   const f = fixture();
   try {
     const db = fakeDb([row(OUTLET_URL, '標題一')]);
-    const first = await syncNewsData({ db, repoUrl: f.url, workDir: f.workDir('work') });
+    const first = await syncNewsData({ now: FIXED_NOW,  db, repoUrl: f.url, workDir: f.workDir('work') });
     assert.equal(first.status, 'pushed');
     const after = f.commitCount();
-    const again = await syncNewsData({ db, repoUrl: f.url, workDir: f.workDir('work') });
+    const again = await syncNewsData({ now: FIXED_NOW,  db, repoUrl: f.url, workDir: f.workDir('work') });
     assert.equal(again.status, 'unchanged');
     assert.equal(again.added, 0);
     assert.equal(f.commitCount(), after, '沒有新 commit');
-    const dry = await syncNewsData({ db: fakeDb([row(OUTLET_URL, '標題一'), row(GOOGLE_URL, '標題二')]), repoUrl: f.url, workDir: f.workDir('work'), dryRun: true });
+    const dry = await syncNewsData({ now: FIXED_NOW,  db: fakeDb([row(OUTLET_URL, '標題一'), row(GOOGLE_URL, '標題二')]), repoUrl: f.url, workDir: f.workDir('work'), dryRun: true });
     assert.equal(dry.status, 'dry-run');
     assert.equal(f.commitCount(), after, '預演不該 push');
   } finally {
@@ -180,12 +182,12 @@ test('news-data：內容沒變就不 commit、不 push；--dry-run 也不 push',
 test('news-data：分支還不存在時自己建一個；沒有可推的新聞就什麼都不做', async () => {
   const f = fixture();
   try {
-    const other = await syncNewsData({ db: fakeDb([row(OUTLET_URL, '標題一')]), repoUrl: f.url, workDir: f.workDir('work-2'), branch: 'news-data-second' });
+    const other = await syncNewsData({ now: FIXED_NOW,  db: fakeDb([row(OUTLET_URL, '標題一')]), repoUrl: f.url, workDir: f.workDir('work-2'), branch: 'news-data-second' });
     assert.equal(other.status, 'pushed');
     const listed = execFileSync('git', ['ls-tree', '--name-only', 'news-data-second'], { cwd: f.url, encoding: 'utf8' });
     assert.match(listed, /news/);
 
-    const empty = await syncNewsData({ db: fakeDb([]), repoUrl: f.url, workDir: f.workDir('work-3') });
+    const empty = await syncNewsData({ now: FIXED_NOW,  db: fakeDb([]), repoUrl: f.url, workDir: f.workDir('work-3') });
     assert.equal(empty.status, 'unchanged');
     assert.equal(empty.items, 0);
   } finally {
