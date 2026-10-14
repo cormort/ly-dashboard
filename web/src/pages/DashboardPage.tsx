@@ -14,6 +14,7 @@ import type {
   RegionsResponse,
 } from '../api/types';
 import { EmptyState, ErrorState, LoadingState } from '../components/DataStates';
+import { RouteLink } from '../components/RouteLink';
 import { useApi, type ApiResource } from '../hooks/useApi';
 import { pathFor, type Route } from '../hooks/useRoute';
 import { PASSED_STATUSES } from '../lib/billStage';
@@ -50,16 +51,13 @@ function Card<T>({
     <section className={wide ? 'panel dash-card wide' : 'panel dash-card'} aria-label={title}>
       <div className="sectionhead">
         <h2>{title}</h2>
-        <a
+        <RouteLink
           className="more-link"
           href={href}
-          onClick={(event) => {
-            event.preventDefault();
-            onNavigate(href);
-          }}
+          onNavigate={onNavigate}
         >
           看更多 <ArrowRight aria-hidden="true" />
-        </a>
+        </RouteLink>
       </div>
       {resource.phase === 'loading' && !resource.data ? <LoadingState label="讀取中…" /> : null}
       {resource.phase === 'error' ? <ErrorState title={`無法取得「${title}」`} error={resource.error} onRetry={resource.reload} /> : null}
@@ -139,32 +137,26 @@ export function DashboardPage({ refreshToken, onOpenId, onNavigate }: DashboardP
         ) : (
           <span className="muted">{mine.phase === 'error' ? '暫時無法取得' : mine.phase === 'loading' ? '讀取中…' : '尚無資料'}</span>
         )}
-        <a
+        <RouteLink
           className="more-link"
           href={link('my')}
-          onClick={(event) => {
-            event.preventDefault();
-            onNavigate(link('my'));
-          }}
+          onNavigate={onNavigate}
         >
           前往我的機關 <ArrowRight aria-hidden="true" />
-        </a>
+        </RouteLink>
       </section>
 
       <div className="stat-row">
         {tiles.map((t) => (
-          <a
+          <RouteLink
             key={t.label}
             className="stat-tile"
             href={t.href}
-            onClick={(event) => {
-              event.preventDefault();
-              onNavigate(t.href);
-            }}
+            onNavigate={onNavigate}
           >
             <b className="stat-value">{t.value === undefined ? '—' : t.value.toLocaleString()}</b>
             <span className="stat-label">{t.label}</span>
-          </a>
+          </RouteLink>
         ))}
       </div>
 
@@ -350,7 +342,7 @@ export function DashboardPage({ refreshToken, onOpenId, onNavigate }: DashboardP
           <p className="muted">誰在關注、誰最活躍</p>
         </div>
         <div className="dash-grid">
-        <Card title="最新動態" href={link('home')} onNavigate={onNavigate} resource={activity} wide>
+        <Card title="最近動態" href={link('home')} onNavigate={onNavigate} resource={activity} wide>
           {(data) => (
             <ul className="dash-list">
               {data.items.map((a) => {
@@ -422,15 +414,12 @@ export function DashboardPage({ refreshToken, onOpenId, onNavigate }: DashboardP
               <article key={r.region} className="panel region-card">
                 <div className="sectionhead">
                   <h3>
-                    <a
+                    <RouteLink
                       href={link('legislators', { region: r.region })}
-                      onClick={(event) => {
-                        event.preventDefault();
-                        onNavigate(link('legislators', { region: r.region }));
-                      }}
+                      onNavigate={onNavigate}
                     >
                       {r.region}
-                    </a>
+                    </RouteLink>
                   </h3>
                   <span className="muted">
                     {r.legislators.length} 位{r.news_7d ? `・近 7 天新聞 ${r.news_7d}` : ''}
@@ -457,15 +446,12 @@ export function DashboardPage({ refreshToken, onOpenId, onNavigate }: DashboardP
                         </span>
                       ))}
                     </p>
-                    <a
+                    <RouteLink
                       href={link('counties', { county: r.region })}
-                      onClick={(event) => {
-                        event.preventDefault();
-                        onNavigate(link('counties', { county: r.region }));
-                      }}
+                      onNavigate={onNavigate}
                     >
                       縣市統計 →
-                    </a>
+                    </RouteLink>
                   </div>
                 ) : null}
                 <p className="region-people">

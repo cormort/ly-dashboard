@@ -7,6 +7,7 @@ import { InfoTip } from '../components/InfoTip';
 import { YearProgressList, budgetProgressText, budgetRecordsText, hasReviewableItems, yearLabel } from '../components/BudgetProgress';
 import { ClearFiltersButton } from '../components/ClearFiltersButton';
 import { SearchField } from '../components/SearchField';
+import { RouteLink } from '../components/RouteLink';
 import { useApi } from '../hooks/useApi';
 import { pathFor } from '../hooks/useRoute';
 import { formatDay, shortCommittee } from '../lib/format';
@@ -35,6 +36,7 @@ export function scopeAfterCategoryChange({
 export interface BudgetPageProps {
   refreshToken: number;
   onOpenId: (id: string) => void;
+  onNavigate: (href: string) => void;
 }
 
 /** 類別名稱太長，畫面上用短名 */
@@ -160,7 +162,7 @@ function BudgetItemRow({
  * 預算審議：總預算案、法人預算、預算決議書面報告的審議狀態（g0v 立法院 API），
  * 加上委員會預算會議的發言委員（官方 ID223）與預算中心評估報告（官方 WebAPI）。
  */
-export function BudgetPage({ refreshToken, onOpenId }: BudgetPageProps) {
+export function BudgetPage({ refreshToken, onOpenId, onNavigate }: BudgetPageProps) {
   const [filters, setFilters] = useState<Filters>(readFilters);
   const [page, setPage] = useState(0);
   useEffect(() => {
@@ -325,6 +327,15 @@ export function BudgetPage({ refreshToken, onOpenId }: BudgetPageProps) {
           onClick={() => change({ q: '', year: '', state: '', proposer: '', type: '' })}
         />
       </div>
+
+      {filters.proposer ? (
+        <p className="muted cross-link">
+          想看這個機關的整體摘要（近期會議、書面回覆、誰在關注、首長新聞）？
+          <RouteLink href={pathFor('my', { agency: filters.proposer })} onNavigate={onNavigate}>
+            在「我的機關」查看{filters.proposer}
+          </RouteLink>
+        </p>
+      ) : null}
 
       {data ? (
         <p className="muted scope-note">

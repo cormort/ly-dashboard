@@ -3,6 +3,7 @@ import { BarChart3, Cloud } from 'lucide-react';
 import { buildUrl } from '../api/client';
 import type { TopicItem, TopicsResponse } from '../api/types';
 import { EmptyState, ErrorState, LoadingState } from '../components/DataStates';
+import { RouteLink } from '../components/RouteLink';
 import { useApi } from '../hooks/useApi';
 import { pathFor } from '../hooks/useRoute';
 import { formatDateTime, formatDay } from '../lib/format';
@@ -86,12 +87,9 @@ function BarsView({ items, unit, comparable, onNavigate }: { items: TopicItem[];
         const delta = deltaLabel(topic, comparable);
         return (
           <li key={topic.name}>
-            <a
+            <RouteLink
               href={pathFor('bills', { law: topic.name })}
-              onClick={(event) => {
-                event.preventDefault();
-                onNavigate(pathFor('bills', { law: topic.name }));
-              }}
+              onNavigate={onNavigate}
             >
               <span className="topic-rank">{index + 1}</span>
               <span className="topic-name">{topic.name}</span>
@@ -101,7 +99,7 @@ function BarsView({ items, unit, comparable, onNavigate }: { items: TopicItem[];
                 {delta ? <em className={topic.delta > 0 ? 'topic-delta up' : 'topic-delta'}>{delta}</em> : null}
               </span>
               <PartyBar parties={topic.parties} />
-            </a>
+            </RouteLink>
           </li>
         );
       })}
@@ -132,19 +130,16 @@ function TagsView({ items, unit, comparable, onNavigate }: { items: TopicItem[];
             .filter(Boolean)
             .join('・');
           return (
-            <a
+            <RouteLink
               key={topic.name}
               className={`tag tag-${tier}`}
               href={pathFor('bills', { law: topic.name })}
               title={tooltip}
-              onClick={(event) => {
-                event.preventDefault();
-                onNavigate(pathFor('bills', { law: topic.name }));
-              }}
+              onNavigate={onNavigate}
             >
               {topic.name}
               <span className="tag-count">{topic.count}</span>
-            </a>
+            </RouteLink>
           );
         })}
       </div>

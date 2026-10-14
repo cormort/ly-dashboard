@@ -139,7 +139,7 @@ const NAV: NavGroup[] = [
     label: '議員',
     icon: Vote,
     home: 'council',
-    routes: [{ route: 'council', label: '總覽' }],
+    routes: [{ route: 'council', label: '議員' }],
   },
   {
     id: 'facebook',
@@ -183,6 +183,9 @@ const NAV: NavGroup[] = [
 // /dgbas（主計總處專頁）不在任何頁籤上：它的內容已併入「我的機關」（預設機關），網址保留，高亮歸「我的機關」
 const groupOf = (route: Route): NavGroup =>
   NAV.find((group) => group.routes.some((item) => item.route === (route === 'dgbas' ? 'my' : route))) ?? NAV[0];
+
+/** 頁面自己有搜尋框的路由（法案、預算、委員會、各新聞頁、議員近期動態） */
+const OWN_SEARCH = new Set<Route>(['bills', 'budget', 'committees', 'news', 'agencynews', 'allnews', 'officials', 'councilactivity']);
 
 /**
  * 這個路由在頁籤上的名字（卡片標題要用）。找不到就退回所屬主題的名稱，
@@ -307,8 +310,8 @@ export function Header({
       </nav>
 
       <Magnifier />
-      {/* 法案、預算、委員會頁有自己的搜尋框，兩個不同目標的搜尋框疊在一起會混淆 */}
-      {route !== 'bills' && route !== 'budget' && route !== 'committees' ? (
+      {/* 有自己搜尋框的頁面不放頁首搜尋：兩個不同目標的搜尋框疊在一起會混淆 */}
+      {!OWN_SEARCH.has(route) ? (
         <>
           {/* 手機：搜尋框收成一顆圖示（點開才出現輸入框），頁首因此少一列、也不會一進站
               就被鍵盤擋掉半個畫面。桌機這顆按鈕用 CSS 關掉（display: none），

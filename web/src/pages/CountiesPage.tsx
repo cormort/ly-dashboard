@@ -4,6 +4,8 @@ import type { CountiesResponse, CountyElection, CountyElectionKey, CountyItem } 
 import { EmptyState, ErrorState, LoadingState } from '../components/DataStates';
 import { useApi } from '../hooks/useApi';
 import { useParam } from '../hooks/useParam';
+import { pathFor } from '../hooks/useRoute';
+import { RouteLink } from '../components/RouteLink';
 import { ChoroplethMap } from '../components/ChoroplethMap';
 import { LegislatorVotes } from '../components/LegislatorVotes';
 import { SplitTicket } from '../components/SplitTicket';
@@ -18,7 +20,11 @@ import { partyStyle } from '../lib/parties';
 export interface CountiesPageProps {
   refreshToken: number;
   onOpenId: (id: string) => void;
+  onNavigate: (href: string) => void;
 }
+
+// ponytail: 議員頁目前只建置直轄市（見 pageHints.council）；之後擴到其他縣市再改成看 /council 回的 counties
+const COUNCIL_COUNTIES = new Set(['臺北市', '新北市', '桃園市', '臺中市', '臺南市', '高雄市']);
 
 /* ---------- 指標 ---------- */
 
@@ -247,11 +253,22 @@ function ElectionTable({ title, current, previous, previousLabel }: { title: str
   );
 }
 
-function CountyDetail({ county, data, onOpenId }: { county: CountyItem; data: CountiesResponse; onOpenId: (id: string) => void }) {
+function CountyDetail({ county, data, onOpenId, onNavigate }: { county: CountyItem; data: CountiesResponse; onOpenId: (id: string) => void; onNavigate: (href: string) => void }) {
   const e = data.elections;
   return (
     <section className="panel county-detail" aria-label={`${county.county}詳細資料`}>
       <h2>{county.county}</h2>
+      {COUNCIL_COUNTIES.has(county.county) ? (
+        <p>
+          <RouteLink href={pathFor('council', { county: county.county })} onNavigate={onNavigate}>
+            {county.county}議員選舉與席次 →
+          </RouteLink>
+          　
+          <RouteLink href={pathFor('councilactivity', { county: county.county })} onNavigate={onNavigate}>
+            議員近期動態 →
+          </RouteLink>
+        </p>
+      ) : null}
       <div className="stat-row">
         <div className="stat-tile">
           <b className="stat-value">{num(county.population)}</b>
@@ -380,7 +397,7 @@ function Ranking({ metric, items, top, onSelect }: { metric: Metric; items: Coun
  * 雙指標對比、時間差異（變化率）、排行榜、原始資料與 CSV 匯出；點縣市可看選舉細節與區域立委。
  * 人口與選舉是靜態資料（scripts/build-county-stats.mjs），立委名單來自同步資料。
  */
-export function CountiesPage({ refreshToken, onOpenId }: CountiesPageProps) {
+export function CountiesPage({ refreshToken, onOpenId, onNavigate }: CountiesPageProps) {
   const res = useApi<CountiesResponse>(buildUrl('/counties'), { refreshToken });
   const [metricKey, setMetricKey] = useParam<string>('metric', 'population');
   const [metric2Key, setMetric2Key] = useParam<string>('metric2', 'elderly_ratio');
@@ -471,7 +488,7 @@ export function CountiesPage({ refreshToken, onOpenId }: CountiesPageProps) {
             </div>
             <ChoroplethMap items={items} values={mapValues(metric)} scale={scale} format={formatOf(metric)} title={`${metric.label} - 地理分布圖`} selected={current.county} onSelect={setSelected} />
           </section>
-          <CountyDetail county={current} data={data} onOpenId={onOpenId} />
+          <CountyDetail county={current} data={data} onOpenId={onOpenId} onNavigate={onNavigate} />
         </div>
       ) : null}
 

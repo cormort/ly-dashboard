@@ -40,16 +40,13 @@ function Block({ title, total, href, onNavigate, note, children }: { title: stri
           {title} <span className="muted">{total.toLocaleString()}</span>
         </h2>
         {href && total > 0 ? (
-          <a
+          <RouteLink
             className="more-link"
             href={href}
-            onClick={(event) => {
-              event.preventDefault();
-              onNavigate(href);
-            }}
+            onNavigate={onNavigate}
           >
             看更多 <ArrowRight aria-hidden="true" />
-          </a>
+          </RouteLink>
         ) : null}
       </div>
       {note ? <p className="muted">{note}</p> : null}
@@ -139,16 +136,13 @@ export function WatcherDetail({
               return (
                 <li key={`${m.date}-${m.name}`}>
                   <span className="kind">{m.committees[0] ? shortCommittee(m.committees[0]) : '會議'}</span>
-                  <a
+                  <RouteLink
                     href={href}
                     className="clamp-2"
-                    onClick={(event) => {
-                      event.preventDefault();
-                      onNavigate(href);
-                    }}
+                    onNavigate={onNavigate}
                   >
                     {m.name}
-                  </a>
+                  </RouteLink>
                   <time>{formatDay(m.date)}</time>
                 </li>
               );
@@ -259,15 +253,12 @@ export function MyAgencyPage({ refreshToken, onOpenId, onNavigate }: MyAgencyPag
               <span key={h.name}>
                 {i > 0 ? '、' : ''}
                 {h.title}{' '}
-                <a
+                <RouteLink
                   href={pathFor('officials', { legislator: h.name })}
-                  onClick={(event) => {
-                    event.preventDefault();
-                    onNavigate(pathFor('officials', { legislator: h.name }));
-                  }}
+                  onNavigate={onNavigate}
                 >
                   {h.name}
-                </a>
+                </RouteLink>
               </span>
             ))}
           </p>

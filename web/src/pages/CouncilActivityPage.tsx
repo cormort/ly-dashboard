@@ -7,12 +7,15 @@ import { SearchField } from '../components/SearchField';
 import { EmptyState, ErrorState, LoadingState } from '../components/DataStates';
 import { useApi } from '../hooks/useApi';
 import { useParam } from '../hooks/useParam';
+import { pathFor } from '../hooks/useRoute';
+import { RouteLink } from '../components/RouteLink';
 import { formatDay } from '../lib/format';
 import { partyStyle } from '../lib/parties';
 import { FacebookEmbed } from '../components/FacebookEmbed';
 
 export interface CouncilActivityPageProps {
   refreshToken: number;
+  onNavigate: (href: string) => void;
 }
 
 const PAGE = 30;
@@ -55,7 +58,7 @@ function FacebookRow({ c, open, onToggle }: { c: Councilor; open: boolean; onTog
 }
 
 /** 議員近期動態：標題提到現任議員的新聞，以及議員的 Facebook 粉專（按需載入最近貼文）。 */
-export function CouncilActivityPage({ refreshToken }: CouncilActivityPageProps) {
+export function CouncilActivityPage({ refreshToken, onNavigate }: CouncilActivityPageProps) {
   const [county, setCounty] = useParam<string>('county', '');
   const [councilor, setCouncilor] = useParam<string>('councilor', '');
   const [q, setQ] = useParam<string>('q', '');
@@ -96,6 +99,13 @@ export function CouncilActivityPage({ refreshToken }: CouncilActivityPageProps) 
           </button>
         ))}
       </div>
+      {data.county ? (
+        <p>
+          <RouteLink href={pathFor('council', { county: data.county })} onNavigate={onNavigate}>
+            {data.county}議員選舉與席次 →
+          </RouteLink>
+        </p>
+      ) : null}
       <div className="filters" role="search">
         <select value={councilor} aria-label="依議員篩選" onChange={(event) => pickCouncilor(event.target.value)}>
           <option value="">全部議員</option>

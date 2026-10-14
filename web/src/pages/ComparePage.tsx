@@ -3,6 +3,7 @@ import { buildUrl } from '../api/client';
 import type { CompareResponse, LegislatorsResponse } from '../api/types';
 import { EmptyState, ErrorState, LoadingState } from '../components/DataStates';
 import { Portrait } from '../components/Portrait';
+import { RouteLink } from '../components/RouteLink';
 import { useApi } from '../hooks/useApi';
 import { pathFor } from '../hooks/useRoute';
 import { shortCommittee } from '../lib/format';
@@ -181,13 +182,10 @@ export function ComparePage({ refreshToken, onOpenId, onNavigate }: ComparePageP
                     <ul className="plain-list">
                       {i.top_laws.map((law) => (
                         <li key={law.name}>
-                          <a
+                          <RouteLink
                             href={pathFor('bills', { law: law.name })}
-                            onClick={(event) => {
-                              event.preventDefault();
-                              onNavigate(pathFor('bills', { law: law.name }));
-                            }}
-                          >{law.name}</a> <span className="muted">{law.count}</span>
+                            onNavigate={onNavigate}
+                          >{law.name}</RouteLink> <span className="muted">{law.count}</span>
                         </li>
                       ))}
                     </ul>

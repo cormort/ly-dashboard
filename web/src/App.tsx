@@ -116,14 +116,14 @@ export default function App() {
       {target === 'socialwall' ? <SocialWallPage refreshToken={refreshToken} onOpenId={setPendingId} /> : null}
       {target === 'bills' ? <BillsPage refreshToken={refreshToken} onOpenId={setPendingId} /> : null}
       {target === 'dashboard' ? <DashboardPage refreshToken={refreshToken} onOpenId={setPendingId} onNavigate={navigate} /> : null}
-      {target === 'budget' ? <BudgetPage refreshToken={refreshToken} onOpenId={setPendingId} /> : null}
+      {target === 'budget' ? <BudgetPage refreshToken={refreshToken} onOpenId={setPendingId} onNavigate={navigate} /> : null}
       {target in FUND_TYPE ? (
         <FundsPage key={target} type={FUND_TYPE[target as keyof typeof FUND_TYPE]} refreshToken={refreshToken} onOpenId={setPendingId} onNavigate={navigate} />
       ) : null}
-      {target === 'counties' ? <CountiesPage refreshToken={refreshToken} onOpenId={setPendingId} /> : null}
+      {target === 'counties' ? <CountiesPage refreshToken={refreshToken} onOpenId={setPendingId} onNavigate={navigate} /> : null}
       {target === 'my' ? <MyAgencyPage refreshToken={refreshToken} onOpenId={setPendingId} onNavigate={navigate} /> : null}
-      {target === 'council' ? <CouncilPage refreshToken={refreshToken} /> : null}
-      {target === 'councilactivity' ? <CouncilActivityPage refreshToken={refreshToken} /> : null}
+      {target === 'council' ? <CouncilPage refreshToken={refreshToken} onNavigate={navigate} /> : null}
+      {target === 'councilactivity' ? <CouncilActivityPage refreshToken={refreshToken} onNavigate={navigate} /> : null}
       {target === 'committees' ? <CommitteesPage refreshToken={refreshToken} onOpenId={setPendingId} /> : null}
       {target === 'news' ? <NewsPage refreshToken={refreshToken} onOpenId={setPendingId} /> : null}
       {target === 'agencynews' ? <NewsPage scope="agencies" refreshToken={refreshToken} onOpenId={setPendingId} /> : null}
@@ -196,6 +196,10 @@ export default function App() {
               socialFreshness={health.data?.social ?? null}
               sessionLabel={sessionLabel}
               onOpenId={setPendingId}
+              onNavigate={(href) => {
+                setSelected(null);
+                navigate(href);
+              }}
               onCompare={(l) => {
                 setSelected(null);
                 navigate(pathFor('compare', { ids: l.id }));

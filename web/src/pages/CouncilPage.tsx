@@ -5,11 +5,14 @@ import { EmptyState, ErrorState, LoadingState } from '../components/DataStates';
 import { PartyTag } from '../components/PartyTag';
 import { useApi } from '../hooks/useApi';
 import { useParam } from '../hooks/useParam';
+import { pathFor } from '../hooks/useRoute';
+import { RouteLink } from '../components/RouteLink';
 import { formatDay } from '../lib/format';
 import { partyStyle } from '../lib/parties';
 
 export interface CouncilPageProps {
   refreshToken: number;
+  onNavigate: (href: string) => void;
 }
 
 const num = (n: number, digits = 0) => n.toLocaleString('zh-TW', { maximumFractionDigits: digits, minimumFractionDigits: digits });
@@ -310,7 +313,7 @@ function DistrictRow({ d }: { d: CouncilDistrict }) {
 
 /* ---------- 頁面 ---------- */
 
-export function CouncilPage({ refreshToken }: CouncilPageProps) {
+export function CouncilPage({ refreshToken, onNavigate }: CouncilPageProps) {
   // 縣市與屆次是這一頁自己的檢視狀態，放在網址上（replaceState，可分享、重整後一致）：
   // 縣市留空＝用 API 的預設縣市，屆次留空＝最新一屆
   const [county, setCounty] = useParam<string>('county', '');
@@ -369,6 +372,15 @@ export function CouncilPage({ refreshToken }: CouncilPageProps) {
           </p>
         ))}
         {missing ? <p className="muted">沒有「{missing}」的議員選舉資料（目前建置直轄市），已改看{res.data.county}。</p> : null}
+        <p>
+          <RouteLink href={pathFor('councilactivity', { county: res.data.county })} onNavigate={onNavigate}>
+            {res.data.county}議員近期動態 →
+          </RouteLink>
+          　
+          <RouteLink href={pathFor('counties', { county: res.data.county })} onNavigate={onNavigate}>
+            {res.data.county}縣市統計 →
+          </RouteLink>
+        </p>
         <div className="council-switches">
           {res.data.counties.length > 1 ? (
             <div className="segmented" role="group" aria-label="選擇縣市">

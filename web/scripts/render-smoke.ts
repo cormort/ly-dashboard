@@ -203,7 +203,7 @@ expectAll('預設首頁是總覽', dashboardHtml, ['立委觀測站', '總覽', 
 (window as unknown as { location: { pathname: string } }).location.pathname = '/activity';
 const homeHtml = render(createElement(App));
 // 導覽改成兩層後：上層只有 5 個主題，子頁面（榜行榜／法案查詢…）改放在對應主題的次級導覽
-expectAll('最近動態（/activity）：站名、導覽、動態／議題／新聞骨架', homeHtml, [
+expectAll('最近動態（/activity）：站名、導覽、動態／議題骨架', homeHtml, [
   '立委觀測站',
   '關鍵字搜尋立法委員',
   '最近動態',
@@ -213,8 +213,9 @@ expectAll('最近動態（/activity）：站名、導覽、動態／議題／新
   'aria-current="page"',
   '讀取委員動態',
   '讀取議題',
-  '讀取新聞',
 ]);
+// 新聞清單不在最近動態重複放（總覽與「新聞 › 委員新聞」已有）
+expectNone('最近動態不再放最新新聞', homeHtml, ['讀取新聞']);
 // 只看最上層導覽（<nav aria-label="主要頁面">）；子頁面屬於第二層 subnav，在所屬主題的頁面上本來就會出現
 const topNav = homeHtml.match(/<nav aria-label="主要頁面">([\s\S]*?)<\/nav>/)?.[1] ?? '';
 expectNone('最上層導覽不該再把所有子頁面平鋪出來', topNav, ['排行榜', '法案查詢', '委員比較', '最近動態', '機關首長新聞']);
@@ -252,7 +253,7 @@ check(
 check(
   '卡片標題用頁籤上的名字（子頁與跨主題捷徑都查得到；查不到回 null）',
   navLabelOf('bills' as const) === '法案查詢' && navLabelOf('agencies' as const) === '機關'
-    && navLabelOf('my' as const) === '我的機關' && navLabelOf('council' as const) === '總覽'
+    && navLabelOf('my' as const) === '我的機關' && navLabelOf('council' as const) === '議員'
     && navLabelOf('news' as const) === '委員新聞' && navLabelOf('dgbas' as const) === null,
 );
 check(
@@ -1024,7 +1025,7 @@ console.log('\n— 首頁與法案查詢（自行抓資料，僅驗 loading 態�
 expectAll(
   '首頁 loading 態',
   render(createElement(HomePage, { refreshToken: 0, onOpenId: () => undefined, onNavigate: () => undefined, tracked: { ids: [], set: new Set(), count: 0, isTracked: () => false, toggle: () => undefined } })),
-  ['委員動態', '熱門議題', '最新新聞', '讀取委員動態'],
+  ['委員動態', '熱門議題', '讀取委員動態'],
 );
 expectAll(
   '法案查詢 loading 態',
@@ -1250,7 +1251,7 @@ expectAll(
   ['各年度審議進度', '115 年度', '年度不明', '<b>15</b>', '/ 40 已審竣', '剩 25', '/ 8 已審竣'],
 );
 
-expectAll('預算頁：loading 態有類別、篩選與三個區塊骨架', render(createElement(BudgetPage, { refreshToken: 0, onOpenId: () => undefined })), [
+expectAll('預算頁：loading 態有類別、篩選與三個區塊骨架', render(createElement(BudgetPage, { refreshToken: 0, onOpenId: () => undefined, onNavigate: () => undefined })), [
   '預算審議',
   '讀取預算審議',
   '預算會議發言',
@@ -1329,13 +1330,14 @@ expectNone(
 );
 
 expectNone('委員會頁：頁首不放委員搜尋', render(createElement(Header, { ...headerProps, route: 'committees' as const })), ['關鍵字搜尋立法委員']);
+expectNone('新聞頁：有自己的搜尋框，頁首不放委員搜尋', render(createElement(Header, { ...headerProps, route: 'officials' as const })), ['關鍵字搜尋立法委員']);
 
 const dashboardLoading = render(createElement(DashboardPage, { refreshToken: 0, onOpenId: () => undefined, onNavigate: () => undefined }));
 expectAll('總覽：loading 態有統計列、焦點卡與各區塊骨架', dashboardLoading, [
   '總覽',
   '首長新聞（近 7 天）',
   'href="/officials"',
-  '最新動態',
+  '最近動態',
   '最新三讀',
   '預算審議最新進度',
   '機關檢送報告',
@@ -1395,7 +1397,7 @@ check('三段字級的規則固定（前 1/3 大、中 1/3 中、其餘小）', 
 console.log('\n— 縣市與新聞 —');
 expectAll(
   '縣市頁：loading 態有讀取提示（不先畫任何縣市資料）',
-  render(createElement(CountiesPage, { refreshToken: 0, onOpenId: () => undefined })),
+  render(createElement(CountiesPage, { refreshToken: 0, onOpenId: () => undefined, onNavigate: () => undefined })),
   ['載入縣市資料'],
 );
 expectAll(
@@ -1404,7 +1406,7 @@ expectAll(
   ['讀取中'],
 );
 check('/counties 對應縣市頁', routeOf('/counties') === 'counties');
-expectAll('議員頁：loading 態有讀取提示（不先畫任何議員資料）', render(createElement(CouncilPage, { refreshToken: 0 })), ['載入議員選舉資料']);
+expectAll('議員頁：loading 態有讀取提示（不先畫任何議員資料）', render(createElement(CouncilPage, { refreshToken: 0, onNavigate: () => undefined })), ['載入議員選舉資料']);
 check('/council 對應議員頁', routeOf('/council') === 'council');
 check(
   '/facebook/council 對應議員近期動態；舊網址 /council/activity 仍可進（會被換成新網址）',

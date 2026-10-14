@@ -1,14 +1,13 @@
 import { useState, type CSSProperties } from 'react';
-import { ExternalLink } from 'lucide-react';
 import { buildUrl } from '../api/client';
 import { TopicsPanel } from '../components/TopicsPanel';
-import type { ActivityItem, ActivityResponse, NewsResponse } from '../api/types';
+import type { ActivityItem, ActivityResponse } from '../api/types';
 import { EmptyState, ErrorState, LoadingState } from '../components/DataStates';
 import { Portrait } from '../components/Portrait';
 import { useApi } from '../hooks/useApi';
 import type { TrackedApi } from '../hooks/useTracked';
 import { readPreference, writePreference } from '../lib/storage';
-import { formatDateTime, formatDay } from '../lib/format';
+import { formatDay } from '../lib/format';
 import { partyStyle } from '../lib/parties';
 
 export interface HomePageProps {
@@ -92,7 +91,7 @@ function ActivityCard({ item, onOpenId, isNew }: { item: ActivityItem; onOpenId:
   );
 }
 
-/** 首頁：最近有動態的委員（貼文／新聞／提案），旁邊是近 30 天熱門議題與最新新聞。 */
+/** 最近有動態的委員（貼文／新聞／提案），下方是近 30 天熱門議題。新聞清單不在這裡重複放：看「新聞 › 委員新聞」。 */
 export function HomePage({ refreshToken, onOpenId, onNavigate, tracked }: HomePageProps) {
   const [limit, setLimit] = useState(12);
   const [onlyTracked, setOnlyTracked] = useState(() => readPreference('home-tracked') === '1');
@@ -106,86 +105,57 @@ export function HomePage({ refreshToken, onOpenId, onNavigate, tracked }: HomePa
     setOnlyTracked(next);
     writePreference('home-tracked', next ? '1' : '0');
   };
-  const news = useApi<NewsResponse>(buildUrl('/news', { limit: 8 }), { refreshToken });
 
   return (
     <>
       <h1 className="sr-only">最近動態</h1>
 
-      <div className="home">
-        <section className="panel" aria-label="委員動態">
-          <div className="sectionhead">
-            <h2>委員動態</h2>
-            <div className="segmented" role="group" aria-label="動態範圍">
-              <button type="button" aria-pressed={!showTracked} onClick={() => toggleTracked(false)}>
-                全部
-              </button>
-              <button
-                type="button"
-                aria-pressed={showTracked}
-                disabled={tracked.count === 0}
-                onClick={() => toggleTracked(true)}
-                title={tracked.count === 0 ? '在委員查詢頁按 ☆ 加入追蹤' : undefined}
-              >
-                追蹤中（{tracked.count}）
-              </button>
-            </div>
+      <section className="panel" aria-label="委員動態">
+        <div className="sectionhead">
+          <h2>委員動態</h2>
+          <div className="segmented" role="group" aria-label="動態範圍">
+            <button type="button" aria-pressed={!showTracked} onClick={() => toggleTracked(false)}>
+              全部
+            </button>
+            <button
+              type="button"
+              aria-pressed={showTracked}
+              disabled={tracked.count === 0}
+              onClick={() => toggleTracked(true)}
+              title={tracked.count === 0 ? '在委員查詢頁按 ☆ 加入追蹤' : undefined}
+            >
+              追蹤中（{tracked.count}）
+            </button>
           </div>
-          {activity.phase === 'loading' && !activity.data ? <LoadingState label="讀取委員動態…" /> : null}
-          {activity.phase === 'error' ? (
-            <ErrorState title="無法取得委員動態（/api/v1/activity）" error={activity.error} onRetry={activity.reload} />
-          ) : null}
-          {activity.phase === 'empty' ? (
-            <EmptyState message="還沒有任何動態" hint="貼文、新聞與提案資料同步完成後會出現在這裡。" />
-          ) : null}
-          {activity.data && activity.data.items.length > 0 ? (
-            <>
-              <ol className="activity-list">
-                {activity.data.items.map((item) => (
-                  <ActivityCard
-                    key={item.legislator.id}
-                    item={item}
-                    onOpenId={onOpenId}
-                    isNew={lastVisit !== null && item.activity_date > lastVisit}
-                  />
-                ))}
-              </ol>
-              {!showTracked && activity.data.count >= limit && limit < 113 ? (
-                <button type="button" className="more" onClick={() => setLimit(113)}>
-                  顯示全部委員
-                </button>
-              ) : null}
-            </>
-          ) : null}
-        </section>
-
-        <div className="home-side">
-          <section className="panel" aria-label="最新新聞">
-            <h2>最新新聞</h2>
-            {news.phase === 'loading' && !news.data ? <LoadingState label="讀取新聞…" /> : null}
-            {news.phase === 'error' ? <ErrorState title="無法取得新聞（/api/v1/news）" error={news.error} onRetry={news.reload} /> : null}
-            {news.phase === 'empty' ? <EmptyState message="還沒有新聞" hint="新聞同步完成後會出現在這裡。" /> : null}
-            {news.data && news.data.items.length > 0 ? (
-              <ul className="news-list">
-                {news.data.items.map((item) => (
-                  <li key={`${item.legislator_id}-${item.url}`}>
-                    <a href={item.url} target="_blank" rel="noreferrer noopener">
-                      {item.title}
-                      <ExternalLink aria-hidden="true" />
-                    </a>
-                    <small>
-                      <button type="button" className="name-button" onClick={() => onOpenId(item.legislator_id)}>
-                        {item.legislator_name}
-                      </button>
-                      　{item.source}　{formatDateTime(item.published_at)}
-                    </small>
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-          </section>
         </div>
-      </div>
+        {activity.phase === 'loading' && !activity.data ? <LoadingState label="讀取委員動態…" /> : null}
+        {activity.phase === 'error' ? (
+          <ErrorState title="無法取得委員動態（/api/v1/activity）" error={activity.error} onRetry={activity.reload} />
+        ) : null}
+        {activity.phase === 'empty' ? (
+          <EmptyState message="還沒有任何動態" hint="貼文、新聞與提案資料同步完成後會出現在這裡。" />
+        ) : null}
+        {activity.data && activity.data.items.length > 0 ? (
+          <>
+            <ol className="activity-list">
+              {activity.data.items.map((item) => (
+                <ActivityCard
+                  key={item.legislator.id}
+                  item={item}
+                  onOpenId={onOpenId}
+                  isNew={lastVisit !== null && item.activity_date > lastVisit}
+                />
+              ))}
+            </ol>
+            {!showTracked && activity.data.count >= limit && limit < 113 ? (
+              <button type="button" className="more" onClick={() => setLimit(113)}>
+                顯示全部委員
+              </button>
+            ) : null}
+          </>
+        ) : null}
+      </section>
+
 
       {/* 熱門議題：全寬（有區間／詞彙／檢視三組控制，需要橫向空間） */}
       <TopicsPanel refreshToken={refreshToken} onNavigate={onNavigate} />

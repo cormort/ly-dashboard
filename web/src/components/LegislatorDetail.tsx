@@ -22,6 +22,8 @@ export interface LegislatorDetailProps {
   /** 開另一位委員的檔案（共同提案人） */
   onOpenId: (id: string) => void;
   onCompare: (legislator: Legislator) => void;
+  /** 站內換頁（側欄裡連到別頁的連結用；呼叫端負責關側欄） */
+  onNavigate: (href: string) => void;
   /** 社群整理表的新鮮度（/health），用來標「資料截至」與過期提醒；沒有就不標 */
   socialFreshness?: SocialFreshness | null;
 }
@@ -38,6 +40,7 @@ export function LegislatorDetail({
   sessionLabel,
   onOpenId,
   onCompare,
+  onNavigate,
   socialFreshness = null,
 }: LegislatorDetailProps) {
   const panelRef = useRef<HTMLElement | null>(null);
@@ -245,7 +248,7 @@ export function LegislatorDetail({
 
         <section className="detail-section">
           <h2>歷次得票</h2>
-          <LegislatorElectionHistory legislatorId={legislator.id} region={legislator.region} />
+          <LegislatorElectionHistory legislatorId={legislator.id} region={legislator.region} onNavigate={onNavigate} />
         </section>
 
         <section className="detail-section">
