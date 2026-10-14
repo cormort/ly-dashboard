@@ -217,6 +217,8 @@ export function createServer(db) {
             // 沒給 limit 時只回最近更新的 5 位（見 listSocialWall）；committee 用目前會期的常設委員會席位
             return sendJson(res, 200, listSocialWall(db, { party: q.party, region: q.region, committee: q.committee, limit: q.limit, offset: q.offset }));
           case '/api/v1/council': {
+            // ?only=counties：只回有建置的縣市清單（縣市地圖判斷要不要連到議員頁用，不必抓整包選舉資料）
+            if (q.only === 'counties') return sendJson(res, 200, { counties: councilCounties() });
             // 沒有建置的縣市回 404 而不是空殼，前端才分得出「沒這個縣市」與「沒資料」；
             // 訊息要列出真的有哪些，否則使用者只知道錯、不知道能查什麼
             const council = listCouncil(db, { county: q.county });

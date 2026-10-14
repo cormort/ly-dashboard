@@ -396,8 +396,8 @@ function Ranking({ metric, items, top, onSelect }: { metric: Metric; items: Coun
  */
 export function CountiesPage({ refreshToken, onOpenId, onNavigate }: CountiesPageProps) {
   const res = useApi<CountiesResponse>(buildUrl('/counties'), { refreshToken });
-  // 有建置議員頁的縣市（連到議員頁用）；ponytail: 為了這份清單會多抓預設縣市的整包議員資料（約 110 KB），嫌重再給 /council 加只回清單的參數
-  const council = useApi<CouncilResponse>(buildUrl('/council'), { refreshToken });
+  // 有建置議員頁的縣市（連到議員頁用）
+  const council = useApi<Pick<CouncilResponse, 'counties'>>(buildUrl('/council', { only: 'counties' }), { refreshToken });
   const [metricKey, setMetricKey] = useParam<string>('metric', 'population');
   const [metric2Key, setMetric2Key] = useParam<string>('metric2', 'elderly_ratio');
   const [pairKey, setPairKey] = useParam<string>('pair', 'president_2024.民主進步黨.votes');
