@@ -28,6 +28,9 @@ jobs:
       - run: npm --prefix web ci
       - run: npm --prefix web run build
       - run: npm test
+      # 前端自己的測試（tsc + smoke + render-smoke）以前只在改的人本機跑過：CI 只建了 web/dist，
+      # 前端斷言（例如縣市頁必須抓 /council?only=counties）紅了也沒人會知道。三個平台都跑一次。
+      - run: npm --prefix web test
 
   # 為什麼要這一個：專案正式的宿主是 macOS（launchd），但「能不能搬到 Linux VM」不該用推論回答。
   # 這裡在 ubuntu 上真的把服務跑起來（空資料庫）並打 API，另外驗 deploy/linux 的腳本與 systemd unit 語法。
