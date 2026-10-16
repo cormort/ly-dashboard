@@ -128,7 +128,7 @@ wrapper（`scripts/fb-daily.sh`）自己補 PATH（launchd 的 PATH 只有 `/usr
 | 關機好幾天（DSH 都沒開） | ⚠️ 只補跑**最近一次** | 中間漏掉的那幾天**不會**逐日補 |
 | 電腦開著但 DSH 沒開 | ❌ 不會 | 排程在 DSH 行程內，DSH 沒跑就沒有排程 |
 
-補跑行為來自排程模組的設計（`@deepseek-ai/dsh-schedule` 的型別註解）：
+補跑行為來自 DSH 排程模組的設計（其型別註解）：
 daily 是「Resolve a daily decision near the decision's local date, **not across its missed history**」、
 fixed-rate 是「advances directly past missed occurrences」——也就是**追上最近一次**，不是把漏掉的都補一遍。
 （這一項是讀原始碼與型別註解得到的結論，沒有做「關機三天」的實測。）
