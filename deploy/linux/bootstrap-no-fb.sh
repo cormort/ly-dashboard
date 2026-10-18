@@ -5,6 +5,8 @@
 #
 #   bash deploy/linux/bootstrap-no-fb.sh            # 用一般帳號跑（要有 sudo），不要用 root
 #   bash deploy/linux/bootstrap-no-fb.sh --public   # 另外用 Caddy 開 https://<外部IP>.sslip.io（HTTPS＋帳號密碼）
+#   bash deploy/linux/bootstrap-no-fb.sh --public --domain ly-dgbas.duckdns.org
+#                                                   # 再加一個好記的網址（DNS 要先指到這台的外部 IP）；sslip.io 那個照樣能用
 #                                                   # 改帳密也是重跑這行（已有資料庫會跳過全同步，幾分鐘內跑完）
 #
 # --public 的前提：GCE 執行個體要勾「允許 HTTP 流量」與「允許 HTTPS 流量」（防火牆在 VPC 層，VM 裡面改不到），
@@ -18,11 +20,18 @@ ROOT="${LY_ROOT:-/opt/ly-dashboard}"
 REPO="${LY_REPO:-https://github.com/cormort/ly-dashboard.git}"
 ENV_FILE="$HOME/.ly-dashboard/server.env"
 PUBLIC=0
-case "${1:-}" in
-  --public) PUBLIC=1 ;;
-  "") ;;
-  *) echo "不認識的參數：$1（只有 --public）" >&2; exit 2 ;;
-esac
+DOMAIN=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --public) PUBLIC=1; shift ;;
+    --domain) DOMAIN="${2:-}"; shift 2 || { echo "--domain 後面要接網址" >&2; exit 2; } ;;
+    *) echo "不認識的參數：$1（只有 --public、--domain 網址）" >&2; exit 2 ;;
+  esac
+done
+if [ -n "$DOMAIN" ]; then
+  [ "$PUBLIC" = "1" ] || { echo "--domain 要搭配 --public" >&2; exit 2; }
+  [[ "$DOMAIN" =~ ^[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]] || { echo "網址格式不對：$DOMAIN（例：ly-dgbas.duckdns.org，不要加 https://）" >&2; exit 2; }
+fi
 
 step() { printf '\n== %s\n' "$*"; }
 die()  { printf '✗  %s\n' "$*" >&2; exit 1; }
@@ -37,7 +46,16 @@ if [ "$PUBLIC" = "1" ]; then
     http://metadata.google.internal/computeMetadata/v1/instance/network-interfaces/0/access-configs/0/external-ip || true)
   if [ -z "$ip" ]; then read -rp "這台的外部 IP：" ip; fi
   [[ "$ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "外部 IP 格式不對：$ip（執行個體要有外部 IP）"
-  host="${ip//./-}.sslip.io"
+  sslip="${ip//./-}.sslip.io"
+  # Caddy 的站台位址：有 --domain 就兩個都服務（舊網址、已安裝的 App 不會失效），主網址用好記的那個
+  host="${DOMAIN:-$sslip}"
+  sites="$sslip"
+  if [ -n "$DOMAIN" ]; then
+    sites="$DOMAIN, $sslip"
+    # DNS 沒指過來，Let's Encrypt 就發不了憑證：先講清楚，不要等 60 秒後才說連不上
+    resolved=$(getent ahostsv4 "$DOMAIN" | awk 'NR==1 {print $1}')
+    [ "$resolved" = "$ip" ] || die "$DOMAIN 目前指到「${resolved:-（查不到）}」，不是這台的 $ip；請先到 DNS 設定（DuckDNS 的 current ip）改好，幾分鐘後再跑"
+  fi
   echo "網址會是 https://$host/"
   read -rp "網站登入帳號：" auth_user
   read -rsp "網站登入密碼（至少 8 字，不會顯示）：" auth_pass; echo
@@ -130,7 +148,7 @@ hash=$(caddy hash-password --plaintext "$auth_pass")
 # encode：Node 伺服器本身不壓縮，API 幾乎都是 JSON；在 Caddy 這層壓縮，省下 GCE 免費方案每月 1 GB 的對外流量
 # @locked：PWA 安裝要的檔案（manifest、sw.js、圖示）不擋帳密 —— 瀏覽器抓 manifest 不帶憑證（沒有 crossorigin=use-credentials），
 # Android 產生 WebAPK 時 Google 的伺服器也要抓圖示；擋住就裝不了 App。這幾個檔不含任何資料，網頁與 API 照樣要登入。
-printf '%s {\n\t@locked not path /manifest.webmanifest /sw.js /icon-*.png /icon-maskable-*.png /apple-touch-icon-*.png\n\tbasicauth @locked {\n\t\t%s %s\n\t}\n\tencode zstd gzip\n\treverse_proxy 127.0.0.1:8787\n}\n' "$host" "$auth_user" "$hash" |
+printf '%s {\n\t@locked not path /manifest.webmanifest /sw.js /icon-*.png /icon-maskable-*.png /apple-touch-icon-*.png\n\tbasicauth @locked {\n\t\t%s %s\n\t}\n\tencode zstd gzip\n\treverse_proxy 127.0.0.1:8787\n}\n' "$sites" "$auth_user" "$hash" |
   sudo tee /etc/caddy/Caddyfile >/dev/null
 sudo caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null
 sudo systemctl reload caddy || sudo systemctl restart caddy
@@ -152,6 +170,7 @@ fi
 cat <<EOF
 
 完成。網址：https://$host/   帳號：$auth_user
+$([ -n "$DOMAIN" ] && echo "舊網址 https://$sslip/ 也還能用（已安裝的 App 不受影響）。")
 外部 IP 記得在「VPC 網路 → IP 位址」改成靜態，否則關機再開可能換 IP（網址跟著變，要重跑 --public）。
 每月人口更新的排程見 docs/DEPLOY-NO-FB.md §7。
 EOF
