@@ -4,7 +4,8 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { openDb, applyDataset, applySocial } from '../server/db.mjs';
 import { buildDataset } from '../server/normalize.mjs';
-import { listSocialWall, SOCIAL_WALL_DEFAULT_LIMIT } from '../server/queries.mjs';
+import { listSocialWall, SOCIAL_WALL_DEFAULT_LIMIT, listLegislators, listRankings, listActivity, getHealth, socialFreshness } from '../server/queries.mjs';
+import { CONFIG } from '../server/config.mjs';
 
 const fixture = (name) => JSON.parse(readFileSync(fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url)), 'utf8'));
 const FETCHED_AT = '2026-09-30T09:00:00.000Z';
@@ -225,4 +226,35 @@ test('粉專牆：委員會是有效條件時，limit 沒給也照樣展開（�
   const wall = listSocialWall(seeded(ACCOUNTS), { committee: '內政委員會' });
   assert.equal(wall.total, 3);
   assert.equal(wall.count, 3, '只有 3 位時就全部回，不受預設 5 位影響');
+});
+
+test('LY_FB_SCRAPE=0：凍結的最新貼文不送出、沒有臉書榜、不報過期；粉專帳號照舊', () => {
+  const db = seeded([{ ...fb('00001', '丁學忠', '2020-01-01'), latest_post_likes: 9, latest_post_comments: 3 }]);
+  const now = Date.parse('2026-10-18T00:00:00Z');
+  // 旗標開著（預設）時，舊日期會被標成過期 —— 這正是關掉要消除的東西
+  assert.equal(socialFreshness(db, now).stale, true);
+  assert.ok(getHealth(db, { now }).warnings.some((w) => w.includes('臉書整理表')));
+  assert.equal(listActivity(db, { limit: 113 }).items.find((i) => i.legislator.id === '00001')?.post?.date, '2020-01-01');
+  assert.ok(listRankings(db, { type: 'all' }).boards.facebook);
+
+  CONFIG.social.scrape = false;
+  try {
+    assert.deepEqual(socialFreshness(db, now), { as_of: null, age_days: null, stale: false, stale_days: CONFIG.social.staleDays });
+    assert.ok(!getHealth(db, { now }).warnings.some((w) => w.includes('臉書整理表')), '不報整理表過期');
+
+    const item = listSocialWall(db, { limit: 100 }).items.find((i) => i.name === '丁學忠');
+    assert.ok(item, '粉專牆仍列出帳號（嵌入框照舊）');
+    assert.equal(item.url, 'https://www.facebook.com/00001');
+    assert.deepEqual([item.latest_post_date, item.latest_post_summary, item.latest_post_likes, item.latest_post_comments], [null, '', null, null]);
+
+    const social = listLegislators(db, { all: true }).items.find((l) => l.id === '00001').social;
+    assert.equal(social.length, 1, '名錄的社群帳號照舊');
+    assert.deepEqual([social[0].latest_post_date, social[0].latest_post_summary], ['', '']);
+
+    assert.equal(listRankings(db, { type: 'all' }).boards.facebook, undefined, '不出臉書排行榜');
+    const activity = listActivity(db, { limit: 113 }).items.find((i) => i.legislator.id === '00001');
+    assert.ok(!activity || !activity.post, '近期動態不拿凍結的貼文當動態');
+  } finally {
+    CONFIG.social.scrape = true;
+  }
 });

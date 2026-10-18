@@ -369,6 +369,7 @@ curl -s -X POST 'http://127.0.0.1:8787/api/v1/sync?force=1' | jq   # 需要時�
 | `LY_SHRINK_MIN_RATIO` / `LY_ALLOW_SHRINK` | 0.8 / 關 | 整批覆寫前的筆數守門；合法縮減時用 `LY_ALLOW_SHRINK=1` 放行一次 |
 | `LY_SYNC_RUNS_KEEP` / `LY_CHANGE_LOG_KEEP` | 0（全部保留） | 只留最近 N 筆 |
 | `LY_MOJ_LAWS_INTERVAL_HOURS` | 12 | 全國法規資料庫檢查間隔（0＝每次都抓） |
+| `LY_FB_SCRAPE` | 開 | `0` ＝這台不抓粉專：API 不送凍結的委員「最新貼文」、不出臉書排行榜、不報整理表過期（D288） |
 | `LY_FB_PROFILE` | `~/.ly-dashboard/fb-profile` | 抓粉專用的 Chrome 設定檔 |
 | `LY_FB_LOCAL_INGEST` | 開 | `0` ＝回到「觸發伺服器重讀整理表」的舊路 |
 | `LY_FB_DATA_PUSH` / `LY_FB_DATA_BRANCH` | 開 / `fb-data` | 抓取結果推遠端分支 |

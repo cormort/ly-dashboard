@@ -112,9 +112,10 @@ export function listLegislators(db, query = {}) {
     if (!topSource.has(r.legislator_id)) topSource.set(r.legislator_id, { name: r.name, count: Number(r.n) });
   }
   const socialByLegislator = new Map();
+  const scrape = CONFIG.social.scrape;
   for (const s of db.prepare('SELECT * FROM social_accounts ORDER BY platform, url').all()) {
     const list = socialByLegislator.get(s.legislator_id) ?? [];
-    list.push({ platform: s.platform, name: s.page_name, url: s.url, latest_post_date: s.latest_post_date, latest_post_summary: s.latest_post_summary, source: s.source ?? 'sheet' });
+    list.push({ platform: s.platform, name: s.page_name, url: s.url, latest_post_date: scrape ? s.latest_post_date : '', latest_post_summary: scrape ? s.latest_post_summary : '', source: s.source ?? 'sheet' });
     socialByLegislator.set(s.legislator_id, list);
   }
   const byId = new Map(legislatorRows.map((l) => [l.id, l]));
@@ -364,7 +365,8 @@ const HEALTH_TABLES = [
 export function socialFreshness(db, now = Date.now(), table = 'social_accounts') {
   // table 只會是程式內的兩個固定值（立委 social_accounts、議員 council_social），不是使用者輸入
   const asOf = db.prepare(`SELECT MAX(latest_post_date) AS d FROM ${table === 'council_social' ? 'council_social' : 'social_accounts'} WHERE latest_post_date IS NOT NULL AND latest_post_date <> ''`).get()?.d ?? null;
-  if (!asOf) return { as_of: null, age_days: null, stale: false, stale_days: CONFIG.social.staleDays };
+  // 不抓粉專時委員整理表的日期是凍結的：不報「截至」也不報過期（議員整理表另有人維護，照算）
+  if (!asOf || (table !== 'council_social' && !CONFIG.social.scrape)) return { as_of: null, age_days: null, stale: false, stale_days: CONFIG.social.staleDays };
   // 以臺灣的「今天」算天數：整理表的日期是臺灣日期
   const today = new Date(now + 8 * 3_600_000).toISOString().slice(0, 10);
   const ageDays = Math.max(0, Math.round((Date.parse(today) - Date.parse(asOf)) / 86_400_000));
@@ -502,7 +504,7 @@ export function listRankings(db, { type = 'all', days = 30, limit = 10 } = {}) {
     };
   }
 
-  if (wanted('facebook')) {
+  if (wanted('facebook') && CONFIG.social.scrape) {
     const today = Date.now();
     const items = db
       .prepare(
@@ -943,7 +945,7 @@ export function listActivity(db, { limit = 12, ids = null } = {}) {
     if (!latestBill.has(r.legislator_id)) latestBill.set(r.legislator_id, toBill(r));
   }
   const latestPost = new Map();
-  for (const r of db.prepare("SELECT * FROM social_accounts WHERE latest_post_date <> '' ORDER BY latest_post_date DESC").all()) {
+  for (const r of CONFIG.social.scrape ? db.prepare("SELECT * FROM social_accounts WHERE latest_post_date <> '' ORDER BY latest_post_date DESC").all() : []) {
     if (!latestPost.has(r.legislator_id)) latestPost.set(r.legislator_id, { platform: r.platform, url: r.url, date: r.latest_post_date, summary: r.latest_post_summary });
   }
   const conveners = new Set(
@@ -1217,6 +1219,7 @@ export function listSocialWall(db, { party = '', region = '', committee = '', li
     list.push(seat.committee_id);
     committeesByLegislator.set(seat.legislator_id, list);
   }
+  const scrape = CONFIG.social.scrape;
   const askedCommittee = String(committee ?? '').trim();
   // 不認識的委員會名稱當作沒篩（回應也回空字串，前端才不會顯示一個其實沒生效的條件）
   const wantedCommittee = standingCommittees.has(askedCommittee) ? askedCommittee : '';
@@ -1238,11 +1241,11 @@ export function listSocialWall(db, { party = '', region = '', committee = '', li
       photo_url: row.photo_url ?? null,
       page_name: row.page_name ?? '',
       url: row.url,
-      latest_post_date: row.latest_post_date || null,
-      latest_post_summary: row.latest_post_summary ?? '',
+      latest_post_date: (scrape && row.latest_post_date) || null,
+      latest_post_summary: scrape ? (row.latest_post_summary ?? '') : '',
       // 讚／留言數是「最新那一則」的快照；抓不到就是 null（畫面不顯示，不要寫成 0）
-      latest_post_likes: Number.isFinite(row.latest_post_likes) ? row.latest_post_likes : null,
-      latest_post_comments: Number.isFinite(row.latest_post_comments) ? row.latest_post_comments : null,
+      latest_post_likes: scrape && Number.isFinite(row.latest_post_likes) ? row.latest_post_likes : null,
+      latest_post_comments: scrape && Number.isFinite(row.latest_post_comments) ? row.latest_post_comments : null,
       source: row.source ?? 'sheet',
     }))
     // 新到舊；沒有日期的（整理表還沒抓到貼文）一律排最後

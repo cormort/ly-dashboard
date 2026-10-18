@@ -134,6 +134,7 @@ Query 參數（全部可選）：
 - `contacts` 依處所合併立院 `tel`／`fax`／`addr` 三個字串欄位；沒有資料時為 `[]`。
 - `social` 來自人工整理的 Google 試算表（`LY_SOCIAL_CSV` 可覆寫），每次同步整批覆寫；`latest_post_*` 是整理表記錄的最新貼文，不是即時抓取。
 - `social[].source`：`sheet`＝整理表、`override`＝人工更正表（`server/social-overrides.json`）。
+- 伺服器設 `LY_FB_SCRAPE=0`（不抓粉專的主機）時，委員的 `latest_post_*` 一律為空（名錄 `''`、粉專牆 `null`）、`/rankings` 不回 `facebook` 榜、`/health` 的 `social` 新鮮度 `as_of=null`／`stale=false`；帳號與網址照常（D288）。
   更正過的帳號會清空 `latest_post_*`，因為原本的貼文摘要屬於舊（錯誤）網址；等整理表補上資料後才會再出現。
 - `is_convener` 是**該會期**的召委，不是「曾經當過」。
 - 無資料時回 `items: []`、`count: 0`，**不得**回傳任何示範／假資料。

@@ -168,6 +168,9 @@ export const CONFIG = {
     name: '委員社群帳號整理表',
     // 整理表裡「最新貼文日期」最新的一筆超過這麼多天，就在畫面與 /health 提醒「整理表可能沒在更新」
     staleDays: Number(process.env.LY_SOCIAL_STALE_DAYS ?? 7),
+    // LY_FB_SCRAPE=0：這台不跑每日粉專抓取（docs/DEPLOY-NO-FB.md）。委員的「最新貼文」日期／摘要／讚數會停在最後一次抓取，
+    // 所以 API 不再送出它們、不出臉書排行榜、不提醒整理表過期；粉專帳號與嵌入框照舊。議員整理表不受影響。
+    scrape: process.env.LY_FB_SCRAPE !== '0',
     // 議員臉書整理表（格式見 docs/social-sheet-spec.md「議員分頁」）的 CSV 匯出網址；空字串＝不匯入
     councilUrl: process.env.LY_COUNCIL_SOCIAL_CSV ?? 'https://docs.google.com/spreadsheets/d/17Aqrr2ThH3-V00ege6YtQzK2hguu3fSgfaY9QryZ11I/export?format=csv',
     // 貼文層級（一列一則貼文）的資料分支：scripts/fetch-fb-posts.mjs 每日抓取 → scripts/push-fb-data.mjs 推上

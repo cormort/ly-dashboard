@@ -13,8 +13,8 @@
 | 媒體 RSS／Google 新聞 | 伺服器每 1 小時／6 小時，**全自動** |
 | 委員粉專牆的嵌入框 | **照常**（Facebook 官方 Page Plugin，在瀏覽器端即時載入，不靠抓取） |
 | 粉專帳號清單 | 照常（每輪同步讀 Google 整理表） |
-| 「最新貼文」日期／摘要／讚數、臉書排行榜 | **停在最後一次抓取**（整理表與 `fb-data` 分支不再更新） |
-| 「整理表過期」提示 | 7 天後會出現在同步狀態列、排行榜與委員側欄（`LY_SOCIAL_STALE_DAYS`） |
+| 「最新貼文」日期／摘要／讚數、臉書排行榜 | 資料會停在最後一次抓取 → 設 `LY_FB_SCRAPE=0`（§4）**收掉不顯示** |
+| 「整理表過期」提示 | 同上，設了就不會出現 |
 
 不需要的東西：Chrome、`~/.ly-dashboard/fb-profile/`、`sheet.env`、`notify.env`（Telegram 只有粉專抓取在用）、
 `apps-script/`。
@@ -56,6 +56,15 @@ systemctl status ly-dashboard-server --no-pager
 ```
 
 這樣只裝 API 伺服器，不會有 `ly-dashboard-fb-daily.timer`。
+
+再告訴伺服器「這台不抓粉專」（D288）：
+
+```bash
+mkdir -p ~/.ly-dashboard && chmod 700 ~/.ly-dashboard
+echo 'LY_FB_SCRAPE=0' >> ~/.ly-dashboard/server.env
+sudo systemctl restart ly-dashboard-server
+curl -s 'http://127.0.0.1:8787/api/v1/rankings?type=all' | jq '.boards | keys'   # 不該有 "facebook"
+```
 
 ## 5. 驗收（第一天一定要跑 `--live`）
 

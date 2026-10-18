@@ -163,10 +163,13 @@ export function RankingsPage({ refreshToken, onOpenId }: RankingsPageProps) {
                 <b className="stat-value">{totals.billItems}</b>
                 <span className="stat-label">前 {rankings.data.boards.bills?.items.length ?? 0} 名的提案件數（本屆）</span>
               </div>
-              <div className="stat-tile">
-                <b className="stat-value">{totals.freshest}</b>
-                <span className="stat-label">臉書最新發文（{rankings.data.boards.facebook?.items[0]?.legislator.name ?? '—'}）</span>
-              </div>
+              {/* 伺服器設 LY_FB_SCRAPE=0 時不回臉書榜，這格一起收掉 */}
+              {rankings.data.boards.facebook ? (
+                <div className="stat-tile">
+                  <b className="stat-value">{totals.freshest}</b>
+                  <span className="stat-label">臉書最新發文（{rankings.data.boards.facebook.items[0]?.legislator.name ?? '—'}）</span>
+                </div>
+              ) : null}
             </div>
           ) : null}
 
