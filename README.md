@@ -261,6 +261,7 @@ npm run verify:pwa       # 走這個 HTTPS 來源驗 PWA（SW 註冊、/api/* �
   （「這個站只在 Tailscale 網路內（…）。請確認這台裝置的 Tailscale 已開啟 —— 連上之後會自動重新載入」），
   而且連不上期間會自己退避重試（2 秒→60 秒），Tailscale 一連上就自動恢復，不必手動重整。
   （判定在 `web/src/lib/connectionHint.ts`、重試在 `web/src/hooks/useReconnectRefresh.ts`。）
+- **對外公開＋帳密**：`bash scripts/mac-funnel.sh`（Funnel 公開 HTTPS → 本機 Caddy 擋帳密 → 8787；PWA 安裝檔不擋；`--off` 收回 tailnet 內）。
 - 要讓「沒開 Tailscale 的人也能看」就改成 **Funnel**（`tailscale funnel 443 on`）：會有公開網址、任何人拿到就能讀；
   `POST /api/v1/sync` 仍受 `LY_SYNC_TOKEN` 保護，但讀取端點沒有驗證 —— 資料本身是公開的政府開放資料，
   要不要這樣做是隱私與便利的取捨，還沒決定。
