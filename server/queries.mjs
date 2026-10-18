@@ -1290,6 +1290,8 @@ export function listSocialWall(db, { party = '', region = '', committee = '', li
     count: Math.max(0, Math.min(resolvedLimit, matched.length - resolvedOffset)),
     total: matched.length,
     default_limit: SOCIAL_WALL_DEFAULT_LIMIT,
+    // LY_FB_SCRAPE=0 時為 false：最新貼文欄位一律為空，前端不顯示「整理表還沒有貼文日期」也不說「最近更新」（D288）
+    latest_post_enabled: scrape,
     party: wantedParty,
     region: wantedRegion,
     committee: wantedCommittee,

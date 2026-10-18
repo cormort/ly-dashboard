@@ -236,12 +236,14 @@ test('LY_FB_SCRAPE=0：凍結的最新貼文不送出、沒有臉書榜、不報
   assert.ok(getHealth(db, { now }).warnings.some((w) => w.includes('臉書整理表')));
   assert.equal(listActivity(db, { limit: 113 }).items.find((i) => i.legislator.id === '00001')?.post?.date, '2020-01-01');
   assert.ok(listRankings(db, { type: 'all' }).boards.facebook);
+  assert.equal(listSocialWall(db, {}).latest_post_enabled, true);
 
   CONFIG.social.scrape = false;
   try {
     assert.deepEqual(socialFreshness(db, now), { as_of: null, age_days: null, stale: false, stale_days: CONFIG.social.staleDays });
     assert.ok(!getHealth(db, { now }).warnings.some((w) => w.includes('臉書整理表')), '不報整理表過期');
 
+    assert.equal(listSocialWall(db, {}).latest_post_enabled, false, '前端靠它決定要不要寫「整理表還沒有」與「最近更新」');
     const item = listSocialWall(db, { limit: 100 }).items.find((i) => i.name === '丁學忠');
     assert.ok(item, '粉專牆仍列出帳號（嵌入框照舊）');
     assert.equal(item.url, 'https://www.facebook.com/00001');

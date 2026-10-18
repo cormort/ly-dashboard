@@ -67,9 +67,12 @@ export function ChipRow({
 export function WallCard({
   item,
   onOpenId,
+  showLatest = true,
 }: {
   item: SocialWallItem;
   onOpenId?: (id: string) => void;
+  /** 伺服器沒有最新貼文資料（LY_FB_SCRAPE=0）時為 false：沒有日期就什麼都不寫，而不是說「整理表還沒有」 */
+  showLatest?: boolean;
 }) {
   const { ref, inView } = useInView<HTMLElement>('200px');
   const [collapsed, setCollapsed] = useState(false);
@@ -126,9 +129,9 @@ export function WallCard({
             </p>
           ) : null}
         </>
-      ) : (
+      ) : showLatest ? (
         <p className="council-fb-latest">整理表還沒有這一位的貼文日期</p>
-      )}
+      ) : null}
 
       <footer>
         <a href={item.url} target="_blank" rel="noopener noreferrer" title={`${item.name} 的 Facebook 粉專`}>
@@ -186,6 +189,9 @@ export function SocialWallPage({ refreshToken, onOpenId }: SocialWallPageProps) 
   if (!data) return <EmptyState message="沒有粉專資料" />;
 
   const filtered = Boolean(party || region || committee);
+  // 沒有最新貼文資料時（LY_FB_SCRAPE=0）排序不是依貼文日期，不能說「最近更新」
+  const hasLatest = data.latest_post_enabled !== false;
+  const recent = hasLatest ? '最近更新的' : '';
   // 篩選／展開會讓卡片整批換掉（key 不同＝各自重新掛載），卡片自己的展開狀態也跟著重來
   const pick = (setter: (value: string) => void) => (value: string) => setter(value);
   const clear = () => {
@@ -202,13 +208,13 @@ export function SocialWallPage({ refreshToken, onOpenId }: SocialWallPageProps) 
       <section className="panel" aria-label="粉專牆篩選">
         <div className="sectionhead">
           <h2>粉專牆</h2>
-          <span className="muted">{filtered || view === 'all' ? `${data.items.length} / ${data.total} 位` : `最近更新的 ${data.items.length} 位`}</span>
+          <span className="muted">{filtered || view === 'all' ? `${data.items.length} / ${data.total} 位` : `${recent} ${data.items.length} 位`.trim()}</span>
         </div>
 
         <p className="muted">
           {expanded
-            ? '依黨籍、縣市或委員會展開的粉專牆，新的貼文排在前面。卡片捲進畫面就會自動載入 Facebook 官方的粉專嵌入框（只對粉絲專頁有效，個人檔案請點「粉專」連結）。'
-            : `預設只顯示最近更新的 ${data.default_limit} 位委員；選黨籍、縣市或委員會就會展開整個粉專牆。卡片捲進畫面就會自動載入 Facebook 官方的粉專嵌入框。`}
+            ? `依黨籍、縣市或委員會展開的粉專牆${hasLatest ? '，新的貼文排在前面' : ''}。卡片捲進畫面就會自動載入 Facebook 官方的粉專嵌入框（只對粉絲專頁有效，個人檔案請點「粉專」連結）。`
+            : `預設只顯示${recent} ${data.default_limit} 位委員；選黨籍、縣市或委員會就會展開整個粉專牆。卡片捲進畫面就會自動載入 Facebook 官方的粉專嵌入框。`}
           {data.social.as_of ? `「最新貼文」來自委員臉書整理表，資料截至 ${formatDay(data.social.as_of, '—')}。` : ''}
         </p>
         {data.social.stale ? (
@@ -232,7 +238,7 @@ export function SocialWallPage({ refreshToken, onOpenId }: SocialWallPageProps) 
         {filtered || view === 'all' ? (
           <p className="wall-bulk">
             <button type="button" className="quiet" onClick={clear}>
-              清除條件，只看最近更新的 {data.default_limit} 位
+              清除條件，只看{recent} {data.default_limit} 位
             </button>
           </p>
         ) : data.total > data.items.length ? (
@@ -253,7 +259,7 @@ export function SocialWallPage({ refreshToken, onOpenId }: SocialWallPageProps) 
         <ul className="fb-wall" role="list">
           {data.items.map((item) => (
             <li key={item.id}>
-              <WallCard item={item} onOpenId={onOpenId} />
+              <WallCard item={item} onOpenId={onOpenId} showLatest={hasLatest} />
             </li>
           ))}
         </ul>

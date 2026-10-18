@@ -349,6 +349,9 @@ const wallCardNoCounts = render(createElement(WallCard, { item: { ...wallItem, l
 check('粉專牆卡片：抓不到讚數／留言數時不畫互動數那一行（也不寫 0）', !wallCardNoCounts.includes('wall-engagement'));
 const wallCardNoDate = render(createElement(WallCard, { item: { ...wallItem, latest_post_date: null, latest_post_summary: '', latest_post_likes: null, latest_post_comments: null }, onOpenId: () => undefined }));
 check('粉專牆卡片：沒有貼文日期時不會畫出互動數', !wallCardNoDate.includes('wall-engagement') && wallCardNoDate.includes('整理表還沒有這一位的貼文日期'));
+// LY_FB_SCRAPE=0：每一位都沒有日期，不能每張卡都寫「整理表還沒有」（D288）
+const wallCardNoScrape = render(createElement(WallCard, { item: { ...wallItem, latest_post_date: null, latest_post_summary: '', latest_post_likes: null, latest_post_comments: null }, onOpenId: () => undefined, showLatest: false }));
+check('粉專牆卡片：伺服器不抓粉專時，沒有日期也不寫「整理表還沒有」', !wallCardNoScrape.includes('整理表還沒有') && wallCardNoScrape.includes('粉專'));
 
 // 粉專牆的篩選 chips（黨籍／縣市／委員會共用同一個元件）：委員會那一列要多標「哪個會期」
 console.log('\n— 粉專牆 › 篩選 chips —');

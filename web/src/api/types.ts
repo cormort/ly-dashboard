@@ -1074,6 +1074,8 @@ export interface SocialWallResponse {
   total: number;
   /** 沒有給 limit 時後端用的預設值（5＝最近更新的 5 位） */
   default_limit: number;
+  /** 這台有沒有最新貼文資料（伺服器 LY_FB_SCRAPE=0 時為 false；舊伺服器沒有這欄＝有） */
+  latest_post_enabled?: boolean;
   party: string;
   region: string;
   /** 目前生效的委員會條件（聽不懂的名稱後端會回空字串＝沒有篩） */
