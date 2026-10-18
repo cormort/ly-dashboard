@@ -31,6 +31,12 @@ sudo apt-get install -y git && git clone https://github.com/cormort/ly-dashboard
 
 記憶體不到 1.5 GB（例如 GCE 免費的 e2-micro）時，腳本會自動加 2 GB swap。
 
+**不用 Tailscale、直接用網址連**：指令最後改成 `bootstrap-no-fb.sh --public`。腳本一開始會問網站的帳號密碼，
+最後裝 Caddy，開出 `https://<外部IP 用 - 連起來>.sslip.io/`（自動申請 HTTPS 憑證，要登入才看得到）。前提：
+
+- GCE 建執行個體時勾「**允許 HTTP 流量**」與「**允許 HTTPS 流量**」（防火牆在 VPC 層，VM 裡改不到；忘了勾就「編輯」補勾）。
+- 外部 IP 在「VPC 網路 → IP 位址」改成**靜態**，否則關機再開可能換 IP，網址跟著變（換了就重跑 `--public`）。
+
 ## 1. 準備主機
 
 規格與網路要求見 `docs/DEPLOY-VM.md` §2（2 vCPU、2 GB、20 GB、`Asia/Taipei`）。不必裝 Chrome。
