@@ -124,7 +124,8 @@ sudo apt-get install -y -qq caddy >/dev/null
 hash=$(caddy hash-password --plaintext "$auth_pass")
 [ -f /etc/caddy/Caddyfile.orig ] || sudo cp /etc/caddy/Caddyfile /etc/caddy/Caddyfile.orig
 # basicauth（不是 basic_auth）：Debian 12 的 Caddy 是 2.6，basic_auth 這個寫法要 2.8 才有；新版仍接受 basicauth
-printf '%s {\n\tbasicauth {\n\t\t%s %s\n\t}\n\treverse_proxy 127.0.0.1:8787\n}\n' "$host" "$auth_user" "$hash" |
+# encode：Node 伺服器本身不壓縮，API 幾乎都是 JSON；在 Caddy 這層壓縮，省下 GCE 免費方案每月 1 GB 的對外流量
+printf '%s {\n\tbasicauth {\n\t\t%s %s\n\t}\n\tencode zstd gzip\n\treverse_proxy 127.0.0.1:8787\n}\n' "$host" "$auth_user" "$hash" |
   sudo tee /etc/caddy/Caddyfile >/dev/null
 sudo caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null
 sudo systemctl reload caddy || sudo systemctl restart caddy
