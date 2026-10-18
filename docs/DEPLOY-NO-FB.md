@@ -21,6 +21,16 @@
 
 ---
 
+## 一鍵安裝（§1–§5 全部做完）
+
+主機建好、用一般帳號（有 sudo）登入後貼這一行；可重複執行。逐步說明在下面各節。
+
+```bash
+sudo apt-get install -y git && git clone https://github.com/cormort/ly-dashboard.git /tmp/ly && bash /tmp/ly/deploy/linux/bootstrap-no-fb.sh
+```
+
+記憶體不到 1.5 GB（例如 GCE 免費的 e2-micro）時，腳本會自動加 2 GB swap。
+
 ## 1. 準備主機
 
 規格與網路要求見 `docs/DEPLOY-VM.md` §2（2 vCPU、2 GB、20 GB、`Asia/Taipei`）。不必裝 Chrome。
