@@ -15,6 +15,7 @@ import { runAll, runOutletPoll } from './ingest.mjs';
 import { resolveScope, scopeStages } from './sync-scopes.mjs';
 import { checkSyncGuard } from './sync-guard.mjs';
 import { getProgress, clearProgress } from './sync-progress.mjs';
+import { warmUp } from './warmup.mjs';
 
 let inflight = null;
 let inflightScope = null;
@@ -29,6 +30,15 @@ export function getInflightScope() {
  * `scope` 見 server/sync-scopes.mjs：'all'＝全部 9 個階段（實測約 13 分鐘，其中新聞 763 秒），
  * 'social'＝只重讀社群粉專（實測 2 秒）、'roster'、'news'、'legislative'。認不得的值一律退回 'all'。
  */
+/**
+ * 資料寫入（同步、媒體 RSS 輪詢）結束後要做的事；只有真正的伺服器行程會設（用來預熱，見 server/warmup.mjs），
+ * 測試不設，所以 syncOnce 在測試裡的行為不變。
+ */
+let afterDataWrite = null;
+export function setAfterDataWrite(fn) {
+  afterDataWrite = fn;
+}
+
 export function syncOnce(db, options = {}) {
   if (!inflight) {
     const scope = resolveScope(options.scope).id;
@@ -37,6 +47,7 @@ export function syncOnce(db, options = {}) {
       inflight = null;
       inflightScope = null;
       clearProgress();
+      afterDataWrite?.();
     });
   }
   return inflight;
@@ -327,6 +338,8 @@ export function pollOutletsOnce(db, options = {}) {
   if (CONFIG.skip.news || inflight || outletInflight) return Promise.resolve({ status: 'skipped' });
   outletInflight = runOutletPoll(db, options).finally(() => {
     outletInflight = null;
+    // 每小時的 RSS 會寫進 articles → 合併新聞的快取版本變了，下一個請求要重算，所以也預熱
+    afterDataWrite?.();
   });
   return outletInflight;
 }
@@ -414,4 +427,14 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     }
   });
   if (!process.argv.includes('--no-scheduler')) startScheduler(db);
+
+  // 預熱（server/warmup.mjs）：啟動後先跑一次，之後每次資料寫入完再跑；正在跑就不疊第二輪
+  let warming = null;
+  const warm = () => {
+    warming ??= warmUp(db).catch((error) => console.error('[warmup] 失敗', error)).finally(() => {
+      warming = null;
+    });
+  };
+  setAfterDataWrite(warm);
+  setTimeout(warm, 1000).unref();
 }

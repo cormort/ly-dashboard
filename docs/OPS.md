@@ -83,6 +83,7 @@ node scripts/fetch-fb-posts.mjs --ids 1 --limit 1 --no-detail           # 只驗
 | 超過 24 小時未成功 → 全同步 | 24 小時 | `LY_SYNC_INTERVAL_MS` |
 | 媒體 RSS 輪詢（中央社／自由／聯合／公視） | 1 小時 | `LY_NEWS_OUTLET_INTERVAL_MS`（0＝只隨全同步） |
 | 新聞階段（Google 新聞）自動重跑 | 6 小時 | `LY_NEWS_REFRESH_MS`（0＝停用） |
+| 預熱總覽頁的查詢（`server/warmup.mjs`，log：`[warmup] 完成 11/11，… ms`） | 啟動後 1 秒、每次同步／RSS 輪詢結束 | —（D290） |
 | 本機新聞推回 `news-data` | 跟著同步 | `LY_NEWS_PUSH=1`、`LY_NEWS_PUSH_DAYS`（7） |
 
 > `docs/local-server-schedule.md` 的附錄還把 `LY_NEWS_REFRESH_MS` 記成「尚未存在」——**它已經實作了**（選項 A6）。

@@ -121,6 +121,12 @@ crontab -e
 - 這些檔案改在主機的工作目錄、沒有 commit；之後 `git pull` 若衝突，先 `git checkout -- server/*.json` 再拉，
   然後重跑一次這支腳本。
 
+## 7.5 打開很慢、一直「讀取中」
+
+e2-micro 是共用核心＋標準永久磁碟：伺服器重啟或資料剛同步完，第一次打開總覽頁會很慢。伺服器會自己預熱（D290），
+`journalctl -u ly-dashboard-server | grep warmup` 看得到 `[warmup] 完成 11/11，… ms`；重啟後等這行出現再開網頁。
+預熱完還是慢，用 `docs/DEPLOY-VM.md` §4 第 2 點量 CPU。
+
 ## 8. 仍然需要人的事
 
 | 什麼時候 | 做什麼 |
