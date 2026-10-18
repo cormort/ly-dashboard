@@ -46,9 +46,12 @@ fi
 
 step "1/7 記憶體：不到 1.5 GB 又沒有 swap 就加 2 GB（e2-micro 只有 1 GB，全同步會被 OOM）"
 mem_kb=$(awk '/MemTotal/ {print $2}' /proc/meminfo)
-if [ "$mem_kb" -lt 1500000 ] && ! swapon --show | grep -q .; then
-  sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile
-  sudo mkswap /swapfile >/dev/null && sudo swapon /swapfile
+# 用 /proc/swaps 判斷（第一行是標題）：一般帳號的 PATH 沒有 /sbin，`swapon --show` 會找不到指令而被當成「沒有 swap」
+if [ "$mem_kb" -lt 1500000 ] && [ "$(wc -l < /proc/swaps)" -le 1 ]; then
+  sudo fallocate -l 2G /swapfile
+  sudo chmod 600 /swapfile
+  sudo mkswap /swapfile >/dev/null
+  sudo swapon /swapfile
   grep -q '^/swapfile ' /etc/fstab || echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab >/dev/null
   echo "已加 2 GB swap"
 else
