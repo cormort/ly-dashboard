@@ -23,6 +23,7 @@ import { InfoTip } from './InfoTip';
 import { Magnifier } from './Magnifier';
 import { shouldOpenInCard } from '../lib/nav';
 import { SearchField } from './SearchField';
+import { useCountiesEnabled } from '../lib/features';
 
 export interface HeaderProps {
   route: Route;
@@ -224,6 +225,7 @@ export function Header({
 }: HeaderProps) {
   // 手機的搜尋框：收成圖示，點開才顯示輸入框（桌機由 CSS 讓它一直顯示，這裡的狀態不影響）
   const [searchOpen, setSearchOpen] = useState(false);
+  const countiesEnabled = useCountiesEnabled();
   const searchInputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     // 展開後直接聚焦，不然使用者還要再點一次輸入框
@@ -285,7 +287,7 @@ export function Header({
       </a>
 
       <nav aria-label="主要頁面" ref={navRef}>
-        {NAV.map((group) => {
+        {NAV.filter((group) => countiesEnabled || group.id !== 'map').map((group) => {
           const active = activeGroup.id === group.id;
           const Icon = group.icon;
           return (

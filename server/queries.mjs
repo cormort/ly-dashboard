@@ -373,6 +373,9 @@ export function socialFreshness(db, now = Date.now(), table = 'social_accounts')
   return { as_of: asOf, age_days: ageDays, stale: ageDays > CONFIG.social.staleDays, stale_days: CONFIG.social.staleDays };
 }
 
+/** 只有縣市地圖頁在用的靜態資料（LY_HIDE_COUNTIES=1 時不提醒它們過期） */
+const COUNTIES_ONLY_STATIC = new Set(['counties', 'demographics', 'population_trend', 'town_map']);
+
 export function getHealth(db, { now = Date.now(), staticLoaders = undefined } = {}) {
   const lastRuns = db
     .prepare(
@@ -404,7 +407,9 @@ export function getHealth(db, { now = Date.now(), staticLoaders = undefined } = 
   // 來源是月報，忘了重跑 build 腳本就會讓畫面上的數字放很久而沒有訊號，所以在這裡提醒。
   // 逐檔檢查（不是只看 counties）：任一個檔案壞掉、空掉、或過期都要看得見。
   const staticData = staticDataStatus(staticLoaders ?? {});
-  for (const info of Object.values(staticData)) {
+  for (const [key, info] of Object.entries(staticData)) {
+    // 縣市地圖關掉時，只有縣市頁在用的資料檔不必提醒（立委得票、罷免案仍在別頁使用，照常檢查）
+    if (!CONFIG.features.counties && COUNTIES_ONLY_STATIC.has(key)) continue;
     if (info.error) notices.push(`靜態資料「${info.label}」讀取失敗：${info.error}`);
     else if (!info.count) notices.push(`靜態資料「${info.label}」是空的（0 筆）`);
     const age = monthsSince(info.as_of, now);
@@ -436,6 +441,8 @@ export function getHealth(db, { now = Date.now(), staticLoaders = undefined } = 
       social: { fetched_at: getMeta(db, 'social_fetched_at'), count: stats.social_accounts },
     },
     last_runs: lastRuns,
+    // 伺服器設 LY_HIDE_COUNTIES=1 時為 false：前端收掉縣市地圖的頁籤與連結
+    counties_enabled: CONFIG.features.counties,
     warnings: [...JSON.parse(getMeta(db, 'warnings', '[]')), ...notices],
   };
 }

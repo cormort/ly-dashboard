@@ -98,6 +98,15 @@ curl -s http://127.0.0.1:8787/api/v1/health | jq '{ok, fetched: .meta.fetched_at
 
 ## 7. 每月人口更新（原本靠 Hermes cron，主機上要自己排）
 
+**不想排這個**：直接不提供縣市地圖（D289），頁籤與連結會收掉，也不會掛著「人口資料已 N 個月未更新」：
+
+```bash
+echo 'LY_HIDE_COUNTIES=1' >> ~/.ly-dashboard/server.env
+sudo systemctl restart ly-dashboard-server
+```
+
+要排的話：
+
 `scripts/refresh-county-stats.sh` 會改 `server/*.json`，跑完要重啟伺服器才生效。用 crontab 排在每月 12 日：
 
 ```bash

@@ -163,6 +163,11 @@ export const CONFIG = {
   // 社群帳號：人工／AI 每日維護的 Google 試算表（知道連結者可檢視），以 CSV 匯出網址抓取；格式見 docs/social-sheet-spec.md。
   // 2026-10-05 起換成使用者用範本建立、交給 Gemini 每日更新的那份（舊的整理表是 1hFuV22z3ceSGFC03zGUUX5qEKzetBQLeCA-mHTJcQFw）。
   // 沒有 gid＝讀第一個分頁。
+  // LY_HIDE_COUNTIES=1：這台不提供「縣市地圖」（例如沒有排每月人口更新的雲端主機）。
+  // 頁籤與連結由前端依 /health 的 counties_enabled 收掉；/health 也不再提醒縣市靜態資料過期。API 端點照舊（無害）。
+  features: {
+    counties: process.env.LY_HIDE_COUNTIES !== '1',
+  },
   social: {
     url: process.env.LY_SOCIAL_CSV || 'https://docs.google.com/spreadsheets/d/11XrvNGMKZb_8rekFdGIg5VsXcV8rdJkZjyzd1I4gAMM/export?format=csv',
     name: '委員社群帳號整理表',

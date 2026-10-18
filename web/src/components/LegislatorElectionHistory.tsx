@@ -6,6 +6,7 @@ import { formatDay } from '../lib/format';
 import { partyStyle } from '../lib/parties';
 import { EmptyState, ErrorState, LoadingState } from './DataStates';
 import { RouteLink } from './RouteLink';
+import { useCountiesEnabled } from '../lib/features';
 
 const num = (n: number) => n.toLocaleString('zh-TW');
 const signed = (n: number) => `${n > 0 ? '+' : ''}${num(n)}`;
@@ -15,6 +16,7 @@ const signed = (n: number) => `${n > 0 ? '+' : ''}${num(n)}`;
 const NON_COUNTY_REGIONS = new Set(['全國不分區', '平地原住民', '山地原住民']);
 
 export function LegislatorElectionHistory({ legislatorId, region, onNavigate }: { legislatorId: string; region: string | null; onNavigate: (href: string) => void }) {
+  const countiesEnabled = useCountiesEnabled();
   const res = useApi<LegislatorVotesResponse>(buildUrl('/legislator-votes', { id: legislatorId }));
   if (res.phase === 'loading' && !res.data) return <LoadingState label="讀取得票紀錄…" />;
   if (res.phase === 'error') return <ErrorState title="無法取得得票紀錄（/api/v1/legislator-votes）" error={res.error} onRetry={res.reload} />;
@@ -89,7 +91,7 @@ export function LegislatorElectionHistory({ legislatorId, region, onNavigate }: 
       {/* 不分區與原住民沒有縣市：region 會是「山地原住民」這種值，
           連過去會被縣市頁的 `?? items[0]` 靜默換成第一個縣市（基隆市），
           使用者看到別人的得票表、自己的紀錄一列都沒有。所以不給連結。 */}
-      {region && !NON_COUNTY_REGIONS.has(region) ? (
+      {countiesEnabled && region && !NON_COUNTY_REGIONS.has(region) ? (
         <RouteLink className="muted" href={pathFor('counties', { tab: 'legislators', county: region })} onNavigate={onNavigate}>
           在縣市頁看完整得票表 →
         </RouteLink>

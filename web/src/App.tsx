@@ -35,6 +35,8 @@ import { LegislatorsPage } from './pages/LegislatorsPage';
 import { MyAgencyPage } from './pages/MyAgencyPage';
 import { RankingsPage } from './pages/RankingsPage';
 import { SocialWallPage } from './pages/SocialWallPage';
+import { EmptyState } from './components/DataStates';
+import { CountiesEnabledContext } from './lib/features';
 
 /**
  * 只有 id 時（首頁動態、法案提案人、排行榜）先抓完整資料再開檔案。
@@ -85,6 +87,7 @@ export default function App() {
 
   const source = health.data?.meta.source ?? meta.data?.meta.source ?? null;
   const fetchedAt = health.data?.meta.fetched_at ?? meta.data?.meta.fetched_at ?? null;
+  const countiesEnabled = health.data?.counties_enabled !== false;
   const stale = health.data?.meta.stale ?? meta.data?.meta.stale ?? false;
   const failed = health.phase === 'error' || health.data?.last_runs[0]?.status === 'failed' || health.data?.ok === false;
   const labels = sessionLabelIndex(meta.data?.terms ?? []);
@@ -120,7 +123,13 @@ export default function App() {
       {target in FUND_TYPE ? (
         <FundsPage key={target} type={FUND_TYPE[target as keyof typeof FUND_TYPE]} refreshToken={refreshToken} onOpenId={setPendingId} onNavigate={navigate} />
       ) : null}
-      {target === 'counties' ? <CountiesPage refreshToken={refreshToken} onOpenId={setPendingId} onNavigate={navigate} /> : null}
+      {target === 'counties' ? (
+        countiesEnabled ? (
+          <CountiesPage refreshToken={refreshToken} onOpenId={setPendingId} onNavigate={navigate} />
+        ) : (
+          <EmptyState message="這個網站沒有提供縣市地圖" hint="請從上方選單選其他頁面。" />
+        )
+      ) : null}
       {target === 'my' ? <MyAgencyPage refreshToken={refreshToken} onOpenId={setPendingId} onNavigate={navigate} /> : null}
       {target === 'council' ? <CouncilPage refreshToken={refreshToken} onNavigate={navigate} /> : null}
       {target === 'councilactivity' ? <CouncilActivityPage refreshToken={refreshToken} onNavigate={navigate} /> : null}
@@ -144,114 +153,116 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-      <AppShell
-        header={
-          <Header
-            route={route}
-            onNavigate={navigate}
-            onOpenCard={onOpenCard}
-            source={source}
-            fetchedAt={fetchedAt}
-            stale={stale}
-            failed={failed}
-            syncOpen={syncOpen}
-            onSyncToggle={() => setSyncOpen((v) => !v)}
-            query={route === 'legislators' ? query.filters.q : ''}
-            onQueryChange={onQueryChange}
-            onRefresh={(force?: boolean) => void sync.start(syncScope, { force })}
-            refreshing={sync.state.phase === 'running' || health.phase === 'loading' || meta.phase === 'loading'}
-            syncMessage={
-              sync.state.phase === 'running'
-                ? syncRunningText({
-                    scopeLabel: scopeLabelOf(sync.state.scope),
-                    detail: sync.state.progress ?? null,
-                    finished: sync.state.finished,
-                    elapsedMs: sync.state.elapsedMs ?? 0,
-                  })
-                : sync.state.message
-            }
-            syncTone={
-              sync.state.phase === 'running'
-                ? 'running'
-                : sync.state.phase === 'error'
-                  ? 'error'
-                  : sync.state.phase === 'blocked'
-                    ? 'blocked'
-                    : 'ok'
-            }
-            syncEnabled={health.data?.sync_enabled !== false}
-            syncScopes={syncSources.data?.scopes ?? []}
-            syncScope={syncScope}
-            onSyncScopeChange={setSyncScope}
-          />
-        }
-        sidebar={
-          selected ? (
-            <LegislatorDetail
-              legislator={selected}
-              onClose={() => setSelected(null)}
-              tracked={tracked.isTracked(selected.id)}
-              onToggleTrack={(legislator) => tracked.toggle(legislator.id)}
+      <CountiesEnabledContext.Provider value={countiesEnabled}>
+        <AppShell
+          header={
+            <Header
+              route={route}
+              onNavigate={navigate}
+              onOpenCard={onOpenCard}
               source={source}
-              socialFreshness={health.data?.social ?? null}
-              sessionLabel={sessionLabel}
-              onOpenId={setPendingId}
-              onNavigate={(href) => {
-                setSelected(null);
-                navigate(href);
+              fetchedAt={fetchedAt}
+              stale={stale}
+              failed={failed}
+              syncOpen={syncOpen}
+              onSyncToggle={() => setSyncOpen((v) => !v)}
+              query={route === 'legislators' ? query.filters.q : ''}
+              onQueryChange={onQueryChange}
+              onRefresh={(force?: boolean) => void sync.start(syncScope, { force })}
+              refreshing={sync.state.phase === 'running' || health.phase === 'loading' || meta.phase === 'loading'}
+              syncMessage={
+                sync.state.phase === 'running'
+                  ? syncRunningText({
+                      scopeLabel: scopeLabelOf(sync.state.scope),
+                      detail: sync.state.progress ?? null,
+                      finished: sync.state.finished,
+                      elapsedMs: sync.state.elapsedMs ?? 0,
+                    })
+                  : sync.state.message
+              }
+              syncTone={
+                sync.state.phase === 'running'
+                  ? 'running'
+                  : sync.state.phase === 'error'
+                    ? 'error'
+                    : sync.state.phase === 'blocked'
+                      ? 'blocked'
+                      : 'ok'
+              }
+              syncEnabled={health.data?.sync_enabled !== false}
+              syncScopes={syncSources.data?.scopes ?? []}
+              syncScope={syncScope}
+              onSyncScopeChange={setSyncScope}
+            />
+          }
+          sidebar={
+            selected ? (
+              <LegislatorDetail
+                legislator={selected}
+                onClose={() => setSelected(null)}
+                tracked={tracked.isTracked(selected.id)}
+                onToggleTrack={(legislator) => tracked.toggle(legislator.id)}
+                source={source}
+                socialFreshness={health.data?.social ?? null}
+                sessionLabel={sessionLabel}
+                onOpenId={setPendingId}
+                onNavigate={(href) => {
+                  setSelected(null);
+                  navigate(href);
+                }}
+                onCompare={(l) => {
+                  setSelected(null);
+                  navigate(pathFor('compare', { ids: l.id }));
+                }}
+              />
+            ) : null
+          }
+        >
+          <OfflineNotice />
+
+          {/* 同步有問題時一定顯示；正常時由頁首狀態鈕展開 */}
+          {syncOpen || failed || stale ? (
+            <div id="sync-panel">
+              <SyncStatusBanner health={health} refreshToken={refreshToken} sources={syncSources.data?.scopes ?? null} />
+            </div>
+          ) : null}
+
+          {pendingId ? (
+            <DetailById
+              key={pendingId}
+              id={pendingId}
+              onLoaded={(l) => {
+                setPendingId(null);
+                setMissingId(null);
+                setSelected(l);
               }}
-              onCompare={(l) => {
-                setSelected(null);
-                navigate(pathFor('compare', { ids: l.id }));
+              onMissing={(id) => {
+                setPendingId(null);
+                setMissingId(id);
               }}
             />
-          ) : null
-        }
-      >
-        <OfflineNotice />
+          ) : null}
 
-        {/* 同步有問題時一定顯示；正常時由頁首狀態鈕展開 */}
-        {syncOpen || failed || stale ? (
-          <div id="sync-panel">
-            <SyncStatusBanner health={health} refreshToken={refreshToken} sources={syncSources.data?.scopes ?? null} />
-          </div>
+          {missingId && !selected ? (
+            <div className="state-block empty" role="status">
+              <b>找不到這位委員的資料</b>
+              <p className="muted">資料可能尚未同步，或該筆資料已不在目前屆次的開放下載範圍。</p>
+              <button type="button" onClick={() => setMissingId(null)}>
+                關閉
+              </button>
+            </div>
+          ) : null}
+
+          {renderPage(route)}
+        </AppShell>
+
+        {/* 手機的第二層頁籤卡片：內容就是那一頁（與主要內容區共用 renderPage） */}
+        {cardRoute ? (
+          <PageCard title={navLabelOf(cardRoute) ?? '這一頁'} onClose={() => setCardRoute(null)}>
+            {renderPage(cardRoute)}
+          </PageCard>
         ) : null}
-
-        {pendingId ? (
-          <DetailById
-            key={pendingId}
-            id={pendingId}
-            onLoaded={(l) => {
-              setPendingId(null);
-              setMissingId(null);
-              setSelected(l);
-            }}
-            onMissing={(id) => {
-              setPendingId(null);
-              setMissingId(id);
-            }}
-          />
-        ) : null}
-
-        {missingId && !selected ? (
-          <div className="state-block empty" role="status">
-            <b>找不到這位委員的資料</b>
-            <p className="muted">資料可能尚未同步，或該筆資料已不在目前屆次的開放下載範圍。</p>
-            <button type="button" onClick={() => setMissingId(null)}>
-              關閉
-            </button>
-          </div>
-        ) : null}
-
-        {renderPage(route)}
-      </AppShell>
-
-      {/* 手機的第二層頁籤卡片：內容就是那一頁（與主要內容區共用 renderPage） */}
-      {cardRoute ? (
-        <PageCard title={navLabelOf(cardRoute) ?? '這一頁'} onClose={() => setCardRoute(null)}>
-          {renderPage(cardRoute)}
-        </PageCard>
-      ) : null}
+      </CountiesEnabledContext.Provider>
     </ErrorBoundary>
   );
 }

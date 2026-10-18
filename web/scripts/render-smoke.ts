@@ -24,6 +24,7 @@ import { ChangesPanel } from '../src/components/ChangesPanel';
 import { CommitteeChart } from '../src/components/CommitteeChart';
 import { FacetChips } from '../src/components/FacetChips';
 import { Header, navLabelOf, scopeCadenceText, scopeDetailText, scopeOptionLabel } from '../src/components/Header';
+import { CountiesEnabledContext } from '../src/lib/features';
 import { PageCard } from '../src/components/PageCard';
 import { shouldOpenInCard } from '../src/lib/nav';
 import { formatDateTime, formatDay, formatDuration } from '../src/lib/format';
@@ -513,6 +514,11 @@ const headerProps = {
   onRefresh: () => undefined,
   refreshing: false,
 };
+// 伺服器 LY_HIDE_COUNTIES=1（/health counties_enabled=false）：頁籤收掉「縣市地圖」，其他頁籤照舊
+expectAll('預設有「縣市地圖」頁籤', render(createElement(Header, headerProps)), ['縣市地圖']);
+const noCountiesHeader = render(createElement(CountiesEnabledContext.Provider, { value: false }, createElement(Header, headerProps)));
+expectNone('counties_enabled=false 時沒有「縣市地圖」頁籤', noCountiesHeader, ['縣市地圖']);
+expectAll('counties_enabled=false 時其他頁籤照舊', noCountiesHeader, ['社群', '新聞']);
 // 主計總處移出「機關／基金」頁籤；它的網址仍在，高亮歸「我的機關」
 const orgsHeader = render(createElement(Header, { ...headerProps, route: 'funds' as const }));
 expectNone('機關／基金的頁籤不再有行政院主計總處', orgsHeader, ['行政院主計總處']);

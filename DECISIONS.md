@@ -1052,3 +1052,20 @@ SW 已是 `ly-shell-v2` —— 所以不是服務沒更新，是手機端的**�
 
 測試：`test/social-wall.test.mjs` 同一份資料先證明旗標開著時會報過期、有臉書榜、近期動態拿貼文當動態，
 再關掉旗標斷言五個出口都收掉、帳號照舊。
+
+## D289：`LY_HIDE_COUNTIES=1`（這台不提供縣市地圖）
+
+2026-10-18 部署到 GCE e2-micro（`docs/DEPLOY-NO-FB.md`）後，使用者要「Google 那台」拿掉縣市地圖 ——
+那台沒有排每月人口更新（原本靠 Mac Mini 上的 Hermes cron），放著不管數字會變舊、`/health` 會一直提醒。
+
+| 岔路 | 選擇 | 理由 |
+| --- | --- | --- |
+| 整個專案刪掉，還是只在某台隱藏 | **環境變數，只在設了的主機隱藏**（使用者明確選擇） | Mac Mini 有每月更新，照舊提供；刪程式碼不可逆 |
+| 前端怎麼知道 | `/health` 加 `counties_enabled`（同 `sync_enabled` 的先例），前端用一個 React context（`web/src/lib/features.ts`）往下傳 | 連到縣市頁的地方有五處（頁籤、App 路由、委員側欄得票、議員頁、總覽），逐層傳 props 太散 |
+| 直接打 `/counties` 網址 | 顯示「這個網站沒有提供縣市地圖」，不轉址 | 舊書籤點進來看得到原因；轉址會讓人以為壞了 |
+| API 端點 | **照舊回應** | 無害；擋掉反而要多一層判斷與測試 |
+| `/health` 的靜態資料提醒 | 只略過縣市頁專用的四個檔（`counties`、`demographics`、`population_trend`、`town_map`） | `legislator_votes`（委員側欄得票）、`recalls` 別頁還在用，壞了仍要看得見 |
+| `/health` 還沒回來前 | 當作有提供 | 舊伺服器沒有這欄也要照常；隱藏的那台只會在載入瞬間多閃一下頁籤 |
+
+測試：`test/api.test.mjs`（旗標開關下的 `counties_enabled` 與警告範圍，含「得票資料仍提醒」）、
+`web/scripts/render-smoke.ts`（`counties_enabled=false` 時頁籤沒有「縣市地圖」、其他頁籤照舊）。

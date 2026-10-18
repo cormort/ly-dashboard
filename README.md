@@ -49,7 +49,7 @@ node server/index.mjs
 - 需求：**Node ≥ 22.13**（`node:sqlite` 在 22.5–22.12 要 `--experimental-sqlite`；`engines` 寫的是 22.5）、
   系統安裝的 Google Chrome（只有每日粉專抓取與 `npm run check:rwd` 需要）。後端零 runtime 相依，不必編原生模組。
 - `--no-scheduler`：只開 API，不在啟動時自動同步（開發用）。
-- 環境變數：`PORT`、`LY_HOST`、`LY_SYNC_TOKEN`、`LY_DB`、`LY_UA`、`LY_STALE_HOURS`、`LY_SYNC_INTERVAL_MS`、`LY_FETCH_TIMEOUT_MS`、`LY_FETCH_RETRIES`、`LY_RETRY_AFTER_CAP_MS`、`LY_SHRINK_MIN_RATIO`、`LY_ALLOW_SHRINK`、`LY_STATIC_STALE_MONTHS`、`LY_SKIP_BUDGET`（跳過預算三個來源）、`LY_FB_SCRAPE`（`0`＝不抓粉專的主機，見 `docs/DEPLOY-NO-FB.md`）、`LY_MOJ_LAWS_INTERVAL_HOURS`（全國法規資料庫的檢查間隔，預設 12 小時、0 ＝ 每次都抓）。
+- 環境變數：`PORT`、`LY_HOST`、`LY_SYNC_TOKEN`、`LY_DB`、`LY_UA`、`LY_STALE_HOURS`、`LY_SYNC_INTERVAL_MS`、`LY_FETCH_TIMEOUT_MS`、`LY_FETCH_RETRIES`、`LY_RETRY_AFTER_CAP_MS`、`LY_SHRINK_MIN_RATIO`、`LY_ALLOW_SHRINK`、`LY_STATIC_STALE_MONTHS`、`LY_SKIP_BUDGET`（跳過預算三個來源）、`LY_FB_SCRAPE`（`0`＝不抓粉專的主機，見 `docs/DEPLOY-NO-FB.md`）、`LY_HIDE_COUNTIES`（`1`＝不提供縣市地圖）、`LY_MOJ_LAWS_INTERVAL_HOURS`（全國法規資料庫的檢查間隔，預設 12 小時、0 ＝ 每次都抓）。
 
 ### 讓伺服器一直活著（launchd 監管）
 
