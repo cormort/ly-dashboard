@@ -10,6 +10,7 @@
 | **[`docs/SPEC.md`](docs/SPEC.md)（開發規格書）** | 要改這個 repo 的任何一行程式之前：架構、資料模型、同步引擎、資料語意規則、前端規格、測試與慣例 |
 | **[`docs/OPS.md`](docs/OPS.md)（維運手冊）** | 站掛了、資料沒動、要裝機／備份／換憑證時：服務與排程清單、晨檢指令、狀況排除 runbook |
 | **[`docs/DEPLOY-VM.md`](docs/DEPLOY-VM.md)（部署到 Linux VM）** | 要搬到虛擬機／雲端主機時：拓撲選擇、規格、`deploy/linux/` 安裝、VM 才有的坑 |
+| [`docs/DEPLOY-NO-FB.md`](docs/DEPLOY-NO-FB.md) | 不抓 FB 粉專、其他全自動的精簡部署路線 |
 | [`docs/API.md`](docs/API.md) | 凍結的 API 契約（前端依它實作，改動要同步） |
 | [`DECISIONS.md`](DECISIONS.md) | 每個語意決定的「岔路／選擇／理由」（D 編號） |
 | [`docs/fb-daily-update.md`](docs/fb-daily-update.md) | 粉專每日抓取的實戰細節與踩過的坑 |
