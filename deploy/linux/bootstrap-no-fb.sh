@@ -128,7 +128,9 @@ hash=$(caddy hash-password --plaintext "$auth_pass")
 [ -f /etc/caddy/Caddyfile.orig ] || sudo cp /etc/caddy/Caddyfile /etc/caddy/Caddyfile.orig
 # basicauth（不是 basic_auth）：Debian 12 的 Caddy 是 2.6，basic_auth 這個寫法要 2.8 才有；新版仍接受 basicauth
 # encode：Node 伺服器本身不壓縮，API 幾乎都是 JSON；在 Caddy 這層壓縮，省下 GCE 免費方案每月 1 GB 的對外流量
-printf '%s {\n\tbasicauth {\n\t\t%s %s\n\t}\n\tencode zstd gzip\n\treverse_proxy 127.0.0.1:8787\n}\n' "$host" "$auth_user" "$hash" |
+# @locked：PWA 安裝要的檔案（manifest、sw.js、圖示）不擋帳密 —— 瀏覽器抓 manifest 不帶憑證（沒有 crossorigin=use-credentials），
+# Android 產生 WebAPK 時 Google 的伺服器也要抓圖示；擋住就裝不了 App。這幾個檔不含任何資料，網頁與 API 照樣要登入。
+printf '%s {\n\t@locked not path /manifest.webmanifest /sw.js /icon-*.png /icon-maskable-*.png /apple-touch-icon-*.png\n\tbasicauth @locked {\n\t\t%s %s\n\t}\n\tencode zstd gzip\n\treverse_proxy 127.0.0.1:8787\n}\n' "$host" "$auth_user" "$hash" |
   sudo tee /etc/caddy/Caddyfile >/dev/null
 sudo caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null
 sudo systemctl reload caddy || sudo systemctl restart caddy
