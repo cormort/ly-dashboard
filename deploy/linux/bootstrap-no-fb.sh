@@ -5,6 +5,7 @@
 #
 #   bash deploy/linux/bootstrap-no-fb.sh            # 用一般帳號跑（要有 sudo），不要用 root
 #   bash deploy/linux/bootstrap-no-fb.sh --public   # 另外用 Caddy 開 https://<外部IP>.sslip.io（HTTPS＋帳號密碼）
+#                                                   # 改帳密也是重跑這行（已有資料庫會跳過全同步，幾分鐘內跑完）
 #
 # --public 的前提：GCE 執行個體要勾「允許 HTTP 流量」與「允許 HTTPS 流量」（防火牆在 VPC 層，VM 裡面改不到），
 # 外部 IP 建議改成靜態（不然關機再開可能換 IP、網址就變了）。
@@ -87,12 +88,21 @@ grep -q '^LY_FB_SCRAPE=' "$ENV_FILE" || echo 'LY_FB_SCRAPE=0' >> "$ENV_FILE"
 cat "$ENV_FILE"
 
 step "6/7 第一次全同步（打真實來源，8–15 分鐘以上）"
-LY_FB_SCRAPE=0 node server/ingest.mjs
+# 已有資料庫就跳過：伺服器的排程本來就每 24 小時同步，重跑這支（例如只為了改帳密）不必再等一輪
+if [ -f data/ly.db ]; then
+  echo "已有 data/ly.db，跳過（要強制重抓：node server/ingest.mjs）"
+else
+  LY_FB_SCRAPE=0 node server/ingest.mjs
+fi
 
 step "7/7 交給 systemd 並驗收"
 sudo bash deploy/linux/install.sh
 sudo systemctl restart ly-dashboard-server   # 讓剛寫的 server.env 一定生效
-sleep 3
+# 128 MB 的資料庫在 e2-micro 上要好幾秒才開始聽埠；只等 3 秒時驗收會誤報「沒有行程在聽 8787」
+for _ in $(seq 1 30); do
+  curl -fs -o /dev/null -m 2 http://127.0.0.1:8787/api/v1/health && break
+  sleep 2
+done
 bash deploy/linux/verify-vm.sh --live || echo "⚠️  驗收有項目沒過：看上面的 ✗，處置見 docs/DEPLOY-VM.md §4"
 
 if [ "$PUBLIC" != "1" ]; then
