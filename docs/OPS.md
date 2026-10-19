@@ -47,14 +47,21 @@
   所以 PWA 有在用就一直不用重新登入；完全沒開超過 180 天才會過期。
   **值一定要用單引號包**（scrypt 雜湊含 `$`，被 shell 展開會壞）。
 - 登入失敗節流：10 分鐘內 10 次失敗就回 429；成功登入清空。
-- 換密碼：
+- 換密碼：`scripts/ly-set-password.sh`（算 scrypt 雜湊 → 寫回 `server.env`（單引號）→ 同步 `admin-cred.txt`
+  → 重啟服務 → **用新密碼真的登入一次**確認回 303）
 
 ```bash
 cd ~/ly-dashboard
-PASS='新密碼' node -e "import('./server/auth.mjs').then(async (m) => console.log(await m.hashPassword(process.env.PASS)))"
-# 把輸出貼進 ~/.ly-dashboard/server.env 的 LY_LOGIN_PASSWORD_HASH='…'（單引號）
-launchctl kickstart -k gui/$(id -u)/com.hermes.ly-dashboard-server
+scripts/ly-set-password.sh                    # 亂數產生 8 碼（避開 0O1lI），印出新密碼
+scripts/ly-set-password.sh 'MyPass1234'       # 指定密碼（至少 8 碼）
+scripts/ly-set-password.sh --rotate-sessions  # 順便換 LY_SESSION_SECRET
 ```
+
+  - **只換密碼不會踢掉已登入的裝置**：cookie 是用 `LY_SESSION_SECRET` 簽的，跟密碼無關。
+    真的要讓所有手機／平板重新登入，加 `--rotate-sessions`。
+  - 沒有 launchd 的環境（Linux／Windows）就自己算雜湊再貼：`PASS='新密碼' node -e
+    "import('./server/auth.mjs').then(async (m) => console.log(await m.hashPassword(process.env.PASS)))"`，
+    把輸出貼進 `LY_LOGIN_PASSWORD_HASH='…'`（**一定要單引號**，雜湊含 `$`）。
 
 - **公開入口不提供「縣市地圖」與「議員」**（含「議員近期動態」）：
   `/api/v1/health` 會依入口回 `counties_enabled` / `council_enabled`，前端收掉頁籤、直接開網址會顯示
