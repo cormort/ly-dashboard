@@ -1,10 +1,10 @@
 /*
- * 預算審查歷程的純函式測試：階段分類、年度偵測。
+ * 預算審查歷程的純函式測試：階段分類、年度偵測、審查單位（主管機關與基金）。
  * 只驗「從會議文字判斷」這一段；資料庫查詢另外用 curl 驗（見 DECISIONS）。
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { budgetReviewStage, budgetYearsOf } from '../server/queries.mjs';
+import { budgetReviewStage, budgetReviewUnits, budgetYearsOf } from '../server/queries.mjs';
 
 test('預算審查階段：協商／聯席／公聽會／院會／委員會', () => {
   assert.equal(budgetReviewStage({ committee: '朝野黨團協商', name: '立法院黨團協商' }), 'negotiation');
@@ -34,4 +34,54 @@ test('預算年度：一場會議可以同時屬於多個年度', () => {
   assert.deepEqual(budgetYearsOf(), []);
   // 重複提到同一年度只算一次
   assert.deepEqual(budgetYearsOf({ content: '115年度中央政府總預算案；115年度中央政府總預算案附屬單位預算' }), [115]);
+});
+
+test('審查單位：使用者給的退輔會那一場（公務預算＋附屬單位基金、僅詢答）', () => {
+  // 這是立法院議事內容摘要的真實句型，兩個部會（退輔會）＋兩檔基金
+  const units = budgetReviewUnits({
+    content:
+      '一、審查115年度中央政府總預算案關於國軍退除役官兵輔導委員會主管收支部分。（僅詢答）' +
+      '二、審查115年度中央政府總預算案附屬單位預算關於國軍退除役官兵輔導委員會主管非營業基金：（僅詢答）' +
+      '（一）國軍退除役官兵安置基金。（二）榮民醫療作業基金。（4月22日及23日二天一次會）',
+  });
+  assert.deepEqual(units.agencies, ['國軍退除役官兵輔導委員會']);
+  assert.deepEqual(units.funds, ['國軍退除役官兵安置基金', '榮民醫療作業基金']);
+  assert.equal(units.subsidiary, true);
+  assert.equal(units.qa_only, true);
+});
+
+test('審查單位：一場會議審好幾個部會，基金前面的「類別」不算基金', () => {
+  const units = budgetReviewUnits({
+    content:
+      '一、審查114年度中央政府總預算案關於國防部主管收支公開及機密部分（不含國家安全局部分)。（僅詢答）' +
+      '二、審查114年度中央政府總預算案附屬單位預算關於國防部主管非營業基金：（僅詢答）' +
+      '（一）作業基金：1、國軍生產及服務作業基金。2、國軍老舊眷村改建基金。' +
+      '（二）資本計畫基金－國軍營舍及設施改建基金。',
+  });
+  assert.deepEqual(units.agencies, ['國防部']);
+  // 「作業基金」「資本計畫基金」是類別，要取後面的正式名稱
+  assert.deepEqual(units.funds, ['國軍生產及服務作業基金', '國軍老舊眷村改建基金', '國軍營舍及設施改建基金']);
+  assert.equal(units.qa_only, true);
+});
+
+test('審查單位：「及所屬」視為同一個機關；沒有句型就不要硬猜', () => {
+  const withAffiliation = budgetReviewUnits({ content: '審查115年度中央政府總預算案關於考試院及所屬主管收支部分。' });
+  assert.deepEqual(withAffiliation.agencies, ['考試院']);
+  assert.equal(withAffiliation.subsidiary, false);
+  assert.equal(withAffiliation.qa_only, false);
+
+  const talkOnly = budgetReviewUnits({
+    content: '就「115年度中央政府總預算案至今尚未審查，近3000億元之新興、新增計畫將無法推動」進行專題報告，並備質詢。',
+  });
+  assert.deepEqual(talkOnly.agencies, []);
+  assert.deepEqual(talkOnly.funds, []);
+  assert.deepEqual(budgetReviewUnits(), { agencies: [], funds: [], subsidiary: false, qa_only: false });
+});
+
+test('審查單位：基金名稱去掉編號與「有關／年度」這類開頭', () => {
+  const units = budgetReviewUnits({
+    content: '審查115年度中央政府總預算案附屬單位預算關於財政部主管非營業基金：（一）有關財政部主管債務基金－中央政府債務基金。（二）學產基金。',
+  });
+  assert.deepEqual(units.agencies, ['財政部']);
+  assert.deepEqual(units.funds, ['中央政府債務基金', '學產基金']);
 });

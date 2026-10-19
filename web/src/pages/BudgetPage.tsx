@@ -480,11 +480,16 @@ export function BudgetPage({ refreshToken, onOpenId, onNavigate }: BudgetPagePro
 function BudgetTimeline({ refreshToken }: { refreshToken: number }) {
   const [year, setYear] = useState('');
   const [stage, setStage] = useState('');
+  /** 主管機關（審查單位）：例「國防部」「國軍退除役官兵輔導委員會」，空字串＝全部 */
+  const [agency, setAgency] = useState('');
   const [limit, setLimit] = useState(20);
   const res = useApi<BudgetTimelineResponse>(buildUrl('/budget/timeline', { year }), { refreshToken });
   const data = res.data;
   const stages = (data?.stages ?? []).filter((s) => s.count > 0);
-  const items = (data?.items ?? []).filter((m) => !stage || m.stage === stage);
+  const agencies = (data?.summary.agencies ?? []).filter((a) => a.count > 0);
+  const items = (data?.items ?? []).filter(
+    (m) => (!stage || m.stage === stage) && (!agency || (m.agencies ?? []).includes(agency)),
+  );
   const shown = items.slice(0, limit);
   const groups: { key: string; label: string; items: BudgetTimelineItem[] }[] = [];
   for (const m of shown) {
@@ -509,6 +514,7 @@ function BudgetTimeline({ refreshToken }: { refreshToken: number }) {
                 onClick={() => {
                   setYear(String(y.year));
                   setStage('');
+                  setAgency('');
                   setLimit(20);
                 }}
               >
@@ -545,6 +551,21 @@ function BudgetTimeline({ refreshToken }: { refreshToken: number }) {
               ))}
             </div>
           </div>
+          {agencies.length > 0 ? (
+            <div className="wall-filter-row" role="group" aria-label="審查單位（主管機關）">
+              <span className="wall-filter-label">審查單位</span>
+              <div className="law-facets">
+                <button type="button" className="chip" aria-pressed={!agency} onClick={() => { setAgency(''); setLimit(20); }}>
+                  全部
+                </button>
+                {agencies.slice(0, 18).map((a) => (
+                  <button key={a.name} type="button" className="chip" aria-pressed={agency === a.name} onClick={() => { setAgency(a.name); setLimit(20); }} title={`${a.name}主管的預算`}>
+                    {a.name} <span className="muted">{a.count}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
 
           {groups.map((g) => (
             <div key={g.key}>
@@ -557,10 +578,21 @@ function BudgetTimeline({ refreshToken }: { refreshToken: number }) {
                       <span className={`stage-badge stage-${m.stage}`}>{m.stage_label}</span>
                       <b>{m.stage === 'plenary' ? m.name : shortCommittee(m.committee)}</b>
                       {m.joint ? <span className="muted">（聯席：{shortCommittee(m.joint)}）</span> : null}
+                      {(m.agencies ?? []).map((a) => (
+                        <span key={a} className="unit-badge" title={`${a}主管的預算`}>{a}主管</span>
+                      ))}
+                      {m.subsidiary ? <span className="unit-badge unit-subsidiary">附屬單位</span> : null}
+                      {m.qa_only ? <span className="unit-badge unit-qa">僅詢答</span> : null}
                     </div>
                     <p className="clamp-2" title={m.agenda}>
                       {m.agenda}
                     </p>
+                    {(m.funds ?? []).length > 0 ? (
+                      <p className="fund-line" title={(m.funds ?? []).join('、')}>
+                        基金：{(m.funds ?? []).slice(0, 6).join('、')}
+                        {(m.funds ?? []).length > 6 ? ` 等 ${m.funds.length} 檔` : ''}
+                      </p>
+                    ) : null}
                     <small className="muted">
                       {m.speaker_count > 0 ? `${m.speaker_count} 位委員登記發言` : '沒有登記發言名單'}
                       {m.speakers.length > 0 ? `（${m.speakers.slice(0, 4).map((s) => s.name).join('、')}${m.speakers.length > 4 ? ' 等' : ''}）` : ''}

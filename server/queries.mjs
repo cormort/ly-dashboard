@@ -2453,6 +2453,53 @@ export function budgetYearsOf({ name = '', content = '' } = {}) {
   return years;
 }
 
+// 基金名稱前面的「類別」不是基金本身（例：非營業基金：（一）作業基金：1、國軍生產及服務作業基金）
+const FUND_CATEGORIES = new Set(['作業基金', '非營業基金', '營業基金', '資本計畫基金', '信託基金', '特別收入基金', '債務基金', '其他基金', '基金']);
+
+/**
+ * 基金名稱正規化：去掉編號、「（一）」、開頭的「有關／年度」，
+ * 以及「資本計畫基金－國軍營舍及設施改建基金」這種「類別－名稱」前面的類別。
+ */
+function normalizeFundName(raw) {
+  let s = String(raw).trim();
+  s = s.replace(/^[（(][一二三四五六七八九十百\d]+[）)]/, '').replace(/^\d+、/, '').trim();
+  s = s.replace(/^(?:有關|年度)/, '').trim();
+  const dash = s.search(/[－—–]/);
+  if (dash >= 0) s = s.slice(dash + 1).trim();
+  const before = s.lastIndexOf('主管');
+  if (before >= 0) s = s.slice(before + 2).trim();
+  s = s.replace(/^\d+所/, '').trim();
+  if (!s.endsWith('基金') || s.length < 4) return null;
+  if (FUND_CATEGORIES.has(s) || /預算/.test(s)) return null;
+  return s;
+}
+
+/**
+ * 從一場預算會議的議事內容摘要，抓出「這場在審誰的預算、審哪些基金」。
+ * 官方文字是很固定的句型（實測 ID223 共 365 場含總預算的會議，172 場有這個句型）：
+ *
+ *   一、審查115年度中央政府總預算案關於國軍退除役官兵輔導委員會主管收支部分。（僅詢答）
+ *   二、審查115年度中央政府總預算案附屬單位預算關於…主管非營業基金：（僅詢答）
+ *       （一）國軍退除役官兵安置基金。（二）榮民醫療作業基金。
+ *
+ * 一場會議常常同時審好幾個機關／基金，所以回傳全部命中；純字串處理，方便測試。
+ */
+export function budgetReviewUnits({ name = '', content = '' } = {}) {
+  const text = `${name ?? ''} ${content ?? ''}`;
+  const agencies = [];
+  for (const m of text.matchAll(/關於\s*([^。；：（）()\s][^。；：（）()]{0,26}?)\s*主管/g)) {
+    // 「考試院及所屬」與「考試院」是同一個機關，統一去掉「（及）所屬」再比較
+    const agency = String(m[1]).trim().replace(/(?:及)?所屬$/, '').trim();
+    if (agency && !agencies.includes(agency)) agencies.push(agency);
+  }
+  const funds = [];
+  for (const m of text.matchAll(/[^。、，；：（）()\s]{2,24}?基金(?=[。、，；）)]|$)/g)) {
+    const fund = normalizeFundName(m[0]);
+    if (fund && !funds.includes(fund)) funds.push(fund);
+  }
+  return { agencies, funds, subsidiary: /附屬單位預算/.test(text), qa_only: /僅詢答/.test(text) };
+}
+
 const stageLabel = (id) => BUDGET_REVIEW_STAGES.find((s) => s.id === id)?.label ?? id;
 
 /**
@@ -2501,6 +2548,7 @@ export function listBudgetTimeline(db, { year = '' } = {}) {
   const partyOf = new Map(db.prepare('SELECT id, party FROM legislators').all().map((l) => [l.id, l.party]));
   const stageCount = new Map();
   const committeeCount = new Map();
+  const agencyCount = new Map();
   const speakers = new Map();
 
   const items = picked
@@ -2511,6 +2559,8 @@ export function listBudgetTimeline(db, { year = '' } = {}) {
       const base = baseCommittee(row.committee);
       if (base) committeeCount.set(base, (committeeCount.get(base) ?? 0) + 1);
       for (const s of new Set(list.map((x) => x.id).filter(Boolean))) speakers.set(s, (speakers.get(s) ?? 0) + 1);
+      const units = budgetReviewUnits(row);
+      for (const agency of units.agencies) agencyCount.set(agency, (agencyCount.get(agency) ?? 0) + 1);
       return {
         id: row.id,
         date: row.date,
@@ -2523,6 +2573,11 @@ export function listBudgetTimeline(db, { year = '' } = {}) {
         speakers: list,
         speaker_count: new Set(list.map((x) => x.id).filter(Boolean)).size || list.length,
         video_url: videoOf(row),
+        // 這場在審誰的預算（「審查115年度…關於X主管收支部分」那種句型）
+        agencies: units.agencies,
+        funds: units.funds,
+        subsidiary: units.subsidiary,
+        qa_only: units.qa_only,
       };
     })
     .sort((a, b) => String(a.date).localeCompare(String(b.date)) || a.committee.localeCompare(b.committee, 'zh-Hant'));
@@ -2544,6 +2599,10 @@ export function listBudgetTimeline(db, { year = '' } = {}) {
       speakers: [],
       speaker_count: 0,
       video_url: row.video_url,
+      agencies: [],
+      funds: [],
+      subsidiary: false,
+      qa_only: false,
     });
   }
   // 院會表決（ID370）：表決項目提到該年度總預算、而且是三讀／復議／重付表決的紀錄（115 年度沒有記名表決，114 有）
@@ -2566,6 +2625,10 @@ export function listBudgetTimeline(db, { year = '' } = {}) {
       speakers: [],
       speaker_count: 0,
       video_url: null,
+      agencies: [],
+      funds: [],
+      subsidiary: false,
+      qa_only: false,
     });
   }
   items.sort((a, b) => String(a.date).localeCompare(String(b.date)) || a.committee.localeCompare(b.committee, 'zh-Hant'));
@@ -2581,6 +2644,8 @@ export function listBudgetTimeline(db, { year = '' } = {}) {
       first: items[0]?.date ?? null,
       last: items.at(-1)?.date ?? null,
       committees: [...committeeCount].sort((a, b) => b[1] - a[1]).map(([name, count]) => ({ name, count })),
+      // 主管機關（「審查…關於X主管收支部分」）：只有委員會審查那幾場會有
+      agencies: [...agencyCount].sort((a, b) => b[1] - a[1]).map(([name, count]) => ({ name, count })),
       speakers: [...speakers]
         .map(([id, count]) => ({ legislator: people.get(id), count }))
         .filter((x) => x.legislator && Number(x.legislator.leave_flag) === 0)

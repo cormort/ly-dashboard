@@ -788,6 +788,14 @@ export interface BudgetTimelineItem {
   speakers: { name: string; id: string | null }[];
   speaker_count: number;
   video_url: string | null;
+  /** 這場在審誰的預算（「審查115年度…關於X主管收支部分」句型抓出來的） */
+  agencies: string[];
+  /** 附屬單位預算底下的基金名稱（作業基金、非營業基金…） */
+  funds: string[];
+  /** 這場審的是附屬單位預算（不是公務預算） */
+  subsidiary: boolean;
+  /** 只有詢答、沒有逐項處理 */
+  qa_only: boolean;
 }
 
 export interface BudgetTimelineResponse {
@@ -801,6 +809,8 @@ export interface BudgetTimelineResponse {
     first: string | null;
     last: string | null;
     committees: BillLawCount[];
+    /** 主管機關（審查單位）出現次數，給篩選 chips 用 */
+    agencies: BillLawCount[];
     speakers: { legislator: { id: string; name: string; party: string }; count: number }[];
   };
   items: BudgetTimelineItem[];

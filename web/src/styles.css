@@ -1643,3 +1643,25 @@ main:has(.fb-wall) { max-width: min(1840px, 96vw); }
 .stage-badge.stage-plenary { color: #3b1d5e; background: #efe4fb; border-color: #c9b3e8; }
 .stage-badge.stage-resolution { color: #4a3b00; background: #fbf3d9; border-color: #e5d08a; }
 .stage-badge.stage-hearing { color: #4a1b1b; background: #fbe6e6; border-color: #e3b3b3; }
+/* 審查單位（主管機關）與「附屬單位／僅詢答」這類補充標記：比階段淡一階，不搶主標題 */
+.unit-badge {
+  display: inline-block;
+  padding: 0 7px;
+  border-radius: 999px;
+  border: 1px dashed var(--rule);
+  font-size: var(--fs-xs, 11px);
+  line-height: 1.7;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.unit-subsidiary { border-style: solid; }
+.unit-qa { opacity: 0.75; }
+/* 附屬單位預算底下的基金名稱：一行為限，看不完靠 title 與會議事由 */
+.fund-line {
+  margin: 4px 0 0;
+  font-size: var(--fs-sm);
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

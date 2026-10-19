@@ -327,8 +327,13 @@ Query 參數（全部可選）：
 
 - `year`、`years[]`（`{ year, count }`，各年度場次）
 - `stages[]`（`{ id, label, count }`：`committee`／`joint`／`hearing`／`negotiation`／`resolution`／`plenary`）
-- `summary`：`total`、`first`、`last`、`committees[]`、`speakers[]`（登記發言最多的在職委員）
-- `items[]`：`{ id, date, stage, stage_label, committee, joint, name, agenda, speakers[], speaker_count, video_url }`
+- `summary`：`total`、`first`、`last`、`committees[]`、`agencies[]`（審查單位／主管機關的出現次數）、
+  `speakers[]`（登記發言最多的在職委員）
+- `items[]`：`{ id, date, stage, stage_label, committee, joint, name, agenda, speakers[], speaker_count, video_url,
+  agencies[], funds[], subsidiary, qa_only }`
+  - `agencies`／`funds` 是從議事內容摘要的固定句型抓的（`審查115年度中央政府總預算案關於X主管收支部分`、
+    `…附屬單位預算關於X主管非營業基金：（一）OO基金`），純字串處理，抓不到就是空陣列（例：專題報告那幾場）
+  - `subsidiary`＝這場審的是附屬單位預算；`qa_only`＝只有詢答（沒有逐項處理）
   - 委員會／協商會議來自官方 ID223（`committee_meetings`），`video_url` 是對到 g0v IVOD 場次時才有的連結
   - `plenary` 來自 g0v meets 的院會場次（`會議事由` 提到該年度總預算）；`院會表決` 是 ID370 記名表決中
     三讀／復議／重付表決的紀錄（沒有記名表決的年度就不會有這一種）
