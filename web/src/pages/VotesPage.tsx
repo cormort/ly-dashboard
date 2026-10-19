@@ -38,7 +38,7 @@ function VoterList({ label, voters, tone }: { label: string; voters: RollcallIte
  * 與名單長度可能不同（實測有落差），所以兩者都顯示、不互相取代。
  *
  * 用 `?legislator=王鴻薇` 進來時只列他參與過的場次，並標出他每一場投什麼
- * （委員頁之後要接這個入口，見 DECISIONS D293）。
+ * （委員頁之後要接這個入口，見 DECISIONS D296）。
  */
 export function VotesPage({ refreshToken }: VotesPageProps) {
   const [q, setQ] = useState(() => readParam('q'));

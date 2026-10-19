@@ -117,6 +117,7 @@ node scripts/fetch-fb-posts.mjs --ids 1 --limit 1 --no-detail           # 只驗
 | 超過 24 小時未成功 → 全同步 | 24 小時 | `LY_SYNC_INTERVAL_MS` |
 | 媒體 RSS 輪詢（中央社／自由／聯合／公視） | 1 小時 | `LY_NEWS_OUTLET_INTERVAL_MS`（0＝只隨全同步） |
 | 新聞階段（Google 新聞）自動重跑 | 6 小時 | `LY_NEWS_REFRESH_MS`（0＝停用） |
+| 預熱總覽頁的查詢（`server/warmup.mjs`，log：`[warmup] 完成 11/11，… ms`） | 啟動後 1 秒、每次同步／RSS 輪詢結束 | —（D290） |
 | 本機新聞推回 `news-data` | 跟著同步 | `LY_NEWS_PUSH=1`、`LY_NEWS_PUSH_DAYS`（7） |
 
 > `docs/local-server-schedule.md` 的附錄還把 `LY_NEWS_REFRESH_MS` 記成「尚未存在」——**它已經實作了**（選項 A6）。
@@ -403,6 +404,8 @@ curl -s -X POST 'http://127.0.0.1:8787/api/v1/sync?force=1' | jq   # 需要時�
 | `LY_SHRINK_MIN_RATIO` / `LY_ALLOW_SHRINK` | 0.8 / 關 | 整批覆寫前的筆數守門；合法縮減時用 `LY_ALLOW_SHRINK=1` 放行一次 |
 | `LY_SYNC_RUNS_KEEP` / `LY_CHANGE_LOG_KEEP` | 0（全部保留） | 只留最近 N 筆 |
 | `LY_MOJ_LAWS_INTERVAL_HOURS` | 12 | 全國法規資料庫檢查間隔（0＝每次都抓） |
+| `LY_HIDE_COUNTIES` | 關 | `1` ＝這台不提供縣市地圖：前端收掉頁籤與連結、不提醒人口資料過期（沒排每月人口更新的主機用，D289） |
+| `LY_FB_SCRAPE` | 開 | `0` ＝這台不抓粉專：API 不送凍結的委員「最新貼文」、不出臉書排行榜、不報整理表過期（D288） |
 | `LY_FB_PROFILE` | `~/.ly-dashboard/fb-profile` | 抓粉專用的 Chrome 設定檔 |
 | `LY_FB_LOCAL_INGEST` | 開 | `0` ＝回到「觸發伺服器重讀整理表」的舊路 |
 | `LY_FB_DATA_PUSH` / `LY_FB_DATA_BRANCH` | 開 / `fb-data` | 抓取結果推遠端分支 |

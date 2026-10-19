@@ -23,6 +23,7 @@ import { partyStyle, sortParties } from '../lib/parties';
 import { readPreference } from '../lib/storage';
 import { DEFAULT_AGENCY, MY_AGENCY_KEY } from './MyAgencyPage';
 import { AGENCY_REPORT_CATEGORY } from './BudgetPage';
+import { useCountiesEnabled } from '../lib/features';
 export interface DashboardPageProps {
   refreshToken: number;
   onOpenId: (id: string) => void;
@@ -80,6 +81,7 @@ function Who({ id, name, party, onOpenId }: { id: string; name: string; party: s
  * 下方依縣市列出各區委員的最新動態。資料全部沿用各頁的端點，只多一個 /regions。
  */
 export function DashboardPage({ refreshToken, onOpenId, onNavigate }: DashboardPageProps) {
+  const countiesEnabled = useCountiesEnabled();
   const opts = { refreshToken };
   // 各縣市預設不展開，而且展開才渲染（25 張卡片的 DOM 不進首次繪製）
   const [regionsOpen, setRegionsOpen] = useState(false);
@@ -446,12 +448,14 @@ export function DashboardPage({ refreshToken, onOpenId, onNavigate }: DashboardP
                         </span>
                       ))}
                     </p>
-                    <RouteLink
-                      href={link('counties', { county: r.region })}
-                      onNavigate={onNavigate}
-                    >
-                      縣市統計 →
-                    </RouteLink>
+                    {countiesEnabled ? (
+                      <RouteLink
+                        href={link('counties', { county: r.region })}
+                        onNavigate={onNavigate}
+                      >
+                        縣市統計 →
+                      </RouteLink>
+                    ) : null}
                   </div>
                 ) : null}
                 <p className="region-people">

@@ -10,6 +10,7 @@
 | **[`docs/SPEC.md`](docs/SPEC.md)（開發規格書）** | 要改這個 repo 的任何一行程式之前：架構、資料模型、同步引擎、資料語意規則、前端規格、測試與慣例 |
 | **[`docs/OPS.md`](docs/OPS.md)（維運手冊）** | 站掛了、資料沒動、要裝機／備份／換憑證時：服務與排程清單、晨檢指令、狀況排除 runbook |
 | **[`docs/DEPLOY-VM.md`](docs/DEPLOY-VM.md)（部署到 Linux VM）** | 要搬到虛擬機／雲端主機時：拓撲選擇、規格、`deploy/linux/` 安裝、VM 才有的坑 |
+| [`docs/DEPLOY-NO-FB.md`](docs/DEPLOY-NO-FB.md) | 不抓 FB 粉專、其他全自動的精簡部署路線 |
 | [`docs/API.md`](docs/API.md) | 凍結的 API 契約（前端依它實作，改動要同步） |
 | [`DECISIONS.md`](DECISIONS.md) | 每個語意決定的「岔路／選擇／理由」（D 編號） |
 | [`docs/fb-daily-update.md`](docs/fb-daily-update.md) | 粉專每日抓取的實戰細節與踩過的坑 |
@@ -48,7 +49,7 @@ node server/index.mjs
 - 需求：**Node ≥ 22.13**（`node:sqlite` 在 22.5–22.12 要 `--experimental-sqlite`；`engines` 寫的是 22.5）、
   系統安裝的 Google Chrome（只有每日粉專抓取與 `npm run check:rwd` 需要）。後端零 runtime 相依，不必編原生模組。
 - `--no-scheduler`：只開 API，不在啟動時自動同步（開發用）。
-- 環境變數：`PORT`、`LY_HOST`、`LY_SYNC_TOKEN`、`LY_DB`、`LY_UA`、`LY_STALE_HOURS`、`LY_SYNC_INTERVAL_MS`、`LY_FETCH_TIMEOUT_MS`、`LY_FETCH_RETRIES`、`LY_RETRY_AFTER_CAP_MS`、`LY_SHRINK_MIN_RATIO`、`LY_ALLOW_SHRINK`、`LY_STATIC_STALE_MONTHS`、`LY_SKIP_BUDGET`（跳過預算三個來源）、`LY_MOJ_LAWS_INTERVAL_HOURS`（全國法規資料庫的檢查間隔，預設 12 小時、0 ＝ 每次都抓）。
+- 環境變數：`PORT`、`LY_HOST`、`LY_SYNC_TOKEN`、`LY_DB`、`LY_UA`、`LY_STALE_HOURS`、`LY_SYNC_INTERVAL_MS`、`LY_FETCH_TIMEOUT_MS`、`LY_FETCH_RETRIES`、`LY_RETRY_AFTER_CAP_MS`、`LY_SHRINK_MIN_RATIO`、`LY_ALLOW_SHRINK`、`LY_STATIC_STALE_MONTHS`、`LY_SKIP_BUDGET`（跳過預算三個來源）、`LY_FB_SCRAPE`（`0`＝不抓粉專的主機，見 `docs/DEPLOY-NO-FB.md`）、`LY_HIDE_COUNTIES`（`1`＝不提供縣市地圖）、`LY_MOJ_LAWS_INTERVAL_HOURS`（全國法規資料庫的檢查間隔，預設 12 小時、0 ＝ 每次都抓）。
 
 ### 讓伺服器一直活著（launchd 監管）
 
@@ -260,6 +261,7 @@ npm run verify:pwa       # 走這個 HTTPS 來源驗 PWA（SW 註冊、/api/* �
   （「這個站只在 Tailscale 網路內（…）。請確認這台裝置的 Tailscale 已開啟 —— 連上之後會自動重新載入」），
   而且連不上期間會自己退避重試（2 秒→60 秒），Tailscale 一連上就自動恢復，不必手動重整。
   （判定在 `web/src/lib/connectionHint.ts`、重試在 `web/src/hooks/useReconnectRefresh.ts`。）
+- **對外公開＋帳密**：`bash scripts/mac-funnel.sh`（Funnel 公開 HTTPS → 本機 Caddy 擋帳密 → 8787；PWA 安裝檔不擋；`--off` 收回 tailnet 內）。
 - 要讓「沒開 Tailscale 的人也能看」就改成 **Funnel**（`tailscale funnel 443 on`）：會有公開網址、任何人拿到就能讀；
   `POST /api/v1/sync` 仍受 `LY_SYNC_TOKEN` 保護，但讀取端點沒有驗證 —— 資料本身是公開的政府開放資料，
   要不要這樣做是隱私與便利的取捨，還沒決定。

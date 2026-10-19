@@ -101,8 +101,8 @@ test('deploy：install.sh 的替換不會留下佔位符（不需要 systemd 也
   assert.match(rendered, /^Environment=PORT=8787$/m);
 });
 
-test('deploy：兩支腳本語法正確（bash -n）', { skip: !hasBash() }, () => {
-  for (const f of ['install.sh', 'verify-vm.sh']) {
+test('deploy：安裝腳本語法正確（bash -n）', { skip: !hasBash() }, () => {
+  for (const f of ['install.sh', 'verify-vm.sh', 'bootstrap-no-fb.sh']) {
     execFileSync('bash', ['-n', join(DEPLOY, f)], { stdio: 'pipe' });
   }
 });

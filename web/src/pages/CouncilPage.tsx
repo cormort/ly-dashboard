@@ -9,6 +9,7 @@ import { pathFor } from '../hooks/useRoute';
 import { RouteLink } from '../components/RouteLink';
 import { formatDay } from '../lib/format';
 import { partyStyle } from '../lib/parties';
+import { useCountiesEnabled } from '../lib/features';
 
 export interface CouncilPageProps {
   refreshToken: number;
@@ -314,6 +315,7 @@ function DistrictRow({ d }: { d: CouncilDistrict }) {
 /* ---------- 頁面 ---------- */
 
 export function CouncilPage({ refreshToken, onNavigate }: CouncilPageProps) {
+  const countiesEnabled = useCountiesEnabled();
   // 縣市與屆次是這一頁自己的檢視狀態，放在網址上（replaceState，可分享、重整後一致）：
   // 縣市留空＝用 API 的預設縣市，屆次留空＝最新一屆
   const [county, setCounty] = useParam<string>('county', '');
@@ -376,10 +378,14 @@ export function CouncilPage({ refreshToken, onNavigate }: CouncilPageProps) {
           <RouteLink href={pathFor('councilactivity', { county: res.data.county })} onNavigate={onNavigate}>
             {res.data.county}議員近期動態 →
           </RouteLink>
-          　
-          <RouteLink href={pathFor('counties', { county: res.data.county })} onNavigate={onNavigate}>
-            {res.data.county}縣市統計 →
-          </RouteLink>
+          {countiesEnabled ? (
+            <>
+              　
+              <RouteLink href={pathFor('counties', { county: res.data.county })} onNavigate={onNavigate}>
+                {res.data.county}縣市統計 →
+              </RouteLink>
+            </>
+          ) : null}
         </p>
         <div className="council-switches">
           {res.data.counties.length > 1 ? (

@@ -156,9 +156,10 @@ tailscale serve status                  # 會給 https://<機器名>.<tailnet>.t
 sudo apt install -y caddy
 sudo tee /etc/caddy/Caddyfile >/dev/null <<'EOF'
 ly.example.com {
-    basic_auth {
+    basicauth {   # Debian 12 的 Caddy 是 2.6，不認得 2.8 才有的 basic_auth
         minchieh <bcrypt 雜湊，用 caddy hash-password 產生>
     }
+    encode zstd gzip   # Node 伺服器本身不壓縮；JSON 在這層壓縮，對外流量小很多
     reverse_proxy 127.0.0.1:8787
 }
 EOF

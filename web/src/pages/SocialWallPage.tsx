@@ -60,7 +60,16 @@ export function ChipRow({
  * 一面牆幾十個 facebook.com iframe 會讓頁面明顯變慢（實測：展開全部 112 位、捲幾個畫面
  * 就同時載入 24 個、累計 7.4 秒）。想看完整貼文或照片，點卡片下方的「粉專」到 Facebook。
  */
-export function WallCard({ item, onOpenId }: { item: SocialWallItem; onOpenId?: (id: string) => void }) {
+export function WallCard({
+  item,
+  onOpenId,
+  showLatest = true,
+}: {
+  item: SocialWallItem;
+  onOpenId?: (id: string) => void;
+  /** 伺服器沒有最新貼文資料（LY_FB_SCRAPE=0）時為 false：沒有日期就什麼都不寫，而不是說「整理表還沒有」 */
+  showLatest?: boolean;
+}) {
   return (
     <article className="member-card wall-card" style={{ '--party': partyStyle(item.party).color } as CSSProperties}>
       <div className="membertop">
@@ -105,9 +114,9 @@ export function WallCard({ item, onOpenId }: { item: SocialWallItem; onOpenId?: 
             </p>
           ) : null}
         </>
-      ) : (
+      ) : showLatest ? (
         <p className="council-fb-latest">整理表還沒有這一位的貼文日期</p>
-      )}
+      ) : null}
 
       <footer>
         <a href={item.url} target="_blank" rel="noopener noreferrer" title={`${item.name} 的 Facebook 粉專（另開新分頁）`}>
@@ -146,6 +155,8 @@ export function SocialWallPage({ refreshToken, onOpenId }: SocialWallPageProps) 
     { refreshToken },
   );
   const data = res.data;
+  // LY_FB_SCRAPE=0 的伺服器不給最新貼文（欄位全空），卡片就不要寫「還沒有貼文日期」
+  const hasLatest = data?.latest_post_enabled !== false;
   // 瀑布流靠 Grid ＋ JS 撐高度；卡片數量／篩選／展開變了要重量（最新的一定在最上面）
   const wallRef = useRef<HTMLUListElement>(null);
   useMasonry(wallRef, { rowUnit: 8, deps: [data?.items.length ?? 0, party, region, committee, view] });
@@ -230,7 +241,7 @@ export function SocialWallPage({ refreshToken, onOpenId }: SocialWallPageProps) 
         <ul className="fb-wall" role="list" ref={wallRef}>
           {data.items.map((item) => (
             <li key={item.id}>
-              <WallCard item={item} onOpenId={onOpenId} />
+              <WallCard item={item} onOpenId={onOpenId} showLatest={hasLatest} />
             </li>
           ))}
         </ul>

@@ -22,6 +22,7 @@ import { FontSizeControl } from './FontSizeControl';
 import { InfoTip } from './InfoTip';
 import { Magnifier } from './Magnifier';
 import { shouldOpenInCard } from '../lib/nav';
+import { useCountiesEnabled } from '../lib/features';
 import { SearchField } from './SearchField';
 
 export interface HeaderProps {
@@ -267,7 +268,10 @@ export function Header({
   const statusText = failed ? '同步失敗' : stale ? '可能非最新' : '資料截至';
   // L6：同步面板是條件式 render，只有它存在時 aria-controls 才指得到東西
   const syncPanelExists = syncOpen || failed || stale;
-  const navGroups = navGroupsFor(hiddenRoutes);
+  // 這台有沒有提供縣市地圖：伺服器 LY_HIDE_COUNTIES=1 時為 false（App 用同一份 /health 值提供 Context），
+  // 跟 hiddenRoutes 是同一個來源的兩條路徑（hiddenRoutes 也擋直接開網址）。
+  const countiesEnabled = useCountiesEnabled();
+  const navGroups = navGroupsFor(hiddenRoutes).filter((group) => countiesEnabled || group.id !== 'map');
   const activeGroup = groupOf(route, navGroups);
   const hasSubnav = activeGroup.routes.length > 1;
   // 先取出成 const：TS 的屬性縮窄不會進到 onClick 的閉包裡

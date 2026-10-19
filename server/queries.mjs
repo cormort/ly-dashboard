@@ -112,9 +112,10 @@ export function listLegislators(db, query = {}) {
     if (!topSource.has(r.legislator_id)) topSource.set(r.legislator_id, { name: r.name, count: Number(r.n) });
   }
   const socialByLegislator = new Map();
+  const scrape = CONFIG.social.scrape;
   for (const s of db.prepare('SELECT * FROM social_accounts ORDER BY platform, url').all()) {
     const list = socialByLegislator.get(s.legislator_id) ?? [];
-    list.push({ platform: s.platform, name: s.page_name, url: s.url, latest_post_date: s.latest_post_date, latest_post_summary: s.latest_post_summary, source: s.source ?? 'sheet' });
+    list.push({ platform: s.platform, name: s.page_name, url: s.url, latest_post_date: scrape ? s.latest_post_date : '', latest_post_summary: scrape ? s.latest_post_summary : '', source: s.source ?? 'sheet' });
     socialByLegislator.set(s.legislator_id, list);
   }
   const byId = new Map(legislatorRows.map((l) => [l.id, l]));
@@ -366,12 +367,16 @@ const HEALTH_TABLES = [
 export function socialFreshness(db, now = Date.now(), table = 'social_accounts') {
   // table 只會是程式內的兩個固定值（立委 social_accounts、議員 council_social），不是使用者輸入
   const asOf = db.prepare(`SELECT MAX(latest_post_date) AS d FROM ${table === 'council_social' ? 'council_social' : 'social_accounts'} WHERE latest_post_date IS NOT NULL AND latest_post_date <> ''`).get()?.d ?? null;
-  if (!asOf) return { as_of: null, age_days: null, stale: false, stale_days: CONFIG.social.staleDays };
+  // 不抓粉專時委員整理表的日期是凍結的：不報「截至」也不報過期（議員整理表另有人維護，照算）
+  if (!asOf || (table !== 'council_social' && !CONFIG.social.scrape)) return { as_of: null, age_days: null, stale: false, stale_days: CONFIG.social.staleDays };
   // 以臺灣的「今天」算天數：整理表的日期是臺灣日期
   const today = new Date(now + 8 * 3_600_000).toISOString().slice(0, 10);
   const ageDays = Math.max(0, Math.round((Date.parse(today) - Date.parse(asOf)) / 86_400_000));
   return { as_of: asOf, age_days: ageDays, stale: ageDays > CONFIG.social.staleDays, stale_days: CONFIG.social.staleDays };
 }
+
+/** 只有縣市地圖頁在用的靜態資料（LY_HIDE_COUNTIES=1 時不提醒它們過期） */
+const COUNTIES_ONLY_STATIC = new Set(['counties', 'demographics', 'population_trend', 'town_map']);
 
 export function getHealth(db, { now = Date.now(), staticLoaders = undefined } = {}) {
   const lastRuns = db
@@ -404,7 +409,9 @@ export function getHealth(db, { now = Date.now(), staticLoaders = undefined } = 
   // 來源是月報，忘了重跑 build 腳本就會讓畫面上的數字放很久而沒有訊號，所以在這裡提醒。
   // 逐檔檢查（不是只看 counties）：任一個檔案壞掉、空掉、或過期都要看得見。
   const staticData = staticDataStatus(staticLoaders ?? {});
-  for (const info of Object.values(staticData)) {
+  for (const [key, info] of Object.entries(staticData)) {
+    // 縣市地圖關掉時，只有縣市頁在用的資料檔不必提醒（立委得票、罷免案仍在別頁使用，照常檢查）
+    if (!CONFIG.features.counties && COUNTIES_ONLY_STATIC.has(key)) continue;
     if (info.error) notices.push(`靜態資料「${info.label}」讀取失敗：${info.error}`);
     else if (!info.count) notices.push(`靜態資料「${info.label}」是空的（0 筆）`);
     const age = monthsSince(info.as_of, now);
@@ -436,6 +443,8 @@ export function getHealth(db, { now = Date.now(), staticLoaders = undefined } = 
       social: { fetched_at: getMeta(db, 'social_fetched_at'), count: stats.social_accounts },
     },
     last_runs: lastRuns,
+    // 伺服器設 LY_HIDE_COUNTIES=1 時為 false：前端收掉縣市地圖的頁籤與連結
+    counties_enabled: CONFIG.features.counties,
     warnings: [...JSON.parse(getMeta(db, 'warnings', '[]')), ...notices],
   };
 }
@@ -504,7 +513,7 @@ export function listRankings(db, { type = 'all', days = 30, limit = 10 } = {}) {
     };
   }
 
-  if (wanted('facebook')) {
+  if (wanted('facebook') && CONFIG.social.scrape) {
     const today = Date.now();
     const items = db
       .prepare(
@@ -945,7 +954,7 @@ export function listActivity(db, { limit = 12, ids = null } = {}) {
     if (!latestBill.has(r.legislator_id)) latestBill.set(r.legislator_id, toBill(r));
   }
   const latestPost = new Map();
-  for (const r of db.prepare("SELECT * FROM social_accounts WHERE latest_post_date <> '' ORDER BY latest_post_date DESC").all()) {
+  for (const r of CONFIG.social.scrape ? db.prepare("SELECT * FROM social_accounts WHERE latest_post_date <> '' ORDER BY latest_post_date DESC").all() : []) {
     if (!latestPost.has(r.legislator_id)) latestPost.set(r.legislator_id, { platform: r.platform, url: r.url, date: r.latest_post_date, summary: r.latest_post_summary });
   }
   const conveners = new Set(
@@ -1233,6 +1242,7 @@ export function listSocialWall(db, { party = '', region = '', committee = '', li
     list.push(seat.committee_id);
     committeesByLegislator.set(seat.legislator_id, list);
   }
+  const scrape = CONFIG.social.scrape;
   const askedCommittee = String(committee ?? '').trim();
   // 不認識的委員會名稱當作沒篩（回應也回空字串，前端才不會顯示一個其實沒生效的條件）
   const wantedCommittee = standingCommittees.has(askedCommittee) ? askedCommittee : '';
@@ -1254,11 +1264,11 @@ export function listSocialWall(db, { party = '', region = '', committee = '', li
       photo_url: row.photo_url ?? null,
       page_name: row.page_name ?? '',
       url: row.url,
-      latest_post_date: row.latest_post_date || null,
-      latest_post_summary: row.latest_post_summary ?? '',
+      latest_post_date: (scrape && row.latest_post_date) || null,
+      latest_post_summary: scrape ? (row.latest_post_summary ?? '') : '',
       // 讚／留言數是「最新那一則」的快照；抓不到就是 null（畫面不顯示，不要寫成 0）
-      latest_post_likes: Number.isFinite(row.latest_post_likes) ? row.latest_post_likes : null,
-      latest_post_comments: Number.isFinite(row.latest_post_comments) ? row.latest_post_comments : null,
+      latest_post_likes: scrape && Number.isFinite(row.latest_post_likes) ? row.latest_post_likes : null,
+      latest_post_comments: scrape && Number.isFinite(row.latest_post_comments) ? row.latest_post_comments : null,
       source: row.source ?? 'sheet',
     }))
     // 新到舊；沒有日期的（整理表還沒抓到貼文）一律排最後
@@ -1325,6 +1335,13 @@ export function listSocialWall(db, { party = '', region = '', committee = '', li
     window_cap: SOCIAL_WALL_WINDOW_CAP,
     /** true＝窗內人數超過 window_cap，這一頁只列了前面這幾位 */
     window_capped: windowCapped,
+    /**
+     * 舊欄位（相容用）：以前「沒給 limit」就是回這幾位。
+     * 2026-10-19 起預設走日期窗，這裡改回報 fallback 的人數（窗內沒人更新時用的就是它）。
+     */
+    default_limit: SOCIAL_WALL_FALLBACK_LIMIT,
+    // LY_FB_SCRAPE=0 時為 false：最新貼文欄位一律為空，前端不顯示「整理表還沒有貼文日期」也不說「最近更新」（D288）
+    latest_post_enabled: scrape,
     party: wantedParty,
     region: wantedRegion,
     committee: wantedCommittee,
@@ -2258,7 +2275,7 @@ export function budgetOrder(a, b) {
  * - `legislator` 可給委員 id 或姓名：只回他**有投票**的那幾場，並在每一列附上他自己的票（`mine`）。
  * - 名單（supporters／opposers／abstainers）直接回陣列給畫面；`counts` 是三個名單的實際人數，
  *   與官方給的 `agree／against／abstain` 分開（官方那三個是**人數欄位**，抓回來時就不一定與名單等長）。
- * - 注意：ID370 沒有案號，對不到 `bills`（見 DECISIONS D293）。
+ * - 注意：ID370 沒有案號，對不到 `bills`（見 DECISIONS D296）。
  */
 export function listRollcalls(db, { term = '', q = '', legislator = '', from = '', to = '', limit = 30, offset = 0 } = {}) {
   const resolvedLimit = Math.max(1, Math.min(Number(limit) || 30, 200));

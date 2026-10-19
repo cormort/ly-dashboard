@@ -7,6 +7,7 @@ import { openDb, applyDataset, applyBills, applySocial, applyCommitteeMeets, ups
 import { buildDataset, normalizeBills, normalizeSocial, newsName } from '../server/normalize.mjs';
 import { billsCsv, compareLegislators, csvRow, makeTagger, listCommitteeActivity, listCosponsors, listFunds, listRegions, getHealth, getMetaPayload, listActivity, listBills, listBudget, listTopics, listNews, listNewsArticles, listChanges, listCommittees, listLegislators, listRankings, listSyncRuns, listCounties, listDemographics, getTownMap, monthsSince, listLegislatorVotes, listSplitTicket, listRecalls, listCouncil, councilCounties, listSyncSources } from '../server/queries.mjs';
 import { regionOf } from '../server/normalize.mjs';
+import { CONFIG } from '../server/config.mjs';
 import { authorizeSync, shouldSyncNow, createServer } from '../server/index.mjs';
 import { runNewsIngest } from '../server/ingest.mjs';
 import { getProgress, clearProgress } from '../server/sync-progress.mjs';
@@ -923,6 +924,25 @@ test('靜態檔壞掉／不見時 /health 不可以 500，而且要看得到是�
   const empty = { town_map: () => ({ towns: [] }) };
   const h2 = getHealth(db, { now, staticLoaders: empty });
   assert.ok(h2.warnings.some((w) => w.includes('鄉鎮市區界圖資') && w.includes('空的')), `${h2.warnings}`);
+});
+
+test('LY_HIDE_COUNTIES=1：/health 回 counties_enabled=false，縣市頁專用的靜態檔不提醒，其他照常', () => {
+  const { db } = seeded();
+  const now = Date.parse('2026-10-02T00:00:00.000Z');
+  const boom = () => { throw Object.assign(new Error('boom'), { code: 'ENOENT' }); };
+  const loaders = { counties: boom, town_map: boom, legislator_votes: boom };
+  assert.equal(getHealth(db, { now, staticLoaders: loaders }).counties_enabled, true);
+  assert.ok(getHealth(db, { now, staticLoaders: loaders }).warnings.some((w) => w.includes('縣市人口與選舉指標')));
+
+  CONFIG.features.counties = false;
+  try {
+    const health = getHealth(db, { now, staticLoaders: loaders });
+    assert.equal(health.counties_enabled, false);
+    assert.ok(!health.warnings.some((w) => w.includes('縣市人口與選舉指標') || w.includes('鄉鎮市區界圖資')), `${health.warnings}`);
+    assert.ok(health.warnings.some((w) => w.includes('立委歷次得票')), '委員側欄還在用的得票資料仍要提醒');
+  } finally {
+    CONFIG.features.counties = true;
+  }
 });
 
 test('空名冊時 legislator-votes 與排行榜不可以 500（loader 要先初始化）', () => {

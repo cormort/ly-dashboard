@@ -16,6 +16,7 @@ import { useSync } from './hooks/useSync';
 import { syncRunningText } from './lib/format';
 import { EmptyState } from './components/DataStates';
 import { pathFor, useRoute } from './hooks/useRoute';
+import { CountiesEnabledContext } from './lib/features';
 import type { Route } from './hooks/useRoute';
 import { useTracked } from './hooks/useTracked';
 import { sessionLabelIndex } from './lib/sessions';
@@ -88,6 +89,8 @@ export default function App() {
 
   const source = health.data?.meta.source ?? meta.data?.meta.source ?? null;
   const fetchedAt = health.data?.meta.fetched_at ?? meta.data?.meta.fetched_at ?? null;
+  // 遠端（Linux VM）那條線的頁面用 useCountiesEnabled() 讀這個值；跟下面的 hiddenRoutes 同一個來源
+  const countiesEnabled = health.data?.counties_enabled !== false;
   const stale = health.data?.meta.stale ?? meta.data?.meta.stale ?? false;
   const failed = health.phase === 'error' || health.data?.last_runs[0]?.status === 'failed' || health.data?.ok === false;
   const labels = sessionLabelIndex(meta.data?.terms ?? []);
@@ -166,7 +169,8 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-      <AppShell
+      <CountiesEnabledContext.Provider value={countiesEnabled}>
+        <AppShell
         header={
           <Header
             route={route}
@@ -268,6 +272,7 @@ export default function App() {
 
         {renderPage(route)}
       </AppShell>
+      </CountiesEnabledContext.Provider>
 
       {/* 手機的第二層頁籤卡片：內容就是那一頁（與主要內容區共用 renderPage） */}
       {cardRoute ? (

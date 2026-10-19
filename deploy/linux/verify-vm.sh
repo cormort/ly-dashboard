@@ -204,24 +204,26 @@ if [ "$LIVE" = "1" ]; then
     const ROOT = process.argv[1];
     const { CONFIG } = await import(ROOT + "/server/config.mjs");
     const { fetchJson } = await import(ROOT + "/server/fetch-ly.mjs");
-    const probe = async (label, url, pick) => {
+    // 法規 ZIP 與 RSS 不是 JSON：用 raw／text 取回（以前一律當 JSON 解析，連得到也報 ❌）
+    const probe = async (label, url, pick, opts = {}) => {
       const t0 = Date.now();
       try {
-        const r = await fetchJson(url, { timeoutMs: 30000 });
-        const n = pick(r.json);
-        console.log(`   ✅ ${label}：HTTP ${r.status}、${n} 筆、${((Date.now()-t0)/1000).toFixed(1)} 秒`);
+        const r = await fetchJson(url, { timeoutMs: 30000, ...opts });
+        const n = pick(r);
+        console.log(`   ✅ ${label}：HTTP ${r.status}、${n}、${((Date.now()-t0)/1000).toFixed(1)} 秒`);
       } catch (e) {
         console.log(`   ❌ ${label}：${e.message}${e.cause?.code ? "（" + e.cause.code + "）" : ""}`);
       }
     };
     // 立法院開放資料（TLS legacy 修補走這條）
-    await probe("data.ly.gov.tw id9（名錄）", CONFIG.endpoints.id9, (j) => j?.dataList?.length ?? 0);
+    await probe("data.ly.gov.tw id9（名錄）", CONFIG.endpoints.id9, (r) => `${r.json?.dataList?.length ?? 0} 筆`);
     // g0v 立法院 API
-    await probe("g0v ly.govapi.tw（議案）", CONFIG.bills.url + "&limit=1", (j) => j?.bills?.length ?? j?.total ?? 0);
+    // CONFIG.bills.url 不帶查詢字串，要用 ?（以前接 &limit=1 變成不存在的路徑 → 404）
+    await probe("g0v ly.govapi.tw（議案）", CONFIG.bills.url + "?limit=1", (r) => `${r.json?.bills?.length ?? r.json?.total ?? 0} 筆`);
     // 法務部全國法規資料庫（ZIP）
-    await probe("law.moj.gov.tw（法規 ZIP）", CONFIG.mojLaw?.url ?? "https://law.moj.gov.tw/api/ch/law/json", () => "OK");
+    await probe("law.moj.gov.tw（法規 ZIP）", CONFIG.mojLaw?.url ?? "https://law.moj.gov.tw/api/ch/law/json", (r) => `ZIP ${(r.bytes / 1048576).toFixed(1)} MB`, { raw: true });
     // 媒體 RSS（新聞階段的輕量來源）
-    await probe("媒體 RSS（中央社）", CONFIG.news.outlets?.[0]?.url ?? "https://feeds.feedburner.com/rsscna/politics", () => "OK");
+    await probe("媒體 RSS（中央社）", CONFIG.news.outlets?.[0]?.url ?? "https://feeds.feedburner.com/rsscna/politics", (r) => `${(r.text.match(/<item[\s>]/g) ?? []).length} 則`, { text: true });
   ' "$ROOT" || warn "實打來源那段跑不起來"
 fi
 

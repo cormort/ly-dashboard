@@ -175,11 +175,19 @@ export const CONFIG = {
   // 社群帳號：人工／AI 每日維護的 Google 試算表（知道連結者可檢視），以 CSV 匯出網址抓取；格式見 docs/social-sheet-spec.md。
   // 2026-10-05 起換成使用者用範本建立、交給 Gemini 每日更新的那份（舊的整理表是 1hFuV22z3ceSGFC03zGUUX5qEKzetBQLeCA-mHTJcQFw）。
   // 沒有 gid＝讀第一個分頁。
+  // LY_HIDE_COUNTIES=1：這台不提供「縣市地圖」（例如沒有排每月人口更新的雲端主機）。
+  // 頁籤與連結由前端依 /health 的 counties_enabled 收掉；/health 也不再提醒縣市靜態資料過期。API 端點照舊（無害）。
+  features: {
+    counties: process.env.LY_HIDE_COUNTIES !== '1',
+  },
   social: {
     url: process.env.LY_SOCIAL_CSV || 'https://docs.google.com/spreadsheets/d/11XrvNGMKZb_8rekFdGIg5VsXcV8rdJkZjyzd1I4gAMM/export?format=csv',
     name: '委員社群帳號整理表',
     // 整理表裡「最新貼文日期」最新的一筆超過這麼多天，就在畫面與 /health 提醒「整理表可能沒在更新」
     staleDays: Number(process.env.LY_SOCIAL_STALE_DAYS ?? 7),
+    // LY_FB_SCRAPE=0：這台不跑每日粉專抓取（docs/DEPLOY-NO-FB.md）。委員的「最新貼文」日期／摘要／讚數會停在最後一次抓取，
+    // 所以 API 不再送出它們、不出臉書排行榜、不提醒整理表過期；粉專帳號與嵌入框照舊。議員整理表不受影響。
+    scrape: process.env.LY_FB_SCRAPE !== '0',
     // 議員臉書整理表（格式見 docs/social-sheet-spec.md「議員分頁」）的 CSV 匯出網址；空字串＝不匯入
     councilUrl: process.env.LY_COUNCIL_SOCIAL_CSV ?? 'https://docs.google.com/spreadsheets/d/17Aqrr2ThH3-V00ege6YtQzK2hguu3fSgfaY9QryZ11I/export?format=csv',
     // 貼文層級（一列一則貼文）的資料分支：scripts/fetch-fb-posts.mjs 每日抓取 → scripts/push-fb-data.mjs 推上

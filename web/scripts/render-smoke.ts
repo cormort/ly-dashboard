@@ -24,6 +24,7 @@ import { ChangesPanel } from '../src/components/ChangesPanel';
 import { CommitteeChart } from '../src/components/CommitteeChart';
 import { FacetChips } from '../src/components/FacetChips';
 import { Header, navLabelOf, scopeCadenceText, scopeDetailText, scopeOptionLabel } from '../src/components/Header';
+import { CountiesEnabledContext } from '../src/lib/features';
 import { PageCard } from '../src/components/PageCard';
 import { shouldOpenInCard } from '../src/lib/nav';
 import { formatDateTime, formatDay, formatDuration } from '../src/lib/format';
@@ -346,6 +347,9 @@ const wallCardNoCounts = render(createElement(WallCard, { item: { ...wallItem, l
 check('粉專牆卡片：抓不到讚數／留言數時不畫互動數那一行（也不寫 0）', !wallCardNoCounts.includes('wall-engagement'));
 const wallCardNoDate = render(createElement(WallCard, { item: { ...wallItem, latest_post_date: null, latest_post_summary: '', latest_post_likes: null, latest_post_comments: null }, onOpenId: () => undefined }));
 check('粉專牆卡片：沒有貼文日期時不會畫出互動數', !wallCardNoDate.includes('wall-engagement') && wallCardNoDate.includes('整理表還沒有這一位的貼文日期'));
+// LY_FB_SCRAPE=0：每一位都沒有日期，不能每張卡都寫「整理表還沒有」（D288）
+const wallCardNoScrape = render(createElement(WallCard, { item: { ...wallItem, latest_post_date: null, latest_post_summary: '', latest_post_likes: null, latest_post_comments: null }, onOpenId: () => undefined, showLatest: false }));
+check('粉專牆卡片：伺服器不抓粉專時，沒有日期也不寫「整理表還沒有」', !wallCardNoScrape.includes('整理表還沒有') && wallCardNoScrape.includes('粉專'));
 
 // 粉專牆的篩選 chips（黨籍／縣市／委員會共用同一個元件）：委員會那一列要多標「哪個會期」
 console.log('\n— 粉專牆 › 篩選 chips —');
@@ -500,6 +504,11 @@ const headerProps = {
   onRefresh: () => undefined,
   refreshing: false,
 };
+// 伺服器 LY_HIDE_COUNTIES=1（/health counties_enabled=false）：頁籤收掉「縣市地圖」，其他頁籤照舊
+expectAll('預設有「縣市地圖」頁籤', render(createElement(Header, headerProps)), ['縣市地圖']);
+const noCountiesHeader = render(createElement(CountiesEnabledContext.Provider, { value: false }, createElement(Header, headerProps)));
+expectNone('counties_enabled=false 時沒有「縣市地圖」頁籤', noCountiesHeader, ['縣市地圖']);
+expectAll('counties_enabled=false 時其他頁籤照舊', noCountiesHeader, ['社群', '新聞']);
 // 主計總處移出「機關／基金」頁籤；它的網址仍在，高亮歸「我的機關」
 const orgsHeader = render(createElement(Header, { ...headerProps, route: 'funds' as const }));
 expectNone('機關／基金的頁籤不再有行政院主計總處', orgsHeader, ['行政院主計總處']);

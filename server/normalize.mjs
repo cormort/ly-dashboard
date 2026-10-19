@@ -1082,7 +1082,7 @@ const voteCount = (value) => {
  * 另外在套用階段展開成 vote_ballots，讓「某委員投過什麼」查得動。
  *
  * 注意：ID370 只有 `voteIssue` 文字，**沒有案號**，所以對不到 bills 的議案編號
- * （要對得靠文字比對，誤配風險高，這裡不做——見 DECISIONS D293）。
+ * （要對得靠文字比對，誤配風險高，這裡不做——見 DECISIONS D296）。
  */
 export function normalizeRollcalls(rows, legislatorIdByName) {
   if (!Array.isArray(rows)) throw new DataValidationError('ID370 回應缺少 jsonList');

@@ -1119,6 +1119,10 @@ export interface SocialWallResponse {
   window_cap: number;
   /** true＝窗內人數超過 window_cap，這一頁只列了前面這幾位 */
   window_capped: boolean;
+  /** 舊欄位（相容用）：以前「沒給 limit」回的人數，現在等於 fallback_limit */
+  default_limit: number;
+  /** 這台有沒有最新貼文資料（伺服器 LY_FB_SCRAPE=0 時為 false；舊伺服器沒有這欄＝有） */
+  latest_post_enabled?: boolean;
   party: string;
   region: string;
   /** 目前生效的委員會條件（聽不懂的名稱後端會回空字串＝沒有篩） */
