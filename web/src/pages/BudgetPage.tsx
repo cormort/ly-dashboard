@@ -8,7 +8,8 @@ import { YearProgressList, budgetProgressText, budgetRecordsText, hasReviewableI
 import { ClearFiltersButton } from '../components/ClearFiltersButton';
 import { SearchField } from '../components/SearchField';
 import { RouteLink } from '../components/RouteLink';
-import { useApi } from '../hooks/useApi';
+import { useApi, type ApiPhase } from '../hooks/useApi';
+import type { ApiError } from '../api/client';
 import { pathFor } from '../hooks/useRoute';
 import { formatDay, shortCommittee } from '../lib/format';
 import { partyStyle } from '../lib/parties';
@@ -195,6 +196,20 @@ export function BudgetPage({ refreshToken, onOpenId, onNavigate }: BudgetPagePro
     { refreshToken },
   );
   const data = budget.data;
+  /**
+   * 審查歷程的階段：流程帶與歷程清單共用同一個狀態。
+   * 以前「階段」是歷程區塊裡自己的 chips，跟頁面上方的年度、類別分散在三處，
+   * 使用者要自己拼「現在走到哪一關」——流程帶把它收成一個入口。
+   */
+  const [stage, setStage] = useState('');
+  /** 年度只有一個來源：頁面的 year 篩選（'' ＝全部年度）；歷程跟著它走，不再有第二組年度 chips */
+  const timelineYear = filters.year === 'unknown' ? '' : filters.year;
+  const timeline = useApi<BudgetTimelineResponse>(
+    buildUrl('/budget/timeline', { year: timelineYear }),
+    { refreshToken },
+  );
+  // 換年度就沒有「剛剛選的那一關」可言了
+  useEffect(() => setStage(''), [filters.year]);
   const pages = data ? Math.max(1, Math.ceil(data.total / PAGE)) : 1;
   // 年度分兩組（見下方下拉與 YearProgressList 的說明）
   const reviewableYears = (data?.years ?? []).filter((y) => hasReviewableItems(y.progress));
@@ -245,6 +260,18 @@ export function BudgetPage({ refreshToken, onOpenId, onNavigate }: BudgetPagePro
         ))}
       </div>
 
+      <BudgetProcessRail
+        years={timeline.data?.years ?? []}
+        year={timelineYear}
+        onYearChange={(year) => change({ year })}
+        stages={timeline.data?.stages ?? []}
+        total={timeline.data?.summary.total ?? 0}
+        apiYear={timeline.data?.year ?? null}
+        stage={stage}
+        onStageChange={setStage}
+        loading={timeline.phase === 'loading' && !timeline.data}
+      />
+
       {data && data.years.length > 1 ? (
         <section className="panel year-panel" aria-label="各年度審議進度">
           <div className="sectionhead">
@@ -264,6 +291,17 @@ export function BudgetPage({ refreshToken, onOpenId, onNavigate }: BudgetPagePro
           />
         </section>
       ) : null}
+
+
+      <BudgetTimeline
+        key={timelineYear}
+        data={timeline.data}
+        phase={timeline.phase}
+        error={timeline.error}
+        reload={timeline.reload}
+        stage={stage}
+        onStageChange={setStage}
+      />
 
       <div className="filters bill-filters" role="group" aria-label="預算篩選條件">
         <SearchField value={filters.q} onChange={(q) => change({ q })} ariaLabel="搜尋名稱或提案單位" placeholder="搜尋名稱或機關，例如：國防部、特別預算" />
@@ -358,8 +396,6 @@ export function BudgetPage({ refreshToken, onOpenId, onNavigate }: BudgetPagePro
           ) : null}
         </p>
       ) : null}
-
-      <BudgetTimeline refreshToken={refreshToken} />
 
       <div className="budget-layout">
         <section className="panel" aria-label="預算案列表" id="budget-results">
@@ -482,16 +518,151 @@ export function BudgetPage({ refreshToken, onOpenId, onNavigate }: BudgetPagePro
  * 實務上總預算不是一次會議審完，中間會開很多場；這裡把官方 ID223 的會議紀錄排成一條時間軸，
  * 有對到 IVOD 場次就附影片連結。（院會二讀／三讀不在 ID223 裡，看上面的審議進度。）
  */
-function BudgetTimeline({ refreshToken }: { refreshToken: number }) {
-  const [year, setYear] = useState('');
-  const [stage, setStage] = useState('');
+/**
+ * 預算審查流程的**實際順序**（畫面上的順序，不是 API 回傳的順序）：
+ * 行政院編製概算 → 送立法院（報告、一讀、付委）→ 委員會分組審查 → 聯席 → 公聽會
+ * → 黨團協商 → 院會二讀／三讀 → 總統公布；通過之後才輪到「決議處理」（凍結案解凍、附帶決議）。
+ *
+ * 官方會議資料沒有「階段」欄位，階段是後端 `budgetReviewStage()` 從會議名稱判斷的，
+ * 所以某一關這一年度沒有會議是常態（實測 115 年度：聯席 0、公聽會 0）——照實顯示「無」，
+ * 不要因為是 0 就整關藏起來，那會讓「這一年到底有沒有公聽會」變成猜謎。
+ */
+export const BUDGET_PROCESS_STEPS = [
+  { id: 'committee', label: '委員會分組審查', hint: '各委員會分組審查主管機關的預算（主戰場）' },
+  { id: 'joint', label: '聯席審查', hint: '兩個以上委員會聯席審查' },
+  { id: 'hearing', label: '公聽會', hint: '審查期間舉行的公聽會' },
+  { id: 'negotiation', label: '黨團協商', hint: '朝野黨團協商（保留案在這裡處理）' },
+  { id: 'plenary', label: '院會二讀／三讀', hint: '院會逐案表決、三讀通過' },
+  { id: 'resolution', label: '決議處理', hint: '通過後處理凍結案解凍、附帶決議' },
+] as const;
+
+/**
+ * 流程帶：一列六關，每關顯示這一年度開過幾場會議，點一關就只看那一關（再點一次取消）。
+ *
+ * 為什麼要有它：原本「各年度審議進度」說的是**案子**完成幾件、下面的「審查歷程」說的是**會議**，
+ * 而階段 chips 埋在歷程裡、年度又分兩處（篩選列與歷程各一組）。使用者得自己在心裡拼
+ * 「115 年度走到協商了沒」。流程帶把「年度 ＋ 走到哪一關 ＋ 幾場」放在同一列。
+ */
+export function BudgetProcessRail({
+  years,
+  year,
+  onYearChange,
+  stages,
+  total,
+  /** 後端實際回傳的會議年度（沒選年度時它就是最新年度，跟清單的「全部年度」不是同一件事） */
+  apiYear,
+  stage,
+  onStageChange,
+  loading = false,
+}: {
+  years: { year: number; count: number }[];
+  /** 目前選的年度（'' ＝全部年度） */
+  year: string;
+  onYearChange: (year: string) => void;
+  stages: { id: string; label: string; count: number }[];
+  /** 這一年度的審查會議總場次 */
+  total: number;
+  apiYear: number | null;
+  stage: string;
+  onStageChange: (stage: string) => void;
+  loading?: boolean;
+}) {
+  const countOf = (id: string) => stages.find((s) => s.id === id)?.count ?? 0;
+  const pickStage = (id: string) => {
+    const next = stage === id ? '' : id;
+    onStageChange(next);
+    // 選了才帶使用者去看清單；取消時不要亂捲，免得把人帶離流程帶
+    if (next) document.getElementById('budget-timeline')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+  return (
+    <section className="panel process-panel" aria-label="預算審查流程">
+      <div className="sectionhead">
+        <h2>預算審查流程</h2>
+        <span className="muted">
+          {loading
+            ? '讀取會議資料…'
+            : `${apiYear ? `${apiYear} 年度` : '會議年度不明'}・${total.toLocaleString()} 場審查會議${
+                year ? '' : '（清單是全部年度，會議以最新年度計）'
+              }`}
+        </span>
+      </div>
+
+      {years.length > 1 ? (
+        <div className="law-facets" role="group" aria-label="預算年度">
+          <button type="button" className="chip" aria-pressed={!year} onClick={() => onYearChange('')}>
+            全部年度
+          </button>
+          {years.map((y) => (
+            <button
+              key={y.year}
+              type="button"
+              className="chip"
+              aria-pressed={String(y.year) === year}
+              onClick={() => onYearChange(String(y.year))}
+            >
+              {y.year} 年度 <span className="muted">{y.count}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      <ol className="process-rail" role="list">
+        <li className="process-context">行政院編製概算、送立法院</li>
+        {BUDGET_PROCESS_STEPS.map((step, index) => {
+          const count = countOf(step.id);
+          const active = stage === step.id;
+          return (
+            <li key={step.id}>
+              <button
+                type="button"
+                className={`process-step${active ? ' is-active' : ''}${count === 0 ? ' is-empty' : ''}`}
+                aria-pressed={active}
+                title={step.hint}
+                onClick={() => pickStage(step.id)}
+              >
+                <span className="process-index" aria-hidden="true">
+                  {index + 1}
+                </span>
+                <span className="process-label">{step.label}</span>
+                <span className="process-count">{count > 0 ? `${count} 場` : '無'}</span>
+              </button>
+            </li>
+          );
+        })}
+        <li className="process-context">總統公布</li>
+      </ol>
+
+      <p className="muted topic-note">
+        點一關只看那一關的會議，再點一次取消。流程兩端是「行政院編製概算、送立法院」與「總統公布」（沒有會議紀錄）。
+        「無」＝這一年度沒有那種會議紀錄（階段是從會議名稱判斷的，官方資料沒有階段欄位）；
+        預算中心的評估報告在下方，與這裡的會議是不同來源。
+      </p>
+    </section>
+  );
+}
+
+export function BudgetTimeline({
+  data,
+  phase,
+  error,
+  reload,
+  stage,
+  onStageChange,
+}: {
+  data: BudgetTimelineResponse | null;
+  phase: ApiPhase;
+  error: ApiError | null;
+  reload: () => void;
+  /** 目前選的階段（'' ＝全部）；由流程帶控制，這裡只讀 */
+  stage: string;
+  onStageChange: (stage: string) => void;
+}) {
   /** 主管機關（審查單位）：例「國防部」「國軍退除役官兵輔導委員會」，空字串＝全部 */
   const [agency, setAgency] = useState('');
   /** 分組方式：依委員會（預設，實務上按委員會追）／依時間（看整體先後） */
   const [groupBy, setGroupBy] = useState<'committee' | 'date'>('committee');
   const [limit, setLimit] = useState(20);
-  const res = useApi<BudgetTimelineResponse>(buildUrl('/budget/timeline', { year }), { refreshToken });
-  const data = res.data;
+  const res = { phase, error, reload };
   const stages = (data?.stages ?? []).filter((s) => s.count > 0);
   const agencies = (data?.summary.agencies ?? []).filter((a) => a.count > 0);
   const items = (data?.items ?? []).filter(
@@ -574,30 +745,11 @@ function BudgetTimeline({ refreshToken }: { refreshToken: number }) {
   );
 
   return (
-    <section className="panel" aria-label="預算審查歷程">
+    <section className="panel" aria-label="預算審查歷程" id="budget-timeline">
       <div className="sectionhead">
         <h2>預算審查歷程</h2>
-        {(data?.years.length ?? 0) > 1 ? (
-          <div className="law-facets" role="group" aria-label="預算年度">
-            {data!.years.map((y) => (
-              <button
-                key={y.year}
-                type="button"
-                className="chip"
-                aria-pressed={String(data!.year) === String(y.year)}
-                onClick={() => {
-                  setYear(String(y.year));
-                  setStage('');
-                  setAgency('');
-                  setGroupBy('committee');
-                  setLimit(20);
-                }}
-              >
-                {y.year} 年度 <span className="muted">{y.count}</span>
-              </button>
-            ))}
-          </div>
-        ) : null}
+        {/* 年度改由上方「預算審查流程」的年度 chips 控制：同一頁只留一組年度，避免兩組年度各說各話 */}
+        <span className="muted">{data?.year ? `${data.year} 年度的審查會議` : '全部年度的審查會議'}</span>
       </div>
       {res.phase === 'loading' && !data ? <LoadingState label="讀取審查歷程…" /> : null}
       {res.phase === 'error' ? (
@@ -614,19 +766,20 @@ function BudgetTimeline({ refreshToken }: { refreshToken: number }) {
             包含 {stages.map((s) => `${s.label} ${s.count} 場`).join('、')}；
             分屬 {committeeGroups.length} 個委員會。
           </p>
-          <div className="wall-filter-row" role="group" aria-label="會議階段">
-            <span className="wall-filter-label">階段</span>
-            <div className="law-facets">
-              <button type="button" className="chip" aria-pressed={!stage} onClick={() => { setStage(''); setLimit(20); }}>
-                全部
+          {stage ? (
+            <p className="wall-bulk">
+              <button
+                type="button"
+                className="quiet"
+                onClick={() => {
+                  onStageChange('');
+                  setLimit(20);
+                }}
+              >
+                只看「{stages.find((s) => s.id === stage)?.label ?? stage}」，按這裡看全部階段
               </button>
-              {stages.map((s) => (
-                <button key={s.id} type="button" className="chip" aria-pressed={stage === s.id} onClick={() => { setStage(s.id); setLimit(20); }}>
-                  {s.label} <span className="muted">{s.count}</span>
-                </button>
-              ))}
-            </div>
-          </div>
+            </p>
+          ) : null}
           {agencies.length > 0 ? (
             <div className="wall-filter-row" role="group" aria-label="審查單位（主管機關）">
               <span className="wall-filter-label">審查單位</span>

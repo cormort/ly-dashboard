@@ -1680,3 +1680,63 @@ main:has(.fb-wall) { max-width: min(1840px, 96vw); }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* ---------- 預算審查流程（流程帶）：一列六關，年度只有這一組 ---------- */
+.process-panel .process-rail {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  list-style: none;
+  margin: var(--space-3) 0 var(--space-2);
+  padding: 0 0 6px;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+}
+.process-rail > li { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; scroll-snap-align: start; }
+.process-rail > li + li::before { content: '→'; color: var(--muted); font-size: var(--fs-sm); }
+.process-context { color: var(--muted); font-size: var(--fs-sm); max-width: 96px; line-height: 1.35; text-align: center; }
+.process-step {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-rows: auto auto;
+  gap: 2px 8px;
+  align-items: center;
+  min-width: 150px;
+  padding: 8px 12px;
+  text-align: left;
+  cursor: pointer;
+  background: var(--surface);
+  border: 1px solid var(--rule-soft);
+  border-radius: 12px;
+  color: var(--ink);
+  font: inherit;
+}
+.process-step:hover { border-color: #c7d2e0; }
+.process-step.is-active { border-color: var(--accent); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent); }
+.process-step.is-empty { opacity: 0.55; }
+.process-index {
+  grid-row: span 2;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+}
+.process-step.is-empty .process-index { background: #eef1f5; color: var(--muted); }
+.process-label { font-size: var(--fs-sm); font-weight: 600; white-space: nowrap; }
+.process-count { font-size: var(--fs-sm); color: var(--muted); }
+.process-step.is-active .process-count { color: var(--accent); }
+
+@media (max-width: 760px) {
+  .process-rail > li + li::before { content: '›'; }
+  /* 手機讓標籤折行，六關的總寬度才不會長到要滑很久（實測 1081 → 約 900px） */
+  .process-step { min-width: 112px; padding: 6px 9px; }
+  .process-label { white-space: normal; line-height: 1.25; }
+  /* 手機横向空間有限：兩端（行政院編製概算／總統公布）沒有會議紀錄，收起來，改寫在下方說明 */
+  /* 權重要贏過上面的 `.process-rail > li { display: flex }`，否則收不起來 */
+  .process-rail > li.process-context { display: none; }
+}

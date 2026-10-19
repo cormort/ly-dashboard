@@ -45,7 +45,7 @@ import { SyncStatusBanner } from '../src/components/SyncStatusBanner';
 import { RankingsPage, RankingBoardView } from '../src/pages/RankingsPage';
 import { TopicsPanel, tagTier } from '../src/components/TopicsPanel';
 import { ComparePage } from '../src/pages/ComparePage';
-import { BudgetPage, progressDateText, scopeAfterCategoryChange } from '../src/pages/BudgetPage';
+import { BUDGET_PROCESS_STEPS, BudgetPage, BudgetProcessRail, progressDateText, scopeAfterCategoryChange } from '../src/pages/BudgetPage';
 import { YearProgressList, budgetProgressBar, budgetProgressText, budgetRecordsText, hasReviewableItems, yearLabel } from '../src/components/BudgetProgress';
 import { syncProgressText, syncRunningText } from '../src/lib/format';
 import { DashboardPage } from '../src/pages/DashboardPage';
@@ -1250,6 +1250,71 @@ expectAll(
   ),
   ['各年度審議進度', '115 年度', '年度不明', '<b>15</b>', '/ 40 已審竣', '剩 25', '/ 8 已審竣'],
 );
+
+
+// ── 預算審查流程帶（2026-10-19）──
+const railStages = [
+  { id: 'committee', label: '委員會審查', count: 109 },
+  { id: 'joint', label: '聯席審查', count: 0 },
+  { id: 'hearing', label: '公聽會', count: 0 },
+  { id: 'negotiation', label: '黨團協商', count: 13 },
+  { id: 'resolution', label: '決議處理', count: 4 },
+  { id: 'plenary', label: '院會', count: 6 },
+];
+const railHtml = render(
+  createElement(BudgetProcessRail, {
+    years: [
+      { year: 116, count: 1 },
+      { year: 115, count: 132 },
+    ],
+    year: '115',
+    onYearChange: () => undefined,
+    stages: railStages,
+    total: 132,
+    apiYear: 115,
+    stage: 'negotiation',
+    onStageChange: () => undefined,
+  }),
+);
+check(
+  '預算審查流程：照立法院實際順序排（委員會→聯席→公聽→協商→院會→決議處理）',
+  (() => {
+    const labels = [...railHtml.matchAll(/class="process-label">([^<]+)</g)].map((m) => m[1]);
+    return labels.join('→') === '委員會分組審查→聯席審查→公聽會→黨團協商→院會二讀／三讀→決議處理';
+  })(),
+  [...railHtml.matchAll(/class="process-label">([^<]+)</g)].map((m) => m[1]).join('→'),
+);
+check(
+  '預算審查流程：畫面上的流程順序與後端階段清單脫鉤（後端把決議處理排在院會前面，畫面照實際流程排）',
+  BUDGET_PROCESS_STEPS.map((s) => s.id).join(',') === 'committee,joint,hearing,negotiation,plenary,resolution'
+    && railStages.map((s) => s.id).join(',') === 'committee,joint,hearing,negotiation,resolution,plenary',
+);
+expectAll('預算審查流程：有會議的關卡寫場次、沒有的照實寫「無」', railHtml, ['109 場', '13 場', '6 場', '4 場', '>無<']);
+check(
+  '預算審查流程：目前看的那一關標成選中（aria-pressed）',
+  /aria-pressed="true"[\s\S]{0,200}黨團協商/.test(railHtml),
+);
+expectAll('預算審查流程：年度 chips 在流程帶上（同一頁只有一組年度）', railHtml, ['全部年度', '115 年度 <span class="muted">132</span>']);
+expectAll('預算審查流程：標題寫出是哪一年度的幾場會議', railHtml, ['115 年度・132 場審查會議']);
+check(
+  '預算審查流程：沒選年度時明講「會議以最新年度計」（清單是全部年度，兩者不是同一件事）',
+  render(
+    createElement(BudgetProcessRail, {
+      years: [],
+      year: '',
+      onYearChange: () => undefined,
+      stages: railStages,
+      total: 132,
+      apiYear: 115,
+      stage: '',
+      onStageChange: () => undefined,
+    }),
+  ).includes('會議以最新年度計'),
+);
+expectAll('預算審查流程：兩端（行政院編製概算／總統公布）是沒有會議紀錄的流程標記', railHtml, [
+  '行政院編製概算、送立法院',
+  '總統公布',
+]);
 
 expectAll('預算頁：loading 態有類別、篩選與三個區塊骨架', render(createElement(BudgetPage, { refreshToken: 0, onOpenId: () => undefined, onNavigate: () => undefined })), [
   '預算審議',

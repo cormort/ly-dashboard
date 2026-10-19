@@ -779,7 +779,8 @@ export interface BudgetMeetingsResponse {
 export interface BudgetTimelineItem {
   id: number;
   date: string | null;
-  stage: 'committee' | 'joint' | 'hearing' | 'negotiation' | 'plenary';
+  /** 階段是從會議名稱判斷的；resolution＝通過後處理凍結案／附帶決議那一段 */
+  stage: 'committee' | 'joint' | 'hearing' | 'negotiation' | 'plenary' | 'resolution';
   stage_label: string;
   committee: string;
   joint: string | null;
