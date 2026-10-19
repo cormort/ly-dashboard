@@ -6,7 +6,7 @@ import { openDb, applyDataset, upsertBudgetCommittees, getBudgetCommittees, appl
 import { buildDataset, normalizeBills, normalizeCommitteeRecords, normalizeMeetings, normalizeSocial, normalizeCouncilSocial, sameSocialPage, sheetDate, newsName, rocDate, DataValidationError } from '../server/normalize.mjs';
 import { CONFIG } from '../server/config.mjs';
 import { entityFeedUrl, guardShrink, runIngest, runBillsIngest, runRecordsIngest, runBudgetIngest, runBudgetReportsIngest, runMeetingsIngest, budgetPageUrl, runNewsIngest, runOutletNews, runOutletPoll, retagOutletArticles, runNewsBackfill, backfillTargets, rangeFeedUrl, BACKFILL_CAP, runNewsFeedImport, runCouncilNews, runCouncilSocialIngest, runSocialIngest, runBudgetCommittees, runAll } from '../server/ingest.mjs';
-import { entityNewsTerms, listFunds, getHealth, listBills, listBudget, listBudgetMeetings, listBudgetReports, budgetState, budgetUnitState, mergeBudgetUnits, stripMergedCaseNote, listChanges, listCounties, listLegislatorVotes, listRankings, compareLegislators, listRegions, listSplitTicket, listDemographics, listPopulationTrend, getTownMap, listLegislators, listNews, listNewsArticles, newsCsv, listCouncilActivity, currentCouncilors, socialFreshness, listSyncRuns } from '../server/queries.mjs';
+import { entityNewsTerms, budgetIsTransmittal, listFunds, getHealth, listBills, listBudget, listBudgetMeetings, listBudgetReports, budgetState, budgetUnitState, mergeBudgetUnits, stripMergedCaseNote, listChanges, listCounties, listLegislatorVotes, listRankings, compareLegislators, listRegions, listSplitTicket, listDemographics, listPopulationTrend, getTownMap, listLegislators, listNews, listNewsArticles, newsCsv, listCouncilActivity, currentCouncilors, socialFreshness, listSyncRuns } from '../server/queries.mjs';
 import { FetchError } from '../server/fetch-ly.mjs';
 import { csvRowsToFeedItems, feedDate, feedFileUrl, mergeFeedFile, parseFeedFile } from '../server/news-feed.mjs';
 import { syncOnce, pollOutletsOnce, getInflightScope } from '../server/index.mjs';
@@ -2286,7 +2286,11 @@ test('預算統計範圍：預設只算預算案本身；含報告類要自己�
   // scope=others（「決議案與定期報告」那個檢視）：只列非總預算案，而且與 bills 加起來剛好等於 all
   const others = listBudget(db, { scope: 'others', merge: 'none', limit: 200, includeAttachments: true });
   assert.equal(others.scope, 'others');
-  assert.ok(others.items.every((b) => !['中央政府總預算案'].includes(b.category)), '決議案與定期報告不含總預算案本身');
+  // 「函送…請查照案」（專案報告、進度報告）算報告類，所以 others 會出現幾筆類別仍是中央政府總預算案的
+  assert.ok(
+    others.items.every((b) => !['中央政府總預算案'].includes(b.category) || budgetIsTransmittal(b.name)),
+    '決議案與定期報告不含總預算案本身（送來備查的查照案除外）',
+  );
   assert.ok(others.total > 0);
   assert.equal(others.total + billsWith.total, all.total, '兩個檢視互斥且相加等於全部');
   assert.equal(others.scope_totals.others, others.total);

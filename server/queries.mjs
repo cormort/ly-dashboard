@@ -2105,6 +2105,18 @@ export function budgetBillsByProgress(db) {
  * 預算審議：`category`、`q`（名稱或提案單位關鍵字）、`year`（預算年度）、`proposer`、`state`、分頁。
  * 統計依序在套用各自條件「之前」算（同 listBills 的 L8），選了某機關後機關清單不會只剩一個。
  */
+/**
+ * 這筆是不是「函送…請查照案」——只是送來備查的公文（專案報告、進度報告、審查日程表），
+ * 沒有進預算審查程序，所以不算預算審議進度（使用者 2026-10-19：「專案報告不是預算審議進度」）。
+ *
+ * 注意反例：`函送…委員會…審查報告，請併審查總報告討論案` 是**要討論**的審查流程，不是備查，
+ * 所以不能拿 `agencyReportPattern` 當判準（那條會連這些一起排掉）。
+ */
+export function budgetIsTransmittal(name, pattern = CONFIG.budget.transmittalPattern ? new RegExp(CONFIG.budget.transmittalPattern) : null) {
+  if (!pattern) return false;
+  return pattern.test(String(name ?? ''));
+}
+
 export function listBudget(
   db,
   { category = '', type = '', q = '', year = '', proposer = '', state = '', limit = 30, offset = 0, all = false, groupBy = '', perGroup = 5, scope: scopeArg = 'bills', merge = 'name', includeAttachments = false } = {},
@@ -2115,7 +2127,14 @@ export function listBudget(
   const billCats = new Set(CONFIG.budget.billCategories ?? []);
   // 算「預算案本身」的類別（只有中央政府總預算案）；其餘歸報告類，見 CONFIG.budget.scopeCategories
   const scopeCats = new Set(CONFIG.budget.scopeCategories ?? CONFIG.budget.billCategories ?? []);
-  const isBill = (r) => scopeCats.has(r.category);
+  // 「函送…請查照案」只是送來備查（專案報告、進度報告、審查日程表），不進審查程序 → 不算預算審議進度
+  const transmittalRe = CONFIG.budget.transmittalPattern ? new RegExp(CONFIG.budget.transmittalPattern) : null;
+  // 附件／更正（例如「…單位預算勘誤表」）本身也不是預算案，但它們**留在預算案範圍裡**（預設隱藏、可切回來、
+  // 會報筆數）。名稱同樣是「…請查照案」，所以「是不是查照案」要把附件排除在外，
+  // 否則勘誤表會變成報告類，連附件開關都看不到。
+  const attachmentRe = CONFIG.budget.attachmentPattern ? new RegExp(CONFIG.budget.attachmentPattern) : null;
+  const isAttachment = (r) => Boolean(attachmentRe && (attachmentRe.test(r.name) || attachmentRe.test(r.status ?? '')));
+  const isBill = (r) => scopeCats.has(r.category) && (isAttachment(r) || !budgetIsTransmittal(r.name, transmittalRe));
   const allRows = budgetBillsByProgress(db).map((r) => ({ ...r, types: budgetTypes(r.name, { billCategory: isBill(r) }) }));
   /**
    * 統計範圍：`bills`（預設）只算**預算案本身**，`all` 連決議案／定期報告一起算。
@@ -2132,10 +2151,8 @@ export function listBudget(
   // 一案一列（預設）：同一案名的多筆議案紀錄合成一列，見 mergeBudgetUnits
   const mergeUnits = merge === 'none' ? false : true;
   const allUnitsRaw = mergeUnits ? mergeBudgetUnits(allRows) : allRows;
-  // 附件／更正（例如「…單位預算勘誤表」）不是預算案本身，預設排除；`include_attachments=1` 可以看回來。
+  // 附件／更正的定義在最上面（要一起決定「算不算預算案」）；這裡只負責依 `include_attachments` 過濾。
   // 注意：要在「分範圍之前」就濾掉，否則開關上的件數（scope_totals）與類別件數會跟清單對不起來。
-  const attachmentRe = CONFIG.budget.attachmentPattern ? new RegExp(CONFIG.budget.attachmentPattern) : null;
-  const isAttachment = (r) => Boolean(attachmentRe && (attachmentRe.test(r.name) || attachmentRe.test(r.status ?? '')));
   const scopedRaw =
     scope === 'bills' ? allUnitsRaw.filter(isBill) : scope === 'others' ? allUnitsRaw.filter((r) => !isBill(r)) : allUnitsRaw;
   const scoped = includeAttachments ? scopedRaw : scopedRaw.filter((r) => !isAttachment(r));
