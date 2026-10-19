@@ -1038,6 +1038,8 @@ select { max-width: 100%; }
 .state-tag.done { color: var(--accent-ink); background: var(--accent-soft); }
 .state-tag.returned { color: var(--error); background: var(--error-bg); }
 .type-switch { flex-wrap: wrap; }
+/* 類型 chips 現在住在「審議項目」卡片裡（清單正上方）：跟卡片標題留一點距離、跟清單貼緊 */
+.panel > .type-switch { margin: 0 0 var(--space-3); }
 .type-tag { border: 1px solid var(--rule); border-radius: var(--radius-pill); padding: 0 8px; font-size: var(--fs-xs); color: var(--ink-2); }
 .type-tag.special { border-color: var(--accent-line); color: var(--accent-ink); }
 .partner-list .name-button[aria-pressed='true'] { color: var(--accent-ink); text-decoration-color: var(--accent); background: none; border: 0; }

@@ -1521,3 +1521,14 @@ cd ~/ly-dashboard && scripts/launchd/install.sh fb-daily
 
 **同步更新**：`scripts/launchd/com.hermes.ly-dashboard-fb-daily.plist`（樣板）、`docs/OPS.md`、`docs/SPEC.md`、
 `docs/DEPLOY-VM.md`、`docs/fb-daily-update.md`；新增測試一條（plist 三個時段、必須是 array、Linux timer 三個時段），後端 **426 條**全綠。
+
+## D309：預算類型 chips 搬進「審議項目」卡片（原本跟清單隔了一整個年度面板與審查歷程）
+
+使用者 2026-10-19：「點擊上面的全部類型、總預算、附屬單位預算、特別預算、增加預算跟審議項目的 card 距離有點遠。」
+
+原本 `.type-switch` 在最上面（類別磚下面），但它篩的是**下面的清單**；中間隔著「各年度審議進度」面板、
+「預算審查歷程」，1440px 下 chips 在 y≈300、清單在 y≈1600——點了之後變的是看不到的地方。
+
+改成把 chips 放在「審議項目」卡片裡、`h2` 與清單之間（`.panel > .type-switch { margin: 0 0 var(--space-3) }`），
+跟標題 17px、跟清單 12px。類型標籤照舊（「追加預算」是立法院的用語，不是「增加預算」）。
+後端 426 條、前端 236 項、`check:rwd` 21 組全綠。

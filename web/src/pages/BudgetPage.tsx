@@ -273,17 +273,6 @@ export function BudgetPage({ refreshToken, onOpenId, onNavigate }: BudgetPagePro
         ))}
       </div>
 
-      <div className="segmented type-switch" role="group" aria-label="預算類型">
-        <button type="button" aria-pressed={!filters.type} onClick={() => change({ type: '' })}>
-          全部類型
-        </button>
-        {(Object.keys(TYPE_LABEL) as BudgetType[]).map((t) => (
-          <button key={t} type="button" aria-pressed={filters.type === t} onClick={() => change({ type: t })}>
-            {TYPE_LABEL[t]} {data ? data.types[t].toLocaleString() : ''}
-          </button>
-        ))}
-      </div>
-
       <section className="panel year-panel" aria-label="各年度審議進度">
         <div className="sectionhead">
           <h2>各年度審議進度</h2>
@@ -429,6 +418,18 @@ export function BudgetPage({ refreshToken, onOpenId, onNavigate }: BudgetPagePro
                 </a>
               ) : null}
             </div>
+          </div>
+          {/* 預算類型 chips 放在清單正上方（原本在最上面、跟這張卡片隔了年度面板與審查歷程，
+              點了之後變的是看不到的地方 → 使用者 2026-10-19：「跟審議項目的 card 距離有點遠」） */}
+          <div className="segmented type-switch" role="group" aria-label="預算類型">
+            <button type="button" aria-pressed={!filters.type} onClick={() => change({ type: '' })}>
+              全部類型
+            </button>
+            {(Object.keys(TYPE_LABEL) as BudgetType[]).map((t) => (
+              <button key={t} type="button" aria-pressed={filters.type === t} onClick={() => change({ type: t })}>
+                {TYPE_LABEL[t]} {data ? data.types[t].toLocaleString() : ''}
+              </button>
+            ))}
           </div>
           {budget.phase === 'loading' && !data ? <LoadingState label="讀取預算審議…" /> : null}
           {budget.phase === 'error' ? <ErrorState title="無法取得預算資料（/api/v1/budget）" error={budget.error} onRetry={budget.reload} /> : null}
