@@ -82,7 +82,7 @@ export const AGENCY_REPORT_CATEGORY = '預(決) 算決議案、定期報告';
  * （使用者 2026-10-19：「115年度中央政府總預算案 要加顏色，以利辨識」）。
  * 只標「NNN 年度中央政府總預算案」；「…總預算案追加預算案」「…特別預算案」是另一本預算，不標。
  */
-export function budgetHitParts(text: string): { text: string; hit: boolean }[] {
+export function budgetHitParts(text: string, { minIndex = 0 }: { minIndex?: number } = {}): { text: string; hit: boolean }[] {
   const src = String(text ?? '');
   const re = /\d{2,3}\s*年度中央政府總預算案(?![追特])/g;
   const out: { text: string; hit: boolean }[] = [];
@@ -90,7 +90,8 @@ export function budgetHitParts(text: string): { text: string; hit: boolean }[] {
   for (const m of src.matchAll(re)) {
     const at = m.index ?? 0;
     if (at > last) out.push({ text: src.slice(last, at), hit: false });
-    out.push({ text: m[0], hit: true });
+    // minIndex：關鍵詞本來就在前面（一眼就看到）就不標，避免每一列都在發光
+    out.push({ text: m[0], hit: at >= minIndex });
     last = at + m[0].length;
   }
   if (last < src.length) out.push({ text: src.slice(last), hit: false });
@@ -157,7 +158,9 @@ function BudgetItemRow({
   return (
     <li>
       <a href={item.url} target="_blank" rel="noreferrer noopener" className="bill-title" title={item.name}>
-        {item.name}
+        {/* 清單只標「關鍵詞埋在第 20 字之後」的（實測 41 件裡 10 件）：開頭就看得到的再上色，
+            每一列都在發光反而沒有訊號（2026-10-19 使用者問「要不要清單也標」，決定採這個折衷） */}
+        {budgetHitParts(item.name, { minIndex: 20 }).map((part, i) => (part.hit ? <mark key={i} className="budget-hit">{part.text}</mark> : <Fragment key={i}>{part.text}</Fragment>))}
         <ExternalLink aria-hidden="true" />
       </a>
       <p className="bill-meta">

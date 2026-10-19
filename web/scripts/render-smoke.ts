@@ -1200,6 +1200,11 @@ check('統計範圍：網址自己指定 scope 時尊重它（all 仍然可用�
   check('關鍵詞上色：只標總預算案本身（追加預算不標）', parts.filter((p) => p.hit).map((p) => p.text).join('|') === '115年度中央政府總預算案');
   check('關鍵詞上色：切完的片段接回原文，一個字都不少', parts.map((p) => p.text).join('') === src);
   check('關鍵詞上色：沒有關鍵詞時原樣回傳', budgetHitParts('審查114年度中央政府總預算案有關教育部部分').filter((p) => p.hit).length === 1);
+  // 清單用 minIndex=20：前面就看得到的關鍵詞不標（否則每列都在發光），埋在後半的才標
+  const near = '「116年度中央政府總預算案（含附屬單位預算及綜計表－營業及非營業部分）」案。';
+  const buriedName = '函送經濟委員會115年度附屬單位預算審查報告，請併「中華民國115年度中央政府總預算案附屬單位預算營業及非營業部分審查總報告」討論案。';
+  check('清單上色：開頭就看得到的關鍵詞不標', budgetHitParts(near, { minIndex: 20 }).filter((p) => p.hit).length === 0);
+  check('清單上色：埋在第 20 字之後的關鍵詞要標', budgetHitParts(buriedName, { minIndex: 20 }).filter((p) => p.hit).length === 1);
 }
 check('統計範圍：使用者自己指定就不覆寫', scopeAfterCategoryChange({ currentScope: 'bills', isBillCategory: true, explicitScope: 'all' }) === 'all');
 
