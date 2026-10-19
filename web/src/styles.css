@@ -495,6 +495,19 @@ header nav, .subnav-row { position: relative; }
 /* ---------- 名錄 ---------- */
 /* 分段選單＝篩選，層級要比頁籤（.subnav）低：灰色軌道＋選取的那格浮成白色，字級 sm。
    原本是一排有框按鈕、選取的整格塗黑，比上面的頁籤還搶眼（2026-10-19 使用者回報） */
+/* 卡片內的底線分頁（篩選這張卡片的清單，例：機關／基金頁的來源）。層級：頁籤 > 卡片分頁 > 內容 */
+.card-tabs { display: flex; gap: 2px; overflow-x: auto; margin: 0 -20px var(--space-2); padding: 0 12px; border-bottom: 1px solid var(--rule); scrollbar-width: none; }
+.card-tabs button { flex: 0 0 auto; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; box-shadow: none; padding: 8px 8px 7px; font-size: var(--fs-md); color: var(--ink-2); white-space: nowrap; }
+.card-tabs button:hover:not(:disabled) { background: none; color: var(--ink); border-bottom-color: var(--rule); }
+.card-tabs button[aria-pressed='true'], .card-tabs button[aria-pressed='true']:hover:not(:disabled) { background: none; color: var(--accent-ink); border-bottom-color: var(--accent); font-weight: 600; }
+.card-tabs button[aria-pressed='true'] .muted { color: inherit; }
+.card-tabs .muted { font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
+.fund-picker { position: relative; display: inline-flex; align-items: center; margin-left: auto; }
+.fund-picker input { font: inherit; font-size: var(--fs-sm); width: 15em; padding: 6px 30px 6px 10px; border: 1px solid var(--rule); border-radius: var(--radius-md); background: var(--surface); }
+.fund-picker input:focus { outline: none; border-color: var(--accent-line); box-shadow: 0 0 0 3px var(--accent-soft); }
+.fund-picker .icon-button { position: absolute; right: 2px; padding: 4px; }
+.sectionhead h2 .muted { font-size: var(--fs-sm); font-weight: 400; margin-left: 4px; }
+@media (max-width: 760px) { .card-tabs { margin: 0 -16px var(--space-2); } .fund-picker { margin-left: 0; flex: 1 1 100%; } .fund-picker input { width: 100%; } }
 .segmented { display: inline-flex; gap: 2px; padding: 3px; background: var(--rule-soft); border: 1px solid var(--rule); border-radius: var(--radius-md); }
 .segmented button { border: 0; background: transparent; box-shadow: none; border-radius: var(--radius-sm); padding: 4px 10px; font-size: var(--fs-sm); color: var(--ink-2); }
 .segmented button:hover:not(:disabled) { background: rgb(255 255 255 / 0.6); color: var(--ink); }

@@ -2,9 +2,8 @@ import { useEffect, useState } from 'react';
 import { ExternalLink, X } from 'lucide-react';
 import { buildUrl } from '../api/client';
 import type { FundKind, FundsResponse, FundType } from '../api/types';
-import { ClearFiltersButton } from '../components/ClearFiltersButton';
 import { EmptyState, ErrorState, LoadingState } from '../components/DataStates';
-import { FacetChips } from '../components/FacetChips';
+import { InfoTip } from '../components/InfoTip';
 import { RouteLink } from '../components/RouteLink';
 import { useApi } from '../hooks/useApi';
 import { pathFor } from '../hooks/useRoute';
@@ -52,8 +51,14 @@ const COPY = {
 export function FundsPage({ type, refreshToken, onOpenId, onNavigate }: FundsPageProps) {
   const [filters, setFilters] = useState<Filters>(readFilters);
   const [page, setPage] = useState(0);
+  // 機關搜尋框裡正在打的字；完全符合某個名稱才變成篩選條件
+  const [draft, setDraft] = useState(filters.fund);
   useEffect(() => {
-    const onPop = () => setFilters(readFilters());
+    const onPop = () => {
+      const next = readFilters();
+      setFilters(next);
+      setDraft(next.fund);
+    };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
   }, []);
@@ -61,6 +66,7 @@ export function FundsPage({ type, refreshToken, onOpenId, onNavigate }: FundsPag
   const change = (patch: Partial<Filters>) => {
     const next = { ...filters, ...patch };
     setFilters(next);
+    setDraft(next.fund);
     setPage(0);
     window.history.replaceState(null, '', pathFor(COPY[type].route, { ...next }));
   };
@@ -78,39 +84,6 @@ export function FundsPage({ type, refreshToken, onOpenId, onNavigate }: FundsPag
     <>
       <h1 className="sr-only">{COPY[type].title}</h1>
 
-      {data ? (
-        <dl className="period-list" aria-label="各來源資料期間">
-          <dt>資料期間</dt>
-          {(Object.keys(KIND_LABEL) as FundKind[]).map((k) =>
-            data.periods[k] ? (
-              <dd key={k}>
-                <b>{KIND_LABEL[k]}</b> {slash(data.periods[k]!.from)}–{slash(data.periods[k]!.to)}
-              </dd>
-            ) : null,
-          )}
-        </dl>
-      ) : null}
-
-      <div className="filters" role="group" aria-label="篩選條件">
-        <div className="segmented" role="group" aria-label="來源">
-          <button type="button" aria-pressed={!filters.kind} onClick={() => change({ kind: '' })}>
-            全部 {data ? allCount.toLocaleString() : ''}
-          </button>
-          {(Object.keys(KIND_LABEL) as FundKind[]).map((k) => (
-            <button key={k} type="button" aria-pressed={filters.kind === k} onClick={() => change({ kind: k })}>
-              {KIND_LABEL[k]} {data ? data.kinds[k].toLocaleString() : ''}
-            </button>
-          ))}
-        </div>
-        {filters.fund ? (
-          <button type="button" aria-pressed="true" onClick={() => change({ fund: '' })} aria-label={`取消${COPY[type].title}條件：${filters.fund}`}>
-            {filters.fund}
-            <X aria-hidden="true" />
-          </button>
-        ) : null}
-        <ClearFiltersButton active={Boolean(filters.fund || filters.kind)} onClick={() => change({ fund: '', kind: '' })} />
-      </div>
-
       {type === 'agency' && filters.fund && onNavigate ? (
         <p className="muted cross-link">
           想看這個機關的整體摘要（近期會議、書面回覆、誰在關注、首長新聞）？
@@ -120,14 +93,60 @@ export function FundsPage({ type, refreshToken, onOpenId, onNavigate }: FundsPag
         </p>
       ) : null}
 
-      {data && !filters.fund ? (
-        <FacetChips items={data.funds} label={`最常出現的${COPY[type].title}`} onPick={(fund) => change({ fund })} />
-      ) : null}
-
+      {/* 篩選收進清單卡片（2026-10-19）：來源＝卡片頂端的底線分頁、機關＝可搜尋的下拉（原生 datalist）。
+          原本三條橫列（頁籤／來源／機關 chips）疊在一起，看不出哪個在篩這張清單 */}
       <section className="panel" aria-label="相關項目" id="fund-results">
         <div className="sectionhead">
-          <h2>相關項目</h2>
-          {data ? <span className="muted">{data.total.toLocaleString()} 件</span> : null}
+          <h2>
+            相關項目 {data ? <span className="muted">{data.total.toLocaleString()} 件</span> : null}
+          </h2>
+          {data ? (
+            <InfoTip label="各來源資料期間">
+              <b>資料期間</b>
+              {(Object.keys(KIND_LABEL) as FundKind[]).map((k) =>
+                data.periods[k] ? (
+                  <span key={k} className="info-line">
+                    {KIND_LABEL[k]}：{slash(data.periods[k]!.from)}–{slash(data.periods[k]!.to)}
+                  </span>
+                ) : null,
+              )}
+            </InfoTip>
+          ) : null}
+          <label className="fund-picker">
+            <span className="sr-only">{COPY[type].title}</span>
+            <input
+              list="fund-options"
+              value={draft}
+              placeholder={`全部${COPY[type].title}（輸入搜尋）`}
+              onChange={(event) => {
+                const value = event.target.value;
+                setDraft(value);
+                if (data?.funds.some((f) => f.name === value)) change({ fund: value });
+              }}
+            />
+            <datalist id="fund-options">
+              {(data?.funds ?? []).map((f) => (
+                <option key={f.name} value={f.name}>
+                  {f.count} 件
+                </option>
+              ))}
+            </datalist>
+            {filters.fund || draft ? (
+              <button type="button" className="icon-button" onClick={() => change({ fund: '' })} aria-label={`取消${COPY[type].title}條件：${filters.fund}`}>
+                <X aria-hidden="true" />
+              </button>
+            ) : null}
+          </label>
+        </div>
+        <div className="card-tabs" role="group" aria-label="來源">
+          <button type="button" aria-pressed={!filters.kind} onClick={() => change({ kind: '' })}>
+            全部 <span className="muted">{data ? allCount.toLocaleString() : ''}</span>
+          </button>
+          {(Object.keys(KIND_LABEL) as FundKind[]).map((k) => (
+            <button key={k} type="button" aria-pressed={filters.kind === k} onClick={() => change({ kind: k })}>
+              {KIND_LABEL[k]} <span className="muted">{data ? data.kinds[k].toLocaleString() : ''}</span>
+            </button>
+          ))}
         </div>
         {res.phase === 'loading' && !data ? <LoadingState label="讀取中…" /> : null}
         {res.phase === 'error' ? <ErrorState title={`無法取得${COPY[type].title}（/api/v1/funds）`} error={res.error} onRetry={res.reload} /> : null}
