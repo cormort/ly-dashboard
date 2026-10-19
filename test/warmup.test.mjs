@@ -41,10 +41,19 @@ test('預熱：單支失敗只記 log，其他照跑；每支之前都讓出事�
   assert.match(warnings[0], /boom.*壞了/);
 });
 
-test('預熱：清單涵蓋總覽頁（DashboardPage）打開時的每一支 API', () => {
-  const page = readFileSync(fileURLToPath(new URL('../web/src/pages/DashboardPage.tsx', import.meta.url)), 'utf8');
-  const paths = [...new Set([...page.matchAll(/buildUrl\('\/([^']+)'/g)].map((m) => m[1]))];
-  assert.ok(paths.length >= 10, `應該抓到總覽頁的 API（實際 ${paths}）`);
+test('預熱：清單涵蓋總覽頁與最近動態頁打開時的每一支 API', () => {
+  // 2026-10-19：各縣市委員動態從總覽搬到「最近動態 › 依縣市」（DashboardPage → HomePage + RegionCards），
+  // 所以這條要一起掃會用到的檔案，否則 /regions 會從檢查範圍消失、或像這次一樣讓門檻數字對不上。
+  const files = ['../web/src/pages/DashboardPage.tsx', '../web/src/pages/HomePage.tsx', '../web/src/components/RegionCards.tsx'];
+  const paths = [
+    ...new Set(
+      files.flatMap((f) =>
+        [...readFileSync(fileURLToPath(new URL(f, import.meta.url)), 'utf8').matchAll(/buildUrl\('\/([^']+)'/g)].map((m) => m[1]),
+      ),
+    ),
+  ];
+  assert.ok(paths.length >= 9, `應該抓到總覽頁與最近動態頁的 API（實際 ${paths}）`);
+  assert.ok(paths.includes('regions'), `縣市動態搬到 RegionCards 之後仍要抓得到 /regions（實際 ${paths}）`);
   const labels = new Set(WARMUP_QUERIES.map(([label]) => label.split(' ')[0]));
   assert.deepEqual(paths.filter((p) => !labels.has(p)), [], '總覽頁新增了 API 就要一起加進預熱清單');
 });
