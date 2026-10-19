@@ -84,15 +84,34 @@ export const AGENCY_REPORT_CATEGORY = '預(決) 算決議案、定期報告';
  */
 export function budgetHitParts(text: string, { minIndex = 0 }: { minIndex?: number } = {}): { text: string; hit: boolean }[] {
   const src = String(text ?? '');
-  const re = /\d{2,3}\s*年度中央政府總預算案(?![追特])/g;
+  const base = /\d{2,3}\s*年度中央政府總預算案(?![追特])/g;
   const out: { text: string; hit: boolean }[] = [];
   let last = 0;
-  for (const m of src.matchAll(re)) {
+  for (const m of src.matchAll(base)) {
     const at = m.index ?? 0;
     if (at > last) out.push({ text: src.slice(last, at), hit: false });
+    let end = at + m[0].length;
+    /**
+     * 關鍵詞後面常常直接接限定語：「…總預算案**附屬單位預算**（**非營業部分**）」、
+     * 「…總預算案（**含附屬單位預算及綜計表－營業及非營業部分**）」、「…總預算案**公務預算部分**」。
+     * 只標到「總預算案」為止的話，畫面上「附屬單位預算」看起來像另一件事（使用者 2026-10-19 要求一起標）。
+     */
+    const qualifier =
+      /^(?:（含附屬單位預算[^）]{0,40}）|\(含附屬單位預算[^)]{0,40}\)|附屬單位預算(?:及綜計表[－-]?[^，。；\n（(【]{0,24})?(?:營業及非營業部分|營業部分|非營業部分)?|公務預算部分|及綜計表[－-]?[^，。；\n（(【]{0,24})/.exec(
+        src.slice(end),
+      );
+    if (qualifier) end += qualifier[0].length;
+    /**
+     * 附屬單位預算後面常直接列出基金：「…非營業部分關於行政院主管：行政院國家發展基金、離島建設基金…」。
+     * 基金名稱也是「在審誰的預算」的答案，一起標（遇到括號註記／【就停）。
+     */
+    const tailMatch = /^(?:營業部分|非營業部分|關於[^：:]{0,20}主管)?[：:]?[^。；\n（(【]{1,120}/.exec(src.slice(end));
+    if (tailMatch && tailMatch[0].includes('基金') && /[：:]|關於/.test(tailMatch[0])) {
+      end += tailMatch[0].replace(/[\s、]+$/, '').length;
+    }
     // minIndex：關鍵詞本來就在前面（一眼就看到）就不標，避免每一列都在發光
-    out.push({ text: m[0], hit: at >= minIndex });
-    last = at + m[0].length;
+    out.push({ text: src.slice(at, end), hit: at >= minIndex });
+    last = end;
   }
   if (last < src.length) out.push({ text: src.slice(last), hit: false });
   return out;

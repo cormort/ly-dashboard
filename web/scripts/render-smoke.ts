@@ -1205,6 +1205,17 @@ check('統計範圍：網址自己指定 scope 時尊重它（all 仍然可用�
   const buriedName = '函送經濟委員會115年度附屬單位預算審查報告，請併「中華民國115年度中央政府總預算案附屬單位預算營業及非營業部分審查總報告」討論案。';
   check('清單上色：開頭就看得到的關鍵詞不標', budgetHitParts(near, { minIndex: 20 }).filter((p) => p.hit).length === 0);
   check('清單上色：埋在第 20 字之後的關鍵詞要標', budgetHitParts(buriedName, { minIndex: 20 }).filter((p) => p.hit).length === 1);
+  // 限定語與後面的基金清單也要一起上色（使用者 2026-10-19：「附屬單位預算也跟後面的基金也要上色」）
+  {
+    const fund = '一、審查113年度中央政府總預算案附屬單位預算非營業部分關於行政院主管：行政院國家發展基金、離島建設基金、花東地區永續發展基金。(詢答)';
+    const hits = budgetHitParts(fund).filter((p) => p.hit).map((p) => p.text);
+    check('上色：附屬單位預算＋後面的基金清單一起標', hits.length === 1 && hits[0].includes('附屬單位預算') && hits[0].includes('花東地區永續發展基金'));
+    check('上色：基金清單遇到括號註記就停（不要吃掉「(詢答)」）', !hits[0].includes('詢答'));
+    const part = '函送經濟委員會115年度附屬單位預算審查報告，請併「中華民國115年度中央政府總預算案附屬單位預算營業及非營業部分審查總報告」討論案。';
+    check('上色：營業及非營業部分算限定語', budgetHitParts(part).filter((p) => p.hit)[0].text.endsWith('附屬單位預算營業及非營業部分'));
+    const add = '「115年度中央政府總預算案追加預算案」案。';
+    check('上色：追加預算仍然不標', budgetHitParts(add).filter((p) => p.hit).length === 0);
+  }
 }
 check('統計範圍：使用者自己指定就不覆寫', scopeAfterCategoryChange({ currentScope: 'bills', isBillCategory: true, explicitScope: 'all' }) === 'all');
 
