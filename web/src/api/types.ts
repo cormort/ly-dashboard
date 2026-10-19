@@ -788,6 +788,8 @@ export interface BudgetTimelineItem {
   joint: string | null;
   name: string;
   agenda: string;
+  /** 認定依據：這場為什麼算在這一關的那一句（可能在議程第 3 點之後，畫面只截前兩行看不到） */
+  match?: string | null;
   speakers: { name: string; id: string | null }[];
   speaker_count: number;
   video_url: string | null;

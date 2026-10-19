@@ -2479,22 +2479,69 @@ export const BUDGET_REVIEW_STAGES = [
  *   ②同一場會議跨多天時會在句尾註記「（4月21日）」——那才是報告日（2026-04-17 那列也含這一句）。
  *   ③沒有註明日期的，以這場會議最早的一天為準（2024-11-01／11-05 兩天的第7次會議）。
  */
-export function reportsBudgetInPlenary({ date = null, content = '' } = {}, wanted, earliestDate = '') {
+export function reportsBudgetInPlenary(row, wanted, earliestDate = '') {
+  return budgetReportSentence(row, wanted, earliestDate) !== null;
+}
+
+/**
+ * 同一個判定的「那一句」。回傳字串＝認定依據，`null` ＝不算院會報告。
+ *
+ * 為什麼要回傳句子而不是 true／false：院會議程的前兩點常是別的事（2026-04-21 前兩點是印度移工決議、
+ * 施政方針報告），真正的「總預算編製經過」寫在**第 3 點**；畫面只截前兩行，使用者得 mouseover
+ * 整個議程才看得到「這場為什麼算報告那一關」（2026-10-19 反映）。
+ */
+export function budgetReportSentence({ date = null, content = '' } = {}, wanted, earliestDate = '') {
   const text = cjkNormalize(content);
-  for (const sentence of text.split(/[。；\n]/)) {
+  let cursor = 0;
+  for (const raw of text.split(/[。；\n]/)) {
+    const sentence = raw.trim();
+    // 這一句在原文的位置（split 會丟掉分隔字元，靠 cursor 逐段往前找）
+    const found = sentence ? text.indexOf(sentence, cursor) : -1;
+    if (found >= 0) cursor = found + sentence.length;
     if (!sentence.includes('編製經過') || !sentence.includes('中央政府總預算')) continue;
     if (/總預算案(追加|特別)預算/.test(sentence)) continue;
     const year = Number(/(\d{2,3})\s*年度\s*中央政府總預算案/.exec(sentence)?.[1]);
     if (year !== Number(wanted)) continue;
-    const at = text.indexOf('編製經過');
-    const stamp = /（(\d{1,2})月(\d{1,2})日）/.exec(text.slice(at, at + 120));
+    /**
+     * 日期註記要從「這一句的『編製經過』」往後找，但**不能只在句子裡找**：
+     * 議程常把註記寫在句號後面（`…併予報告）。（4月21日）`），切句後註記會落到下一段。
+     * 所以從原字串的這個位置往後看 160 字（會跨過句號），才抓得到那個註記。
+     */
+    const localAt = Math.max(0, sentence.indexOf('編製經過'));
+    const at = found >= 0 ? found + localAt : localAt;
+    const stamp = /（(\d{1,2})月(\d{1,2})日）/.exec(text.slice(at, at + 160));
+    /** 顯示用：切句後句子開頭常黏著上一點的日期註記（`（4月17日）三、…`），剝掉再回傳 */
+    const clean = sentence.trim().replace(/^（\d{1,2}月\d{1,2}日）/, '').trim();
     if (stamp) {
       const md = `${String(date ?? '').slice(5, 7)}-${String(date ?? '').slice(8, 10)}`;
-      return md === `${stamp[1].padStart(2, '0')}-${stamp[2].padStart(2, '0')}`;
+      return md === `${stamp[1].padStart(2, '0')}-${stamp[2].padStart(2, '0')}` ? clean : null;
     }
-    return String(date ?? '') === String(earliestDate ?? '');
+    return String(date ?? '') === String(earliestDate ?? '') ? clean : null;
   }
-  return false;
+  return null;
+}
+
+/**
+ * 委員會場次的「認定依據」：哪一句讓人判斷這場在審今年度的總預算。
+ * 優先挑跟那個階段動作有關的句子（審查／審查總報告／協商／二三讀…），找不到就挑第一句講到今年度總預算的。
+ */
+export function budgetEvidenceSentence(content, wanted, stage = 'committee') {
+  const text = cjkNormalize(content ?? '');
+  const yearTag = new RegExp(`${Number(wanted)}\s*年度`);
+  const hits = text
+    .split(/[。；\n]/)
+    .map((s) => s.trim().replace(/^（\d{1,2}月\d{1,2}日）/, '').trim())
+    .filter((s) => s.length >= 8 && s.includes('中央政府總預算') && yearTag.test(s))
+    /**
+     * 「編製經過」那句是**院會報告那一關**的依據，不是別的場次的依據。
+     * 不排除它的話，同一場會議跨多天時，報告日以外的那一天（例 2026-04-17）也會拿報告那句當依據，
+     * 看起來像「那天也在報告」（實際上是「（4月21日）」那天）。
+     */
+    .filter((s) => stage === 'report' || !s.includes('編製經過'));
+  if (!hits.length) return null;
+  const PREFER = { summary: /審查總報告/, negotiation: /協商/, plenary: /二讀|三讀|決議/, joint: /聯席|審查/, hearing: /公聽會/, committee: /審查/ };
+  const prefer = PREFER[stage];
+  return (prefer ? hits.find((s) => prefer.test(s)) : null) ?? hits[0];
 }
 
 export function budgetReviewStage({ committee = '', name = '', content = '' } = {}, wanted = null) {
@@ -2692,6 +2739,8 @@ export function listBudgetTimeline(db, { year = '' } = {}) {
         joint: row.joint,
         name: row.name,
         agenda: row.content,
+        // 認定依據：這場為什麼算在這一關的那一句（畫面不必 mouseover 整個議程才看得到）
+        match: budgetEvidenceSentence(row.content, wanted, stage),
         speakers: list,
         speaker_count: new Set(list.map((x) => x.id).filter(Boolean)).size || list.length,
         video_url: videoOf(row),
@@ -2725,10 +2774,10 @@ export function listBudgetTimeline(db, { year = '' } = {}) {
     const prev = earliestByName.get(row.name);
     if (!prev || String(row.date ?? '') < prev) earliestByName.set(row.name, String(row.date ?? ''));
   }
-  const isReportRow = (row) => reportsBudgetInPlenary({ date: row.date, content: row.text }, wanted, earliestByName.get(row.name) ?? '');
   for (const row of plenaryRows) {
     // 「列席報告…總預算案…編製經過並備質詢」＝院會報告那一關，其餘院會場次（二三讀、決議動議）算院會
-    const stage = isReportRow(row) ? 'report' : 'plenary';
+    const reportSentence = budgetReportSentence({ date: row.date, content: row.text }, wanted, earliestByName.get(row.name) ?? '');
+    const stage = reportSentence ? 'report' : 'plenary';
     stageCount.set(stage, (stageCount.get(stage) ?? 0) + 1);
     committeeCount.set('院會', (committeeCount.get('院會') ?? 0) + 1);
     items.push({
@@ -2740,6 +2789,8 @@ export function listBudgetTimeline(db, { year = '' } = {}) {
       joint: null,
       name: row.name,
       agenda: String(row.content ?? '').replace(/\r\n?/g, '\n'),
+      // 院會報告那一關的依據就是「編製經過」那句；其餘院會場次挑講到今年度總預算的句子
+      match: reportSentence ?? budgetEvidenceSentence(row.content, wanted, 'plenary'),
       speakers: [],
       speaker_count: 0,
       video_url: null,

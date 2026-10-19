@@ -4,7 +4,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { budgetReviewStage, budgetReviewUnits, budgetYearsOf, reportsBudgetInPlenary } from '../server/queries.mjs';
+import { budgetReportSentence, budgetEvidenceSentence, budgetReviewStage, budgetReviewUnits, budgetYearsOf, reportsBudgetInPlenary } from '../server/queries.mjs';
 
 test('預算審查階段：協商／聯席／公聽會／院會／委員會', () => {
   assert.equal(budgetReviewStage({ committee: '朝野黨團協商', name: '立法院黨團協商' }), 'negotiation');
@@ -199,4 +199,34 @@ test('審查單位：基金名稱去掉編號與「有關／年度」這類開�
   });
   assert.deepEqual(units.agencies, ['財政部']);
   assert.deepEqual(units.funds, ['中央政府債務基金', '學產基金']);
+});
+
+test('認定依據：挑出「為什麼算這一關」的那一句（畫面不必 mouseover 整個議程）', () => {
+  // 2026-04-21 院會：預算報告寫在第三點，前兩點是別的事（使用者 2026-10-19 反映要 hover 才看得到）
+  const text =
+    '一、討論事項：本院國民黨黨團，建請院會作成決議：「針對開放印度移工來台…」是否有當？請公決案等4案。（4月17日）' +
+    '二、對行政院院長提出施政方針及施政報告繼續質詢。（4月17日）' +
+    '三、行政院院長、主計長、財政部部長列席報告「115年度中央政府總預算案」編製經過並備質詢（含志願役軍人加薪及警消人員退休金等預算編製處理情形併予報告）。（4月21日）';
+  const sentence = budgetReportSentence({ date: '2026-04-21', content: text }, 115, '2026-04-17');
+  assert.ok(sentence && sentence.includes('編製經過'), '要挑到「編製經過」那一句');
+  assert.ok(sentence.startsWith('三、'), '而且要是第三點那一句，不是前面兩點');
+  assert.equal(budgetReportSentence({ date: '2026-04-17', content: text }, 115, '2026-04-17'), null, '不是報告日就沒有依據');
+
+  // 委員會：優先挑含「審查」的那一句，而不是前面邀請報告那一句
+  const committeeText =
+    '一、邀請財政部部長就「馬鈴薯輸入之邊境管制」進行專題報告，並備質詢。二、審查中華民國115年度中央政府總預算案有關主計總處暨審計部部分。';
+  assert.ok(budgetEvidenceSentence(committeeText, 115, 'committee').startsWith('二、審查'));
+  assert.equal(budgetEvidenceSentence('邀請國家通訊傳播委員會列席報告業務概況，並備質詢。', 115, 'committee'), null, '沒講到總預算就沒有依據');
+});
+
+test('認定依據：報告那一句不會被別的場次借去當依據', () => {
+  // 2026-04-17 是同一場會議的前一天（那天在質詢別的案子），議程裡雖然有「（4月21日）…編製經過」那句，
+  // 也不能拿它當「04-17 這場算院會」的依據（使用者 2026-10-19 看到 04/17 那列出現報告那句）。
+  const text =
+    '一、討論事項：本院台灣民眾黨黨團，針對「115年度中央政府總預算案」院會所作之決定提出復議。是否有當？請公決案。（4月17日）' +
+    '二、對行政院院長提出施政方針及施政報告繼續質詢。（4月17日）' +
+    '三、行政院院長、主計長、財政部部長列席報告「115年度中央政府總預算案」編製經過並備質詢。（4月21日）';
+  const evidence = budgetEvidenceSentence(text, 115, 'plenary');
+  assert.ok(evidence && !evidence.includes('編製經過'), '不能拿報告那句當別場次的依據');
+  assert.ok(evidence.includes('115年度中央政府總預算'), '還是要挑到講今年度總預算的那一句');
 });

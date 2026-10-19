@@ -785,6 +785,15 @@ export function BudgetTimeline({
         {m.qa_only ? <span className="unit-badge unit-qa">僅詢答</span> : null}
       </div>
       {m.stage === 'plenary' && m.name ? <p className="muted timeline-sub">{m.name}</p> : null}
+      {/* 認定依據：預算常寫在議程第 3 點之後（2026-04-21 前兩點是印度移工決議、施政方針），
+          清單只截前兩行 → 使用者得 mouseover 整個議程才知道「這場為什麼算這一關」。
+          那一句在可見的前段時就不重複顯示。 */}
+      {m.match && (m.agenda ?? '').indexOf(m.match) > 40 ? (
+        <p className="timeline-match" title={m.agenda}>
+          <span className="timeline-match-label">認定依據</span>
+          …{m.match}…
+        </p>
+      ) : null}
       <p className="clamp-2" title={m.agenda}>
         {m.agenda}
       </p>

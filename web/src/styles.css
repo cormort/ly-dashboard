@@ -1038,6 +1038,25 @@ select { max-width: 100%; }
 .state-tag.done { color: var(--accent-ink); background: var(--accent-soft); }
 .state-tag.returned { color: var(--error); background: var(--error-bg); }
 .type-switch { flex-wrap: wrap; }
+/* 「認定依據」那句話：從整段議程挑出來的關鍵句，用左邊細線跟正文區隔，不要搶過標題 */
+.timeline-match {
+  margin: var(--space-1) 0 0;
+  padding: 2px 0 2px var(--space-2);
+  border-left: 3px solid var(--accent-line);
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+  color: var(--ink);
+}
+.timeline-match-label {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+}
 /* 類型 chips 現在住在「審議項目」卡片裡（清單正上方）：跟卡片標題留一點距離、跟清單貼緊 */
 .panel > .type-switch { margin: 0 0 var(--space-3); }
 .type-tag { border: 1px solid var(--rule); border-radius: var(--radius-pill); padding: 0 8px; font-size: var(--fs-xs); color: var(--ink-2); }
