@@ -1985,8 +1985,24 @@ export const budgetUnitState = (states) => {
 /** 進度排序（取代表紀錄用）：越前面越「有進展」 */
 const BUDGET_STATE_RANK = { reviewed: 4, in_review: 3, pending: 2, letter: 1, returned: 0 };
 
-/** 一案一列的鍵：類別＋提案單位＋名稱（見 mergeBudgetUnits 的說明；`merged_total` 也要用同一個鍵） */
-const budgetUnitKey = (r) => `${r.category}\u0000${r.proposer ?? ''}\u0000${r.name}`;
+/**
+ * 立法院的案由會把「併案」寫在後面：`「…（含附屬單位預算及綜計表－營業及非營業部分）」案。(「…－營業」案。)`
+ * ——營業、非營業各一筆，加上主案本身，同一件預算案在來源資料就是 3 個議案編號
+ * （116 年度就是 301110233820000／001／002）。
+ * 這些尾註不是不同的案子，比對「一案一列」時要剝掉，否則同一案會變三列（使用者 2026-10-19：「看起來重複」）。
+ * 只剝「整個括號就是『「…」案。』」這種尾註，案由中間的括號不動。
+ */
+export const stripMergedCaseNote = (name) => {
+  let out = String(name ?? '');
+  for (;;) {
+    const next = out.replace(/\s*[(（]\s*「[^」]+」案。?\s*[)）]\s*$/, '');
+    if (next === out) return out.trim();
+    out = next;
+  }
+};
+
+/** 一案一列的鍵：類別＋提案單位＋名稱（剝掉併案尾註；見 mergeBudgetUnits 的說明；`merged_total` 也要用同一個鍵） */
+const budgetUnitKey = (r) => `${r.category}\u0000${r.proposer ?? ''}\u0000${stripMergedCaseNote(r.name)}`;
 
 /**
  * 一案一列：依（類別＋提案單位＋名稱）合併議案紀錄。
@@ -2014,6 +2030,8 @@ export const mergeBudgetUnits = (list) => {
     if (!hit.ids) hit.ids = [hit.id];
     hit.ids.push(r.id);
     if (String(r.latest_date ?? '') > String(hit.latest_date ?? '')) hit.latest_date = r.latest_date;
+    // 顯示用最短的那個案由（＝主案，沒有併案尾註），列上才不會帶著「(「…」案。)」的尾巴
+    if (String(r.name ?? '').length < String(hit.name ?? '').length) hit.name = r.name;
     const better =
       BUDGET_STATE_RANK[state] > BUDGET_STATE_RANK[hit.state] ||
       (BUDGET_STATE_RANK[state] === BUDGET_STATE_RANK[hit.state] && String(r.id) > String(hit.id));

@@ -6,7 +6,7 @@ import { openDb, applyDataset, upsertBudgetCommittees, getBudgetCommittees, appl
 import { buildDataset, normalizeBills, normalizeCommitteeRecords, normalizeMeetings, normalizeSocial, normalizeCouncilSocial, sameSocialPage, sheetDate, newsName, rocDate, DataValidationError } from '../server/normalize.mjs';
 import { CONFIG } from '../server/config.mjs';
 import { entityFeedUrl, guardShrink, runIngest, runBillsIngest, runRecordsIngest, runBudgetIngest, runBudgetReportsIngest, runMeetingsIngest, budgetPageUrl, runNewsIngest, runOutletNews, runOutletPoll, retagOutletArticles, runNewsBackfill, backfillTargets, rangeFeedUrl, BACKFILL_CAP, runNewsFeedImport, runCouncilNews, runCouncilSocialIngest, runSocialIngest, runBudgetCommittees, runAll } from '../server/ingest.mjs';
-import { entityNewsTerms, listFunds, getHealth, listBills, listBudget, listBudgetMeetings, listBudgetReports, budgetState, budgetUnitState, mergeBudgetUnits, listChanges, listCounties, listLegislatorVotes, listRankings, compareLegislators, listRegions, listSplitTicket, listDemographics, listPopulationTrend, getTownMap, listLegislators, listNews, listNewsArticles, newsCsv, listCouncilActivity, currentCouncilors, socialFreshness, listSyncRuns } from '../server/queries.mjs';
+import { entityNewsTerms, listFunds, getHealth, listBills, listBudget, listBudgetMeetings, listBudgetReports, budgetState, budgetUnitState, mergeBudgetUnits, stripMergedCaseNote, listChanges, listCounties, listLegislatorVotes, listRankings, compareLegislators, listRegions, listSplitTicket, listDemographics, listPopulationTrend, getTownMap, listLegislators, listNews, listNewsArticles, newsCsv, listCouncilActivity, currentCouncilors, socialFreshness, listSyncRuns } from '../server/queries.mjs';
 import { FetchError } from '../server/fetch-ly.mjs';
 import { csvRowsToFeedItems, feedDate, feedFileUrl, mergeFeedFile, parseFeedFile } from '../server/news-feed.mjs';
 import { syncOnce, pollOutletsOnce, getInflightScope } from '../server/index.mjs';
@@ -2335,6 +2335,23 @@ test('一案一列：不同機關的同名定期報告不可以併成一列', ()
   const same = mergeBudgetUnits([mk('m1', '行政院主計總處', '交付查照', '2026-06-23'), mk('m4', '行政院主計總處')]);
   assert.equal(same.length, 1);
   assert.equal(same[0].records, 2);
+});
+
+test('一案一列：併案尾註（(「…」案。)）不算不同的案子', async () => {
+  // 實例：116 年度總預算案在來源資料是 3 個議案編號，案由只差尾註「營業」「非營業」
+  const base = '「116年度中央政府總預算案（含附屬單位預算及綜計表－營業及非營業部分）」案。';
+  const rows = [
+    { id: 'b0', category: '中央政府總預算案', name: base, proposer: '行政院', status: '排入院會', fiscal_year: 116, session: 6, latest_date: '2026-10-13', url: 'u0', types: [] },
+    { id: 'b1', category: '中央政府總預算案', name: `${base}(「116年度中央政府總預算案（含附屬單位預算及綜計表－營業）」案。)`, proposer: '行政院', status: '排入院會', fiscal_year: 116, session: 6, latest_date: '2026-10-13', url: 'u1', types: [] },
+    { id: 'b2', category: '中央政府總預算案', name: `${base}(「116年度中央政府總預算案（含附屬單位預算及綜計表－非營業）」案。)`, proposer: '行政院', status: '排入院會', fiscal_year: 116, session: 6, latest_date: '2026-10-13', url: 'u2', types: [] },
+  ];
+  const merged = mergeBudgetUnits(rows);
+  assert.equal(merged.length, 1, '同一案的營業／非營業併案要併成一列');
+  assert.equal(merged[0].records, 3);
+  assert.equal(merged[0].name, base, '列上顯示主案（沒有尾註的那個案由）');
+  assert.equal(stripMergedCaseNote(`${base}(「X」案。)`), base);
+  assert.equal(stripMergedCaseNote('「115年度中央政府總預算案」案。'), '「115年度中央政府總預算案」案。', '沒有尾註的案由不動');
+  assert.equal(stripMergedCaseNote('函送「116年度中央政府總預算案農業部暨所屬單位預算勘誤表」，請查照案。'), '函送「116年度中央政府總預算案農業部暨所屬單位預算勘誤表」，請查照案。', '案由中間的括號／引號不動');
 });
 
 test('一案一列：查詢預設合併，merge=none 才逐筆列', async () => {

@@ -297,6 +297,7 @@ Query 參數（全部可選）：
 - `years[].progress`：每個年度一份同樣的統計（`years[].name` 為 `unknown` 表示上游沒給年度）
 - `year=unknown`：只查沒有年度的案子
 - `merge`／`merged_total`／`records_total`：目前模式、目前篩選下合併後件數、逐筆件數
+- `merge=name`（預設）合併時，案由尾端的併案註記 `(「…」案。)` 會先剝掉再比對（營業／非營業分案不算不同案子），列的 `name` 取主案（最短）案由。
 - `scope`：`bills`（預設，只算**中央政府總預算案**）／`others`（決議案、定期報告、法人預決算、行政命令等——**法定預算之後的追蹤事項**）／`all`（兩邊一起）。
   `bills` 與 `others` 互斥且相加等於 `all`。
 - `scope_totals`：`{ bills, others, all }`，是目前篩選下各幾件（依 `merge` 決定是單位或紀錄），給「中央政府總預算案／決議案與定期報告」開關；
