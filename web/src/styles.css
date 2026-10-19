@@ -1028,7 +1028,9 @@ select { max-width: 100%; }
 .matrix td.heat { background: color-mix(in srgb, var(--party) calc(var(--share) * 45%), transparent); }
 
 /* ---------- 預算審議 ---------- */
-.category-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--space-3); }
+/* 8 格（全部＋預算四類＋法人預算／決議書面報告／行政命令）：150px 最小寬在 1200px 版面只排得下 7 格，
+   最後一格會孤零零掉到第二列；130px 剛好 8 格一行，窄螢幕自動變 4＋4。 */
+.category-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: var(--space-3); }
 .category-tiles .stat-tile { display: grid; justify-items: start; gap: 2px; text-align: left; padding: 14px 16px; }
 .category-tiles .stat-tile[aria-pressed='true'] { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent-ink); }
 .category-tiles .stat-tile[aria-pressed='true'] .stat-label { color: var(--accent-ink); }

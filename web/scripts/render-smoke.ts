@@ -45,7 +45,7 @@ import { SyncStatusBanner } from '../src/components/SyncStatusBanner';
 import { RankingsPage, RankingBoardView } from '../src/pages/RankingsPage';
 import { TopicsPanel, tagTier } from '../src/components/TopicsPanel';
 import { ComparePage } from '../src/pages/ComparePage';
-import { BUDGET_COMMITTEE_ORDER, BUDGET_PROCESS_STEPS, BudgetPage, BudgetProcessRail, BudgetTimeline, TYPE_LABEL, budgetCommitteeRank, budgetHitParts, foldsProgress, progressDateText, scopeAfterCategoryChange } from '../src/pages/BudgetPage';
+import { BUDGET_COMMITTEE_ORDER, BUDGET_PROCESS_STEPS, BudgetPage, BudgetProcessRail, BudgetTimeline, TYPE_LABEL, budgetCommitteeRank, budgetHitParts, budgetTiles, foldsProgress, progressDateText, scopeAfterCategoryChange } from '../src/pages/BudgetPage';
 import { YearProgressList, budgetProgressBar, budgetProgressText, budgetRecordsText, hasReviewableItems, yearLabel } from '../src/components/BudgetProgress';
 import { syncProgressText, syncRunningText } from '../src/lib/format';
 import { DashboardPage } from '../src/pages/DashboardPage';
@@ -1198,6 +1198,21 @@ check('審議進度收合：按了「還是要看」就不收', foldsProgress({ 
 check('審議進度收合：中央政府總預算案永遠不收', foldsProgress({ scope: 'bills', showAnyway: false }) === false);
 
 // 類型四大類（使用者 2026-10-19）：總預算（單位預算）／總預算附屬單位預算（含信託基金）／總預算追加預算／特別預算
+// 類別磚：「總預算案」要拆成四格，不再是一格（使用者 2026-10-19：「我是指在全部旁邊的總預算案」）
+{
+  const cats = [
+    { name: '中央政府總預算案', count: 41 },
+    { name: '預(決) 算決議案、定期報告', count: 11667 },
+    { name: '行政命令(層級)', count: 483 },
+  ];
+  const types = { general: 11, subsidiary: 15, supplementary: 5, special: 4, all: 41 };
+  const bills = budgetTiles({ scope: 'bills', categories: cats, types, allCount: 41 });
+  check('類別磚：全部旁邊是四類預算，不是單一「總預算案」', bills.map((t) => t.label).slice(0, 5).join('|') === '全部|總預算（單位預算）|總預算附屬單位預算（含信託基金）|總預算追加預算|特別預算');
+  check('類別磚：原本的「總預算案」那一格不再出現', !bills.some((t) => t.label === '總預算案' || t.label === '中央政府總預算案'));
+  check('類別磚：四類各自帶類型條件與件數', bills[1].category === '中央政府總預算案' && bills[1].type === 'general' && bills[1].count === 11 && bills[2].type === 'subsidiary' && bills[2].count === 15);
+  check('類別磚：決議案與定期報告檢視不放預算四類', budgetTiles({ scope: 'others', categories: cats, types, allCount: 41 }).every((t) => t.type === ''));
+}
+
 check(
   '類型：四大類名稱與順序',
   JSON.stringify(Object.values(TYPE_LABEL)) === JSON.stringify(['總預算（單位預算）', '總預算附屬單位預算（含信託基金）', '總預算追加預算', '特別預算']),

@@ -129,6 +129,39 @@ export function budgetHitParts(text: string, { minIndex = 0 }: { minIndex?: numb
   return out;
 }
 
+export interface BudgetTile {
+  key: string;
+  label: string;
+  count: number;
+  category: string;
+  type: string;
+}
+
+/**
+ * 最上面那一排類別磚（純函式，給 render-smoke 測）。
+ *
+ * 「總預算案」不再單獨一格，拆成 總預算（單位預算）／總預算附屬單位預算（含信託基金）／總預算追加預算／特別預算；
+ * 決議案與定期報告那個檢視沒有預算類型，四格就不放。
+ */
+export function budgetTiles({
+  scope,
+  categories,
+  types,
+  allCount,
+}: {
+  scope: string;
+  categories: { name: string; count: number }[];
+  types: Record<string, number> | undefined;
+  allCount: number;
+}): BudgetTile[] {
+  const head: BudgetTile[] = [{ key: ALL, label: '全部', count: allCount, category: ALL, type: '' }];
+  const typeTiles: BudgetTile[] =
+    scope === 'others'
+      ? []
+      : BUDGET_TILE_TYPES.map((t) => ({ key: `type:${t}`, label: TYPE_LABEL[t], count: types?.[t] ?? 0, category: BILL_CATEGORY, type: t }));
+  return [...head, ...typeTiles, ...categories.filter((c) => c.name !== BILL_CATEGORY).map((c) => ({ key: c.name, label: CATEGORY_LABEL[c.name] ?? c.name, count: c.count, category: c.name, type: '' }))];
+}
+
 /**
  * 切到「決議案與定期報告」時，要不要把「各年度審議進度」那一疊收合？
  *
@@ -145,6 +178,11 @@ export function foldsProgress({ scope, showAnyway }: { scope: string; showAnyway
  * 預設再壓一個「中央政府總預算案」會讓另一邊永遠 0（2026-10-19 使用者回報「全部檢視 11710」後修正）。
  * 範圍由 scope 決定，類別 chips 只在該範圍內再細分。
  */
+/** 類別磚裡「總預算案」那一格被拆成四類，所以這個類別名不會單獨出現在磚上 */
+const BILL_CATEGORY = '中央政府總預算案';
+/** 類別磚的預算四類（與 chips 同一組、同一順序） */
+const BUDGET_TILE_TYPES: BudgetType[] = ['general', 'subsidiary', 'supplementary', 'special'];
+
 const DEFAULT_CATEGORY = 'all';
 const ALL = 'all';
 const PAGE = 30;
@@ -289,7 +327,9 @@ export function BudgetPage({ refreshToken, onOpenId, onNavigate }: BudgetPagePro
   // 年度分兩組（見下方下拉與 YearProgressList 的說明）
   const reviewableYears = (data?.years ?? []).filter((y) => hasReviewableItems(y.progress));
   const letterOnlyYears = (data?.years ?? []).filter((y) => !hasReviewableItems(y.progress));
-  const allCount = data?.categories.reduce((sum, c) => sum + c.count, 0) ?? 0;
+  // 「全部」那格要等於「點下去會看到幾件」＝目前統計範圍的總件數（categories 各類加總會把另一邊也算進來，
+  // 站在「中央政府總預算案」時會變成 11,708 這種跟清單 41 對不起來的數字）
+  const allCount = data?.scope_totals?.[filters.scope as 'bills' | 'others' | 'all'] ?? data?.categories.reduce((sum, c) => sum + c.count, 0) ?? 0;
 
   // 類別清單（含 is_bills：那一類是不是「議案本身」）。change 放在這裡才看得到 data。
   const categories = data?.categories ?? [];
@@ -334,11 +374,20 @@ export function BudgetPage({ refreshToken, onOpenId, onNavigate }: BudgetPagePro
     <>
       <h1 className="sr-only">預算審議</h1>
 
+      {/* 類別磚：「總預算案」不再是一格，而是拆成 總預算（單位預算）／總預算附屬單位預算（含信託基金）／
+          總預算追加預算／特別預算（使用者 2026-10-19：「我是指在全部旁邊的總預算案」）。
+          決議案與定期報告那個檢視沒有預算類型，就不放這四格。 */}
       <div className="category-tiles" role="group" aria-label="預算類別">
-        {[{ name: ALL, count: allCount }, ...(data?.categories ?? [])].map((c) => (
-          <button key={c.name} type="button" className="stat-tile" aria-pressed={filters.category === c.name} onClick={() => change({ category: c.name })}>
-            <b className="stat-value">{c.count.toLocaleString()}</b>
-            <span className="stat-label">{c.name === ALL ? '全部' : CATEGORY_LABEL[c.name] ?? c.name}</span>
+        {budgetTiles({ scope: filters.scope, categories: data?.categories ?? [], types: data?.types, allCount }).map((t) => (
+          <button
+            key={t.key}
+            type="button"
+            className="stat-tile"
+            aria-pressed={filters.category === t.category && filters.type === t.type}
+            onClick={() => change({ category: t.category, type: t.type })}
+          >
+            <b className="stat-value">{t.count.toLocaleString()}</b>
+            <span className="stat-label">{t.label}</span>
           </button>
         ))}
       </div>
