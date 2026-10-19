@@ -45,7 +45,7 @@ import { SyncStatusBanner } from '../src/components/SyncStatusBanner';
 import { RankingsPage, RankingBoardView } from '../src/pages/RankingsPage';
 import { TopicsPanel, tagTier } from '../src/components/TopicsPanel';
 import { ComparePage } from '../src/pages/ComparePage';
-import { BUDGET_COMMITTEE_ORDER, BUDGET_PROCESS_STEPS, BudgetPage, BudgetProcessRail, BudgetTimeline, budgetCommitteeRank, budgetHitParts, progressDateText, scopeAfterCategoryChange } from '../src/pages/BudgetPage';
+import { BUDGET_COMMITTEE_ORDER, BUDGET_PROCESS_STEPS, BudgetPage, BudgetProcessRail, BudgetTimeline, budgetCommitteeRank, budgetHitParts, foldsProgress, progressDateText, scopeAfterCategoryChange } from '../src/pages/BudgetPage';
 import { YearProgressList, budgetProgressBar, budgetProgressText, budgetRecordsText, hasReviewableItems, yearLabel } from '../src/components/BudgetProgress';
 import { syncProgressText, syncRunningText } from '../src/lib/format';
 import { DashboardPage } from '../src/pages/DashboardPage';
@@ -1192,6 +1192,10 @@ check('議案紀錄彙總：只有一筆時不要多餘的說明', budgetRecords
 check('統計範圍：點到決議案／定期報告類別 → 切到「決議案與定期報告」', scopeAfterCategoryChange({ currentScope: 'bills', isBillCategory: false }) === 'others');
 check('統計範圍：點回總預算案類別 → 切回預設', scopeAfterCategoryChange({ currentScope: 'others', isBillCategory: true }) === 'bills');
 check('統計範圍：網址自己指定 scope 時尊重它（all 仍然可用）', scopeAfterCategoryChange({ isBillCategory: false, explicitScope: 'all' }) === 'all');
+// 「決議案與定期報告」沒有審議進度 → 收合（使用者 2026-10-19：「把預算審議進度的 card 隱藏或收合」）
+check('審議進度收合：決議案與定期報告預設收合', foldsProgress({ scope: 'others', showAnyway: false }) === true);
+check('審議進度收合：按了「還是要看」就不收', foldsProgress({ scope: 'others', showAnyway: true }) === false);
+check('審議進度收合：中央政府總預算案永遠不收', foldsProgress({ scope: 'bills', showAnyway: false }) === false);
 
 // 「115年度中央政府總預算案」要上色（使用者 2026-10-19：「要加顏色，以利辨識」）
 {

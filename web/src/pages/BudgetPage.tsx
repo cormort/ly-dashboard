@@ -118,6 +118,17 @@ export function budgetHitParts(text: string, { minIndex = 0 }: { minIndex?: numb
 }
 
 /**
+ * 切到「決議案與定期報告」時，要不要把「各年度審議進度」那一疊收合？
+ *
+ * 那個檢視是法定預算之後的追蹤事項（函送…請查照案、決議、行政命令），沒有預算審議進度、也沒有審查流程；
+ * 留著兩張卡只會讓人以為那些函件在走預算程序（使用者 2026-10-19：「把預算審議進度的 card 隱藏或收合」）。
+ * 仍然給一個「還是要看」的出口：`showAnyway` 由畫面那顆按鈕控制。
+ */
+export function foldsProgress({ scope, showAnyway }: { scope: string; showAnyway: boolean }): boolean {
+  return scope === 'others' && !showAnyway;
+}
+
+/**
  * 預設「全部類別」：兩個檢視（總預算案／決議案與定期報告）本身就是類別的二分法，
  * 預設再壓一個「中央政府總預算案」會讓另一邊永遠 0（2026-10-19 使用者回報「全部檢視 11710」後修正）。
  * 範圍由 scope 決定，類別 chips 只在該範圍內再細分。
@@ -252,6 +263,7 @@ export function BudgetPage({ refreshToken, onOpenId, onNavigate }: BudgetPagePro
    * 以前「階段」是歷程區塊裡自己的 chips，跟頁面上方的年度、類別分散在三處，
    * 使用者要自己拼「現在走到哪一關」——流程帶把它收成一個入口。
    */
+  const [showProgressAnyway, setShowProgressAnyway] = useState(false);
   const [stage, setStage] = useState('');
   /** 年度只有一個來源：頁面的 year 篩選（'' ＝全部年度）；歷程跟著它走，不再有第二組年度 chips */
   const timelineYear = filters.year === 'unknown' ? '' : filters.year;
@@ -271,6 +283,8 @@ export function BudgetPage({ refreshToken, onOpenId, onNavigate }: BudgetPagePro
   const categories = data?.categories ?? [];
   const change = (patch: Partial<Filters>) => {
     let next = { ...filters, ...patch };
+    // 每次「切進」決議案與定期報告那個檢視，都先回到收合狀態（上一輪按過「還是要看」不算）
+    if (next.scope === 'others' && filters.scope !== 'others') setShowProgressAnyway(false);
     // 換類別時，年度與機關條件多半不再適用
     if (patch.category !== undefined && patch.category !== filters.category) {
       next = { ...next, year: '', proposer: '' };
@@ -317,6 +331,15 @@ export function BudgetPage({ refreshToken, onOpenId, onNavigate }: BudgetPagePro
         ))}
       </div>
 
+      {foldsProgress({ scope: filters.scope, showAnyway: showProgressAnyway }) ? (
+        <p className="muted scope-note fold-note">
+          這個檢視是<strong>決議案與定期報告</strong>——法定預算之後的追蹤事項，沒有「各年度審議進度」也沒有審查流程（預算審查流程請切回「中央政府總預算案」）。
+          <button type="button" className="link-button" onClick={() => setShowProgressAnyway(true)}>
+            還是要看
+          </button>
+        </p>
+      ) : (
+      <>
       <section className="panel year-panel" aria-label="各年度審議進度">
         <div className="sectionhead">
           <h2>各年度審議進度</h2>
@@ -353,6 +376,8 @@ export function BudgetPage({ refreshToken, onOpenId, onNavigate }: BudgetPagePro
         stage={stage}
         onStageChange={setStage}
       />
+      </>
+      )}
 
       <div className="filters bill-filters" role="group" aria-label="預算篩選條件">
         <SearchField value={filters.q} onChange={(q) => change({ q })} ariaLabel="搜尋名稱或提案單位" placeholder="搜尋名稱或機關，例如：國防部、特別預算" />
@@ -465,6 +490,9 @@ export function BudgetPage({ refreshToken, onOpenId, onNavigate }: BudgetPagePro
           </div>
           {/* 預算類型 chips 放在清單正上方（原本在最上面、跟這張卡片隔了年度面板與審查歷程，
               點了之後變的是看不到的地方 → 使用者 2026-10-19：「跟審議項目的 card 距離有點遠」） */}
+          {/* 類型（總預算／附屬單位／特別／追加）只屬於預算案本身；決議案與定期報告沒有類型，
+              留著只會看到四個 0（2026-10-19 切過去看到的樣子） */}
+          {filters.scope !== 'others' ? (
           <div className="segmented type-switch" role="group" aria-label="預算類型">
             <button type="button" aria-pressed={!filters.type} onClick={() => change({ type: '' })}>
               全部類型
@@ -475,6 +503,7 @@ export function BudgetPage({ refreshToken, onOpenId, onNavigate }: BudgetPagePro
               </button>
             ))}
           </div>
+          ) : null}
           {budget.phase === 'loading' && !data ? <LoadingState label="讀取預算審議…" /> : null}
           {budget.phase === 'error' ? <ErrorState title="無法取得預算資料（/api/v1/budget）" error={budget.error} onRetry={budget.reload} /> : null}
           {data && data.items.length === 0 ? <EmptyState message="沒有符合的項目" hint="換個關鍵字，或清除年度、機關、狀態條件。" /> : null}
