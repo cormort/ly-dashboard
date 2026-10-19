@@ -2099,7 +2099,7 @@ export function listBudget(
    * 注意：**類別件數（categories）不受範圍影響**——那是導覽用的，
    * 「決議書面報告 10,801」要一直看得到，否則使用者找不到那些報告。
    */
-  const scope = scopeArg === 'all' ? 'all' : 'bills';
+  const scope = scopeArg === 'all' ? 'all' : scopeArg === 'others' ? 'others' : 'bills';
   // 一案一列（預設）：同一案名的多筆議案紀錄合成一列，見 mergeBudgetUnits
   const mergeUnits = merge === 'none' ? false : true;
   const allUnitsRaw = mergeUnits ? mergeBudgetUnits(allRows) : allRows;
@@ -2107,11 +2107,13 @@ export function listBudget(
   // 注意：要在「分範圍之前」就濾掉，否則開關上的件數（scope_totals）與類別件數會跟清單對不起來。
   const attachmentRe = CONFIG.budget.attachmentPattern ? new RegExp(CONFIG.budget.attachmentPattern) : null;
   const isAttachment = (r) => Boolean(attachmentRe && (attachmentRe.test(r.name) || attachmentRe.test(r.status ?? '')));
-  const scopedRaw = scope === 'bills' ? allUnitsRaw.filter(isBill) : allUnitsRaw;
+  const scopedRaw =
+    scope === 'bills' ? allUnitsRaw.filter(isBill) : scope === 'others' ? allUnitsRaw.filter((r) => !isBill(r)) : allUnitsRaw;
   const scoped = includeAttachments ? scopedRaw : scopedRaw.filter((r) => !isAttachment(r));
   const allUnits = includeAttachments ? allUnitsRaw : allUnitsRaw.filter((r) => !isAttachment(r));
   const rows = scoped;
-  const recordsInScope = (scope === 'bills' ? allRows.filter(isBill) : allRows).length;
+  const recordsInScope =
+    scope === 'bills' ? allRows.filter(isBill).length : scope === 'others' ? allRows.filter((r) => !isBill(r)).length : allRows.length;
   const count = (list, key) => {
     const m = new Map();
     for (const r of list) m.set(key(r), (m.get(key(r)) ?? 0) + 1);
@@ -2142,9 +2144,10 @@ export function listBudget(
    * 給開關的數字用：兩個範圍的件數都要是**目前篩選下**的數字，否則切換鈕上的數字跟清單對不起來
    * （例如只篩 115 年度時，鈕上寫「含報告類 11,292」但清單只有 367 件）。
    */
-  const applyFilters = (list) => {
+  const applyFilters = (list, { ignoreCategory = false } = {}) => {
+    const categoryOk = (r) => ignoreCategory || !category || r.category === category;
     const baseList = list.filter(
-      (r) => (!category || r.category === category) && (!needle || r.name.includes(needle) || String(r.proposer ?? '').includes(needle)),
+      (r) => categoryOk(r) && (!needle || r.name.includes(needle) || String(r.proposer ?? '').includes(needle)),
     );
     const typed = BUDGET_TYPES.includes(type) ? baseList.filter((r) => r.types.includes(type)) : baseList;
     const dated = year ? typed.filter((r) => yearKey(r) === String(year)) : typed;
@@ -2157,6 +2160,15 @@ export function listBudget(
   // 目前篩選下被排除的附件（勘誤表…）：要讓使用者知道有幾筆沒列出來
   const attachmentCount = applyFilters(scopedRaw.filter(isAttachment)).length;
   const sumRecords = (list) => list.reduce((n, r) => n + (r.records ?? 1), 0);
+  /**
+   * 開關上的兩個數字：**不套用類別條件**。
+   * 這兩個檢視本身就是「總預算案／其餘全部」的二分法，若再套用目前選的類別，
+   * 站在「中央政府總預算案」時另一邊永遠是 0（實測畫面出現「決議案與定期報告 0」）。
+   * 其餘條件（關鍵字／年度／機關／狀態／附件）照舊，數字才跟清單對得起來。
+   */
+  const sizeOf = (list) => (mergeUnits ? list.length : sumRecords(list));
+  const scopeTotalBills = sizeOf(applyFilters(allUnits.filter(isBill), { ignoreCategory: true }));
+  const scopeTotalAll = sizeOf(applyFilters(allUnits, { ignoreCategory: true }));
   const resolvedPerGroup = Math.max(1, Math.min(Number(perGroup) || 5, 50));
   // 委員會存在另一張表（同步會重寫 budget_bills），讀取時套用；合併的列取成員紀錄的聯集
   const committeeMap = getBudgetCommittees(db);
@@ -2205,8 +2217,10 @@ export function listBudget(
     scope,
     scope_note:
       scope === 'bills'
-        ? `統計只算預算案本身（${CONFIG.budget.scopeLabel ?? '預算案'}）；其他類別（法人預決算、決議書面報告等）另計`
-        : '統計含決議案／定期報告（函送…請查照案的報告）',
+        ? `統計只算預算案本身（${CONFIG.budget.scopeLabel ?? '預算案'}）；決議案、定期報告是法定預算之後的追蹤事項，切到「決議案與定期報告」另看`
+        : scope === 'others'
+          ? '決議案、定期報告、法人預決算、行政命令等——都是法定預算之後的追蹤事項，不是預算審議本身'
+          : '統計含決議案／定期報告（函送…請查照案的報告）',
     all_scope_total: mergeUnits ? allMatching.length : sumRecords(allMatching),
     bills_scope_total: mergeUnits ? billsMatching.length : sumRecords(billsMatching),
     // 一案一列 vs 每筆議案（前端做開關用）：數字是**目前篩選下**的，切換鈕才跟清單一致
@@ -2220,8 +2234,10 @@ export function listBudget(
     records_total: sumRecords(matching),
     // 兩個範圍在目前篩選下各有幾件（單位／紀錄），給「只算預算案／含報告類」開關
     scope_totals: {
-      bills: mergeUnits ? billsMatching.length : sumRecords(billsMatching),
-      all: mergeUnits ? allMatching.length : sumRecords(allMatching),
+      bills: scopeTotalBills,
+      all: scopeTotalAll,
+      // 「決議案與定期報告」＝扣掉總預算案以後的全部（兩邊相加剛好等於 all）
+      others: scopeTotalAll - scopeTotalBills,
     },
     total: matching.length,
     count: Math.min(resolvedLimit, Math.max(0, matching.length - resolvedOffset)),

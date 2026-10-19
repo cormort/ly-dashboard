@@ -116,9 +116,10 @@ export function YearProgressList({ years, active, progress = null, onPick, detai
         <span className="year-progress-numbers">
           {hasReviewableItems(r.progress) ? (
             <>
+              {/* 單位要寫清楚：這裡算的是**預算案件數**，下方審查歷程算的是**會議場次**（2026-10-19 使用者對不到） */}
               <b>{r.progress.reviewed}</b>
-              <span className="muted">/ {r.progress.total} 已審竣</span>
-              <span className="muted">・剩 {r.progress.awaiting}</span>
+              <span className="muted">/ {r.progress.total} 件已審竣</span>
+              <span className="muted">・剩 {r.progress.awaiting} 件</span>
             </>
           ) : (
             <span className="muted">函件處理 {r.progress.letter} 件</span>

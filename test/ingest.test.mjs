@@ -2281,6 +2281,13 @@ test('預算統計範圍：預設只算預算案本身；含報告類要自己�
   assert.ok(all.scope_note && bills.scope_note, '兩種範圍都要有說明');
   // 統計也跟著範圍走：含報告的「尚未審竣」不會比較少
   assert.ok(all.progress.awaiting >= bills.progress.awaiting);
+  // scope=others（「決議案與定期報告」那個檢視）：只列非總預算案，而且與 bills 加起來剛好等於 all
+  const others = listBudget(db, { scope: 'others', merge: 'none', limit: 200, includeAttachments: true });
+  assert.equal(others.scope, 'others');
+  assert.ok(others.items.every((b) => !['中央政府總預算案'].includes(b.category)), '決議案與定期報告不含總預算案本身');
+  assert.ok(others.total > 0);
+  assert.equal(others.total + billsWith.total, all.total, '兩個檢視互斥且相加等於全部');
+  assert.equal(others.scope_totals.others, others.total);
 });
 
 test('一案一列：同一個預算案的多筆議案紀錄要合成一列（實測 115 年度總預算案 24 筆）', () => {

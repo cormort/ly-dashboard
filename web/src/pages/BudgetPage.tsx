@@ -17,21 +17,23 @@ import { partyStyle } from '../lib/parties';
 /**
  * 換類別時的統計範圍決策（抽出來才測得到，這裡是最容易搞錯的地方）：
  *
- * - 點到**報告類**的類別（決議書面報告）：一定要含報告類，否則「只算預算案」會是空清單。
- * - 點到**預算案類別**（或全部）：回到預設的「只算預算案」，但這次呼叫自己指定了 scope 就尊重它。
+ * - 兩個範圍是**互斥的檢視**：`bills`＝中央政府總預算案、`others`＝決議案與定期報告（法定預算之後的追蹤事項）。
+ * - 點到決議案／定期報告的類別 → 切到 `others`；點到總預算案（或全部）→ 切回 `bills`。
+ * - 網址自己指定 `scope` 就尊重它（`all` 仍然可用，是「兩邊一起」）。
  */
 export function scopeAfterCategoryChange({
-  currentScope,
   isBillCategory,
   explicitScope,
 }: {
-  currentScope: string;
+  /** 保留舊介面（呼叫端還在傳），但決策已不看它：兩邊是互斥的檢視，不看「從哪裡來」 */
+  currentScope?: string;
   isBillCategory: boolean;
   explicitScope?: string;
 }): string {
-  if (explicitScope === 'all' || explicitScope === 'bills') return explicitScope;
-  if (!isBillCategory) return 'all';
-  return currentScope === 'all' ? 'bills' : currentScope;
+  if (explicitScope === 'bills' || explicitScope === 'others' || explicitScope === 'all') return explicitScope;
+  // 決議案／定期報告類的類別 → 切到「決議案與定期報告」那一邊；總預算案 → 切回預設
+  if (!isBillCategory) return 'others';
+  return 'bills';
 }
 
 export interface BudgetPageProps {
@@ -73,7 +75,12 @@ export const progressDateText = (value: string | null | undefined): string => fo
  * 上游改分類名稱時，這裡與 server 的 config 要一起改。
  */
 export const AGENCY_REPORT_CATEGORY = '預(決) 算決議案、定期報告';
-const DEFAULT_CATEGORY = '中央政府總預算案';
+/**
+ * 預設「全部類別」：兩個檢視（總預算案／決議案與定期報告）本身就是類別的二分法，
+ * 預設再壓一個「中央政府總預算案」會讓另一邊永遠 0（2026-10-19 使用者回報「全部檢視 11710」後修正）。
+ * 範圍由 scope 決定，類別 chips 只在該範圍內再細分。
+ */
+const DEFAULT_CATEGORY = 'all';
 const ALL = 'all';
 const PAGE = 30;
 /** 分年度呈現時，每個年度先列幾筆（其餘用「看這一年全部」再查） */
@@ -91,7 +98,7 @@ interface Filters {
   year: string;
   proposer: string;
   state: string;
-  /** 統計範圍：bills（預設，只算預算案本身）／all（含決議書面報告等報告類） */
+  /** 統計範圍：bills（預設，中央政府總預算案）／others（決議案與定期報告等）／all（兩邊一起） */
   scope: string;
   /** 一案一列（預設）／none＝每筆議案都列 */
   merge: string;
@@ -109,7 +116,7 @@ const readFilters = (): Filters => {
     year: get('year'),
     proposer: get('proposer'),
     state: get('state'),
-    scope: get('scope') === 'all' ? 'all' : 'bills',
+    scope: get('scope') === 'others' ? 'others' : get('scope') === 'all' ? 'all' : 'bills',
     merge: get('merge') === 'none' ? 'none' : 'name',
     attachments: get('attachments') === '1' ? '1' : '',
   };
@@ -280,6 +287,8 @@ export function BudgetPage({ refreshToken, onOpenId, onNavigate }: BudgetPagePro
       <section className="panel year-panel" aria-label="各年度審議進度">
         <div className="sectionhead">
           <h2>各年度審議進度</h2>
+          {/* 兩組數字單位不同（件 vs 場），直接寫在標題旁，免得對不到（2026-10-19 使用者提問） */}
+          <p className="muted year-panel-note">每一列是該年度的<strong>預算案件數</strong>；展開下面的審查流程，算的是<strong>開過幾場會議</strong>。</p>
           <InfoTip align="inline-end" label="審議狀態的定義">
             {STATE_HINT}
           </InfoTip>
@@ -352,10 +361,11 @@ export function BudgetPage({ refreshToken, onOpenId, onNavigate }: BudgetPagePro
             在 g0v 的狀態常是「交付審查」，照狀態分類會變成「審議中」，把統計灌大 */}
         <div className="segmented scope-switch" role="group" aria-label="統計範圍">
           <button type="button" aria-pressed={filters.scope === 'bills'} onClick={() => change({ scope: 'bills' })}>
-            只算預算案 {data ? data.scope_totals.bills.toLocaleString() : ''}
+            中央政府總預算案 {data ? data.scope_totals.bills.toLocaleString() : ''}
           </button>
-          <button type="button" aria-pressed={filters.scope === 'all'} onClick={() => change({ scope: 'all' })}>
-            含報告類 {data ? data.scope_totals.all.toLocaleString() : ''}
+          {/* 決議案／定期報告是法定預算之後的追蹤事項，跟解凍案同一條原則（D305）：不放在預算審議裡，另開一檢視 */}
+          <button type="button" aria-pressed={filters.scope === 'others'} onClick={() => change({ scope: 'others' })}>
+            決議案與定期報告 {data ? (data.scope_totals.others ?? 0).toLocaleString() : ''}
           </button>
         </div>
         {/* 一案一列：同一個預算案會有多筆議案紀錄（實測 115 年度總預算案 24 筆，分別交付不同委員會／會期），

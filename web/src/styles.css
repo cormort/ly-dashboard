@@ -1428,6 +1428,9 @@ main:has(.fb-wall) { max-width: min(1840px, 96vw); }
 
 /* ---------- 預算：各年度審議進度 ---------- */
 .year-panel { margin-bottom: var(--space-4); }
+/* 「各年度審議進度」標題旁的一句單位說明（件 vs 場）：與 .sectionhead 同一列，窄螢幕會折到下一行 */
+.year-panel-note { margin: 0 0 0 auto; font-size: var(--fs-sm); max-width: 46ch; text-align: right; }
+@media (max-width: 720px) { .year-panel-note { margin: 4px 0 0; text-align: left; max-width: none; } }
 .year-summary { margin: 0 0 var(--space-3); font-size: var(--fs-sm); }
 /*
  * 每一列＝年度｜長條｜數字。長條以前是 `1fr`（在 1440px 上約 700px 長）：一條細長條看不出比例，

@@ -714,7 +714,7 @@ export interface BudgetResponse {
   /** 目前條件下的整體審議進度（總件數／已審竣／尚未審竣…） */
   progress: BudgetProgress;
   /** 統計範圍：`bills`（預設，只算預算案本身）／`all`（含決議書面報告等報告類） */
-  scope: 'bills' | 'all';
+  scope: 'bills' | 'others' | 'all';
   /** 這個範圍的一句話說明 */
   scope_note: string;
   all_scope_total: number;
@@ -731,7 +731,7 @@ export interface BudgetResponse {
   /** 目前篩選下：議案紀錄筆數 */
   records_total: number;
   /** 目前篩選下，兩個範圍各幾件（單位）或幾筆（紀錄），依 merge 而定 */
-  scope_totals: { bills: number; all: number };
+  scope_totals: { bills: number; others: number; all: number };
   types: Record<BudgetType, number>;
   /** 分年度呈現（`group_by=year`）時才有 */
   group_by: 'year' | null;

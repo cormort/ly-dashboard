@@ -1188,9 +1188,10 @@ check('預算頁：有進度日期就照實際日期顯示（今年的不寫年�
 check('議案紀錄彙總：多筆時列出各狀態筆數', budgetRecordsText({ reviewed: 9, in_review: 13, pending: 2 }, 24) === '9 筆已審查完畢、13 筆交付審查、2 筆排入院會');
 check('議案紀錄彙總：只有一筆時不要多餘的說明', budgetRecordsText({ in_review: 1 }, 1) === '');
 
-// 統計範圍的決策：點到報告類一定要含報告，否則「只算預算案」會是空清單
-check('統計範圍：點到報告類自動切成含報告類', scopeAfterCategoryChange({ currentScope: 'bills', isBillCategory: false }) === 'all');
-check('統計範圍：點回預算案類別回到預設（只算預算案）', scopeAfterCategoryChange({ currentScope: 'all', isBillCategory: true }) === 'bills');
+// 統計範圍的決策：兩個檢視互斥（總預算案／決議案與定期報告），點到哪一類就切到那一邊
+check('統計範圍：點到決議案／定期報告類別 → 切到「決議案與定期報告」', scopeAfterCategoryChange({ currentScope: 'bills', isBillCategory: false }) === 'others');
+check('統計範圍：點回總預算案類別 → 切回預設', scopeAfterCategoryChange({ currentScope: 'others', isBillCategory: true }) === 'bills');
+check('統計範圍：網址自己指定 scope 時尊重它（all 仍然可用）', scopeAfterCategoryChange({ isBillCategory: false, explicitScope: 'all' }) === 'all');
 check('統計範圍：使用者自己指定就不覆寫', scopeAfterCategoryChange({ currentScope: 'bills', isBillCategory: true, explicitScope: 'all' }) === 'all');
 
 // 預算進度：審竣／總件數／待審查（數字來自後端五級分類，畫面只負責呈現）
@@ -1248,7 +1249,7 @@ expectAll(
       onPick: () => undefined,
     }),
   ),
-  ['各年度審議進度', '115 年度', '年度不明', '<b>15</b>', '/ 40 已審竣', '剩 25', '/ 8 已審竣'],
+  ['各年度審議進度', '115 年度', '年度不明', '<b>15</b>', '/ 40 件已審竣', '剩 25 件', '/ 8 件已審竣'],
 );
 
 
