@@ -61,7 +61,19 @@ const STATE_HINT = `「已審竣」＝審查完畢（含逾審查期限）、三
 「待審查」＝已排入院會但還沒進審查程序；
 「函件處理」＝交付查照／函復機關／復請查照，不經審查，所以不算審竣也不算待審查；
 「退回」＝退回程序委員會。資料來源是立法院議案狀態（g0v LYAPI），每日同步。`;
-const TYPE_LABEL: Record<BudgetType, string> = { general: '總預算', subsidiary: '附屬單位預算', special: '特別預算', supplementary: '追加預算' };
+/**
+ * 類型分成「總預算（單位預算）」與「總預算附屬單位預算（含信託基金）」兩大類——
+ * 立法院自己也是分開審（公務預算部分 vs 附屬單位預算部分），一個案子同時屬於兩邊
+ * （使用者 2026-10-19：「總預算案可以拆開為…2 大類嗎」）。
+ */
+export const TYPE_LABEL: Record<BudgetType, string> = {
+  general: '總預算（單位預算）',
+  subsidiary: '總預算附屬單位預算（含信託基金）',
+  supplementary: '總預算追加預算',
+  special: '特別預算',
+};
+/** 清單列上的小徽章用短標籤，長標籤會把一列撐成兩行 */
+export const TYPE_SHORT: Record<BudgetType, string> = { general: '單位預算', subsidiary: '附屬單位預算', supplementary: '追加預算', special: '特別預算' };
 /**
  * 進度日期欄的文字。上游（g0v）對本會期的預算議案常常沒有「最新進度日期」（實測本會期 199/199
  * 都沒有），留白會讓人以為壞掉，所以明講「尚無進度日期」——排序上也把這種案子當成最新
@@ -197,7 +209,7 @@ function BudgetItemRow({
         <span className={`state-tag ${item.state}`}>{STATE_LABEL[item.state]}</span>
         {item.types.map((t) => (
           <span key={t} className={`type-tag ${t}`}>
-            {TYPE_LABEL[t]}
+            {TYPE_SHORT[t]}
           </span>
         ))}
         {/* 合併多筆議案紀錄時，單一狀態不能代表整個案子 → 直接列出各狀態有幾筆 */}

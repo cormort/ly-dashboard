@@ -45,7 +45,7 @@ import { SyncStatusBanner } from '../src/components/SyncStatusBanner';
 import { RankingsPage, RankingBoardView } from '../src/pages/RankingsPage';
 import { TopicsPanel, tagTier } from '../src/components/TopicsPanel';
 import { ComparePage } from '../src/pages/ComparePage';
-import { BUDGET_COMMITTEE_ORDER, BUDGET_PROCESS_STEPS, BudgetPage, BudgetProcessRail, BudgetTimeline, budgetCommitteeRank, budgetHitParts, foldsProgress, progressDateText, scopeAfterCategoryChange } from '../src/pages/BudgetPage';
+import { BUDGET_COMMITTEE_ORDER, BUDGET_PROCESS_STEPS, BudgetPage, BudgetProcessRail, BudgetTimeline, TYPE_LABEL, budgetCommitteeRank, budgetHitParts, foldsProgress, progressDateText, scopeAfterCategoryChange } from '../src/pages/BudgetPage';
 import { YearProgressList, budgetProgressBar, budgetProgressText, budgetRecordsText, hasReviewableItems, yearLabel } from '../src/components/BudgetProgress';
 import { syncProgressText, syncRunningText } from '../src/lib/format';
 import { DashboardPage } from '../src/pages/DashboardPage';
@@ -1196,6 +1196,12 @@ check('統計範圍：網址自己指定 scope 時尊重它（all 仍然可用�
 check('審議進度收合：決議案與定期報告預設收合', foldsProgress({ scope: 'others', showAnyway: false }) === true);
 check('審議進度收合：按了「還是要看」就不收', foldsProgress({ scope: 'others', showAnyway: true }) === false);
 check('審議進度收合：中央政府總預算案永遠不收', foldsProgress({ scope: 'bills', showAnyway: false }) === false);
+
+// 類型四大類（使用者 2026-10-19）：總預算（單位預算）／總預算附屬單位預算（含信託基金）／總預算追加預算／特別預算
+check(
+  '類型：四大類名稱與順序',
+  JSON.stringify(Object.values(TYPE_LABEL)) === JSON.stringify(['總預算（單位預算）', '總預算附屬單位預算（含信託基金）', '總預算追加預算', '特別預算']),
+);
 
 // 「115年度中央政府總預算案」要上色（使用者 2026-10-19：「要加顏色，以利辨識」）
 {

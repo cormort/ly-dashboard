@@ -486,17 +486,42 @@ export function budgetFiscalYear(name) {
  * 收緊後實測（2026-10-06 的資料庫 11,290 筆）：總預算 53、附屬單位 53、特別 30、追加 5，其餘 11,229 筆不給類型。
  */
 const BUDGET_NOT_A_BILL = /請查照|檢送|審查報告|審查總報告|請併|勘誤|動支數額表|分配表|執行情形/;
-export function budgetTypes(name, { billCategory = true } = {}) {
-  if (!billCategory) return [];
+/**
+ * 法定預算之後的後續文件：回覆決議的函件、動支數額表、勘誤表、執行情形、專案報告。
+ * 這些「不屬於任何一本預算」，連類型都不該給（使用者 2026-10-19 要求把附屬單位預算那一路串起來，
+ * 但沒有要連追蹤函件一起算）。
+ */
+const BUDGET_FOLLOW_UP = /決議[，,][^。]{0,40}檢送|動支數額表|勘誤|執行情形|專案報告|員額運用/;
+
+/**
+ * 這份文件講的是哪一本預算（可多個：總預算案本身常含附屬單位預算）。
+ * 只回答「哪一本」，不管它是不是議案本身——審查報告、審查總報告講的也是同一本。
+ */
+export function budgetTypeTags(name) {
   const text = String(name ?? '');
   if (!/\d{2,3}\s*年度/.test(text)) return [];
-  if (BUDGET_NOT_A_BILL.test(text)) return [];
+  if (BUDGET_FOLLOW_UP.test(text)) return [];
   const types = [];
   if (/總(預算案|決算)(?!附屬單位|追加)/.test(text)) types.push('general');
   if (/附屬單位(預算|決算)/.test(text)) types.push('subsidiary');
   if (/特別(預算案|決算)/.test(text)) types.push('special');
   if (/追加(預算案|決算)/.test(text)) types.push('supplementary');
   return types;
+}
+
+/**
+ * 預算類型標籤。
+ * `billCategory` 只管「這一列是不是預算案本身」，但**預算的審查報告／審查總報告／審查日程分配表**
+ * 講的是同一本預算，仍要給類型——否則「附屬單位預算」那顆 chips 只數到 3 件主案，
+ * 委員會逐案送進來的審查報告全部落空（使用者 2026-10-19：「總預算案可以拆開為總預算（單位預算）、
+ * 總預算附屬單位預算（含信託基金）2 大類嗎」）。
+ */
+export function budgetTypes(name, { billCategory = true } = {}) {
+  if (!billCategory) return [];
+  const text = String(name ?? '');
+  if (!/\d{2,3}\s*年度/.test(text)) return [];
+  if (BUDGET_NOT_A_BILL.test(text) && !/審查(總)?報告|審查日程/.test(text)) return [];
+  return budgetTypeTags(name);
 }
 
 /** 民國日期「113/03/07」或「1130307」→ ISO「2024-03-07」；格式不符回 null */

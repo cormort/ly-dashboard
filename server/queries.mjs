@@ -1953,7 +1953,7 @@ function listAllNewsArticles(db, { keyword, source, kind, limit, offset }) {
  *
  * 認不得的狀態一律算 pending（保守：不謊稱審竣）。
  */
-const BUDGET_TYPES = ['general', 'subsidiary', 'special', 'supplementary'];
+const BUDGET_TYPES = ['general', 'subsidiary', 'supplementary', 'special'];
 const BUDGET_STATE = new Map([
   ...['審查完畢', '審查完畢(逾審查期限)', '審查完畢(三讀)', '三讀', '三讀 (//通過)', '視同審議通過'].map((s) => [s, 'reviewed']),
   ...['交付審查', '交付處理', '交付協商', '復議', '排入院會(討論事項)'].map((s) => [s, 'in_review']),
@@ -3356,7 +3356,7 @@ export function listCommitteeActivity(db, { committee = '', q = '', limit = 20 }
 }
 
 export function budgetCsv(items) {
-  const TYPE_LABEL = { general: '總預算', subsidiary: '附屬單位預算', special: '特別預算', supplementary: '追加預算' };
+  const TYPE_LABEL = { general: '總預算（單位預算）', subsidiary: '總預算附屬單位預算（含信託基金）', supplementary: '總預算追加預算', special: '特別預算' };
   // 「一案一列」時 items 是合併後的案子：多給「議案紀錄筆數」與各狀態筆數，才知道那一列代表幾筆紀錄
   const merged = items.some((b) => (b.records ?? 1) > 1);
   const header = ['議案編號', '類別', '預算類型', '名稱', '提案單位', '預算年度', '狀態', '最新進度日期', '連結'];
