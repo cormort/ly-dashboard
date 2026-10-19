@@ -24,7 +24,7 @@
 
 **誰在什麼時候做事**（四層，互相獨立）
 
-1. **launchd（macOS，2 顆）**：API 伺服器常駐監管、每天 08:00 抓粉專。
+1. **launchd（macOS，2 顆）**：API 伺服器常駐監管、每天 08:00／13:00／17:00 抓粉專。
 2. **伺服器內的排程器**（`server/index.mjs` 的 `startScheduler`）：檢查資料是否過期、24 小時全同步、媒體 RSS 每小時、新聞階段每 6 小時。
 3. **GitHub Actions（3 支 workflow）**：CI（三個平台跑測試）、每小時收媒體 RSS 進 `news-data`、推 `v*` 標籤時打包 Windows 版。
 4. **Hermes cron（1 顆）**：每月 12 日 09:30 檢查戶政司人口月報有沒有新月份並更新縣市頁。
@@ -73,7 +73,7 @@ scripts/ly-set-password.sh --rotate-sessions  # 順便換 LY_SESSION_SECRET
 **「資料每天更新」的兩條路不要把他們搞混**
 
 - **名錄／議事／預算／新聞**：伺服器自己抓（上游立法院開放資料、Google 新聞），每 24 小時一輪；資料庫整批覆寫。
-- **粉專貼文**：由 **launchd 08:00 的抓取腳本**主動寫進資料庫（`fb-daily.mjs` → `ingestLocally()`），不靠伺服器的同步。
+- **粉專貼文**：由 **launchd 08:00／13:00／17:00 的抓取腳本**主動寫進資料庫（`fb-daily.mjs` → `ingestLocally()`），不靠伺服器的同步。
   2026-10-10 起是這條路（D 見 `docs/fb-daily-update.md` 第二節）。
 
 ---
@@ -103,12 +103,12 @@ tail -50 ~/ly-dashboard/.cache/server.log                           # 看 log
 
 ### 1.2 每日粉專抓取（launchd）
 
-- Label：`com.hermes.ly-dashboard-fb-daily`；08:00 執行 `scripts/fb-daily.sh`（薄殼 → `scripts/fb-daily.mjs`）
+- Label：`com.hermes.ly-dashboard-fb-daily`；08:00／13:00／17:00 執行 `scripts/fb-daily.sh`（薄殼 → `scripts/fb-daily.mjs`）
 - 一輪 **25–35 分鐘**（113 位委員，每位間隔隨機 4–9 秒）；`KeepAlive=false`（不重試）、`RunAtLoad=false`（登入不補跑）
 - Log：`.cache/fb-daily.log`（launchd 自己的 out/err 在 `.cache/fb-daily.launchd.{out,err}.log`，通常空的）
 - 離開碼：**0** 正常；**2** ＝一列都沒抓到（最常見是 Chrome 設定檔沒登入 Facebook）；其他非 0 是腳本自己炸
 - 成功失敗**都會**發 Telegram（見 §3）
-- 電腦睡著錯過 → 喚醒後補跑一次（`StartCalendarInterval` 的特性，這是刻意選 launchd 的原因）
+- 電腦睡著錯過 → 喚醒後補跑（三個時段都適用；同一天只補跑錯過的那一次）（`StartCalendarInterval` 的特性，這是刻意選 launchd 的原因）
 
 ```bash
 launchctl kickstart -k gui/$(id -u)/com.hermes.ly-dashboard-fb-daily   # 不等時間到，立刻跑一次

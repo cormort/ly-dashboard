@@ -83,7 +83,7 @@ node scripts/fetch-fb-posts.mjs --ids 1 --min-delay 0 --max-delay 0
 ## 三、排程：現在掛在 macOS launchd
 
 2026-10-06 起，排程改掛 **macOS LaunchAgent**（`~/Library/LaunchAgents/com.hermes.ly-dashboard-fb-daily.plist`，
-每天 08:00 執行 `scripts/fb-daily.sh`；安裝腳本 `scripts/launchd/install.sh`，決策見 `DECISIONS.md` D172–D173）。
+每天 08:00／13:00／17:00 執行 `scripts/fb-daily.sh`；安裝腳本 `scripts/launchd/install.sh`，決策見 `DECISIONS.md` D172–D173）。
 比 DSH 內建排程好在：launchd 由系統帶起，**dsh 沒開、電腦重開機後照跑**，而且不必每次都要一次
 `danger-full-access` 審批。缺點是 plist 要用一次 `launchctl bootstrap` 載入（那一步得在受監督的
 gateway 之外的終端做）。

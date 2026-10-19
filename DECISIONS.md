@@ -1500,3 +1500,24 @@ SW 已是 `ly-shell-v2` —— 所以不是服務沒更新，是手機端的**�
 
 **效果**：116 年度 3 件 → **1 件（3 筆紀錄）**；「中央政府總預算案」43 → **41 件**；全部 11,710 → **11,708 件**。
 測試 +1（併案尾註併成一列、沒有尾註的案由不動、案由中間括號不動），後端 **425 條**全綠。
+
+## D308：立委粉專抓取改成一天三個時段（08:00／13:00／17:00）
+
+使用者 2026-10-19：「臉書 PO 文可以一天更新 3 次嗎？原本的早上、中午 13 時、下午 5 時。」
+
+| 岔路 | 選擇 | 理由 |
+| --- | --- | --- |
+| 怎麼設三個時段 | launchd `StartCalendarInterval` 從單一 `dict` 改成 **`array` 三個 dict**（Hour 8／13／17，Minute 0） | launchd 原生支援陣列；不用多開三個 Label，也不需要在腳本裡自己比對時間 |
+| 會不會打架 | 不會：一輪 25–35 分鐘，`fb-daily.mjs` 本來就有 `LY_FB_LOCK` 單輪鎖，13:00 的輪次最早 13:35 結束 | 鎖是原本就有的，這次不用改腳本 |
+| Linux 版 | `deploy/linux/ly-dashboard-fb-daily.timer` 同步加 `OnCalendar` 13:00、17:00（`Persistent=true` 不變） | 兩平台維持一對一對應，見 D195／DEPLOY-VM |
+| 風險 | 一天 113×3＝339 次粉專頁面載入；Facebook 若開始擋會出現退出碼 2（一列都沒抓到）→ 降到兩輪 | 三個時段是使用者要的；先照做，看 `.cache/fb-daily.log` 與 Telegram 通知再調整 |
+
+**生效方式**：plist 改了要重載（`launchctl bootout` → `bootstrap`），而 Hermes gateway 內會擋這兩個動詞。
+使用者請在自己的 Terminal 跑一次：
+
+```bash
+cd ~/ly-dashboard && scripts/launchd/install.sh fb-daily
+```
+
+**同步更新**：`scripts/launchd/com.hermes.ly-dashboard-fb-daily.plist`（樣板）、`docs/OPS.md`、`docs/SPEC.md`、
+`docs/DEPLOY-VM.md`、`docs/fb-daily-update.md`；新增測試一條（plist 三個時段、必須是 array、Linux timer 三個時段），後端 **426 條**全綠。

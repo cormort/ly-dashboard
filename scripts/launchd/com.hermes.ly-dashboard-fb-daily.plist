@@ -25,14 +25,32 @@
     <key>WorkingDirectory</key>
     <string>__REPO_ROOT__</string>
 
-    <!-- 每天 08:00。機器睡著時錯過的話，喚醒後補跑一次。 -->
+    <!--
+      每天三個時段：08:00、13:00、17:00。機器睡著時錯過的話，喚醒後補跑一次。
+      一輪抓 113 位、約 25–35 分鐘，三輪不會互相重疊（腳本另有 LY_FB_LOCK 單輪鎖）。
+      使用者 2026-10-19：「臉書 PO 文可以一天更新 3 次嗎？早上、中午 13 時、下午 5 時。」
+    -->
     <key>StartCalendarInterval</key>
-    <dict>
-        <key>Hour</key>
-        <integer>8</integer>
-        <key>Minute</key>
-        <integer>0</integer>
-    </dict>
+    <array>
+        <dict>
+            <key>Hour</key>
+            <integer>8</integer>
+            <key>Minute</key>
+            <integer>0</integer>
+        </dict>
+        <dict>
+            <key>Hour</key>
+            <integer>13</integer>
+            <key>Minute</key>
+            <integer>0</integer>
+        </dict>
+        <dict>
+            <key>Hour</key>
+            <integer>17</integer>
+            <key>Minute</key>
+            <integer>0</integer>
+        </dict>
+    </array>
 
     <!-- 登入時不自動補跑一次：這個工作要 25–35 分鐘，登入當下跑會讓 Chrome 突然被搶走。 -->
     <key>RunAtLoad</key>

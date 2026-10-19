@@ -144,3 +144,14 @@ test('shell：啟動腳本要把埠號 export 給 node（不然 LY_PORT 只管�
   assert.match(script, /export PORT/, 'ly-dashboard-server.sh 要把 PORT export 出去');
   assert.match(script, /PORT="\$\{LY_PORT:-8787\}"/, 'PORT 預設值仍要可由 LY_PORT 覆寫');
 });
+
+test('launchd：粉專抓取一天三個時段（08:00／13:00／17:00）', () => {
+  // 每個時段都會跑「113 位、25–35 分鐘」的一輪，三輪靠 LY_FB_LOCK 不會重疊；
+  // 使用者 2026-10-19 要求「早上、中午 13 時、下午 5 時」。改時段時這條會紅，提醒一起看文件。
+  const plist = readFileSync(join(SCRIPTS, 'launchd', 'com.hermes.ly-dashboard-fb-daily.plist'), 'utf8');
+  const hours = [...plist.matchAll(/<key>Hour<\/key>\s*<integer>(\d+)<\/integer>/g)].map((m) => Number(m[1]));
+  assert.deepEqual(hours, [8, 13, 17], '三個時段的 Hour 要剛好是 8／13／17');
+  assert.match(plist, /<key>StartCalendarInterval<\/key>\s*<array>/, '多個時段要用 array（單一 dict 只能一個時間）');
+  const timer = readFileSync(join(ROOT, 'deploy', 'linux', 'ly-dashboard-fb-daily.timer'), 'utf8');
+  for (const h of ['08:00:00', '13:00:00', '17:00:00']) assert.ok(timer.includes(h), `Linux timer 也要有 ${h}`);
+});

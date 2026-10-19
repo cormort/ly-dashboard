@@ -44,7 +44,7 @@
 | 路徑 | 誰驅動 | 寫入方式 | 什麼時候生效 |
 | --- | --- | --- | --- |
 | 政府開放資料／g0v／新聞 | 伺服器內建排程或 `POST /api/v1/sync` | **整批覆寫**（單一交易 DELETE+INSERT）或累積 upsert | 同步跑完即生效（查詢無快取） |
-| 粉專貼文 | **launchd 每日 08:00** 的 `scripts/fb-daily.mjs` | 先產 CSV → 寫回 Google 試算表 → 推 `fb-data` → **直接匯入本機 DB** | 匯入完成即生效（失敗才回頭叫伺服器重讀試算表） |
+| 粉專貼文 | **launchd 每日 08:00／13:00／17:00** 的 `scripts/fb-daily.mjs` | 先產 CSV → 寫回 Google 試算表 → 推 `fb-data` → **直接匯入本機 DB** | 匯入完成即生效（失敗才回頭叫伺服器重讀試算表） |
 | 縣市人口／選舉／地圖 | 人工或 Hermes cron 跑 `scripts/build-*.mjs` | 產生 `server/*.json` | **改完要重啟伺服器**（`queries.mjs` 把這些檔快取在記憶體） |
 
 ---
@@ -177,7 +177,7 @@
 | 立法院開放資料 ID370／ID373 | 院會表決、三讀通過條文與附帶決議 | `rollcall_votes`＋`vote_ballots`／`bill_resolutions` | 24h |
 | `ppg.ly.gov.tw` | 議案審議進度 | `progress_overrides`（再套回議案） | 同議案 20h 內不重查 |
 | 法務部全國法規資料庫 | 法規 → 主管機關 | `moj_law_agencies` | 距上次 12h 內完全不抓 |
-| 委員 Facebook 粉專 | 最新貼文／貼文層級 | CSV → Google 試算表 → `fb-data` → `social_posts` | 每日 08:00（launchd） |
+| 委員 Facebook 粉專 | 最新貼文／貼文層級 | CSV → Google 試算表 → `fb-data` → `social_posts` | 每日 08:00／13:00／17:00（launchd） |
 | Google 整理表（委員／議員） | 粉專網址與最新一則摘要 | `social_accounts`／`council_social` | 每輪 social（每日一次） |
 | Google 新聞 RSS | 委員／機關／首長／主計／議員新聞 | `news`／`topic_news`／`articles` | 新聞階段（含每 6h 自動重跑） |
 | 媒體官方 RSS（中央社／自由／聯合／公視） | 新聞全文摘要 | `articles` + 分派 | 每小時 |
@@ -208,7 +208,7 @@
 
 | 腳本 | 用途 | 誰觸發 |
 | --- | --- | --- |
-| `fb-daily.mjs`（`.sh` 是薄殼） | 每日粉專抓取主流程（鎖、探測、抓取、寫回試算表、推分支、直接匯入 DB、通知） | launchd 08:00；手動 `npm run fb-daily` |
+| `fb-daily.mjs`（`.sh` 是薄殼） | 每日粉專抓取主流程（鎖、探測、抓取、寫回試算表、推分支、直接匯入 DB、通知） | launchd 08:00／13:00／17:00；手動 `npm run fb-daily` |
 | `fetch-fb-posts.mjs` | Playwright 抓粉專貼文（`--login`／`--verify`／`--ids`／`--limit`） | `fb-daily.mjs` spawn；手動 |
 | `import-fb-cookies.mjs` | 匯入已登入瀏覽器的 cookies 到設定檔 | 手動 |
 | `push-posts-to-sheet.mjs` | 寫回 Google 整理表（Apps Script Web App） | `fb-daily.mjs`；手動 |
