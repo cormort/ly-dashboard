@@ -17,6 +17,8 @@ import {
   safeNext,
   sessionClearCookie,
   sessionSetCookie,
+  needsRenewal,
+  sessionExpiresAt,
   signSession,
   SESSION_COOKIE,
   verifyPassword,
@@ -43,6 +45,18 @@ test('session：簽完可以驗回，過期或改字就失效', () => {
   // 直接把過期時間往後改（沒有重算簽章）也要擋
   const [v, exp, mac] = value.split('.');
   assert.equal(verifySession(`${v}.${Number(exp) + 999_999}.${mac}`, SECRET, now), false);
+});
+
+test('滑動續期：剩不到門檻才續、過期或格式錯不會亂續', () => {
+  const now = 1_700_000_000_000;
+  const day = 86_400_000;
+  const value = signSession(now + 10 * day, SECRET);
+  assert.equal(sessionExpiresAt(value), now + 10 * day);
+  assert.equal(needsRenewal(sessionExpiresAt(value), now, 30 * day), true);
+  const longLived = signSession(now + 100 * day, SECRET);
+  assert.equal(needsRenewal(sessionExpiresAt(longLived), now, 30 * day), false);
+  assert.equal(sessionExpiresAt('nonsense'), 0);
+  assert.equal(needsRenewal(0, now, 30 * day), false);
 });
 
 test('密碼：scrypt 雜湊可驗，錯的密碼不行，格式壞掉不會丟錯', async () => {

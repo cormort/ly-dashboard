@@ -7,7 +7,8 @@
  *
  * 這裡的設計：
  *  - 密碼不比對明碼，存 scrypt 雜湊（LY_LOGIN_PASSWORD_HASH）。
- *  - 登入成功簽一個 HMAC 的 cookie（LY_SESSION_SECRET），預設 180 天，HttpOnly + Secure + SameSite=Lax。
+ *  - 登入成功簽一個 HMAC 的 cookie（LY_SESSION_SECRET），預設 180 天，HttpOnly + Secure + SameSite=Lax；
+ *    每次請求只要剩不到 30 天就自動重簽（滑動續期），有在用就不會過期。
  *  - 只有「經過 Caddy」的請求才需要登入：Caddy 會加上 `X-Ly-Public: 1`（見 Caddyfile）；
  *    loopback／tailnet（tailscale serve）本來就只有這台機器／自己的裝置連得到，直接放行
  *    —— 注意 tailscale serve 也會帶 x-forwarded-for，所以不能用那個當判斷依據。
@@ -45,6 +46,23 @@ export function verifySession(value, secret, now = Date.now()) {
   }
   const expected = createHmac('sha256', secret).update(`${parts[0]}.${parts[1]}`).digest();
   return given.length === expected.length && timingSafeEqual(given, expected);
+}
+
+/** 取 cookie 裡的到期時間（毫秒）；格式不對回 0。呼叫前仍要 verifySession 驗簽章。 */
+export function sessionExpiresAt(value) {
+  if (typeof value !== 'string') return 0;
+  const parts = value.split('.');
+  if (parts.length !== 3 || parts[0] !== SESSION_VERSION) return 0;
+  const expiresAt = Number(parts[1]);
+  return Number.isFinite(expiresAt) ? expiresAt : 0;
+}
+
+/**
+ * 滑動續期：只要還有在用，就一直展延，不會「用得好好的突然被登出」。
+ * 剩餘時間少於 renewBeforeMs 就重簽一個全新的 cookie。
+ */
+export function needsRenewal(expiresAt, now, renewBeforeMs) {
+  return expiresAt > now && expiresAt - now < renewBeforeMs;
 }
 
 export async function hashPassword(password) {

@@ -42,7 +42,9 @@
 | tailnet `:10000`、loopback | 免登入（這些本來就只有自己的裝置連得到） |
 
 - 判斷「公開來源」靠 Caddy 注入的 `X-Ly-Public: 1`，**不是** `x-forwarded-for`（tailscale serve 也會送 XFF，分不出來）。
-- 憑證在 `~/.ly-dashboard/server.env`（權限 600）：`LY_LOGIN_USER`、`LY_LOGIN_PASSWORD_HASH`（scrypt）、`LY_SESSION_SECRET`、`LY_SESSION_DAYS`。
+- 憑證在 `~/.ly-dashboard/server.env`（權限 600）：`LY_LOGIN_USER`、`LY_LOGIN_PASSWORD_HASH`（scrypt）、`LY_SESSION_SECRET`、`LY_SESSION_DAYS`、`LY_SESSION_RENEW_DAYS`。
+- 滑動續期：每次請求只要 cookie 剩不到 `LY_SESSION_RENEW_DAYS`（預設 30 天）就自動重簽一張 `LY_SESSION_DAYS` 的新 cookie，
+  所以 PWA 有在用就一直不用重新登入；完全沒開超過 180 天才會過期。
   **值一定要用單引號包**（scrypt 雜湊含 `$`，被 shell 展開會壞）。
 - 登入失敗節流：10 分鐘內 10 次失敗就回 429；成功登入清空。
 - 換密碼：

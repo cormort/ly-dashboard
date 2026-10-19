@@ -18,6 +18,8 @@ import { getProgress, clearProgress } from './sync-progress.mjs';
 import {
   SESSION_COOKIE,
   createLoginThrottle,
+  needsRenewal,
+  sessionExpiresAt,
   isPublicOrigin,
   isPublicPath,
   loginPageHtml,
@@ -145,6 +147,7 @@ const AUTH = {
   hash: process.env.LY_LOGIN_PASSWORD_HASH || '',
   secret: process.env.LY_SESSION_SECRET || '',
   days: Math.max(1, Math.min(3650, Number(process.env.LY_SESSION_DAYS) || 180)),
+  renewDays: Math.max(0, Math.min(3650, Number(process.env.LY_SESSION_RENEW_DAYS) || 30)),
 };
 const authEnabled = () => Boolean(AUTH.hash && AUTH.secret);
 const loginThrottle = createLoginThrottle();
@@ -260,6 +263,13 @@ export function createServer(db) {
             if (path.startsWith('/api/')) return sendError(res, 401, 'login_required', '請先登入');
             // 導覽請求回 401 + 登入頁：Service Worker 不會快取非 2xx，所以不會把登入頁記成外框
             return sendLoginPage(res, 401, { next: safeNext(path) });
+          }
+          // 滑動續期：剩不到 N 天就換一張新的，PWA 有在用就一直不用重新登入
+          const expiresAt = sessionExpiresAt(session);
+          if (AUTH.renewDays > 0 && needsRenewal(expiresAt, Date.now(), AUTH.renewDays * 86_400_000)) {
+            const fresh = Date.now() + AUTH.days * 86_400_000;
+            res.setHeader('set-cookie', sessionSetCookie(signSession(fresh, AUTH.secret), AUTH.days * 86_400));
+            res.setHeader('cache-control', 'no-store');
           }
         }
       }
