@@ -510,6 +510,7 @@ export function budgetTypeTags(name) {
   if (/總(預算案|決算)(?!附屬單位|追加)/.test(text)) types.push('general');
   if (/附屬單位(預算|決算)/.test(text)) types.push('subsidiary');
   if (/特別(預算案|決算)/.test(text)) types.push('special');
+  // 追加預算會分次（「115年度中央政府總預算第2次追加預算案」），次別寫在案名中間，不影響類型判斷
   if (/追加(預算案|決算)/.test(text)) types.push('supplementary');
   return types;
 }

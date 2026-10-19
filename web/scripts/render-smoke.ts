@@ -1246,6 +1246,12 @@ check(
     const noYear = '「中央政府花蓮馬太鞍溪堰塞湖災後重建特別預算案」案。';
     check('上色：沒寫年度的特別預算案也要標', budgetHitParts(noYear).filter((p) => p.hit)[0]?.text === '中央政府花蓮馬太鞍溪堰塞湖災後重建特別預算案');
     check('上色：116 年度也一樣（各年度類推）', budgetHitParts('「116年度中央政府總預算案（含附屬單位預算及綜計表－營業及非營業部分）」案。').filter((p) => p.hit).length === 1);
+    // 追加預算分次：「第2次追加預算案」的次別夾在案名中間，也要整段上色（使用者 2026-10-19：「你可以用「」來判斷」）
+    check(
+      '上色：第2次追加預算案整段上色',
+      budgetHitParts('報告審查行政院函請審議「115年度中央政府總預算第2次追加預算案」案。').filter((p) => p.hit)[0]?.text === '115年度中央政府總預算第2次追加預算案',
+    );
+    check('上色：沒有年度的第2次追加預算案也上色', budgetHitParts('「中央政府總預算第2次追加預算案」案。').filter((p) => p.hit).length === 1);
   }
 }
 check('統計範圍：使用者自己指定就不覆寫', scopeAfterCategoryChange({ currentScope: 'bills', isBillCategory: true, explicitScope: 'all' }) === 'all');
