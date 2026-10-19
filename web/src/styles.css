@@ -1047,6 +1047,15 @@ select { max-width: 100%; }
   line-height: 1.5;
   color: var(--ink);
 }
+/* 「115年度中央政府總預算案」關鍵詞上色：整段議程裡夾著別的案子，不上色找不到（使用者 2026-10-19 要求） */
+.budget-hit {
+  padding: 0 2px;
+  border-radius: 3px;
+  background: #fff1c2;
+  color: #6b4a00;
+  font-weight: 600;
+  box-decoration-break: clone;
+}
 .timeline-match-label {
   display: inline-block;
   margin-right: 6px;

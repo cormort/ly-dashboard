@@ -45,7 +45,7 @@ import { SyncStatusBanner } from '../src/components/SyncStatusBanner';
 import { RankingsPage, RankingBoardView } from '../src/pages/RankingsPage';
 import { TopicsPanel, tagTier } from '../src/components/TopicsPanel';
 import { ComparePage } from '../src/pages/ComparePage';
-import { BUDGET_COMMITTEE_ORDER, BUDGET_PROCESS_STEPS, BudgetPage, BudgetProcessRail, BudgetTimeline, budgetCommitteeRank, progressDateText, scopeAfterCategoryChange } from '../src/pages/BudgetPage';
+import { BUDGET_COMMITTEE_ORDER, BUDGET_PROCESS_STEPS, BudgetPage, BudgetProcessRail, BudgetTimeline, budgetCommitteeRank, budgetHitParts, progressDateText, scopeAfterCategoryChange } from '../src/pages/BudgetPage';
 import { YearProgressList, budgetProgressBar, budgetProgressText, budgetRecordsText, hasReviewableItems, yearLabel } from '../src/components/BudgetProgress';
 import { syncProgressText, syncRunningText } from '../src/lib/format';
 import { DashboardPage } from '../src/pages/DashboardPage';
@@ -1192,6 +1192,15 @@ check('議案紀錄彙總：只有一筆時不要多餘的說明', budgetRecords
 check('統計範圍：點到決議案／定期報告類別 → 切到「決議案與定期報告」', scopeAfterCategoryChange({ currentScope: 'bills', isBillCategory: false }) === 'others');
 check('統計範圍：點回總預算案類別 → 切回預設', scopeAfterCategoryChange({ currentScope: 'others', isBillCategory: true }) === 'bills');
 check('統計範圍：網址自己指定 scope 時尊重它（all 仍然可用）', scopeAfterCategoryChange({ isBillCategory: false, explicitScope: 'all' }) === 'all');
+
+// 「115年度中央政府總預算案」要上色（使用者 2026-10-19：「要加顏色，以利辨識」）
+{
+  const src = '三、列席報告「115年度中央政府總預算案」編製經過並備質詢（另含115年度中央政府總預算案追加預算案）';
+  const parts = budgetHitParts(src);
+  check('關鍵詞上色：只標總預算案本身（追加預算不標）', parts.filter((p) => p.hit).map((p) => p.text).join('|') === '115年度中央政府總預算案');
+  check('關鍵詞上色：切完的片段接回原文，一個字都不少', parts.map((p) => p.text).join('') === src);
+  check('關鍵詞上色：沒有關鍵詞時原樣回傳', budgetHitParts('審查114年度中央政府總預算案有關教育部部分').filter((p) => p.hit).length === 1);
+}
 check('統計範圍：使用者自己指定就不覆寫', scopeAfterCategoryChange({ currentScope: 'bills', isBillCategory: true, explicitScope: 'all' }) === 'all');
 
 // 預算進度：審竣／總件數／待審查（數字來自後端五級分類，畫面只負責呈現）

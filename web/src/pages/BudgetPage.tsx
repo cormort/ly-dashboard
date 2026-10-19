@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { Download, ExternalLink, FileText, X } from 'lucide-react';
 import { buildUrl } from '../api/client';
 import type { BudgetItem, BudgetMeetingsResponse, BudgetReportsResponse, BudgetResponse, BudgetState, BudgetTimelineResponse, BudgetTimelineItem, BudgetType } from '../api/types';
@@ -75,6 +75,28 @@ export const progressDateText = (value: string | null | undefined): string => fo
  * 上游改分類名稱時，這裡與 server 的 config 要一起改。
  */
 export const AGENCY_REPORT_CATEGORY = '預(決) 算決議案、定期報告';
+/**
+ * 把「115年度中央政府總預算案」切成可上色的片段（純函式，給 render-smoke 測）。
+ *
+ * 為什麼需要：議程一整段裡混著決議案、特別預算、施政質詢，關鍵詞夾在中間看不出來
+ * （使用者 2026-10-19：「115年度中央政府總預算案 要加顏色，以利辨識」）。
+ * 只標「NNN 年度中央政府總預算案」；「…總預算案追加預算案」「…特別預算案」是另一本預算，不標。
+ */
+export function budgetHitParts(text: string): { text: string; hit: boolean }[] {
+  const src = String(text ?? '');
+  const re = /\d{2,3}\s*年度中央政府總預算案(?![追特])/g;
+  const out: { text: string; hit: boolean }[] = [];
+  let last = 0;
+  for (const m of src.matchAll(re)) {
+    const at = m.index ?? 0;
+    if (at > last) out.push({ text: src.slice(last, at), hit: false });
+    out.push({ text: m[0], hit: true });
+    last = at + m[0].length;
+  }
+  if (last < src.length) out.push({ text: src.slice(last), hit: false });
+  return out;
+}
+
 /**
  * 預設「全部類別」：兩個檢視（總預算案／決議案與定期報告）本身就是類別的二分法，
  * 預設再壓一個「中央政府總預算案」會讓另一邊永遠 0（2026-10-19 使用者回報「全部檢視 11710」後修正）。
@@ -767,6 +789,13 @@ export function BudgetTimeline({
     else dateGroups[dateGroups.length - 1].items.push(m);
   }
 
+  /**
+   * 「115年度中央政府總預算案」在整段議程裡不明顯（前後都是別的案子），使用者 2026-10-19 要求加顏色辨識。
+   * 只標「NNN 年度中央政府總預算案」這個關鍵詞（追加／特別預算不算），其餘文字照舊。
+   */
+  const withBudgetHit = (text: string) =>
+    budgetHitParts(text).map((part, i) => (part.hit ? <mark key={i} className="budget-hit">{part.text}</mark> : <Fragment key={i}>{part.text}</Fragment>));
+
   /** 單場會議（依委員會與依時間兩種檢視共用） */
   const timelineItem = (m: BudgetTimelineItem) => (
     <li key={`${m.id}-${m.date}`}>
@@ -791,11 +820,11 @@ export function BudgetTimeline({
       {m.match && (m.agenda ?? '').indexOf(m.match) > 40 ? (
         <p className="timeline-match" title={m.agenda}>
           <span className="timeline-match-label">認定依據</span>
-          …{m.match}…
+          …{withBudgetHit(m.match)}…
         </p>
       ) : null}
       <p className="clamp-2" title={m.agenda}>
-        {m.agenda}
+        {withBudgetHit(m.agenda ?? '')}
       </p>
       {(m.funds ?? []).length > 0 ? (
         <p className="fund-line" title={(m.funds ?? []).join('、')}>
