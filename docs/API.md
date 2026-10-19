@@ -355,6 +355,18 @@ Query 參數（全部可選）：
 > 院會二讀／三讀的**精確日期**只有「有記名表決」的年度拿得到（`院會表決` 那幾筆）；
 > 其他年度看 `plenary`（院會場次）的日期與事由。
 
+## GET /api/v1/page-views?date=YYYY-MM-DD
+
+**站上自己的**頁面瀏覽統計（不是立法院資料）。`date` 是當地日期，預設**昨天**。
+
+- 記什麼：只記「Accept 含 text/html 的 GET」（＝真的有人開頁面）與**登入成功**；
+  API、靜態檔、圖片都不記。同一張 cookie 用 HMAC 前 8 碼當識別，**不存 IP、不存 cookie 原文**。
+- 回應：`{ date, pv, visitors, anonymous, logins, loginVisitors, paths[], ua, hourly[] }`
+  - `pv` 瀏覽次數（登入那筆不算）、`visitors` 不同 session 數、`anonymous` 沒 cookie 的瀏覽次數
+  - `paths[]`：`{ path, label, views, visitors }`，依次數排序（`label` 是中文頁名）
+  - `ua`：`{ mobile, desktop, bot, unknown }`；`hourly[24]` 是當地時間的每小時次數
+- 資料保留 400 天（每天推日報時順手清）
+
 ## GET /api/v1/regions?per=3
 
 各區域（縣市，另有全國不分區、平地／山地原住民）最新動態，總覽頁用。依縣市由北到南排序。

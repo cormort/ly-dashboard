@@ -1790,3 +1790,23 @@ API `?year=115` 的 `2026-04-21` 回報第三點那句、`2026-04-17` 不回報�
    「中央政府總預算案」的查照案——那正是報告類該出現的地方，所以 `others` 的定義是
    「不是預算案本身」，測試的斷言也跟著放寬成「類別不是總預算案，或是查照案」。
    附帶好處：`bills + others = all` 這個不變式還成立（畫面兩個開關的數字相加不會對不起來）。
+
+## D303：使用者行為 → 自家 `page_views` 表（不存 IP）
+
+使用者問「可以知道昨天 user 的行為嗎」，答案是**不行**：Caddy 沒有 `log` 指令、伺服器只記同步與啟動，
+帳號也只有一個 `DGBAS`（cookie 只簽到期時間，不辨識人）。所以先問要哪種做法，使用者選 **A：自家 page_views 表**。
+
+| 岔路 | 選擇 | 理由 |
+| --- | --- | --- |
+| 記什麼 | 只記 **Accept 含 `text/html` 的 GET**（＝真的開頁面）與**登入成功** | 記全部請求會被 API／靜態檔灌爆（一次開頁面幾十筆），看不出行為 |
+| 怎麼辨識人 | cookie 的 **HMAC(SHA-256) 前 8 碼**，`LY_SESSION_SECRET` 當金鑰 | 同一張 cookie 同一個碼可以算「幾個人」；不存 IP、不存 cookie 原文，換 secret 就整批失效 |
+| 時區 | 存 `day`（當地日期）與 `hour` 兩欄 | 用 UTC 切日會把台北 00:30 算到前一天（D 的測試有一條就在釘這個） |
+| 每天怎麼推 | **伺服器排程**（`startScheduler` 每小時醒一次，08:10 之後第一次醒就推），不是 launchd | `launchctl bootstrap` 在 Hermes gateway 裡會被擋（`Bootstrap failed: 5`，實測），而伺服器本來就由 launchd 監管一直開著 |
+| 重複推 | `meta.page_views_reported_day` 記「已推哪一天」，**先標記再送** | 送失敗也不每小時重推；重推同一則比漏一天更煩 |
+| 0 次瀏覽 | 不推，只寫 log | 不要每天收到「沒有人開站」 |
+| 保留 | 400 天，每天寫日報時順手 prune | 日報只看昨天，留一年是為了之後看趨勢 |
+| 沒做什麼 | 沒改 Caddy（不加 access log）、沒接外部 analytics、沒加帳號系統 | 自家 DB 就夠回答「昨天怎樣」，也不用把訪客資料送到外面 |
+
+驗證：`test/page-views.test.mjs` 8 條（裝置分類、HMAC 識別、登入不算瀏覽、熱門頁、**台北切日**、日報文字、
+最忙時段、清理、未知 kind 要炸）；實跑 `/api/v1/page-views` 與
+`node scripts/page-views-report.mjs --push`（實測 Telegram 已送出）。

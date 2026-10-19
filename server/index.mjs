@@ -1,10 +1,11 @@
 import http from 'node:http';
 import { createHash, timingSafeEqual } from 'node:crypto';
+import { existsSync, readFileSync } from 'node:fs';
 import { readFile, stat } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { CONFIG } from './config.mjs';
-import { openDb, getMeta } from './db.mjs';
+import { openDb, getMeta, setMeta } from './db.mjs';
 import {
   billsCsv, budgetCsv, newsCsv, compareLegislators, listBudget, listCounties, listLegislatorVotes, listSplitTicket, listDemographics, listPopulationTrend, getTownMap, listRegions, listFunds, getAgencyHome, listCommitteeActivity, listBudgetMeetings, listBudgetTimeline, listBudgetReports, getHealth, getMetaPayload, listActivity, listBills, listCosponsors, listNews, listNewsArticles, listTopics, listChanges,
   listCommittees, listLegislators, listRankings, listSyncRuns, listRecalls, listCouncil, listCouncilActivity, councilCounties,
@@ -33,6 +34,17 @@ import {
   verifySession,
 } from './auth.mjs';
 import { warmUp } from './warmup.mjs';
+import {
+  classifyUa,
+  dailyPageViews,
+  ensurePageViewTable,
+  pageViewsText,
+  previousDay,
+  prunePageViews,
+  recordPageView,
+  viewerHash,
+} from './page-views.mjs';
+import { DEFAULT_ENV_FILE as NOTIFY_ENV_FILE, parseEnvFile, sendTelegram } from '../scripts/notify-telegram.mjs';
 
 let inflight = null;
 let inflightScope = null;
@@ -202,7 +214,7 @@ const readFormBody = (req, limit = 8192) =>
     req.on('aborted', () => resolve(''));
   });
 
-async function handleLogin(req, res) {
+async function handleLogin(req, res, db) {
   const retryAfter = loginThrottle.retryAfterSeconds();
   if (retryAfter > 0) {
     res.writeHead(429, { 'content-type': 'text/plain; charset=utf-8', 'retry-after': String(retryAfter), 'cache-control': 'no-store' });
@@ -221,8 +233,22 @@ async function handleLogin(req, res) {
   }
   loginThrottle.reset();
   const expiresAt = Date.now() + AUTH.days * 86_400_000;
+  const freshSession = signSession(expiresAt, AUTH.secret);
+  // 登入成功另記一筆（kind=login）：看得到「誰開了站」而不只是「頁面被看幾次」
+  try {
+    if (db) {
+      recordPageView(db, {
+        path: '/login',
+        kind: 'login',
+        sessionHash: viewerHash(freshSession, AUTH.secret),
+        ua: classifyUa(req.headers['user-agent']),
+      });
+    }
+  } catch (error) {
+    console.error(`[page-views] 登入記錄失敗：${error?.message ?? error}`);
+  }
   res.writeHead(303, {
-    'set-cookie': sessionSetCookie(signSession(expiresAt, AUTH.secret), AUTH.days * 86_400),
+    'set-cookie': sessionSetCookie(freshSession, AUTH.days * 86_400),
     location: next,
     'cache-control': 'no-store',
   });
@@ -262,15 +288,40 @@ async function serveStatic(res, urlPath) {
   return false;
 }
 
+/**
+ * 記錄一次「頁面瀏覽」（見 server/page-views.mjs 為什麼只記這些）。
+ *
+ * 只算 **Accept 含 text/html 的 GET**：PWA／瀏覽器開頁面會帶，Service Worker 預抓的資產、
+ * API 呼叫、圖片都不會。SW 的離線導覽也是導覽請求，所以照算。
+ * 記錄失敗不能影響請求（統計是加分項，不是功能）。
+ */
+function recordViewIfPage(db, req, path) {
+  try {
+    if (req.method !== 'GET') return;
+    if (!String(req.headers.accept ?? '').includes('text/html')) return;
+    if (path.startsWith('/api/') || path.includes('.')) return; // 靜態檔（.js/.css/.png…）不算
+    const session = readCookie(req.headers.cookie, SESSION_COOKIE);
+    recordPageView(db, {
+      path,
+      sessionHash: viewerHash(session, AUTH.secret),
+      ua: classifyUa(req.headers['user-agent']),
+    });
+  } catch (error) {
+    console.error(`[page-views] 記錄失敗：${error?.message ?? error}`);
+  }
+}
+
 export function createServer(db) {
+  ensurePageViewTable(db);
   return http.createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
     const path = url.pathname;
     const q = Object.fromEntries(url.searchParams.entries());
+    recordViewIfPage(db, req, path);
 
     try {
       if (authEnabled()) {
-        if (path === '/api/v1/login' && req.method === 'POST') return void (await handleLogin(req, res));
+        if (path === '/api/v1/login' && req.method === 'POST') return void (await handleLogin(req, res, db));
         if (path === '/login') return sendLoginPage(res, 200, { next: safeNext(q.next) });
         if (path === '/logout') {
           res.writeHead(303, { 'set-cookie': sessionClearCookie(), location: '/login', 'cache-control': 'no-store' });
@@ -298,6 +349,10 @@ export function createServer(db) {
           return sendError(res, 405, 'method_not_allowed', `${req.method} 不支援`);
         }
         switch (path) {
+          case '/api/v1/page-views': {
+            const date = /^\d{4}-\d{2}-\d{2}$/.test(String(q.date ?? '')) ? String(q.date) : previousDay();
+            return sendJson(res, 200, dailyPageViews(db, { date }));
+          }
           case '/api/v1/health':
             // progress：現在跑到哪（例如新聞 137/601）。單一資料集內部一大串請求時，
             // 只靠 sync_runs 會十幾分鐘都是「已完成 0 個來源」，所以另外回報細部進度。
@@ -517,12 +572,64 @@ export function shouldRefreshNews(db, { now = Date.now(), intervalMs = CONFIG.ne
   return !Number.isFinite(at) || now - at >= intervalMs;
 }
 
+/**
+ * 每天一次把「昨天的使用狀況」推到 Telegram（使用者 2026-10-20 選的方案 A）。
+ *
+ * 為什麼放在伺服器排程而不是 launchd：`launchctl bootstrap` 不能在這個環境執行（見
+ * scripts/launchd/install.sh 的說明），而伺服器本來就由 launchd 監管、一直開著；
+ * 排程每小時醒一次，08:10 之後的第一個 tick 就推，時間誤差最多一小時，日報沒差。
+ *
+ * 規則：
+ *  - 只在 08:10（當地）之後推，一天一次；已推過的日期記在 meta `page_views_reported_day`。
+ *  - **先標記再送**：送失敗也不重試，避免每小時重推同一則（失敗訊息留在 log）。
+ *  - 昨天 0 次瀏覽就不推（不要每天收到「沒有人開站」）。
+ *  - 沒有 `~/.ly-dashboard/notify.env` 憑證時只寫 log。
+ */
+async function maybeSendPageViewReport(db, { logger = console, now = new Date() } = {}) {
+  try {
+    const minutesNow = now.getHours() * 60 + now.getMinutes();
+    if (minutesNow < 8 * 60 + 10) return;
+    const day = previousDay(now.getTime());
+    if (getMeta(db, 'page_views_reported_day') === day) return;
+    prunePageViews(db);
+    setMeta(db, 'page_views_reported_day', day);
+    const summary = dailyPageViews(db, { date: day });
+    if (summary.pv === 0) {
+      logger.log(`[page-views] ${day} 沒有人瀏覽，不推播`);
+      return;
+    }
+    const text = pageViewsText(summary);
+    const env = { ...parseEnvFile(process.env.LY_NOTIFY_ENV_TEXT ?? ''), ...readNotifyEnv() };
+    const token = process.env.LY_TELEGRAM_BOT_TOKEN || env.LY_TELEGRAM_BOT_TOKEN;
+    const chatId = process.env.LY_TELEGRAM_CHAT_ID || env.LY_TELEGRAM_CHAT_ID;
+    if (!token || !chatId) {
+      logger.log(`[page-views] 沒有通知憑證，日報只寫 log：\n${text}`);
+      return;
+    }
+    const result = await sendTelegram({ token, chatId, text });
+    logger.log(result.ok ? `[page-views] 日報已送出（${day}）` : `[page-views] 日報送出失敗（${day}）：${result.detail}`);
+  } catch (error) {
+    logger.error(`[page-views] 日報失敗：${error?.message ?? error}`);
+  }
+}
+
+/** 讀 ~/.ly-dashboard/notify.env（沒有就回空物件；憑證只放那裡，不寫進 repo） */
+function readNotifyEnv() {
+  try {
+    if (!existsSync(NOTIFY_ENV_FILE)) return {};
+    return parseEnvFile(readFileSync(NOTIFY_ENV_FILE, 'utf8'));
+  } catch {
+    return {};
+  }
+}
+
 export function startScheduler(db, { logger = console, checkEveryMs = CONFIG.schedulerCheckMs } = {}) {
   if (shouldSyncNow(db)) {
     logger.log('[scheduler] 資料不存在或已過期，啟動時先同步一次');
     syncOnce(db, { logger }).catch((error) => logger.error('[scheduler] 同步失敗', error));
   }
   const timer = setInterval(() => {
+    void maybeSendPageViewReport(db, { logger });
     if (!shouldSyncNow(db)) return;
     const hours = Math.round(CONFIG.syncIntervalMs / 3600_000);
     logger.log(`[scheduler] 資料已超過 ${hours} 小時未成功更新，開始同步`);

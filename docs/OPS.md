@@ -70,6 +70,32 @@ scripts/ly-set-password.sh --rotate-sessions  # 順便換 LY_SESSION_SECRET
 - `scripts/ly-dashboard-server.sh` 與 `scripts/fb-daily.sh` 會自己載入 `~/.ly-dashboard/server.env`（一行），
   所以 `LY_SYNC_TOKEN`、登入設定都不必寫進 launchd plist。
 
+**使用狀況（誰在開站、看了什麼）**
+
+2026-10-20 之前**完全沒有請求紀錄**（Caddy 沒開 access log、伺服器只記同步），所以「昨天有幾個人用」
+答不出來。現在最小幅度記一張 `page_views`（`server/page-views.mjs`）：
+
+- 只記「Accept 含 `text/html` 的 GET」與**登入成功**；API／靜態檔不記
+- 同一張 cookie 用 **HMAC 前 8 碼**當識別，**不存 IP、不存 cookie 原文**；換 `LY_SESSION_SECRET` 就整批對不起來
+- 留 400 天，每天寫日報時順手清舊資料
+
+看數字：
+
+```bash
+curl -s 'http://127.0.0.1:8787/api/v1/page-views'              # 昨天
+curl -s 'http://127.0.0.1:8787/api/v1/page-views?date=2026-10-19'
+node scripts/page-views-report.mjs                            # 文字日報（昨天）
+node scripts/page-views-report.mjs --date $(date +%F) --json   # 給程式吃
+node scripts/page-views-report.mjs --push                     # 順便推一則 Telegram
+```
+
+**每天 08:10 之後會自動推一則日報**（`server/index.mjs` 的排程，每小時醒一次所以最多晚一小時）：
+昨天 0 次瀏覽就不推；已推過的日期記在 `meta` 的 `page_views_reported_day`，不會重推。
+憑證沿用 `~/.ly-dashboard/notify.env`（沒有就只寫 log）。
+
+要停掉：把 `maybeSendPageViewReport` 從 `startScheduler` 的 tick 拿掉，或設法讓 `meta` 一直是今天
+（最簡單是 `--uninstall` 不需要、它不在 launchd 裡）。
+
 **「資料每天更新」的兩條路不要把他們搞混**
 
 - **名錄／議事／預算／新聞**：伺服器自己抓（上游立法院開放資料、Google 新聞），每 24 小時一輪；資料庫整批覆寫。
