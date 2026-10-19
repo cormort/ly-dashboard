@@ -74,6 +74,18 @@ interface RequestOptions {
   retries?: number;
 }
 
+/**
+ * 401 `login_required` → 直接帶到登入頁。
+ * 會走到這裡的兩種情況：session 真的過期，或是裝置上還留著舊版快取的外框
+ * （導覽被 Service Worker 用快取回應，伺服器沒機會回登入頁）。
+ */
+function redirectToLogin(): void {
+  if (typeof window === 'undefined') return;
+  if (window.location.pathname === '/login') return;
+  const next = `${window.location.pathname}${window.location.search}`;
+  window.location.replace(`/login?next=${encodeURIComponent(next)}`);
+}
+
 /** 兩次嘗試之間的等待（第 1 次失敗等 700ms，之後倍數成長） */
 const RETRY_DELAY_MS = 700;
 
@@ -91,6 +103,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
       return await apiAttempt<T>(path, { signal, timeoutMs, method });
     } catch (err) {
       const apiErr = err instanceof ApiError ? err : toApiError(err);
+      if (apiErr.status === 401 && apiErr.code === 'login_required') redirectToLogin();
       const retryable = apiErr.code === 'timeout' || apiErr.code === 'network_error';
       // 外層已經取消（換頁／元件卸載）就不要重試；POST 不重試
       if (!retryable || signal?.aborted || attempt >= maxAttempts) {
