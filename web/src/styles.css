@@ -1429,10 +1429,20 @@ main:has(.fb-wall) { max-width: min(1840px, 96vw); }
 /* ---------- 預算：各年度審議進度 ---------- */
 .year-panel { margin-bottom: var(--space-4); }
 .year-summary { margin: 0 0 var(--space-3); font-size: var(--fs-sm); }
+/*
+ * 每一列＝年度｜長條｜數字。長條以前是 `1fr`（在 1440px 上約 700px 長）：一條細長條看不出比例，
+ * 還把整排撐得很寬（使用者 2026-10-19：「bar 圖太長佔位子」）。
+ * 改成「固定短條（約 140px）＋數字緊跟在後」，並在寬螢幕排成兩欄 → 面板高度少一半、比例也更好比。
+ */
 .year-progress { display: grid; gap: 6px; }
+@media (min-width: 1024px) {
+  .year-progress { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 12px; }
+  .year-letter-toggle { grid-column: 1 / -1; justify-self: start; }
+}
 .year-progress-row {
-  display: grid; grid-template-columns: 9rem minmax(60px, 1fr) 14rem; align-items: center; gap: var(--space-3);
-  padding: 6px 10px; border: 1px solid var(--rule-soft); border-radius: var(--radius-md);
+  display: grid; grid-template-columns: 6.5rem 8.75rem max-content; align-items: center; gap: 10px;
+  justify-content: start;
+  padding: 5px 9px; border: 1px solid var(--rule-soft); border-radius: var(--radius-md);
   background: var(--surface); color: inherit; text-align: left; font: inherit; cursor: pointer;
 }
 .year-progress-row:hover { border-color: var(--rule); }
@@ -1444,7 +1454,7 @@ main:has(.fb-wall) { max-width: min(1840px, 96vw); }
   color: var(--ink);
 }
 .year-progress-name { font-size: var(--fs-sm); font-weight: 600; }
-.year-progress-numbers { font-size: var(--fs-sm); color: var(--ink-2); text-align: right; white-space: nowrap; }
+.year-progress-numbers { font-size: var(--fs-sm); color: var(--ink-2); text-align: left; white-space: nowrap; }
 .year-bar { display: flex; height: 10px; border-radius: var(--radius-pill); overflow: hidden; background: var(--rule-soft); }
 .year-bar-part.reviewed { background: var(--success, #16a34a); }
 .year-bar-part.in_review { background: var(--accent, #2563eb); }
