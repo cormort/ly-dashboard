@@ -405,6 +405,16 @@ export async function runBillsIngest(db, { logger = console, fetchImpl = fetchJs
 
 const OFFICIALS = JSON.parse(readFileSync(new URL('./officials.json', import.meta.url), 'utf8')).officials;
 
+/**
+ * 首長姓名的異體字寫法。媒體同一個人會寫成「李妍慧」也會寫成「李姸慧」，
+ * 只比對 name 會漏掉一半；officials.json 的 aliases 一起納入標題比對與新聞查詢。
+ * topic 仍用 name（`official:<name>`），所以異體字不會在首長名單裡變成兩個人。
+ */
+const officialNames = (o) => [o.name, ...(o.aliases ?? [])];
+const titleHasOfficial = (o, title) => officialNames(o).some((n) => title.includes(n));
+/** 查詢字串：("李妍慧" OR "李姸慧") 僑務委員會 */
+const officialQuery = (o) => `${officialNames(o).map((n) => `"${n}"`).join(' OR ')} ${o.agency}`;
+
 /** 主計新聞的兩組查詢（每日同步與回補共用）：中央的主計總處、地方的縣市政府主計處 */
 const DGBAS_QUERIES = [
   { key: 'dgbas:central', label: '主計總處', q: '("主計總處" OR "主計長")' },
@@ -552,7 +562,7 @@ function dispatchOutletItems(db, items, { legislators, tagger }, { fetchedAt }) 
     if (mine.length) added += upsertNews(db, l.id, mine, { fetchedAt });
   }
   for (const o of OFFICIALS) {
-    const mine = items.filter((i) => i.title.includes(o.name) && (!o.hint || o.hint.some((h) => i.title.includes(h))));
+    const mine = items.filter((i) => titleHasOfficial(o, i.title) && (!o.hint || o.hint.some((h) => i.title.includes(h))));
     if (mine.length) upsertTopicNews(db, `official:${o.name}`, mine, { fetchedAt });
   }
   upsertTopicNews(db, 'dgbas', items.filter((i) => i.title.includes('主計')), { fetchedAt });
@@ -695,8 +705,8 @@ export function backfillTargets(db) {
     targets.push({
       key: `official:${o.name}`,
       label: `${o.agency}${o.title}${o.name}`,
-      q: `"${o.name}" ${o.agency}`,
-      parse: (text) => parseNewsRss(text, { name: o.name }).filter((n) => !o.hint || o.hint.some((h) => n.title.includes(h))),
+      q: officialQuery(o),
+      parse: (text) => parseNewsRss(text, { match: (title) => titleHasOfficial(o, title) }).filter((n) => !o.hint || o.hint.some((h) => n.title.includes(h))),
       write: (db2, items, at) => upsertTopicNews(db2, `official:${o.name}`, items, { fetchedAt: at }),
     });
   }
@@ -998,8 +1008,8 @@ export async function runNewsIngest(
     if (Date.now() >= deadline) break;
     await pause(delayMs);
     try {
-      const { text } = await fetchImpl(newsFeedUrl(o.name, `"${o.name}" ${o.agency}`), { ua: CONFIG.userAgent, text: true, retries: 2 });
-      const items = parseNewsRss(text, { name: o.name }).filter((n) => n.published_at >= cutoff && (!o.hint || o.hint.some((h) => n.title.includes(h))));
+      const { text } = await fetchImpl(newsFeedUrl(o.name, officialQuery(o)), { ua: CONFIG.userAgent, text: true, retries: 2 });
+      const items = parseNewsRss(text, { match: (title) => titleHasOfficial(o, title) }).filter((n) => n.published_at >= cutoff && (!o.hint || o.hint.some((h) => n.title.includes(h))));
       upsertTopicNews(db, `official:${o.name}`, items, { fetchedAt: now().toISOString() });
       saveGoogleArticles(db, items, now);
     } catch (error) {

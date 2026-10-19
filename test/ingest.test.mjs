@@ -1120,8 +1120,9 @@ const rssOf = (items) =>
     .join('')}</channel></rss>`;
 const rssResponse = (xml) => ({ text: xml, status: 200, headers: {}, bytes: xml.length, sha256: 'x', attempts: 1 });
 const NEWS_NOW = () => new Date('2026-09-30T00:00:00.000Z');
-/** 基金機關的 OR 批次查詢（主計總處的查詢也有 OR，要排除） */
-const isEntityBatch = (q) => q.includes(' OR ') && !q.startsWith('("主計總處" OR "主計長")');
+/** 基金機關的 OR 批次查詢（`("A" OR "B" ...) when:30d`：OR 群組後直接接 when）；主計總處與首長異體字
+ *  的查詢也有 OR，但括號後面還有機關名，靠這個規則排除（2026-10-18 加首長 aliases 後才需要） */
+const isEntityBatch = (q) => /^\((?:"[^"]+"(?:\s+OR\s+)?)+\)\s+when:/.test(q) && !q.startsWith('("主計總處" OR "主計長")');
 
 test('基金新聞：搜尋詞不重複、取最短簡稱、全部合併成 OR 批次', () => {
   const terms = entityNewsTerms();
@@ -1386,6 +1387,26 @@ test('重新分派：新聞庫裡的舊媒體新聞，換了名單之後也會�
   assert.equal(first.items, 1, '只重新分派媒體 RSS 的（Google 那一路本來就是依對象查的）');
   assert.deepEqual(listNews(db, { legislator: ting }).items.map((n) => n.title), ['丁學忠談預算']);
   assert.equal(retagOutletArticles(db, { cutoff, now: NEWS_NOW }).added, 0, '重跑不重複新增');
+});
+
+test('首長異體字：標題寫「李姸慧」也歸到 official:李妍慧，不會在首長名單變成兩個人', () => {
+  const db = seeded();
+  const cutoff = new Date(NEWS_NOW().getTime() - CONFIG.news.keepDays * 86_400_000).toISOString();
+  upsertArticles(
+    db,
+    [
+      { url: 'https://cna.example/h1', title: '李姸慧稱駐外人員家屬可協助用公務車', source: '中央社', published_at: '2026-09-29T08:00:00.000Z' },
+      { url: 'https://cna.example/h2', title: '李妍慧暫代僑委會委員長', source: '自由時報', published_at: '2026-09-29T09:00:00.000Z' },
+    ],
+    { origin: 'outlet', fetchedAt: 'x' },
+  );
+  retagOutletArticles(db, { cutoff, now: NEWS_NOW });
+  assert.deepEqual(
+    db.prepare("SELECT title FROM topic_news WHERE topic = 'official:李妍慧' ORDER BY title").all().map((r) => r.title),
+    ['李妍慧暫代僑委會委員長', '李姸慧稱駐外人員家屬可協助用公務車'],
+    'officials.json 的 aliases 兩種寫法都要收',
+  );
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM topic_news WHERE topic = 'official:李姸慧'").get().n, 0, '異體字不另外變成一個人');
 });
 
 test('媒體 RSS 每小時輪詢：只抓媒體、記下時間；完整同步進行中或停用新聞時跳過', async () => {
