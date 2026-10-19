@@ -1594,17 +1594,17 @@ expectAll('總覽：loading 態有統計列、焦點卡與各區塊骨架', dash
   '委員會會議紀錄',
   'href="/bills?status=%E4%B8%89%E8%AE%80"',
 ]);
-// 總覽依首長關心的順序：我的機關摘要 → 議事 → 新聞 → 委員；並有「機關首長新聞」卡
+// 總覽依首長關心的順序：我的機關摘要 → 新聞 → 委員 → 議事（2026-10-19 使用者要求新聞與委員移到上面）；並有「機關首長新聞」卡
 check(
-  '總覽：最上方是我的機關摘要（預設主計總處），分區順序是 議事→新聞→委員',
+  '總覽：最上方是我的機關摘要（預設主計總處），分區順序是 新聞→委員→議事',
   (() => {
     const heads = [...dashboardLoading.matchAll(/<h2 id="dash-(\w+)">/g)].map((m) => m[1]).join('→');
     const strip = dashboardLoading.indexOf('aria-label="我的機關"');
     return (
-      heads === 'agenda→news→members' &&
+      heads === 'news→members→agenda' &&
       dashboardLoading.includes('aria-label="機關首長新聞"') &&
       strip > 0 &&
-      strip < dashboardLoading.indexOf('id="dash-agenda"') &&
+      strip < dashboardLoading.indexOf('id="dash-news"') &&
       dashboardLoading.includes('行政院主計總處') &&
       dashboardLoading.includes('前往我的機關')
     );
@@ -1613,7 +1613,7 @@ check(
 check(
   '總覽：議事區的卡片順序是 預算審議→預算中心報告→委員會→法案→三讀',
   (() => {
-    const agenda = dashboardLoading.split('id="dash-news"')[0];
+    const agenda = dashboardLoading.split('id="dash-agenda"')[1];
     const order = ['預算審議最新進度', '預算中心報告', '委員會會議紀錄', '法案最新進度', '最新三讀'].map((t) => agenda.indexOf(`aria-label="${t}"`));
     return order.every((i, k) => i > 0 && (k === 0 || i > order[k - 1]));
   })(),
