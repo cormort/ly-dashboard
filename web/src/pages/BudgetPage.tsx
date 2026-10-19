@@ -154,7 +154,8 @@ export function budgetTiles({
   types: Record<string, number> | undefined;
   allCount: number;
 }): BudgetTile[] {
-  const head: BudgetTile[] = [{ key: ALL, label: '全部', count: allCount, category: ALL, type: '' }];
+  // 「全部」講的是「所有種類的預算」——但決議案與定期報告那個檢視不是預算，寫「所有種類預算」會錯
+  const head: BudgetTile[] = [{ key: ALL, label: scope === 'others' ? '全部' : '所有種類預算', count: allCount, category: ALL, type: '' }];
   const typeTiles: BudgetTile[] =
     scope === 'others'
       ? []

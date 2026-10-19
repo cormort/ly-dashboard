@@ -1207,7 +1207,8 @@ check('審議進度收合：中央政府總預算案永遠不收', foldsProgress
   ];
   const types = { general: 11, subsidiary: 15, supplementary: 5, special: 4, all: 41 };
   const bills = budgetTiles({ scope: 'bills', categories: cats, types, allCount: 41 });
-  check('類別磚：全部旁邊是四類預算，不是單一「總預算案」', bills.map((t) => t.label).slice(0, 5).join('|') === '全部|總預算（單位預算）|總預算附屬單位預算（含信託基金）|總預算追加預算|特別預算');
+  check('類別磚：第一格是「所有種類預算」，旁邊是四類預算，不是單一「總預算案」', bills.map((t) => t.label).slice(0, 5).join('|') === '所有種類預算|總預算（單位預算）|總預算附屬單位預算（含信託基金）|總預算追加預算|特別預算');
+  check('類別磚：決議案與定期報告檢視的第一格仍叫「全部」（那裡不是預算）', budgetTiles({ scope: 'others', categories: cats, types, allCount: 11667 })[0].label === '全部');
   check('類別磚：原本的「總預算案」那一格不再出現', !bills.some((t) => t.label === '總預算案' || t.label === '中央政府總預算案'));
   check('類別磚：四類各自帶類型條件與件數', bills[1].category === '中央政府總預算案' && bills[1].type === 'general' && bills[1].count === 11 && bills[2].type === 'subsidiary' && bills[2].count === 15);
   check('類別磚：決議案與定期報告檢視不放預算四類', budgetTiles({ scope: 'others', categories: cats, types, allCount: 41 }).every((t) => t.type === ''));
