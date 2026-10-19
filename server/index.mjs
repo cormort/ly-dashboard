@@ -15,6 +15,21 @@ import { runAll, runOutletPoll } from './ingest.mjs';
 import { resolveScope, scopeStages } from './sync-scopes.mjs';
 import { checkSyncGuard } from './sync-guard.mjs';
 import { getProgress, clearProgress } from './sync-progress.mjs';
+import {
+  SESSION_COOKIE,
+  createLoginThrottle,
+  isPublicOrigin,
+  isPublicPath,
+  loginPageHtml,
+  readCookie,
+  safeEqual,
+  safeNext,
+  sessionClearCookie,
+  sessionSetCookie,
+  signSession,
+  verifyPassword,
+  verifySession,
+} from './auth.mjs';
 
 let inflight = null;
 let inflightScope = null;
@@ -122,6 +137,75 @@ const sendCsv = (res, filename, body) => {
 
 const sendError = (res, status, code, message) => sendJson(res, status, { error: { code, message } }, { 'cache-control': 'no-store' });
 
+/* ---------- App 層登入（cookie session）----------
+ * 沒設 LY_LOGIN_PASSWORD_HASH／LY_SESSION_SECRET 就維持舊行為（不啟用登入），
+ * 這樣本機開發與既有測試完全不受影響；正式站由 ~/.ly-dashboard/server.env 打開。 */
+const AUTH = {
+  user: process.env.LY_LOGIN_USER || 'DGBAS',
+  hash: process.env.LY_LOGIN_PASSWORD_HASH || '',
+  secret: process.env.LY_SESSION_SECRET || '',
+  days: Math.max(1, Math.min(3650, Number(process.env.LY_SESSION_DAYS) || 180)),
+};
+const authEnabled = () => Boolean(AUTH.hash && AUTH.secret);
+const loginThrottle = createLoginThrottle();
+
+const sendLoginPage = (res, status, options = {}) => {
+  const body = Buffer.from(loginPageHtml({ ...options, user: AUTH.user, days: AUTH.days }), 'utf8');
+  res.writeHead(status, {
+    'content-type': 'text/html; charset=utf-8',
+    'content-length': body.length,
+    'cache-control': 'no-store',
+    'x-robots-tag': 'noindex',
+    ...SECURITY_HEADERS,
+  });
+  res.end(body);
+};
+
+const readFormBody = (req, limit = 8192) =>
+  new Promise((resolve) => {
+    let size = 0;
+    const chunks = [];
+    req.on('data', (chunk) => {
+      size += chunk.length;
+      if (size > limit) {
+        resolve('');
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+    req.on('error', () => resolve(''));
+    req.on('aborted', () => resolve(''));
+  });
+
+async function handleLogin(req, res) {
+  const retryAfter = loginThrottle.retryAfterSeconds();
+  if (retryAfter > 0) {
+    res.writeHead(429, { 'content-type': 'text/plain; charset=utf-8', 'retry-after': String(retryAfter), 'cache-control': 'no-store' });
+    res.end(`嘗試次數過多，請約 ${Math.ceil(retryAfter / 60)} 分鐘後再試。`);
+    return;
+  }
+  const form = new URLSearchParams(await readFormBody(req));
+  const next = safeNext(form.get('next'));
+  const okUser = safeEqual(form.get('username') ?? '', AUTH.user);
+  const okPass = await verifyPassword(form.get('password') ?? '', AUTH.hash);
+  if (!(okUser && okPass)) {
+    loginThrottle.fail();
+    await new Promise((resolve) => setTimeout(resolve, 300)); // 讓暴力嘗試變慢
+    sendLoginPage(res, 401, { error: '帳號或密碼不正確', next });
+    return;
+  }
+  loginThrottle.reset();
+  const expiresAt = Date.now() + AUTH.days * 86_400_000;
+  res.writeHead(303, {
+    'set-cookie': sessionSetCookie(signSession(expiresAt, AUTH.secret), AUTH.days * 86_400),
+    location: next,
+    'cache-control': 'no-store',
+  });
+  res.end();
+}
+
 async function serveStatic(res, urlPath) {
   const safePath = normalize(urlPath).replace(/^(\.\.[/\\])+/, '');
   const candidates = [join(CONFIG.webDist, safePath === '/' ? 'index.html' : safePath)];
@@ -162,6 +246,23 @@ export function createServer(db) {
     const q = Object.fromEntries(url.searchParams.entries());
 
     try {
+      if (authEnabled()) {
+        if (path === '/api/v1/login' && req.method === 'POST') return void (await handleLogin(req, res));
+        if (path === '/login') return sendLoginPage(res, 200, { next: safeNext(q.next) });
+        if (path === '/logout') {
+          res.writeHead(303, { 'set-cookie': sessionClearCookie(), location: '/login', 'cache-control': 'no-store' });
+          return res.end();
+        }
+        // 公開來源＝經過 Caddy（有 x-forwarded-for）。loopback／tailnet 本來就只有自己連得到。
+        if (!isPublicPath(path) && isPublicOrigin(req.headers)) {
+          const session = readCookie(req.headers.cookie, SESSION_COOKIE);
+          if (!verifySession(session, AUTH.secret)) {
+            if (path.startsWith('/api/')) return sendError(res, 401, 'login_required', '請先登入');
+            // 導覽請求回 401 + 登入頁：Service Worker 不會快取非 2xx，所以不會把登入頁記成外框
+            return sendLoginPage(res, 401, { next: safeNext(path) });
+          }
+        }
+      }
       if (path.startsWith('/api/')) {
         if (req.method !== 'GET' && !(path === '/api/v1/sync' && req.method === 'POST')) {
           return sendError(res, 405, 'method_not_allowed', `${req.method} 不支援`);

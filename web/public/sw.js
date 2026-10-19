@@ -8,12 +8,17 @@
  *
  * **絕對不快取 /api/v1/***：本站的數字每天更新，快取 API 回應等於讓人看著過期數字
  * 卻以為是最新的。凡是 /api/ 一律直接放行給網路，不進快取、也不回舊值。
+ *
+ * **也絕不攔截「導覽請求」**：站上改用 cookie 登入後，未登入時伺服器回 401 + 登入頁；
+ * Service Worker 若用快取的外框回應導覽，登入頁就永遠看不到（而且舊版還可能把登入頁
+ * 記成外框）。導覽一律交給瀏覽器／伺服器決定，靜態資源照樣快取。
  */
 // app shell 的快取名。**改了任何外框資源（尤其是圖示）就要 +1**：
 // 不換快取名就不會重新 precache，主畫面上的 icon 會一直用舊的
 // （跟 meowdoku 那次的 shell-v52→v53 同一個坑）。
 // 2026-10-13 v2→v3：圖示改版（議事殿堂柱廊）且檔名加上版本（icon-192-v2.png…）。
-const CACHE = 'ly-shell-v3';
+// v3→v4：導覽請求改為不攔截（cookie 登入），舊外框快取會被 activate 刪掉
+const CACHE = 'ly-shell-v4';
 
 // 安裝時先塞一份外框，確保「第一次離線就有東西」。
 const SHELL = [
@@ -53,6 +58,9 @@ function isCacheable(url) {
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET') return;
+
+  // 導覽（開頁、PWA 啟動、重新整理）不攔截：交給伺服器決定要回 app 還是登入頁
+  if (req.mode === 'navigate') return;
 
   const url = new URL(req.url);
   if (!isCacheable(url)) return; // /api/v1/*：完全不碰，讓瀏覽器直接連網路

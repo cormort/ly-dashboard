@@ -16,7 +16,7 @@
 | 項目 | 實際情況 |
 | --- | --- |
 | 跑在哪 | Mac Mini（`~/ly-dashboard`），API 綁 `127.0.0.1:8787` |
-| 對外 | 只有 `tailscale serve` 的 `https://mac-mini.tail1ac930.ts.net`（**tailnet 內**，不是公網） |
+| 對外 | `https://mac-mini.tail1ac930.ts.net`（Tailscale **Funnel**，公開網址，要登入）；`https://mac-mini.tail1ac930.ts.net:10000` 是 tailnet 專用、免登入（tailscale serve） |
 | 資料庫 | `data/ly.db`（SQLite，約 160 MB）；**不進版控** |
 | 抓取產物與 log | `.cache/`（約 152 MB）；**不進版控** |
 | 前端 | `web/dist`（build 產物，`data/ly.db` 之外也在 `.gitignore`） |
@@ -28,6 +28,34 @@
 2. **伺服器內的排程器**（`server/index.mjs` 的 `startScheduler`）：檢查資料是否過期、24 小時全同步、媒體 RSS 每小時、新聞階段每 6 小時。
 3. **GitHub Actions（3 支 workflow）**：CI（三個平台跑測試）、每小時收媒體 RSS 進 `news-data`、推 `v*` 標籤時打包 Windows 版。
 4. **Hermes cron（1 顆）**：每月 12 日 09:30 檢查戶政司人口月報有沒有新月份並更新縣市頁。
+
+### 對外入口與登入（2026-10-19 起）
+
+公開入口是 Tailscale Funnel → Caddy（`127.0.0.1:8788`）→ app（`127.0.0.1:8787`）。
+**Caddy 不再做 HTTP Basic Auth**，改由 app 自己驗（`server/auth.mjs`）：
+
+| 情況 | 回應 |
+| --- | --- |
+| 未登入、要 HTML 頁面 | `401` + 登入頁（不是 redirect：Service Worker 不快取非 2xx，才不會把登入頁記成外框） |
+| 未登入、`/api/*` | `401 {"code":"login_required"}` |
+| 已登入 | 照舊；cookie 是 `ly_session`（HttpOnly、Secure、SameSite=Lax，預設 180 天） |
+| tailnet `:10000`、loopback | 免登入（這些本來就只有自己的裝置連得到） |
+
+- 判斷「公開來源」靠 Caddy 注入的 `X-Ly-Public: 1`，**不是** `x-forwarded-for`（tailscale serve 也會送 XFF，分不出來）。
+- 憑證在 `~/.ly-dashboard/server.env`（權限 600）：`LY_LOGIN_USER`、`LY_LOGIN_PASSWORD_HASH`（scrypt）、`LY_SESSION_SECRET`、`LY_SESSION_DAYS`。
+  **值一定要用單引號包**（scrypt 雜湊含 `$`，被 shell 展開會壞）。
+- 登入失敗節流：10 分鐘內 10 次失敗就回 429；成功登入清空。
+- 換密碼：
+
+```bash
+cd ~/ly-dashboard
+PASS='新密碼' node -e "import('./server/auth.mjs').then(async (m) => console.log(await m.hashPassword(process.env.PASS)))"
+# 把輸出貼進 ~/.ly-dashboard/server.env 的 LY_LOGIN_PASSWORD_HASH='…'（單引號）
+launchctl kickstart -k gui/$(id -u)/com.hermes.ly-dashboard-server
+```
+
+- `scripts/ly-dashboard-server.sh` 與 `scripts/fb-daily.sh` 會自己載入 `~/.ly-dashboard/server.env`（一行），
+  所以 `LY_SYNC_TOKEN`、登入設定都不必寫進 launchd plist。
 
 **「資料每天更新」的兩條路不要把他們搞混**
 

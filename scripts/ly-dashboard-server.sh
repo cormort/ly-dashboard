@@ -13,6 +13,7 @@ set -uo pipefail
 
 # launchd 只給 /usr/bin:/bin:/usr/sbin:/sbin，沒有 shell rc，所以 PATH 要自己來（Homebrew 的 node 在這）
 export PATH="/opt/homebrew/bin:/usr/local/bin:${HOME}/.local/bin:${PATH}"
+[ -f "$HOME/.ly-dashboard/server.env" ] && { set -a; . "$HOME/.ly-dashboard/server.env"; set +a; }
 
 PORT="${LY_PORT:-8787}"
 # 一定要 export：server 讀的是 PORT，只設 LY_PORT 的話「檢查的埠」跟「實際監聽的埠」會是兩個

@@ -15,6 +15,7 @@
 set -uo pipefail
 
 export PATH="/opt/homebrew/bin:/usr/local/bin:${HOME}/.local/bin:${PATH}"
+[ -f "$HOME/.ly-dashboard/server.env" ] && { set -a; . "$HOME/.ly-dashboard/server.env"; set +a; }
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 if ! command -v node >/dev/null; then
