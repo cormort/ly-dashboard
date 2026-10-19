@@ -1643,6 +1643,21 @@ main:has(.fb-wall) { max-width: min(1840px, 96vw); }
 .stage-badge.stage-plenary { color: #3b1d5e; background: #efe4fb; border-color: #c9b3e8; }
 .stage-badge.stage-resolution { color: #4a3b00; background: #fbf3d9; border-color: #e5d08a; }
 .stage-badge.stage-hearing { color: #4a1b1b; background: #fbe6e6; border-color: #e3b3b3; }
+/* 依委員會分組：一個委員會一行（原生 details），標題列顯示場次與期間，展開才是那一場一場 */
+.committee-group { border-top: 1px solid var(--rule-soft); padding: 9px 0 3px; }
+.committee-group:first-of-type { border-top: 0; }
+.committee-group > summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  cursor: pointer;
+}
+.committee-group > summary b { font-size: var(--fs-md); }
+.committee-group[open] > summary { margin-bottom: 8px; }
+.committee-group .budget-timeline { padding-left: 8px; }
+/* 院會那幾場的名字（例「第11屆第4會期第18次會議」）放在標題列下面一行 */
+.timeline-sub { margin: 2px 0 0; font-size: var(--fs-sm); }
 /* 審查單位（主管機關）與「附屬單位／僅詢答」這類補充標記：比階段淡一階，不搶主標題 */
 .unit-badge {
   display: inline-block;

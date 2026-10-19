@@ -77,6 +77,11 @@ const ALL = 'all';
 const PAGE = 30;
 /** 分年度呈現時，每個年度先列幾筆（其餘用「看這一年全部」再查） */
 const GROUP_PREVIEW = 4;
+/**
+ * 「期間」的日期一律寫完整年月日（2025/10/15）。
+ * formatDay 對今年會縮成 10/15，一端縮一端不縮看起來像倒著，期間與摘要不用它。
+ */
+const fullDate = (d: string | null | undefined) => (d ? String(d).replace(/-/g, '/') : '—');
 
 interface Filters {
   category: string;
@@ -482,6 +487,8 @@ function BudgetTimeline({ refreshToken }: { refreshToken: number }) {
   const [stage, setStage] = useState('');
   /** 主管機關（審查單位）：例「國防部」「國軍退除役官兵輔導委員會」，空字串＝全部 */
   const [agency, setAgency] = useState('');
+  /** 分組方式：依委員會（預設，實務上按委員會追）／依時間（看整體先後） */
+  const [groupBy, setGroupBy] = useState<'committee' | 'date'>('committee');
   const [limit, setLimit] = useState(20);
   const res = useApi<BudgetTimelineResponse>(buildUrl('/budget/timeline', { year }), { refreshToken });
   const data = res.data;
@@ -490,14 +497,81 @@ function BudgetTimeline({ refreshToken }: { refreshToken: number }) {
   const items = (data?.items ?? []).filter(
     (m) => (!stage || m.stage === stage) && (!agency || (m.agencies ?? []).includes(agency)),
   );
+  /** 分組用的鍵：委員會名稱（去掉「第N次」「（台灣民眾黨黨團）」這種尾巴），院會／表決歸在「院會」 */
+  const committeeKeyOf = (m: BudgetTimelineItem) =>
+    shortCommittee(String(m.committee ?? '').replace(/[（(].*$/, '').trim()) || '（未標示委員會）';
+  /** 每組顯示的期間，例「10/15 ～ 05/18」；只有一天就只寫那一天 */
+  const rangeOf = (list: BudgetTimelineItem[]) => {
+    const dates = list.map((m) => m.date).filter((d): d is string => Boolean(d)).sort();
+    if (!dates.length) return '日期不明';
+    const first = fullDate(dates[0]);
+    const last = fullDate(dates[dates.length - 1]);
+    return first === last ? first : `${first} ～ ${last}`;
+  };
+
+  // 依委員會：一場會議算在它自己的委員會底下，組內仍照時間排（才知道同一委員會審了幾輪）
+  const committeeGroups = (() => {
+    const map = new Map<string, BudgetTimelineItem[]>();
+    for (const m of items) {
+      const key = committeeKeyOf(m);
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(m);
+    }
+    return [...map]
+      .map(([key, list]) => ({ key, label: key, items: list, range: rangeOf(list) }))
+      .sort((a, b) => b.items.length - a.items.length || a.key.localeCompare(b.key, 'zh-Hant'));
+  })();
+  // 依時間：原本的「年 月」分段，先顯示前 N 場
   const shown = items.slice(0, limit);
-  const groups: { key: string; label: string; items: BudgetTimelineItem[] }[] = [];
+  const dateGroups: { key: string; label: string; items: BudgetTimelineItem[] }[] = [];
   for (const m of shown) {
     const key = (m.date ?? '').slice(0, 7) || '未知';
     const label = key === '未知' ? '日期不明' : `${key.slice(0, 4)} 年 ${Number(key.slice(5, 7))} 月`;
-    if (!groups.length || groups[groups.length - 1].key !== key) groups.push({ key, label, items: [m] });
-    else groups[groups.length - 1].items.push(m);
+    if (!dateGroups.length || dateGroups[dateGroups.length - 1].key !== key) dateGroups.push({ key, label, items: [m] });
+    else dateGroups[dateGroups.length - 1].items.push(m);
   }
+
+  /** 單場會議（依委員會與依時間兩種檢視共用） */
+  const timelineItem = (m: BudgetTimelineItem) => (
+    <li key={`${m.id}-${m.date}`}>
+      <div className="timeline-head">
+        <time dateTime={m.date ?? undefined}>{formatDay(m.date, '—')}</time>
+        <span className={`stage-badge stage-${m.stage}`}>{m.stage_label}</span>
+        {groupBy === 'date' ? <b>{m.stage === 'plenary' ? m.name : committeeKeyOf(m)}</b> : null}
+        {m.joint ? <span className="muted">（聯席：{shortCommittee(m.joint)}）</span> : null}
+        {(m.agencies ?? []).map((a) => (
+          <span key={a} className="unit-badge" title={`${a}主管的預算`}>
+            {a}主管
+          </span>
+        ))}
+        {m.subsidiary ? <span className="unit-badge unit-subsidiary">附屬單位</span> : null}
+        {m.qa_only ? <span className="unit-badge unit-qa">僅詢答</span> : null}
+      </div>
+      {m.stage === 'plenary' && m.name ? <p className="muted timeline-sub">{m.name}</p> : null}
+      <p className="clamp-2" title={m.agenda}>
+        {m.agenda}
+      </p>
+      {(m.funds ?? []).length > 0 ? (
+        <p className="fund-line" title={(m.funds ?? []).join('、')}>
+          基金：{(m.funds ?? []).slice(0, 6).join('、')}
+          {(m.funds ?? []).length > 6 ? ` 等 ${m.funds.length} 檔` : ''}
+        </p>
+      ) : null}
+      <small className="muted">
+        {m.speaker_count > 0 ? `${m.speaker_count} 位委員登記發言` : '沒有登記發言名單'}
+        {m.speakers.length > 0 ? `（${m.speakers.slice(0, 4).map((s) => s.name).join('、')}${m.speakers.length > 4 ? ' 等' : ''}）` : ''}
+        {m.video_url ? (
+          <>
+            {' · '}
+            <a href={m.video_url} target="_blank" rel="noopener noreferrer">
+              IVOD 影片
+              <ExternalLink aria-hidden="true" />
+            </a>
+          </>
+        ) : null}
+      </small>
+    </li>
+  );
 
   return (
     <section className="panel" aria-label="預算審查歷程">
@@ -515,6 +589,7 @@ function BudgetTimeline({ refreshToken }: { refreshToken: number }) {
                   setYear(String(y.year));
                   setStage('');
                   setAgency('');
+                  setGroupBy('committee');
                   setLimit(20);
                 }}
               >
@@ -535,8 +610,9 @@ function BudgetTimeline({ refreshToken }: { refreshToken: number }) {
         <>
           <p className="muted topic-note">
             {data.year} 年度中央政府總預算：共 {data.summary.total} 場審查會議
-            {data.summary.first && data.summary.last ? `（${formatDay(data.summary.first)} ～ ${formatDay(data.summary.last)}）` : ''}，
-            包含 {stages.map((s) => `${s.label} ${s.count} 場`).join('、')}。
+            {data.summary.first && data.summary.last ? `（${fullDate(data.summary.first)} ～ ${fullDate(data.summary.last)}）` : ''}，
+            包含 {stages.map((s) => `${s.label} ${s.count} 場`).join('、')}；
+            分屬 {committeeGroups.length} 個委員會。
           </p>
           <div className="wall-filter-row" role="group" aria-label="會議階段">
             <span className="wall-filter-label">階段</span>
@@ -567,55 +643,63 @@ function BudgetTimeline({ refreshToken }: { refreshToken: number }) {
             </div>
           ) : null}
 
-          {groups.map((g) => (
-            <div key={g.key}>
-              <h3 className="subhead">{g.label}</h3>
-              <ul className="meeting-list budget-timeline">
-                {g.items.map((m) => (
-                  <li key={`${m.id}-${m.date}`}>
-                    <div className="timeline-head">
-                      <time dateTime={m.date ?? undefined}>{formatDay(m.date, '—')}</time>
-                      <span className={`stage-badge stage-${m.stage}`}>{m.stage_label}</span>
-                      <b>{m.stage === 'plenary' ? m.name : shortCommittee(m.committee)}</b>
-                      {m.joint ? <span className="muted">（聯席：{shortCommittee(m.joint)}）</span> : null}
-                      {(m.agencies ?? []).map((a) => (
-                        <span key={a} className="unit-badge" title={`${a}主管的預算`}>{a}主管</span>
-                      ))}
-                      {m.subsidiary ? <span className="unit-badge unit-subsidiary">附屬單位</span> : null}
-                      {m.qa_only ? <span className="unit-badge unit-qa">僅詢答</span> : null}
-                    </div>
-                    <p className="clamp-2" title={m.agenda}>
-                      {m.agenda}
-                    </p>
-                    {(m.funds ?? []).length > 0 ? (
-                      <p className="fund-line" title={(m.funds ?? []).join('、')}>
-                        基金：{(m.funds ?? []).slice(0, 6).join('、')}
-                        {(m.funds ?? []).length > 6 ? ` 等 ${m.funds.length} 檔` : ''}
-                      </p>
-                    ) : null}
-                    <small className="muted">
-                      {m.speaker_count > 0 ? `${m.speaker_count} 位委員登記發言` : '沒有登記發言名單'}
-                      {m.speakers.length > 0 ? `（${m.speakers.slice(0, 4).map((s) => s.name).join('、')}${m.speakers.length > 4 ? ' 等' : ''}）` : ''}
-                      {m.video_url ? (
-                        <>
-                          {' · '}
-                          <a href={m.video_url} target="_blank" rel="noopener noreferrer">
-                            IVOD 影片
-                            <ExternalLink aria-hidden="true" />
-                          </a>
-                        </>
-                      ) : null}
-                    </small>
-                  </li>
-                ))}
-              </ul>
+          <div className="wall-filter-row" role="group" aria-label="分組方式">
+            <span className="wall-filter-label">分組</span>
+            <div className="law-facets">
+              <button
+                type="button"
+                className="chip"
+                aria-pressed={groupBy === 'committee'}
+                onClick={() => {
+                  setGroupBy('committee');
+                  setLimit(20);
+                }}
+              >
+                依委員會 <span className="muted">{committeeGroups.length} 個</span>
+              </button>
+              <button
+                type="button"
+                className="chip"
+                aria-pressed={groupBy === 'date'}
+                onClick={() => {
+                  setGroupBy('date');
+                  setLimit(20);
+                }}
+              >
+                依時間
+              </button>
             </div>
-          ))}
-          {items.length > limit ? (
-            <button type="button" className="more" onClick={() => setLimit((n) => n + 30)}>
-              顯示更多（還有 {items.length - limit} 場）
-            </button>
-          ) : null}
+          </div>
+
+          {groupBy === 'committee' ? (
+            <>
+              <p className="muted topic-note">依委員會分組，點一下展開該委員會的審查會議（組內照時間排）。</p>
+              {committeeGroups.map((g) => (
+                <details key={g.key} className="committee-group">
+                  <summary>
+                    <b>{g.label}</b>
+                    <span className="muted">{g.items.length} 場</span>
+                    <span className="muted">{g.range}</span>
+                  </summary>
+                  <ul className="meeting-list budget-timeline">{g.items.map(timelineItem)}</ul>
+                </details>
+              ))}
+            </>
+          ) : (
+            <>
+              {dateGroups.map((g) => (
+                <div key={g.key}>
+                  <h3 className="subhead">{g.label}</h3>
+                  <ul className="meeting-list budget-timeline">{g.items.map(timelineItem)}</ul>
+                </div>
+              ))}
+              {items.length > limit ? (
+                <button type="button" className="more" onClick={() => setLimit((n) => n + 30)}>
+                  顯示更多（還有 {items.length - limit} 場）
+                </button>
+              ) : null}
+            </>
+          )}
         </>
       ) : null}
     </section>
