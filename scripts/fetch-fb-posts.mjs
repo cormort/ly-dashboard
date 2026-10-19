@@ -19,11 +19,15 @@
  *   會在畫面警示）。查不到就填今天會讓警示失效，所以這裡查不到一律**留空**，並在結尾回報
  *   「幾列填了日期、幾列留空」——寧可空白，也不要錯的日期。
  *
- * 貼文日期怎麼來（三層，先拿到的為準）：
- *   1. 頁面上帶 aria-label 的日期（例：「2026年10月5日 星期一下午5:42」）
- *   2. 貼文永久連結頁的日期（首頁只有相對時間「3天」時，再開那一則的永久連結）
- *   3. 頁面內嵌 JSON 的 `creation_time`（epoch；版面改到抓不到日期時的最後防線）
- *   取「最新」＝日期最大者，因此置頂的舊貼文不會被誤當成最新。
+ * 貼文日期與內文怎麼來（取同一則為原則）：
+ *   1. 頁面內嵌 feed JSON 的 story（`creation_time` ＋ 同一段的 `message.text` ＋ `url`）—— 首選，
+ *      因為日期與內文來自同一個物件，不會互相配錯。
+ *   2. 頁面上貼文連結（`a[href*="/posts/"]` 等）自己的日期；內文取同一個 href 的 DOM 文字。
+ *   3. 有日期但那則拿不到內文時，開那一則的永久連結，從它自己的頁面取（同一則）。
+ *   兩邊都有日期時取新的那個；同一天以 JSON 為準。
+ *   最新＝日期最大者，因此置頂／精選的舊貼文不會被誤當成最新。
+ *   摘要**不再**從「DOM 順序第一則訊息」取 —— 那常是精選／置頂的舊文（2026-10-15 修）。
+ *   聊天側欄（Messenger）訊息泡泡的日期一律不算貼文日期（見 isPostDateCandidate）。
  *
  * 需要 playwright-core（不隨專案安裝，因為只有要跑這支腳本的那臺機器需要）：
  *   npm i -D playwright-core        # 用系統的 Chrome（channel: 'chrome'），不會下載瀏覽器
@@ -167,14 +171,21 @@ const EXTRACT = `() => {
     const m = al.match(/讚[:：]\\s*([\\d,.]+[萬千]?)/);
     return { likes: btnNum('讚') || (m ? NUM(m[1]) : ''), comments: btnNum('留言') };
   };
+  // 聊天側欄（Messenger）的訊息泡泡也帶日期（「2026年10月14日 19:42，你」、「輸入，訊息已在
+  // 2026年10月14日 11:01由你傳送」）。粉專頁載入時它就一起渲染，於是下面的掃描會把它當成
+  // 貼文日期 —— 實測某位委員頁面上 11 個帶日期的 aria-label 有 10 個是使用者自己的聊天訊息。
+  // 這裡只負責把「結構位置」記下來（在不在聊天區、在不在連結裡、完整 label），
+  // 要不要採用的規則放在 Node 端的 isPostDateCandidate（可被測試釘住）。
+  const inChat = (el) => Boolean(el.closest('[data-scope="messages_table"], [data-message-id], [role="log"], [aria-roledescription="訊息"]'));
   document.querySelectorAll('[aria-label]').forEach((el) => {
-    const d = abs(el.getAttribute('aria-label'));
+    const label = (el.getAttribute('aria-label') || '').trim();
+    const d = abs(label);
     if (!d) return;
     const a = el.closest('a');
     const href = a ? (a.href || '').split('?')[0] : '';
     // 留言的時間戳也要排除（留言的 aria-label 同樣是「2026年10月6日 …」）
     if (a && /comment_id=/.test(a.href || '')) return;
-    out.dates.push({ date: d, rel: '', href, ...eng(el) });
+    out.dates.push({ date: d, rel: '', href, label, chat: inChat(el), inLink: Boolean(a), ...eng(el) });
   });
   document.querySelectorAll('a[href*="/posts/"], a[href*="story_fbid"]').forEach((a) => {
     const raw = a.href || '';
@@ -183,9 +194,10 @@ const EXTRACT = `() => {
     if (/comment_id=/.test(raw)) return;
     const txt = (a.innerText || '').trim().replace(/\\s+/g, ' ');
     const href = raw.split('?')[0].split('#')[0];
+    const label = txt || (a.getAttribute('aria-label') || '').trim();
     const d = abs(txt) || abs(a.getAttribute('aria-label') || '');
-    if (d) out.dates.push({ date: d, rel: '', href, ...eng(a) });
-    else if (relRx.test(txt)) out.dates.push({ date: '', rel: txt.slice(0, 20), href, ...eng(a) });
+    if (d) out.dates.push({ date: d, rel: '', href, label, chat: false, inLink: true, ...eng(a) });
+    else if (relRx.test(txt)) out.dates.push({ date: '', rel: txt.slice(0, 20), href, label, chat: false, inLink: true, ...eng(a) });
     else if (txt.length > 25) out.texts.push({ text: txt.slice(0, 600), href });
   });
   document.querySelectorAll('[data-ad-rendering-role="story_message"], [data-ad-comet-preview="message"], [data-ad-preview="message"]').forEach((el) => {
@@ -194,8 +206,6 @@ const EXTRACT = `() => {
   });
   return out;
 }`;
-
-const CREATION_TIME = /"creation_time":(\d{9,11})/g;
 
 const BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36';
 
@@ -273,38 +283,118 @@ function saneDate(ymd) {
   return t >= Date.parse('2000-01-01T00:00:00+08:00') && ymd <= new Date(now).toISOString().slice(0, 10);
 }
 
-/** 把一次 evaluate 的結果整理成 { date, summary, rel }（日期最大者為最新） */
-export function pickLatest(dump) {
-  const texts = new Map();
-  for (const t of dump.texts ?? []) if (t.href && !texts.has(t.href)) texts.set(t.href, t.text);
-  // 同一個 href 在 DOM 裡常有多筆（頁面上的日期元素一筆、永久連結一筆）：互動數取「有值的那一筆」，
-  // 否則會因為挑到的候選剛好沒帶數字，就當成這一篇抓不到讚數。
-  const engByHref = new Map();
-  for (const e of dump.dates ?? []) {
-    const likes = String(e.likes ?? '');
-    const comments = String(e.comments ?? '');
-    if (!e.href || (!likes && !comments)) continue;
-    const seen = engByHref.get(e.href) ?? { likes: '', comments: '' };
-    engByHref.set(e.href, { likes: seen.likes || likes, comments: seen.comments || comments });
-  }
-  const posts = (dump.dates ?? []).map((e) => {
-    const shared = engByHref.get(e.href ?? '') ?? { likes: '', comments: '' };
-    return {
-      date: e.date ?? '',
-      rel: e.rel ?? '',
-      href: e.href ?? '',
-      text: texts.get(e.href ?? '') ?? '',
-      likes: String(e.likes ?? '') || shared.likes,
-      comments: String(e.comments ?? '') || shared.comments,
-    };
+/* --------------------------- 「哪一則才算貼文」與「日期要配到同一則的內文」 */
+
+/**
+ * 這個 creation_time 看起來是不是「一則貼文」：附近要有 feed story 的標記。
+ * 為什麼不只看有沒有 `"creation_time"`：內嵌 HTML 裡還有別人的 JSON（聊天、廣告…），
+ * 而 `CometFeedStory` 這個字串也可能出現在別的地方 → 兩者取聯集、並且限縮在 ±1200 字內。
+ * （實測兩個真實頁面的 5～6 個 creation_time 全部命中；聊天區塊一個都沒有。）
+ */
+const STORY_CONTEXT = /"__typename":"CometFeedStory|"post_id":"/;
+
+/**
+ * 這個帶日期的元素能不能算「貼文日期」？
+ *
+ * 為什麼不能只看「有沒有日期」：粉專頁載入時，登入的瀏覽器設定檔會一起渲染 Messenger 聊天側欄，
+ * 訊息泡泡的 aria-label 就是日期（「2026年10月14日 19:42，你」）。實測某位委員頁面上 11 個帶日期
+ * 的 aria-label 裡有 10 個是使用者自己的聊天訊息，於是「最新貼文日期」變成「你最後一次聊天的日期」
+ * （113 位裡 105 位中招，2026-10-15 查出）。貼文日期有兩個特徵是聊天不會有的：
+ * 含「星期」，或位在貼文的永久連結（<a>）裡。
+ */
+export function isPostDateCandidate(entry) {
+  if (!entry || !entry.date) return false;
+  if (entry.chat) return false;
+  const label = String(entry.label ?? '');
+  if (/訊息|傳送/.test(label)) return false; // 「輸入，訊息已在…由…傳送」
+  if (/\d{1,2}:\d{2}\s*[，,]\s*\S/.test(label)) return false; // 「… 11:01，你」／「… 11:01，Joyce」
+  return Boolean(entry.inLink) || /星期/.test(label);
+}
+
+/** 頁面上可用的「貼文日期」候選，新→舊（聊天、留言、未來日期都不算） */
+export function collectPostDates(dump) {
+  return (dump?.dates ?? [])
+    .filter(isPostDateCandidate)
+    .map((e) => ({ ...e, ymd: toSheetDate(e.date) }))
+    .filter((e) => e.ymd && saneDate(e.ymd))
+    .sort((a, b) => dateKey(b.ymd) - dateKey(a.ymd));
+}
+
+/** DOM 上某個貼文連結自己的內文（同一個 href 才算同一則） */
+export function textOfHref(dump, href) {
+  if (!href) return '';
+  const hit = (dump?.texts ?? []).find((t) => t.href === href);
+  return hit ? String(hit.text ?? '') : '';
+}
+
+/**
+ * 從頁面內嵌的 feed JSON 取出每一則貼文的（時間、內文、連結），新→舊。
+ *
+ * 為什麼需要它：DOM 的內文與日期可能屬於不同貼文 —— 頁面最上面常是「精選／置頂」的舊文，
+ * 舊版做法把它的內文配上新貼文的日期，畫面就變成「昨天的日期 ＋ 一年前的舊聞」
+ * （2026-10-15 使用者回報的那一則）。內嵌 JSON 裡同一個 story 物件帶著自己的 creation_time 與
+ * message.text，取同一段的兩個值就不會配錯。
+ *
+ * 兩道界線：① 只認真的 feed story（前後 900 字內要有 CometFeedStory，聊天側欄等區塊不算）
+ * ② 一則貼文的搜尋窗口＝這個 creation_time 到下一個之間，沒有內文的貼文（純圖）不會借到下一則的。
+ */
+export function pickLatestStory(html) {
+  const text = String(html ?? '');
+  const cts = [...text.matchAll(/"creation_time":(\d{9,11})/g)]
+    .map((m) => ({ at: m.index, ts: Number(m[1]) }))
+    // 只認真的 feed story：聊天側欄等其它區塊裡也可能有時間欄位（實測是沒有，但別靠這個假設）
+    .filter(({ at, ts }) => STORY_CONTEXT.test(text.slice(Math.max(0, at - 1200), at + 1200)) && saneDate(epochToDate(ts)));
+  const stories = cts.map(({ at, ts }, i) => {
+    const end = i + 1 < cts.length ? cts[i + 1].at : Math.min(text.length, at + 60000);
+    const win = text.slice(at, end);
+    const msg = win.match(/"message":\{"text":"((?:[^"\\]|\\.)*)"/);
+    const url = win.match(/"url":"(https?:\\\/\\\/www\.facebook\.com[^"]{0,200})/);
+    let body = '';
+    if (msg) {
+      try {
+        body = JSON.parse(`"${msg[1]}"`);
+      } catch {
+        body = '';
+      }
+    }
+    return { ts, date: epochToDate(ts), text: cleanSummary(body, DETAIL_SUMMARY_LIMIT), url: url ? url[1].replace(/\\\//g, '/') : '' };
   });
-  const dated = posts.filter((p) => p.date).sort((a, b) => dateKey(b.date) - dateKey(a.date));
-  const best = dated[0] ?? null;
-  const rel = best?.rel || posts.find((p) => p.rel)?.rel || '';
-  const messages = dump.messages ?? [];
-  let summary = best ? best.text || messages[0] || '' : messages[0] || '';
-  if (!summary) summary = posts.find((p) => p.text)?.text ?? '';
-  return { best, summary, rel, posts, messages };
+  // 同一個 story 在 HTML 裡常出現多次 → 用「時間＋連結」去重
+  const seen = new Set();
+  return stories
+    .filter((s) => {
+      const key = `${s.ts}|${s.url}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .sort((a, b) => b.ts - a.ts);
+}
+
+/**
+ * 挑出最新一則貼文，**日期與內文一定來自同一則**。
+ * 回傳 { date, summary, postUrl, source, likes, comments, domTop, story }
+ *
+ * 兩邊都有日期時取新的那個；同一天以 JSON 為準（它帶著同一則的內文）。摘要來源只有兩個：
+ * ① JSON 那一則自己的 message.text ② DOM 同一個 href 的內文。都拿不到就留空 ——
+ * 不再用「DOM 順序第一則訊息」當摘要（那正是精選舊文混進來的路徑）。
+ * 讚／留言只在「同一個連結」時才掛上去。
+ */
+export function chooseLatestPost({ dump, html }) {
+  const domPosts = collectPostDates(dump);
+  const domTop = domPosts[0] ?? null;
+  const story = pickLatestStory(html)[0] ?? null;
+  const domDate = domTop ? domTop.ymd : '';
+  const jsonDate = story ? story.date : '';
+  if (!domDate && !jsonDate) {
+    return { date: '', summary: '', postUrl: '', source: '', likes: '', comments: '', domTop, story, domPosts };
+  }
+  const useJson = Boolean(jsonDate) && (!domDate || dateKey(jsonDate) >= dateKey(domDate));
+  const out = useJson
+    ? { date: jsonDate, summary: story.text, postUrl: story.url, source: '內嵌 JSON（日期與內文同一則）' }
+    : { date: domDate, summary: textOfHref(dump, domTop.href), postUrl: domTop.href, source: '頁面日期' };
+  const samePost = Boolean(domTop && out.postUrl && domTop.href === out.postUrl);
+  return { ...out, likes: samePost ? domTop.likes : '', comments: samePost ? domTop.comments : '', domTop, story, domPosts };
 }
 
 /* ------------------------------------------------------------- 抓一輪資料 */
@@ -401,41 +491,27 @@ async function collect(rows, opts) {
           await sleep(1200 + Math.random() * 1500); // 別讓 HTTP 標題檢查把 FB 打到限流
           rec._httpName = await httpPageTitle(url);
         }
-        const { best, summary, rel } = pickLatest(dump);
-        // 兩個來源都算，取「比較新的那一個」：
-        //   - 頁面上的貼文日期（已排除留言）
-        //   - 頁面內嵌 JSON 的 creation_time（版面改到抓不到日期時的最後防線）
-        // 只取其中一個都會錯：DOM 可能只渲染到舊貼文，creation_time 可能是置頂或分享來源的時間。
-        // 每個候選都要通過 saneDate（見上），不合理的就換下一個。
-        const stamps = [...(await page.content()).matchAll(CREATION_TIME)].map((m) => Number(m[1]));
-        const candidates = [
-          ...pickLatest(dump).posts.filter((p) => p.date).map((p) => p.date),
-          ...(stamps.length ? [epochToDate(Math.max(...stamps))] : []),
-        ]
-          .map((d) => toSheetDate(d))
-          .filter((d) => d && saneDate(d))
-          .sort((a, b) => (a < b ? 1 : -1));
-        let date = candidates[0] ?? '';
-        let source = date ? '網頁日期' : '';
-        // 讚／留言只跟著「DOM 上挑到的那一篇」。日期若來自內嵌 JSON（creation_time）或永久連結頁，
-        // 就不能拿這個 DOM 的數字 —— 那會變成把 A 篇的讚數掛在 B 篇的日期上。
-        let eng = { likes: '', comments: '' };
-        if (date && toSheetDate(best?.date ?? '') === date) eng = { likes: best.likes, comments: best.comments };
-        // 備援：開那一則貼文的永久連結（首頁只給相對時間時，從貼文頁拿日期）
-        if (!date) {
-          const href = best?.href || (dump.dates ?? []).find((d) => d.href)?.href;
-          if (href) {
-            await page.goto(href, { waitUntil: 'domcontentloaded', timeout: 60000 });
-            await page.waitForTimeout(5000);
-            const second = pickLatest(await page.evaluate(`(${EXTRACT})()`));
-            const secondDate = toSheetDate(second.best?.date ?? '');
-            if (secondDate && saneDate(secondDate)) {
-              date = secondDate;
-              source = '貼文永久連結';
-              eng = { likes: second.best?.likes ?? '', comments: second.best?.comments ?? '' };
-            }
-            if (!summary) summary = second.summary;
+        const { rel } = { rel: (dump.dates ?? []).find((d) => d.rel)?.rel ?? '' };
+        // 日期與內文一律取「同一則」：內嵌 JSON 的 story（自己帶著 creation_time 與 message.text）
+        // 優先，其次才是 DOM 上貼文連結自己的日期與內文。摘要不再從「DOM 順序第一則訊息」來 ——
+        // 那是頁面最上面的精選／置頂舊文，配上新貼文的日期就是「昨天的日期 ＋ 一年前的舊聞」。
+        const pageHtml = await page.content();
+        const chosen = chooseLatestPost({ dump, html: pageHtml });
+        let date = chosen.date;
+        let summary = chosen.summary;
+        let source = chosen.source;
+        let eng = { likes: chosen.likes, comments: chosen.comments };
+        // 有日期但那則拿不到內文（純圖貼文、或文字不在 JSON 裡）：開那一則的永久連結，
+        // 從它自己的頁面同時拿日期、內文與互動數（同一則，不會配錯）。拿不到就留空。
+        if (date && !summary && chosen.postUrl) {
+          await page.goto(chosen.postUrl, { waitUntil: 'domcontentloaded', timeout: opts.timeout * 1000 });
+          await page.waitForTimeout(5000);
+          const single = chooseLatestPost({ dump: await page.evaluate(`(${EXTRACT})()`), html: await page.content() });
+          if (single.summary) {
+            summary = single.summary;
+            source = `${source}＋永久連結`;
           }
+          if (single.likes || single.comments) eng = { likes: single.likes, comments: single.comments };
         }
         rec.最新貼文日期 = toSheetDate(date) ?? '';
         rec._source = source;
@@ -448,8 +524,8 @@ async function collect(rows, opts) {
 
         // 貼文層級資料（一列一則）：「機關」頁要把委員貼文歸到機關，只比對整理表那 60 字摘要幾乎比對不到
         // （實測全站只有 1 筆命中）。最新一則用上面算出來的真日期；其他貼文只有文字 ——
-        // FB 的 DOM 只給「3小時」這種相對時間，內嵌 JSON 的 creation_time 無法可靠對到「哪一則是哪一則」，
-        // 所以寧可留空日期，也不猜（見 docs/social-sheet-spec.md 的「不要編造」原則）。
+        // FB 的 DOM 只給「3小時」這種相對時間，而內嵌 JSON 的 creation_time 我們只對得上「最新那一則」
+        // （窗口法，見 pickLatestStory），其餘寧可留空日期，也不猜（見 docs/social-sheet-spec.md 的「不要編造」原則）。
         const detailBase = {
           編號: rec.編號,
           姓名: rec.姓名,
@@ -469,7 +545,7 @@ async function collect(rows, opts) {
                   摘要: cleanSummary(summary, DETAIL_SUMMARY_LIMIT),
                   讚數: String(eng.likes ?? ''),
                   留言數: String(eng.comments ?? ''),
-                  貼文連結: best?.href || url,
+                  貼文連結: chosen.postUrl || url,
                 },
               ]
             : []),
@@ -498,17 +574,12 @@ async function collect(rows, opts) {
         if (!rec.最新貼文日期 && !rec.最新貼文主題摘要) {
           await page.reload({ waitUntil: 'domcontentloaded', timeout: opts.timeout * 1000 });
           await page.waitForTimeout(10000);
-          const again = pickLatest(await page.evaluate(`(${EXTRACT})()`));
-          const stamps2 = [...(await page.content()).matchAll(CREATION_TIME)].map((m) => Number(m[1]));
-          const retryCandidates = [
-            ...again.posts.filter((p) => p.date).map((p) => toSheetDate(p.date)),
-            ...(stamps2.length ? [epochToDate(Math.max(...stamps2))] : []),
-          ].filter((d) => d && saneDate(d)).sort((a, b) => (a < b ? 1 : -1));
-          rec.最新貼文日期 = retryCandidates[0] ?? '';
-          rec.最新貼文主題摘要 = cleanSummary(again.summary);
-          if (rec.最新貼文日期 && toSheetDate(again.best?.date ?? '') === rec.最新貼文日期) {
-            rec.最新貼文讚數 = String(again.best?.likes ?? '');
-            rec.最新貼文留言數 = String(again.best?.comments ?? '');
+          const retry = chooseLatestPost({ dump: await page.evaluate(`(${EXTRACT})()`), html: await page.content() });
+          rec.最新貼文日期 = retry.date;
+          rec.最新貼文主題摘要 = cleanSummary(retry.summary);
+          if (retry.likes || retry.comments) {
+            rec.最新貼文讚數 = String(retry.likes);
+            rec.最新貼文留言數 = String(retry.comments);
           }
           if (rec.最新貼文日期) rec._status = 'OK（重載後取得）';
           else if (rec.最新貼文主題摘要) rec._status = '有內容但沒有日期（重載後）';

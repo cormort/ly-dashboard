@@ -1,0 +1,56 @@
+<!doctype html>
+<!--
+  測試用**合成**頁面：形狀照 2026-10-15 實際抓到的粉專頁（已去識別化，不含任何真實聊天內容）。
+  要釘住的兩件事：
+    ① 聊天側欄（Messenger）訊息泡泡的日期不能被當成貼文日期
+    ② 內文必須跟日期同一則 —— 頁面最上面的精選／置頂舊文不得配上新貼文的日期
+-->
+<html>
+<head><title>Fake 委員粉專 | Facebook</title></head>
+<body>
+  <!-- 假的聊天側欄：真頁面上它跟粉專貼文一起渲染，訊息泡泡的 aria-label 就是日期 -->
+  <div data-scope="messages_table">
+    <div role="log" aria-label="與王小明 Fake 的對話中的訊息">
+      <div role="article">
+        <div aria-roledescription="訊息" data-message-id="fake-msg-1" aria-label="2026年10月14日 19:42，王小明">假的聊天內容一</div>
+        <div aria-label="輸入，訊息已在2026年10月14日 11:01由你傳送">假的輸入提示</div>
+      </div>
+      <script type="application/json">{"creation_time":1780000000,"note":"聊天區塊裡也有 creation_time，但它不在 CometFeedStory 裡，不算貼文"}</script>
+    </div>
+  </div>
+
+  <!-- 拿來把聊天區塊與 feed JSON 隔開的填充（確保兩邊不在彼此的 900 字窗口內） -->
+  <div class="filler">xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+  xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+  xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+  xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+  xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+  xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+  xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+  xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+  xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+  xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+  xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+  xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+  xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+  xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+  xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+  xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+  xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+  xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+  xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+  xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx</div>
+
+  <!-- 貼文卡片（DOM）：日期在貼文永久連結裡 -->
+  <div role="article">
+    <a href="https://www.facebook.com/fakepage/posts/pfbidNEW?__cft__=fake"><abbr aria-label="2026年10月14日 星期三下午4:08">假的</abbr></a>
+    <div data-ad-rendering-role="story_message">精選舊文的內文：這是一年前那則被置頂的公聽會貼文（不可當成最新）</div>
+  </div>
+
+  <!-- 內嵌 feed JSON：同一則 story 自己帶著 creation_time、message.text、url -->
+  <script type="application/json" id="feed-stories">
+  {"__typename":"CometFeedStory","story":{"creation_time":1791966022,"message":{"text":"最新貼文的內文：今天質詢原民會的三個訴求"},"url":"https:\/\/www.facebook.com\/fakepage\/posts\/pfbidNEW"}}
+  {"__typename":"CometFeedStory","story":{"creation_time":1761213137,"message":{"text":"精選舊文的內文：這是一年前那則被置頂的公聽會貼文（不可當成最新）"},"url":"https:\/\/www.facebook.com\/fakepage\/posts\/pfbidOLD"}}
+  </script>
+</body>
+</html>
