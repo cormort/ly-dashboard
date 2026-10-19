@@ -1068,6 +1068,12 @@ select { max-width: 100%; }
 }
 /* 類型 chips 現在住在「審議項目」卡片裡（清單正上方）：跟卡片標題留一點距離、跟清單貼緊 */
 .panel > .type-switch { margin: 0 0 var(--space-3); }
+/* 四顆類型 chips（最長是「總預算附屬單位預算（含信託基金）」）在 769px 的卡片裡排成一行：
+   字級 15→13、左右留白 12→9，總寬 795→約 745。窄螢幕仍可換行。 */
+@media (min-width: 900px) {
+  .panel > .type-switch { gap: 6px; }
+  .panel > .type-switch button { font-size: var(--fs-sm); padding: 6px 9px; }
+}
 .type-tag { border: 1px solid var(--rule); border-radius: var(--radius-pill); padding: 0 8px; font-size: var(--fs-xs); color: var(--ink-2); }
 .type-tag.special { border-color: var(--accent-line); color: var(--accent-ink); }
 .partner-list .name-button[aria-pressed='true'] { color: var(--accent-ink); text-decoration-color: var(--accent); background: none; border: 0; }

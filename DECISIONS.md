@@ -1631,3 +1631,9 @@ API `?year=115` 的 `2026-04-21` 回報第三點那句、`2026-04-17` 不回報�
 **驗收**：後端 **428 條**（改 2 條既有斷言：審查報告→`['subsidiary']`、審查總報告→`['general']`，並補 2 條）、
 前端 **249 項**（+1：四類名稱與順序）、`check:rwd` 21 組；API 實測 `types {general 11, subsidiary 15, supplementary 5, special 4}`；
 截圖 `docs/shot-budget-type-split.png`。
+
+### D313 補記：四顆類型 chips 在 900px 以上排成一行
+
+1440×900 下卡片內寬 769px，四顆 chips 總寬 795px（含「總預算附屬單位預算（含信託基金）286px」）→ 折成兩行。
+`@media (min-width: 900px)` 把 `.panel > .type-switch` 的 gap 收到 6px、按鈕字級 `--fs-sm`、左右留白 12→9px：
+總寬 795→677px，排成一行（實測 `rows: 1`）。窄螢幕仍照原本換行，`check:rwd` 21 組不變。
