@@ -152,6 +152,15 @@ const AUTH = {
 const authEnabled = () => Boolean(AUTH.hash && AUTH.secret);
 const loginThrottle = createLoginThrottle();
 
+/* ---------- 這個入口提供哪幾區 ----------
+ * LY_HIDE_COUNTIES=1／LY_HIDE_COUNCIL=1：整台機器都不提供（例如沒有排人口更新的主機）。
+ * 另外「公開入口」（經過 Caddy、帶 X-Ly-Public）預設不提供縣市地圖與議員，
+ * 內網／tailnet 的 :10000 不受影響。 */
+const FEATURES = {
+  counties: process.env.LY_HIDE_COUNTIES !== '1',
+  council: process.env.LY_HIDE_COUNCIL !== '1',
+};
+
 const sendLoginPage = (res, status, options = {}) => {
   const body = Buffer.from(loginPageHtml({ ...options, user: AUTH.user, days: AUTH.days }), 'utf8');
   res.writeHead(status, {
@@ -281,7 +290,16 @@ export function createServer(db) {
           case '/api/v1/health':
             // progress：現在跑到哪（例如新聞 137/601）。單一資料集內部一大串請求時，
             // 只靠 sync_runs 會十幾分鐘都是「已完成 0 個來源」，所以另外回報細部進度。
-            return sendJson(res, 200, { ...getHealth(db), sync_enabled: authorizeSync({}) === null, syncing: getInflightScope(), progress: getProgress() });
+            const publicEntry = isPublicOrigin(req.headers);
+            // 公開入口不提供縣市地圖與議員（D-公開站收斂）；純讀取端點照舊，只是前端不顯示
+            return sendJson(res, 200, {
+              ...getHealth(db),
+              sync_enabled: authorizeSync({}) === null,
+              counties_enabled: FEATURES.counties && !publicEntry,
+              council_enabled: FEATURES.council && !publicEntry,
+              syncing: getInflightScope(),
+              progress: getProgress(),
+            });
           case '/api/v1/meta':
             return sendJson(res, 200, getMetaPayload(db));
           case '/api/v1/legislators':

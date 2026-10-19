@@ -38,6 +38,8 @@ export interface HeaderProps {
   onSyncToggle: () => void;
   /** false＝伺服器不接受網頁觸發同步（區網分享模式），整組同步按鈕隱藏 */
   syncEnabled?: boolean;
+  /** 這個入口不提供的頁（例如公開站收掉縣市地圖、議員）：連同頁籤一起藏起來 */
+  hiddenRoutes?: Route[];
   query: string;
   onQueryChange: (value: string) => void;
   /** 按下去觸發後端同步（同步完才會重新載入畫面資料） */
@@ -181,11 +183,20 @@ const NAV: NavGroup[] = [
 ];
 
 // /dgbas（主計總處專頁）不在任何頁籤上：它的內容已併入「我的機關」（預設機關），網址保留，高亮歸「我的機關」
-const groupOf = (route: Route): NavGroup =>
-  NAV.find((group) => group.routes.some((item) => item.route === (route === 'dgbas' ? 'my' : route))) ?? NAV[0];
+const groupOf = (route: Route, groups: NavGroup[] = NAV): NavGroup =>
+  groups.find((group) => group.routes.some((item) => item.route === (route === 'dgbas' ? 'my' : route))) ?? groups[0];
 
 /** 頁面自己有搜尋框的路由（法案、預算、委員會、各新聞頁、議員近期動態） */
 const OWN_SEARCH = new Set<Route>(['bills', 'budget', 'committees', 'news', 'agencynews', 'allnews', 'officials', 'councilactivity']);
+
+/**
+ * 依「這個入口不提供的頁」過濾導覽：某組的頁全被藏起來，整組就不顯示。
+ */
+export function navGroupsFor(hiddenRoutes: Route[] = []): NavGroup[] {
+  const hidden = new Set(hiddenRoutes);
+  return NAV.map((group) => ({ ...group, routes: group.routes.filter((item) => !hidden.has(item.route)) }))
+    .filter((group) => group.routes.length > 0);
+}
 
 /**
  * 這個路由在頁籤上的名字（卡片標題要用）。找不到就退回所屬主題的名稱，
@@ -211,6 +222,7 @@ export function Header({
   syncOpen,
   onSyncToggle,
   syncEnabled = true,
+  hiddenRoutes = [],
   query,
   onQueryChange,
   onRefresh,
@@ -253,7 +265,8 @@ export function Header({
   const statusText = failed ? '同步失敗' : stale ? '可能非最新' : '資料截至';
   // L6：同步面板是條件式 render，只有它存在時 aria-controls 才指得到東西
   const syncPanelExists = syncOpen || failed || stale;
-  const activeGroup = groupOf(route);
+  const navGroups = navGroupsFor(hiddenRoutes);
+  const activeGroup = groupOf(route, navGroups);
   const hasSubnav = activeGroup.routes.length > 1;
   // 先取出成 const：TS 的屬性縮窄不會進到 onClick 的閉包裡
   const subnavLead = activeGroup.lead;
@@ -285,7 +298,7 @@ export function Header({
       </a>
 
       <nav aria-label="主要頁面" ref={navRef}>
-        {NAV.map((group) => {
+        {navGroups.map((group) => {
           const active = activeGroup.id === group.id;
           const Icon = group.icon;
           return (

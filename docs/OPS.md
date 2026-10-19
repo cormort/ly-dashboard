@@ -56,6 +56,10 @@ PASS='新密碼' node -e "import('./server/auth.mjs').then(async (m) => console.
 launchctl kickstart -k gui/$(id -u)/com.hermes.ly-dashboard-server
 ```
 
+- **公開入口不提供「縣市地圖」與「議員」**（含「議員近期動態」）：
+  `/api/v1/health` 會依入口回 `counties_enabled` / `council_enabled`，前端收掉頁籤、直接開網址會顯示
+  「這個網站沒有提供…」；tailnet `:10000` 與本機照舊提供。
+  要整台都不提供：在 `server.env` 設 `LY_HIDE_COUNTIES=1` / `LY_HIDE_COUNCIL=1`。
 - `scripts/ly-dashboard-server.sh` 與 `scripts/fb-daily.sh` 會自己載入 `~/.ly-dashboard/server.env`（一行），
   所以 `LY_SYNC_TOKEN`、登入設定都不必寫進 launchd plist。
 

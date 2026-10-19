@@ -14,6 +14,7 @@ import { useReconnectRefresh } from './hooks/useReconnectRefresh';
 import { useQueryState } from './hooks/useQueryState';
 import { useSync } from './hooks/useSync';
 import { syncRunningText } from './lib/format';
+import { EmptyState } from './components/DataStates';
 import { pathFor, useRoute } from './hooks/useRoute';
 import type { Route } from './hooks/useRoute';
 import { useTracked } from './hooks/useTracked';
@@ -107,7 +108,23 @@ export default function App() {
    * 依路由畫出對應頁面。抽成函式是因為現在有兩個地方要畫同一頁：
    * 主要內容區，以及手機的「第二層頁籤卡片」（見 PageCard）。
    */
-  const renderPage = (target: Route) => (
+  // 這個入口不提供的頁：公開站收掉縣市地圖與議員（伺服器用 X-Ly-Public 判斷並寫在 /health）
+  const hiddenRoutes: Route[] = [];
+  if (health.data?.counties_enabled === false) hiddenRoutes.push('counties');
+  if (health.data?.council_enabled === false) hiddenRoutes.push('council', 'councilactivity');
+  const hiddenTitle = (target: Route) =>
+    target === 'counties' ? '縣市地圖' : target === 'council' ? '議員' : '議員近期動態';
+
+  const renderPage = (target: Route) => {
+    if (hiddenRoutes.includes(target)) {
+      return (
+        <EmptyState
+          message={`這個網站沒有提供「${hiddenTitle(target)}」`}
+          hint="需要完整版請開內網／Tailscale 的位址，或洽維護者。"
+        />
+      );
+    }
+    return (
     <>
       {target === 'home' ? <HomePage refreshToken={refreshToken} onOpenId={setPendingId} onNavigate={navigate} tracked={tracked} /> : null}
       {target === 'legislators' ? (
@@ -132,7 +149,8 @@ export default function App() {
       {target === 'compare' ? <ComparePage refreshToken={refreshToken} onOpenId={setPendingId} onNavigate={navigate} /> : null}
       {target === 'rankings' ? <RankingsPage refreshToken={refreshToken} onOpenId={setPendingId} onNavigate={navigate} /> : null}
     </>
-  );
+    );
+  };
 
   /**
    * 點第二層頁籤：手機開卡片，桌機直接換頁（Header 判斷寬度）。
@@ -180,6 +198,7 @@ export default function App() {
                     : 'ok'
             }
             syncEnabled={health.data?.sync_enabled !== false}
+            hiddenRoutes={hiddenRoutes}
             syncScopes={syncSources.data?.scopes ?? []}
             syncScope={syncScope}
             onSyncScopeChange={setSyncScope}
