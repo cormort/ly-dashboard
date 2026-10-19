@@ -20,6 +20,37 @@ test('預算審查階段：協商／聯席／公聽會／院會／委員會', ()
   assert.equal(budgetReviewStage(), 'committee');
 });
 
+test('「邀請機關專案報告／業務報告」不是預算審查的一關', () => {
+  // 使用者 2026-10-19：「邀請專案報告不在預算審查的一般程序」。整場只有報告與質詢、沒有審查字樣 → briefing
+  assert.equal(
+    budgetReviewStage({
+      committee: '財政委員會',
+      name: '立法院第11屆第2會期財政委員會第19次全體委員會議',
+      content:
+        '邀請行政院秘書長、行政院主計總處主計長、財政部部長就「因財劃法修正，114年度總預算須重編」進行專題報告，並備質詢。',
+    }),
+    'briefing',
+  );
+  assert.equal(
+    budgetReviewStage({ committee: '交通委員會', name: '交通委員會全體委員會議', content: '邀請國家通訊傳播委員會代理主任委員列席報告業務概況，並備質詢。' }),
+    'briefing',
+  );
+  // 同一場「先邀請報告、再審查預算」還是委員會審查（那一關真的有審），但清單要標「含專案報告」
+  assert.equal(
+    budgetReviewStage({
+      committee: '經濟委員會',
+      name: '經濟委員會第5次全體委員會議',
+      content: '一、邀請經濟部部長就「當前供水情勢」進行報告，並備質詢。二、審查113年度中央政府總預算案附屬單位預算營業部分關於經濟部主管。',
+    }),
+    'committee',
+  );
+  // 協商／凍結案處理即使提到專案報告，仍照原本的階段走
+  assert.equal(
+    budgetReviewStage({ committee: '朝野黨團協商', name: '立法院黨團協商', content: '研商總預算案及專案報告事宜。' }),
+    'negotiation',
+  );
+});
+
 test('預算年度：一場會議可以同時屬於多個年度', () => {
   const both = budgetYearsOf({
     name: '立法院朝野黨團協商',

@@ -1436,7 +1436,13 @@ main:has(.fb-wall) { max-width: min(1840px, 96vw); }
   background: var(--surface); color: inherit; text-align: left; font: inherit; cursor: pointer;
 }
 .year-progress-row:hover { border-color: var(--rule); }
-.year-progress-row[aria-pressed='true'] { border-color: var(--accent); background: var(--accent-soft, rgba(37, 99, 235, 0.06)); }
+/* 全域 `button[aria-pressed='true']` 是「深底白字」，這裡只有換底色 → 一定要把字色改回來，
+   否則選中的那一列是「白字＋淺藍底」（實測 2026-10-19 在 114 年度那一列幾乎看不到字） */
+.year-progress-row[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: var(--accent-soft, rgba(37, 99, 235, 0.06));
+  color: var(--ink);
+}
 .year-progress-name { font-size: var(--fs-sm); font-weight: 600; }
 .year-progress-numbers { font-size: var(--fs-sm); color: var(--ink-2); text-align: right; white-space: nowrap; }
 .year-bar { display: flex; height: 10px; border-radius: var(--radius-pill); overflow: hidden; background: var(--rule-soft); }
@@ -1680,6 +1686,9 @@ main:has(.fb-wall) { max-width: min(1840px, 96vw); }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* 專案報告（非審查程序）：虛線、灰階，不要長得像流程上的關卡 */
+.stage-badge.stage-briefing { background: transparent; border: 1px dashed var(--rule-soft); color: var(--muted); }
 
 /* ---------- 預算審查流程（流程帶）：一列六關，年度只有這一組 ---------- */
 .process-panel .process-rail {

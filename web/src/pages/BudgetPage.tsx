@@ -267,6 +267,7 @@ export function BudgetPage({ refreshToken, onOpenId, onNavigate }: BudgetPagePro
         stages={timeline.data?.stages ?? []}
         total={timeline.data?.summary.total ?? 0}
         apiYear={timeline.data?.year ?? null}
+        briefing={timeline.data?.stages.find((s) => s.id === 'briefing')?.count ?? 0}
         stage={stage}
         onStageChange={setStage}
         loading={timeline.phase === 'loading' && !timeline.data}
@@ -549,6 +550,8 @@ export function BudgetProcessRail({
   onYearChange,
   stages,
   total,
+  /** 「邀請…專案報告／業務報告」的場次：不是預算審查的一關，放在流程帶外面 */
+  briefing = 0,
   /** 後端實際回傳的會議年度（沒選年度時它就是最新年度，跟清單的「全部年度」不是同一件事） */
   apiYear,
   stage,
@@ -563,6 +566,7 @@ export function BudgetProcessRail({
   /** 這一年度的審查會議總場次 */
   total: number;
   apiYear: number | null;
+  briefing?: number;
   stage: string;
   onStageChange: (stage: string) => void;
   loading?: boolean;
@@ -581,9 +585,9 @@ export function BudgetProcessRail({
         <span className="muted">
           {loading
             ? '讀取會議資料…'
-            : `${apiYear ? `${apiYear} 年度` : '會議年度不明'}・${total.toLocaleString()} 場審查會議${
-                year ? '' : '（清單是全部年度，會議以最新年度計）'
-              }`}
+            : `${apiYear ? `${apiYear} 年度` : '會議年度不明'}・${total.toLocaleString()} 場會議${
+                briefing > 0 ? `（含 ${briefing} 場專案報告，非審查程序）` : ''
+              }${year ? '' : '（清單是全部年度，會議以最新年度計）'}`}
         </span>
       </div>
 
@@ -631,6 +635,19 @@ export function BudgetProcessRail({
         })}
         <li className="process-context">總統公布</li>
       </ol>
+
+      {briefing > 0 ? (
+        <p className="wall-bulk">
+          <button
+            type="button"
+            className="quiet"
+            aria-pressed={stage === 'briefing'}
+            onClick={() => onStageChange(stage === 'briefing' ? '' : 'briefing')}
+          >
+            另有 {briefing} 場「邀請機關專案報告／業務報告」（不是預算審查的一關），{stage === 'briefing' ? '按這裡回到流程' : '點這裡只看那幾場'}
+          </button>
+        </p>
+      ) : null}
 
       <p className="muted topic-note">
         點一關只看那一關的會議，再點一次取消。流程兩端是「行政院編製概算、送立法院」與「總統公布」（沒有會議紀錄）。
@@ -715,6 +732,7 @@ export function BudgetTimeline({
             {a}主管
           </span>
         ))}
+        {m.has_briefing ? <span className="unit-badge" title="同一場議程前半是邀請機關專案報告，後半才是預算審查">含專案報告</span> : null}
         {m.subsidiary ? <span className="unit-badge unit-subsidiary">附屬單位</span> : null}
         {m.qa_only ? <span className="unit-badge unit-qa">僅詢答</span> : null}
       </div>

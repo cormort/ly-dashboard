@@ -2417,6 +2417,12 @@ export const BUDGET_REVIEW_STAGES = [
   { id: 'negotiation', label: '黨團協商' },
   { id: 'resolution', label: '決議處理' },
   { id: 'plenary', label: '院會' },
+  /**
+   * 「邀請○○部長就○○專案報告（業務報告），並備質詢」**不是預算審查的一關**：
+   * 那是委員會要求機關到場說明的獨立議程，跟逐項審查預算不同程序。
+   * 保留這一階只是為了讓使用者看得到、篩得到，畫面上放在流程帶**之外**，不計入審查流程。
+   */
+  { id: 'briefing', label: '專案報告（非審查）' },
 ];
 
 /**
@@ -2433,6 +2439,8 @@ export function budgetReviewStage({ committee = '', name = '', content = '' } = 
   if (n.includes('院會') || n.includes('全院委員會') || c.includes('全院')) return 'plenary';
   // 預算通過之後才發生的「處理總預算決議／凍結案」：也是預算會議，但不是審查，另外標一階
   if (/總預算決議|預算凍結|凍結案|解凍/.test(text)) return 'resolution';
+  // 「邀請…專案報告／業務報告，並備質詢」不是預算審查的一般程序：整場沒有「審查」字樣就標成 briefing
+  if (/邀請|專案報告|業務報告/.test(text) && !/審查/.test(text)) return 'briefing';
   return 'committee';
 }
 
@@ -2566,6 +2574,8 @@ export function listBudgetTimeline(db, { year = '' } = {}) {
         date: row.date,
         stage,
         stage_label: stageLabel(stage),
+        /** 同一場會議的議程前半是「邀請…報告」、後半才是預算審查：畫面要標出來，免得整場被當成純審查 */
+        has_briefing: /邀請|專案報告|業務報告/.test(String(row.content ?? '')) && /審查/.test(String(row.content ?? '')),
         committee: row.committee,
         joint: row.joint,
         name: row.name,

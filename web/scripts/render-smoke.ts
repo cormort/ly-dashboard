@@ -1260,6 +1260,8 @@ const railStages = [
   { id: 'negotiation', label: '黨團協商', count: 13 },
   { id: 'resolution', label: '決議處理', count: 4 },
   { id: 'plenary', label: '院會', count: 6 },
+  // 「邀請機關專案報告」不是預算審查的一關（使用者 2026-10-19 指正）：它出現在 stages 裡，但不得變成流程帶的一關
+  { id: 'briefing', label: '專案報告（非審查）', count: 2 },
 ];
 const railHtml = render(
   createElement(BudgetProcessRail, {
@@ -1272,6 +1274,7 @@ const railHtml = render(
     stages: railStages,
     total: 132,
     apiYear: 115,
+    briefing: 2,
     stage: 'negotiation',
     onStageChange: () => undefined,
   }),
@@ -1287,7 +1290,7 @@ check(
 check(
   '預算審查流程：畫面上的流程順序與後端階段清單脫鉤（後端把決議處理排在院會前面，畫面照實際流程排）',
   BUDGET_PROCESS_STEPS.map((s) => s.id).join(',') === 'committee,joint,hearing,negotiation,plenary,resolution'
-    && railStages.map((s) => s.id).join(',') === 'committee,joint,hearing,negotiation,resolution,plenary',
+    && railStages.map((s) => s.id).join(',') === 'committee,joint,hearing,negotiation,resolution,plenary,briefing',
 );
 expectAll('預算審查流程：有會議的關卡寫場次、沒有的照實寫「無」', railHtml, ['109 場', '13 場', '6 場', '4 場', '>無<']);
 check(
@@ -1295,7 +1298,7 @@ check(
   /aria-pressed="true"[\s\S]{0,200}黨團協商/.test(railHtml),
 );
 expectAll('預算審查流程：年度 chips 在流程帶上（同一頁只有一組年度）', railHtml, ['全部年度', '115 年度 <span class="muted">132</span>']);
-expectAll('預算審查流程：標題寫出是哪一年度的幾場會議', railHtml, ['115 年度・132 場審查會議']);
+expectAll('預算審查流程：標題寫出是哪一年度的幾場會議，並講明其中幾場不是審查程序', railHtml, ['115 年度・132 場會議（含 2 場專案報告，非審查程序）']);
 check(
   '預算審查流程：沒選年度時明講「會議以最新年度計」（清單是全部年度，兩者不是同一件事）',
   render(
@@ -1314,6 +1317,13 @@ check(
 expectAll('預算審查流程：兩端（行政院編製概算／總統公布）是沒有會議紀錄的流程標記', railHtml, [
   '行政院編製概算、送立法院',
   '總統公布',
+]);
+check(
+  '預算審查流程：專案報告不是流程的一關（只出現在流程帶外的那一行）',
+  ![...railHtml.matchAll(/class="process-label">([^<]+)</g)].some((m) => m[1].includes('專案報告')),
+);
+expectAll('預算審查流程：流程帶外另列「邀請機關專案報告／業務報告」（不是預算審查的一關）', railHtml, [
+  '另有 2 場「邀請機關專案報告／業務報告」（不是預算審查的一關）',
 ]);
 
 expectAll('預算頁：loading 態有類別、篩選與三個區塊骨架', render(createElement(BudgetPage, { refreshToken: 0, onOpenId: () => undefined, onNavigate: () => undefined })), [
