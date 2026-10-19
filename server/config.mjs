@@ -128,7 +128,7 @@ export const CONFIG = {
     category: 3,
     // 委員會會議的議事網資料：附件（書面報告、機關回覆＝部會對委員質詢的書面答復）與會議影片；本屆約 1,300 場、13MB／千筆
     meetsUrl: 'https://ly.govapi.tw/v2/meets',
-    meetTypes: ['委員會', '聯席會議', '公聽會'],
+    meetTypes: ['委員會', '聯席會議', '公聽會', '院會'],
   },
   // 新聞：Google News RSS，以「"姓名" 立委」搜尋近 30 天；逐位委員依序抓，間隔避免被限流。
   news: {

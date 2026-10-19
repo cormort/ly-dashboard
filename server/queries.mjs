@@ -2527,6 +2527,49 @@ export function listBudgetTimeline(db, { year = '' } = {}) {
     })
     .sort((a, b) => String(a.date).localeCompare(String(b.date)) || a.committee.localeCompare(b.committee, 'zh-Hant'));
 
+  // 院會：g0v meets 的院會場次（會議事由提到該年度總預算）。ID223 只有委員會，院會要靠這一份。
+  for (const row of db.prepare("SELECT code, date, title, video_url, agenda FROM committee_meets WHERE code LIKE '院會-%'").all()) {
+    if (!budgetYearsOf({ name: row.title, content: row.agenda }).includes(wanted)) continue;
+    stageCount.set('plenary', (stageCount.get('plenary') ?? 0) + 1);
+    committeeCount.set('院會', (committeeCount.get('院會') ?? 0) + 1);
+    items.push({
+      id: `meet:${row.code}`,
+      date: row.date,
+      stage: 'plenary',
+      stage_label: stageLabel('plenary'),
+      committee: '院會',
+      joint: null,
+      name: row.title,
+      agenda: row.agenda ?? '',
+      speakers: [],
+      speaker_count: 0,
+      video_url: row.video_url,
+    });
+  }
+  // 院會表決（ID370）：表決項目提到該年度總預算、而且是三讀／復議／重付表決的紀錄（115 年度沒有記名表決，114 有）
+  const seenVotes = new Set();
+  for (const row of db.prepare('SELECT vote_date, meeting_name, issue FROM rollcall_votes').all()) {
+    if (!/三讀|復議|重付表決/.test(row.issue) || !budgetYearsOf({ content: row.issue }).includes(wanted)) continue;
+    const key = `${row.vote_date}\u0000${String(row.issue).slice(0, 24)}`;
+    if (seenVotes.has(key)) continue;
+    seenVotes.add(key);
+    stageCount.set('plenary', (stageCount.get('plenary') ?? 0) + 1);
+    items.push({
+      id: `vote:${key}`,
+      date: row.vote_date,
+      stage: 'plenary',
+      stage_label: '院會表決',
+      committee: '院會',
+      joint: null,
+      name: row.meeting_name,
+      agenda: row.issue,
+      speakers: [],
+      speaker_count: 0,
+      video_url: null,
+    });
+  }
+  items.sort((a, b) => String(a.date).localeCompare(String(b.date)) || a.committee.localeCompare(b.committee, 'zh-Hant'));
+
   const people = new Map(db.prepare('SELECT id, name, party, leave_flag FROM legislators').all().map((l) => [l.id, l]));
   return {
     meta: { ...envelope(db), meetings_fetched_at: getMeta(db, 'meetings_fetched_at') },

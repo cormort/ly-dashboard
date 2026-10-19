@@ -260,7 +260,9 @@ CREATE TABLE IF NOT EXISTS committee_meets (
   title TEXT NOT NULL,
   committees TEXT NOT NULL DEFAULT '[]',
   video_url TEXT,
-  attachments TEXT NOT NULL DEFAULT '[]'
+  attachments TEXT NOT NULL DEFAULT '[]',
+  -- 會議事由（院會／委員會都可能有）：用來判斷「這場會議在審什麼」（例如總預算）
+  agenda TEXT
 );
 CREATE TABLE IF NOT EXISTS rollcall_votes (
   id TEXT PRIMARY KEY,
@@ -337,6 +339,11 @@ export function migrate(db) {
     // 舊資料沒有這個欄位：清掉 applied_sha，下次同步即使內容未變也會重新套用
     db.prepare("DELETE FROM meta WHERE key = 'applied_sha'").run();
   }
+  // committee_meets.agenda：2026-10-19 新增（預算審查歷程要判斷院會這場在審什麼）；
+  // 舊資料庫沒有這個欄位，跑一次 records 同步就會補上。
+  const meetCols = new Set(db.prepare('PRAGMA table_info(committee_meets)').all().map((c) => c.name));
+  if (!meetCols.has('agenda')) db.exec('ALTER TABLE committee_meets ADD COLUMN agenda TEXT');
+
   const socialCols = new Set(db.prepare('PRAGMA table_info(social_accounts)').all().map((c) => c.name));
   if (!socialCols.has('source')) {
     db.exec('ALTER TABLE social_accounts ADD COLUMN source TEXT');
@@ -761,7 +768,7 @@ export function applyCommitteeRecords(db, records, { fetchedAt }) {
 
 export function applyCommitteeMeets(db, meets, { fetchedAt }) {
   const rows = meets.map((m) => ({ ...m, committees: JSON.stringify(m.committees), attachments: JSON.stringify(m.attachments) }));
-  replaceAll(db, 'committee_meets', ['code', 'date', 'title', 'committees', 'video_url', 'attachments'], rows, 'meets_fetched_at', fetchedAt);
+  replaceAll(db, 'committee_meets', ['code', 'date', 'title', 'committees', 'video_url', 'attachments', 'agenda'], rows, 'meets_fetched_at', fetchedAt);
   return rows.length;
 }
 

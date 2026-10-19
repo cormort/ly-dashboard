@@ -1640,3 +1640,6 @@ main:has(.fb-wall) { max-width: min(1840px, 96vw); }
 .stage-badge.stage-committee { color: var(--accent-ink, #0e2a35); background: var(--accent-soft, #dff0f6); border-color: var(--accent-line, #93d3e8); }
 .stage-badge.stage-negotiation { color: #7a4a00; background: #fdf0d5; border-color: #f0c26a; }
 .stage-badge.stage-joint { color: #1f4d2b; background: #e3f4e8; border-color: #9fd4ad; }
+.stage-badge.stage-plenary { color: #3b1d5e; background: #efe4fb; border-color: #c9b3e8; }
+.stage-badge.stage-resolution { color: #4a3b00; background: #fbf3d9; border-color: #e5d08a; }
+.stage-badge.stage-hearing { color: #4a1b1b; background: #fbe6e6; border-color: #e3b3b3; }

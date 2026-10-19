@@ -319,6 +319,25 @@ Query 參數（全部可選）：
 回應：`total`（全部預算會議）、`with_speakers`、`committees`、`speakers`（在職委員登記發言場次前 20）、`items`（最近**有發言名單**的會議）。
 發言名單姓名比對時忽略空白與「‧」「·」（族語名分隔符號各系統不一）。
 
+## GET /api/v1/budget/timeline
+
+中央總預算的**審查歷程**：同一個預算年度在委員會（各委員會分組審查）、聯席、公聽會、黨團協商、
+院會開過的會議，依時間排序。參數 `year`（民國年，例 `115`；不給＝最近一個有 5 場以上會議的年度）。
+回應：
+
+- `year`、`years[]`（`{ year, count }`，各年度場次）
+- `stages[]`（`{ id, label, count }`：`committee`／`joint`／`hearing`／`negotiation`／`resolution`／`plenary`）
+- `summary`：`total`、`first`、`last`、`committees[]`、`speakers[]`（登記發言最多的在職委員）
+- `items[]`：`{ id, date, stage, stage_label, committee, joint, name, agenda, speakers[], speaker_count, video_url }`
+  - 委員會／協商會議來自官方 ID223（`committee_meetings`），`video_url` 是對到 g0v IVOD 場次時才有的連結
+  - `plenary` 來自 g0v meets 的院會場次（`會議事由` 提到該年度總預算）；`院會表決` 是 ID370 記名表決中
+    三讀／復議／重付表決的紀錄（沒有記名表決的年度就不會有這一種）
+  - 一場會議同時處理多個年度（例：協商同時研商 114 與 115 年度總預算）時，會出現在兩個年度的歷程
+  - `resolution`＝預算通過後才發生的「處理總預算決議／凍結案」，不是審查，獨立一階
+
+> 院會二讀／三讀的**精確日期**只有「有記名表決」的年度拿得到（`院會表決` 那幾筆）；
+> 其他年度看 `plenary`（院會場次）的日期與事由。
+
 ## GET /api/v1/regions?per=3
 
 各區域（縣市，另有全國不分區、平地／山地原住民）最新動態，總覽頁用。依縣市由北到南排序。

@@ -634,6 +634,12 @@ export function normalizeCommitteeMeets(pages) {
         for (const a of [].concat(d?.['附件'] ?? []))
           if (a?.['連結'] && !attachments.has(a['連結']))
             attachments.set(a['連結'], { kind: a['種類'] === '機關回覆' ? 'reply' : 'attachment', title: String(a['標題'] ?? '').trim(), url: a['連結'] });
+      // 會議事由（會議資料裡的「會議事由」）：院會沒有議事網資料，靠這個判斷在審什麼
+      const agenda = [...new Set(
+        [].concat(m['會議資料'] ?? [])
+          .map((d) => String(d?.['會議事由'] ?? '').trim())
+          .filter(Boolean),
+      )].join('\n');
       meets.push({
         code,
         date: [].concat(m['日期'] ?? []).filter(Boolean).sort().at(-1) ?? null,
@@ -641,6 +647,7 @@ export function normalizeCommitteeMeets(pages) {
         committees: [].concat(m['委員會代號:str'] ?? []).filter(Boolean).length ? [].concat(m['委員會代號:str']).filter(Boolean) : committeesOf(title),
         video_url: days.flatMap((d) => [].concat(d?.['連結'] ?? [])).find((l) => l?.['類型'] === 'video')?.['連結'] ?? null,
         attachments: [...attachments.values()],
+        agenda,
       });
     }
   }

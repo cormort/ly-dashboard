@@ -555,7 +555,7 @@ function BudgetTimeline({ refreshToken }: { refreshToken: number }) {
                     <div className="timeline-head">
                       <time dateTime={m.date ?? undefined}>{formatDay(m.date, '—')}</time>
                       <span className={`stage-badge stage-${m.stage}`}>{m.stage_label}</span>
-                      <b>{shortCommittee(m.committee)}</b>
+                      <b>{m.stage === 'plenary' ? m.name : shortCommittee(m.committee)}</b>
                       {m.joint ? <span className="muted">（聯席：{shortCommittee(m.joint)}）</span> : null}
                     </div>
                     <p className="clamp-2" title={m.agenda}>
