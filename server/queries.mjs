@@ -2448,6 +2448,11 @@ export function budgetReviewStage({ committee = '', name = '', content = '' } = 
   if (/總預算決議|預算凍結|凍結案|解凍/.test(text)) return 'resolution';
   // 「邀請…專案報告／業務報告，並備質詢」不是預算審查的一般程序：整場沒有「審查」字樣就標成 briefing
   if (/邀請|專案報告|業務報告/.test(unquoted) && !/審查/.test(unquoted)) return 'briefing';
+  /**
+   * 剩下的都算委員會審查。這裡刻意**包含**「討論總預算案審查日程暨審查分配表草案」這種程序會議
+   * （例 2026-04-16 財政委員會）：立法院要先定審查日程與分配表才進得去逐項審查，它是必經程序，
+   * 使用者 2026-10-19 明確要求留著（見 D301 結尾）。
+   */
   return 'committee';
 }
 
