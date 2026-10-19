@@ -363,6 +363,8 @@ Query 參數（全部可選）：
   API、靜態檔、圖片都不記。同一張 cookie 用 HMAC 前 8 碼當識別，**不存 IP、不存 cookie 原文**。
 - 回應：`{ date, pv, visitors, anonymous, logins, loginVisitors, paths[], ua, hourly[] }`
   - `pv` 瀏覽次數（登入那筆不算）、`visitors` 不同 session 數、`anonymous` 沒 cookie 的瀏覽次數
+  - **`visitors` 是「幾台裝置」，不是「幾個人」**：站上只發一組共用帳號給同事，同一個人換手機／平板
+    會算成兩台，也分不出誰是誰；`anonymous` 是沒有 cookie 的瀏覽（公開登入頁、被登出後）
   - `paths[]`：`{ path, label, views, visitors }`，依次數排序（`label` 是中文頁名）
   - `ua`：`{ mobile, desktop, bot, unknown }`；`hourly[24]` 是當地時間的每小時次數
 - 資料保留 400 天（每天推日報時順手清）

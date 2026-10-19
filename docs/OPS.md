@@ -78,6 +78,8 @@ scripts/ly-set-password.sh --rotate-sessions  # 順便換 LY_SESSION_SECRET
 - 只記「Accept 含 `text/html` 的 GET」與**登入成功**；API／靜態檔不記
 - 同一張 cookie 用 **HMAC 前 8 碼**當識別，**不存 IP、不存 cookie 原文**；換 `LY_SESSION_SECRET` 就整批對不起來
 - 留 400 天，每天寫日報時順手清舊資料
+- **全站只有一組共用帳號**（`DGBAS`，發給同事），所以統計只能回答「幾台裝置在用、看了哪些頁」，
+  回答不了「誰」。同一個人手機＋電腦會算成 2 台；要分辨人得先做個人帳號（目前沒有）
 
 看數字：
 

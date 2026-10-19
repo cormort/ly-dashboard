@@ -140,7 +140,9 @@ export function recordPageView(db, { path, kind = 'page', sessionHash = '', ua =
 /**
  * 某一天的統計：
  * - `pv` 瀏覽次數（含登入那筆？不含——`logins` 另外算，`pv` 只算頁面）
- * - `visitors` 不同 session 數（沒有 cookie 的另外算 `anonymous`）
+ * - `visitors` 不同 **session（cookie）數 ≈ 幾台裝置／幾個瀏覽器**。站上只發一組共用帳號
+ *   （`DGBAS`）給同事，所以**分不出是誰**；同一個人換手機／平板會算成兩台，換瀏覽器也是。
+ *   沒有 cookie 的瀏覽另外算 `anonymous`。
  * - `paths` 熱門頁面（次數、幾個 session）
  * - `ua` 裝置分類、`hourly` 24 格的瀏覽次數
  */
@@ -205,7 +207,10 @@ export function pageViewsText(summary) {
     lines.push('昨天沒有人開站（0 次瀏覽）');
     return lines.join('\n');
   }
-  lines.push(`瀏覽 ${summary.pv} 次・${summary.visitors} 個登入者${summary.anonymous > 0 ? `・未登入 ${summary.anonymous} 次` : ''}`);
+  // 用「裝置」不是「人」：全站共用一組帳號，同一個人換裝置會算成兩台，反過來也分不出誰
+  lines.push(
+    `瀏覽 ${summary.pv} 次・${summary.visitors} 台裝置${summary.anonymous > 0 ? `・未登入 ${summary.anonymous} 次` : ''}`,
+  );
   if (summary.logins > 0) lines.push(`登入 ${summary.logins} 次`);
   const top = summary.paths.slice(0, 5).map((p) => `${p.label} ${p.views}`);
   if (top.length) lines.push(`熱門：${top.join('｜')}`);

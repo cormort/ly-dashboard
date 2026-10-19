@@ -100,7 +100,8 @@ test('日報文字：沒有資料要講「沒有人開站」，有資料要帶�
   recordPageView(db, { path: '/', kind: 'login', sessionHash: 'cccc3333', ua: 'desktop', ts: at('2026-10-19', 9, 0) });
   const text = pageViewsText(dailyPageViews(db, { date: '2026-10-19' }));
   assert.match(text, /2026-10-19/);
-  assert.match(text, /瀏覽 2 次・2 個登入者/);
+  // 全站共用一組帳號 → 日報講「裝置」不是「人」（同一人換裝置會算兩台）
+  assert.match(text, /瀏覽 2 次・2 台裝置/);
   assert.match(text, /登入 1 次/);
   assert.match(text, /熱門：預算審議 2/);
   assert.match(text, /手機 1/);
