@@ -87,6 +87,11 @@ export const progressDateText = (value: string | null | undefined): string => fo
  * 上游改分類名稱時，這裡與 server 的 config 要一起改。
  */
 export const AGENCY_REPORT_CATEGORY = '預(決) 算決議案、定期報告';
+/** 把上色片段渲染成 React 節點（清單與審查歷程共用） */
+export function withBudgetHit(text: string) {
+  return budgetHitParts(text).map((part, i) => (part.hit ? <mark key={i} className="budget-hit">{part.text}</mark> : <Fragment key={i}>{part.text}</Fragment>));
+}
+
 /**
  * 把「115年度中央政府總預算案」切成可上色的片段（純函式，給 render-smoke 測）。
  *
@@ -94,9 +99,14 @@ export const AGENCY_REPORT_CATEGORY = '預(決) 算決議案、定期報告';
  * （使用者 2026-10-19：「115年度中央政府總預算案 要加顏色，以利辨識」）。
  * 只標「NNN 年度中央政府總預算案」；「…總預算案追加預算案」「…特別預算案」是另一本預算，不標。
  */
-export function budgetHitParts(text: string, { minIndex = 0 }: { minIndex?: number } = {}): { text: string; hit: boolean }[] {
+export function budgetHitParts(text: string): { text: string; hit: boolean }[] {
   const src = String(text ?? '');
-  const base = /\d{2,3}\s*年度中央政府總預算案(?![追特])/g;
+  /**
+   * 要上色的「預算名稱」。不只「NNN年度中央政府總預算案」：
+   * 114、116 各年度都一樣，追加／特別預算案（常常沒寫年度，例「中央政府花蓮馬太鞍溪堰塞湖災後重建特別預算案」）也算，
+   * 其餘年度類推（使用者 2026-10-19）。
+   */
+  const base = /(?:\d{2,3}\s*年度)?中央政府總預算案(?![追特])|\d{2,3}\s*年度中央政府總預算案?(?:追加|特別)預算案|中央政府[^，。；\n]{0,24}?(?:特別|追加)預算案/g;
   const out: { text: string; hit: boolean }[] = [];
   let last = 0;
   for (const m of src.matchAll(base)) {
@@ -121,8 +131,7 @@ export function budgetHitParts(text: string, { minIndex = 0 }: { minIndex?: numb
     if (tailMatch && tailMatch[0].includes('基金') && /[：:]|關於/.test(tailMatch[0])) {
       end += tailMatch[0].replace(/[\s、]+$/, '').length;
     }
-    // minIndex：關鍵詞本來就在前面（一眼就看到）就不標，避免每一列都在發光
-    out.push({ text: src.slice(at, end), hit: at >= minIndex });
+    out.push({ text: src.slice(at, end), hit: true });
     last = end;
   }
   if (last < src.length) out.push({ text: src.slice(last), hit: false });
@@ -239,9 +248,9 @@ function BudgetItemRow({
   return (
     <li>
       <a href={item.url} target="_blank" rel="noreferrer noopener" className="bill-title" title={item.name}>
-        {/* 清單只標「關鍵詞埋在第 20 字之後」的（實測 41 件裡 10 件）：開頭就看得到的再上色，
-            每一列都在發光反而沒有訊號（2026-10-19 使用者問「要不要清單也標」，決定採這個折衷） */}
-        {budgetHitParts(item.name, { minIndex: 20 }).map((part, i) => (part.hit ? <mark key={i} className="budget-hit">{part.text}</mark> : <Fragment key={i}>{part.text}</Fragment>))}
+        {/* 每一列的預算名稱都上色——不分年度（114、116 一樣），也不分它寫在句首或句中
+            （使用者 2026-10-19 更正：只標句中的會讓人以為「只有 115 年度有上色」） */}
+        {withBudgetHit(item.name)}
         <ExternalLink aria-hidden="true" />
       </a>
       <p className="bill-meta">
@@ -906,9 +915,6 @@ export function BudgetTimeline({
    * 「115年度中央政府總預算案」在整段議程裡不明顯（前後都是別的案子），使用者 2026-10-19 要求加顏色辨識。
    * 只標「NNN 年度中央政府總預算案」這個關鍵詞（追加／特別預算不算），其餘文字照舊。
    */
-  const withBudgetHit = (text: string) =>
-    budgetHitParts(text).map((part, i) => (part.hit ? <mark key={i} className="budget-hit">{part.text}</mark> : <Fragment key={i}>{part.text}</Fragment>));
-
   /** 單場會議（依委員會與依時間兩種檢視共用） */
   const timelineItem = (m: BudgetTimelineItem) => (
     <li key={`${m.id}-${m.date}`}>

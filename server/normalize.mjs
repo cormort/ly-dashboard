@@ -499,7 +499,12 @@ const BUDGET_FOLLOW_UP = /決議[，,][^。]{0,40}檢送|動支數額表|勘誤|
  */
 export function budgetTypeTags(name) {
   const text = String(name ?? '');
-  if (!/\d{2,3}\s*年度/.test(text)) return [];
+  /**
+   * 不要求名稱裡有「NNN年度」：一堆特別預算案的案由根本沒寫年度
+   * （「中央政府花蓮馬太鞍溪堰塞湖災後重建特別預算案」「中央政府因應國際情勢…特別預算案」），
+   * 以前會整批漏掉，特別預算那格只剩 4 件（使用者 2026-10-19：「不是只有 115 年度，114、116 年度也要，其餘類推」）。
+   * 年度由 `budgetYearOf()` 另外抽，抽不到就落在「未知年度」，不影響這裡的分類。
+   */
   if (BUDGET_FOLLOW_UP.test(text)) return [];
   const types = [];
   if (/總(預算案|決算)(?!附屬單位|追加)/.test(text)) types.push('general');
@@ -519,7 +524,6 @@ export function budgetTypeTags(name) {
 export function budgetTypes(name, { billCategory = true } = {}) {
   if (!billCategory) return [];
   const text = String(name ?? '');
-  if (!/\d{2,3}\s*年度/.test(text)) return [];
   if (BUDGET_NOT_A_BILL.test(text) && !/審查(總)?報告|審查日程/.test(text)) return [];
   return budgetTypeTags(name);
 }
