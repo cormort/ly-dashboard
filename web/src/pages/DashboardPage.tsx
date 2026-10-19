@@ -1,5 +1,5 @@
-import { useState, type CSSProperties, type ReactNode } from 'react';
-import { ArrowRight, ExternalLink } from 'lucide-react';
+import type { ReactNode } from 'react';
+import { ArrowRight } from 'lucide-react';
 import { buildUrl } from '../api/client';
 import type {
   ActivityResponse,
@@ -11,7 +11,6 @@ import type {
   NewsArticlesResponse,
   NewsResponse,
   RankingsResponse,
-  RegionsResponse,
 } from '../api/types';
 import { EmptyState, ErrorState, LoadingState } from '../components/DataStates';
 import { RouteLink } from '../components/RouteLink';
@@ -23,14 +22,12 @@ import { partyStyle, sortParties } from '../lib/parties';
 import { readPreference } from '../lib/storage';
 import { DEFAULT_AGENCY, MY_AGENCY_KEY } from './MyAgencyPage';
 import { AGENCY_REPORT_CATEGORY } from './BudgetPage';
-import { useCountiesEnabled } from '../lib/features';
 export interface DashboardPageProps {
   refreshToken: number;
   onOpenId: (id: string) => void;
   onNavigate: (href: string) => void;
 }
 
-const KIND_LABEL = { post: '臉書', news: '新聞', bill: '提案' } as const;
 
 /** 一張總覽卡：標題＋「看更多」連到對應頁面；四態沿用各頁的 LoadingState／ErrorState */
 function Card<T>({
@@ -78,13 +75,10 @@ function Who({ id, name, party, onOpenId }: { id: string; name: string; party: s
 
 /**
  * 總覽：各區塊（動態、新聞、法案、三讀、預算、預算中心、委員會紀錄、排行榜）各取最新幾則，
- * 下方依縣市列出各區委員的最新動態。資料全部沿用各頁的端點，只多一個 /regions。
+ * 資料全部沿用各頁的端點。各縣市委員動態在「委員 › 最近動態」的「依縣市」檢視（見 RegionCards）。
  */
 export function DashboardPage({ refreshToken, onOpenId, onNavigate }: DashboardPageProps) {
-  const countiesEnabled = useCountiesEnabled();
   const opts = { refreshToken };
-  // 各縣市預設不展開，而且展開才渲染（25 張卡片的 DOM 不進首次繪製）
-  const [regionsOpen, setRegionsOpen] = useState(false);
   // 每張卡只取 3 則：總覽的任務是「指出重點並導向」，不是把所有清單攤開
   const activity = useApi<ActivityResponse>(buildUrl('/activity', { limit: 4 }), opts);
   const news = useApi<NewsResponse>(buildUrl('/news', { limit: 8 }), opts);
@@ -95,7 +89,6 @@ export function DashboardPage({ refreshToken, onOpenId, onNavigate }: DashboardP
   const reports = useApi<BudgetReportsResponse>(buildUrl('/budget/reports', { limit: 3 }), opts);
   const rankings = useApi<RankingsResponse>(buildUrl('/rankings', { type: 'all', days: 30, limit: 3 }), opts);
   const committees = useApi<CommitteeActivityResponse>(buildUrl('/committee-activity', { limit: 3 }), opts);
-  const regions = useApi<RegionsResponse>(buildUrl('/regions', { per: 2 }), opts);
   // 首長與幕僚每天最先看的是自己機關：總覽最上方先給「我的機關」摘要（機關選擇與我的機關頁共用）
   const agencyName = readPreference(MY_AGENCY_KEY) || DEFAULT_AGENCY;
   const mine = useApi<AgencyHomeResponse>(buildUrl('/agency', { name: agencyName }), opts);
@@ -396,96 +389,6 @@ export function DashboardPage({ refreshToken, onOpenId, onNavigate }: DashboardP
         </div>
       </section>
 
-      <details
-        className="panel regions-details"
-        open={regionsOpen}
-        onToggle={(event) => setRegionsOpen((event.currentTarget as HTMLDetailsElement).open)}
-      >
-        <summary>
-          <span className="regions-title">各縣市最新動態</span>
-          <span className="muted">
-            {regions.data ? `${regions.data.count} 個選區` : '讀取中…'}・{regionsOpen ? '點此收合' : '點此展開'}
-          </span>
-        </summary>
-        {regions.phase === 'loading' && !regions.data ? <LoadingState label="讀取各縣市…" /> : null}
-        {regions.phase === 'error' ? <ErrorState title="無法取得各縣市（/api/v1/regions）" error={regions.error} onRetry={regions.reload} /> : null}
-        {/* 收合時完全不渲染 25 張卡片：DOM 少 25 個 panel／25 個 h3，首次繪製也更快 */}
-        {regionsOpen && regions.data ? (
-          <div className="region-grid">
-            {regions.data.items.map((r) => (
-              <article key={r.region} className="panel region-card">
-                <div className="sectionhead">
-                  <h3>
-                    <RouteLink
-                      href={link('legislators', { region: r.region })}
-                      onNavigate={onNavigate}
-                    >
-                      {r.region}
-                    </RouteLink>
-                  </h3>
-                  <span className="muted">
-                    {r.legislators.length} 位{r.news_7d ? `・近 7 天新聞 ${r.news_7d}` : ''}
-                  </span>
-                </div>
-                {r.stats ? (
-                  <div className="region-stats">
-                    <p>
-                      人口 {r.stats.population.toLocaleString('zh-TW')}・65 歲以上 {r.stats.elderly_ratio.toFixed(1)}%
-                    </p>
-                    <p>
-                      {(
-                        [
-                          ['2024 總統', r.stats.president_2024],
-                          ['2022 縣市長', r.stats.mayor_2022],
-                        ] as const
-                      ).map(([label, w]) => (
-                        <span key={label} className="region-winner">
-                          {label}：{w.name}
-                          <span className="party-tag" style={{ '--party': partyStyle(w.party).color } as CSSProperties}>
-                            {partyStyle(w.party).short}
-                          </span>
-                          <span className="muted">{w.pct.toFixed(1)}%</span>
-                        </span>
-                      ))}
-                    </p>
-                    {countiesEnabled ? (
-                      <RouteLink
-                        href={link('counties', { county: r.region })}
-                        onNavigate={onNavigate}
-                      >
-                        縣市統計 →
-                      </RouteLink>
-                    ) : null}
-                  </div>
-                ) : null}
-                <p className="region-people">
-                  {r.legislators.map((l) => (
-                    <span key={l.id} className="region-person" style={{ '--party': partyStyle(l.party).color } as CSSProperties}>
-                      <Who {...l} onOpenId={onOpenId} />
-                    </span>
-                  ))}
-                </p>
-                {r.latest.length ? (
-                  <ul className="dash-list">
-                    {r.latest.map((x) => (
-                      <li key={`${x.kind}-${x.legislator.id}-${x.url}`}>
-                        <span className="kind">{KIND_LABEL[x.kind]}</span>
-                        <a href={x.url} target="_blank" rel="noreferrer noopener" className="clamp-2">
-                          <b>{x.legislator.name}</b>　{x.text}
-                          <ExternalLink aria-hidden="true" />
-                        </a>
-                        <time>{formatDay(x.date)}</time>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="muted">暫無動態</p>
-                )}
-              </article>
-            ))}
-          </div>
-        ) : null}
-      </details>
     </>
   );
 }

@@ -197,7 +197,7 @@ const { default: App } = await import('../src/App');
 
 console.log('— 整頁初始狀態（尚未取得任何 API 資料）—');
 const dashboardHtml = render(createElement(App));
-expectAll('預設首頁是總覽', dashboardHtml, ['立委觀測站', '總覽', '各縣市最新動態', 'aria-current="page"']);
+expectAll('預設首頁是總覽', dashboardHtml, ['立委觀測站', '總覽', 'aria-current="page"']);
 
 (window as unknown as { location: { pathname: string } }).location.pathname = '/activity';
 const homeHtml = render(createElement(App));
@@ -1592,7 +1592,6 @@ expectAll('總覽：loading 態有統計列、焦點卡與各區塊骨架', dash
   '機關檢送報告',
   '預算中心報告',
   '委員會會議紀錄',
-  '各縣市最新動態',
   'href="/bills?status=%E4%B8%89%E8%AE%80"',
 ]);
 // 總覽依首長關心的順序：我的機關摘要 → 議事 → 新聞 → 委員；並有「機關首長新聞」卡
@@ -1622,11 +1621,12 @@ check(
 // 頁面不再有重複分頁名稱的標題列與介紹段落：標題只留給讀螢幕程式，說明改掛在導覽列（見 Header 的測試）
 expectAll('總覽：標題只給讀螢幕程式', dashboardLoading, ['<h1 class="sr-only">總覽</h1>']);
 expectNone('總覽：沒有標題列、介紹段落或頁內提示', dashboardLoading, ['class="page-head"', 'class="page-lead"', 'role="tooltip"']);
-// 各縣市改成預設收合的 disclosure：25 張卡片不再一次攤開
-check(
-  '總覽：各縣市動態是預設收合的 <details>',
-  dashboardLoading.includes('regions-details') && !/<details[^>]*regions-details[^>]*\sopen/.test(dashboardLoading),
-);
+// 各縣市動態 2026-10-19 從總覽搬到「委員 › 最近動態」的「依縣市」檢視（總覽資訊太多）
+expectNone('總覽：不再有各縣市動態', dashboardLoading, ['regions-details', '各縣市最新動態']);
+check('最近動態：有「時間排序／依縣市」切換，依縣市畫 RegionCards', (() => {
+  const src = readFileSync(new URL('../src/pages/HomePage.tsx', import.meta.url), 'utf8');
+  return src.includes('aria-label="排列方式"') && src.includes('依縣市') && src.includes('<RegionCards');
+})());
 
 /* ------------------------------ 熱門議題（本次強化） ------------------------------ */
 

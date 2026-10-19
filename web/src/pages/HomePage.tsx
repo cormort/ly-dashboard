@@ -4,6 +4,7 @@ import { TopicsPanel } from '../components/TopicsPanel';
 import type { ActivityItem, ActivityResponse } from '../api/types';
 import { EmptyState, ErrorState, LoadingState } from '../components/DataStates';
 import { Portrait } from '../components/Portrait';
+import { RegionCards } from '../components/RegionCards';
 import { useApi } from '../hooks/useApi';
 import type { TrackedApi } from '../hooks/useTracked';
 import { readPreference, writePreference } from '../lib/storage';
@@ -96,11 +97,17 @@ export function HomePage({ refreshToken, onOpenId, onNavigate, tracked }: HomePa
   const [limit, setLimit] = useState(12);
   const [onlyTracked, setOnlyTracked] = useState(() => readPreference('home-tracked') === '1');
   const lastVisit = useLastVisit();
+  // 時間排序／依縣市（各縣市卡片原本在總覽最底部，2026-10-19 搬來）；記住上次選的
+  const [byRegion, setByRegion] = useState(() => readPreference('home-view') === 'region');
   const showTracked = onlyTracked && tracked.count > 0;
   const activity = useApi<ActivityResponse>(
-    buildUrl('/activity', { limit: showTracked ? 113 : limit, ids: showTracked ? tracked.ids.join(',') : undefined }),
+    byRegion ? null : buildUrl('/activity', { limit: showTracked ? 113 : limit, ids: showTracked ? tracked.ids.join(',') : undefined }),
     { refreshToken },
   );
+  const toggleView = (next: boolean) => {
+    setByRegion(next);
+    writePreference('home-view', next ? 'region' : 'time');
+  };
   const toggleTracked = (next: boolean) => {
     setOnlyTracked(next);
     writePreference('home-tracked', next ? '1' : '0');
@@ -113,6 +120,15 @@ export function HomePage({ refreshToken, onOpenId, onNavigate, tracked }: HomePa
       <section className="panel" aria-label="委員動態">
         <div className="sectionhead">
           <h2>委員動態</h2>
+          <div className="segmented" role="group" aria-label="排列方式">
+            <button type="button" aria-pressed={!byRegion} onClick={() => toggleView(false)}>
+              時間排序
+            </button>
+            <button type="button" aria-pressed={byRegion} onClick={() => toggleView(true)}>
+              依縣市
+            </button>
+          </div>
+          {byRegion ? null : (
           <div className="segmented" role="group" aria-label="動態範圍">
             <button type="button" aria-pressed={!showTracked} onClick={() => toggleTracked(false)}>
               全部
@@ -127,7 +143,12 @@ export function HomePage({ refreshToken, onOpenId, onNavigate, tracked }: HomePa
               追蹤中（{tracked.count}）
             </button>
           </div>
+          )}
         </div>
+        {byRegion ? (
+          <RegionCards refreshToken={refreshToken} onOpenId={onOpenId} onNavigate={onNavigate} />
+        ) : (
+          <>
         {activity.phase === 'loading' && !activity.data ? <LoadingState label="讀取委員動態…" /> : null}
         {activity.phase === 'error' ? (
           <ErrorState title="無法取得委員動態（/api/v1/activity）" error={activity.error} onRetry={activity.reload} />
@@ -154,6 +175,8 @@ export function HomePage({ refreshToken, onOpenId, onNavigate, tracked }: HomePa
             ) : null}
           </>
         ) : null}
+          </>
+        )}
       </section>
 
 
