@@ -60,15 +60,17 @@ test('滑動續期：剩不到門檻才續、過期或格式錯不會亂續', ()
 });
 
 test('密碼：scrypt 雜湊可驗，錯的密碼不行，格式壞掉不會丟錯', async () => {
-  const hashed = await hashPassword('test-password-1');
+  // 這裡一律用假密碼：這個 repo 是公開的，不要拿線上真的在用的密碼當測試資料
+  const pw = 'test-password-1';
+  const hashed = await hashPassword(pw);
   assert.match(hashed, /^scrypt\$\d+\$\d+\$\d+\$/);
-  assert.equal(await verifyPassword('test-password-1', hashed), true);
+  assert.equal(await verifyPassword(pw, hashed), true);
   assert.equal(await verifyPassword('test-password-2', hashed), false);
   assert.equal(await verifyPassword('', hashed), false);
-  assert.equal(await verifyPassword('test-password-1', 'not-a-hash'), false);
-  assert.equal(await verifyPassword('test-password-1', 'scrypt$1$2$3$$'), false);
+  assert.equal(await verifyPassword(pw, 'not-a-hash'), false);
+  assert.equal(await verifyPassword(pw, 'scrypt$1$2$3$$'), false);
   // 同一個密碼每次雜湊都不同（有 salt）
-  assert.notEqual(await hashPassword('test-password-1'), await hashPassword('test-password-1'));
+  assert.notEqual(await hashPassword(pw), await hashPassword(pw));
 });
 
 test('帳號比較：相同為真、長度不同也不會丟錯', () => {
