@@ -1,16 +1,12 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { type CSSProperties } from 'react';
 import { ExternalLink, MapPin, MessageCircle, ThumbsUp } from 'lucide-react';
 import { buildUrl } from '../api/client';
 import type { SocialWallItem, SocialWallResponse } from '../api/types';
 import { EmptyState, ErrorState, LoadingState } from '../components/DataStates';
-import { FacebookEmbed } from '../components/FacebookEmbed';
 import { PartyTag } from '../components/PartyTag';
 import { Portrait } from '../components/Portrait';
 import { useApi } from '../hooks/useApi';
-import { useInView } from '../hooks/useInView';
 import { useParam } from '../hooks/useParam';
-import { shouldMountEmbed, embedButtonLabel } from '../lib/embedPolicy';
-import { acquireEmbedSlot, type EmbedSlot } from '../lib/embedQueue';
 import { formatDay, formatRelative, text } from '../lib/format';
 import { partyStyle } from '../lib/parties';
 
@@ -59,81 +55,13 @@ export function ChipRow({
 }
 
 /**
- * 牆上的一張卡。Facebook 嵌入框預設**不自動載入**：一面牆幾十個 facebook.com iframe 會很慢，
- * 而且每一個都會讓瀏覽器連到 Facebook。按「看貼文」才載入（一次最多 3 個，見 lib/embedQueue）；
- * 想自動載入可以在上面勾「自動載入貼文」；按「收起貼文」可以關掉。
- * 嵌入框的高度一開始就預留（`.fb-embed-slot`）—— 不預留的話，載入時卡片會突然長高，
- * 瀑布流（CSS multi-column）會整面重新平衡、畫面在捲動中跳掉。
+ * 牆上的一張卡：**只顯示整理表裡的最新貼文（文字）與互動數**，不載入 Facebook 嵌入框。
+ * 一面牆幾十個 facebook.com iframe 會讓頁面明顯變慢（實測：展開全部 112 位、捲幾個畫面
+ * 就同時載入 24 個、累計 7.4 秒）。想看完整貼文或照片，點卡片下方的「粉專」到 Facebook。
  */
-export function WallCard({
-  item,
-  onOpenId,
-  autoEmbed = false,
-}: {
-  item: SocialWallItem;
-  onOpenId?: (id: string) => void;
-  /** true＝捲進畫面就自動載入（預設 false：按「看貼文」才載入，比較快） */
-  autoEmbed?: boolean;
-}) {
-  const { ref, inView } = useInView<HTMLElement>('200px');
-  const [collapsed, setCollapsed] = useState(false);
-  const [forced, setForced] = useState(false);
-  // mounted 是「iframe 真的掛上去了」，不是「應該掛」：要排隊等名額（見 lib/embedQueue）
-  const [mounted, setMounted] = useState(false);
-  const releaseRef = useRef<(() => void) | null>(null);
-  const wantEmbed = shouldMountEmbed({ collapsed, inView, forced, auto: autoEmbed });
-
-  // 捲進畫面後稍等 200ms 才排隊：快速捲過去的卡片不要白白掛 iframe
-  useEffect(() => {
-    if (!wantEmbed || mounted) return;
-    let cancelled = false;
-    let slot: EmbedSlot | null = null;
-    const timer = setTimeout(() => {
-      if (cancelled) return;
-      slot = acquireEmbedSlot((release) => {
-        if (cancelled) { release(); return; }
-        releaseRef.current = release;
-        setMounted(true);
-      });
-    }, 200);
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-      slot?.cancel();
-      releaseRef.current?.();
-      releaseRef.current = null;
-    };
-  }, [wantEmbed, mounted]);
-
-  // 保險：iframe 的 onLoad 沒回來（Facebook 被擋／很慢）也要把名額還回去
-  useEffect(() => {
-    if (!mounted) return;
-    const timer = setTimeout(() => {
-      releaseRef.current?.();
-      releaseRef.current = null;
-    }, 6000);
-    return () => clearTimeout(timer);
-  }, [mounted]);
-
-  const release = () => {
-    releaseRef.current?.();
-    releaseRef.current = null;
-  };
-
-  const toggle = () => {
-    if (mounted) {
-      setCollapsed(true);
-      setForced(false);
-      setMounted(false);
-      release();
-    } else {
-      setCollapsed(false);
-      setForced(true);
-    }
-  };
-
+export function WallCard({ item, onOpenId }: { item: SocialWallItem; onOpenId?: (id: string) => void }) {
   return (
-    <article ref={ref} className="member-card wall-card" style={{ '--party': partyStyle(item.party).color } as CSSProperties}>
+    <article className="member-card wall-card" style={{ '--party': partyStyle(item.party).color } as CSSProperties}>
       <div className="membertop">
         <Portrait legislator={{ name: item.name, photo_url: item.photo_url }} />
         <div>
@@ -177,7 +105,7 @@ export function WallCard({
       )}
 
       <footer>
-        <a href={item.url} target="_blank" rel="noopener noreferrer" title={`${item.name} 的 Facebook 粉專`}>
+        <a href={item.url} target="_blank" rel="noopener noreferrer" title={`${item.name} 的 Facebook 粉專（另開新分頁）`}>
           粉專
           <ExternalLink aria-hidden="true" />
         </a>
@@ -187,27 +115,8 @@ export function WallCard({
               委員檔案
             </button>
           ) : null}
-          <button type="button" className="link-button" aria-expanded={mounted} onClick={toggle}>
-            {embedButtonLabel(mounted)}
-          </button>
         </span>
       </footer>
-
-      <div className={collapsed ? 'fb-embed-slot is-collapsed' : 'fb-embed-slot'}>
-        {mounted && !collapsed ? (
-          <FacebookEmbed url={item.url} name={item.name} onLoad={release} />
-        ) : (
-          <p className="muted fb-embed-hint">
-            {collapsed
-              ? '已收起貼文'
-              : wantEmbed
-                ? '準備載入 Facebook 貼文…'
-                : autoEmbed
-                  ? '捲到這裡就會載入 Facebook 貼文'
-                  : '按「看貼文」載入 Facebook 貼文'}
-          </p>
-        )}
-      </div>
     </article>
   );
 }
@@ -224,22 +133,6 @@ export function SocialWallPage({ refreshToken, onOpenId }: SocialWallPageProps) 
   const [committee, setCommittee] = useParam<string>('committee', '');
   // 網址參數是使用者可以隨手改的：不認識的值一律落回 compact（見 useParam 的說明）
   const [view, setView] = useParam<'compact' | 'all'>('view', 'compact', ['compact', 'all']);
-  // 自動載入 Facebook 嵌入框（預設關：一次幾十個 iframe 會很慢）；選擇記在瀏覽器
-  const [autoEmbed, setAutoEmbed] = useState(() => {
-    try {
-      return window.localStorage.getItem('ly-wall-auto-embed') === '1';
-    } catch {
-      return false;
-    }
-  });
-  const toggleAutoEmbed = (next: boolean) => {
-    setAutoEmbed(next);
-    try {
-      window.localStorage.setItem('ly-wall-auto-embed', next ? '1' : '0');
-    } catch {
-      /* 無痕模式之類：只用這次 */
-    }
-  };
 
   // 沒套條件也沒按「展開」時不送 limit，讓後端用它自己的預設值（最近更新的 5 位）
   const expanded = Boolean(party || region || committee) || view === 'all';
@@ -275,20 +168,15 @@ export function SocialWallPage({ refreshToken, onOpenId }: SocialWallPageProps) 
 
         <p className="muted">
           {expanded
-            ? '依黨籍、縣市或委員會展開的粉專牆，新的貼文排在前面。卡片先顯示整理表裡的最新貼文摘要，按「看貼文」才載入 Facebook 官方的粉專嵌入框（一次最多 3 個；只對粉絲專頁有效，個人檔案請點「粉專」連結）。'
-            : `預設只顯示最近更新的 ${data.default_limit} 位委員；選黨籍、縣市或委員會就會展開整個粉專牆。卡片先顯示最新貼文摘要，按「看貼文」才載入 Facebook 嵌入框。`}
+            ? '依黨籍、縣市或委員會展開的粉專牆，新的貼文排在前面。卡片顯示整理表裡的最新貼文（文字、讚數、留言數）；要看完整貼文或照片請點「粉專」到 Facebook。'
+            : `預設只顯示最近更新的 ${data.default_limit} 位委員；選黨籍、縣市或委員會就會展開整個粉專牆。卡片顯示最新貼文摘要，不載入 Facebook 嵌入框。`}
           {data.social.as_of ? `「最新貼文」來自委員臉書整理表，資料截至 ${formatDay(data.social.as_of, '—')}。` : ''}
         </p>
         {data.social.stale ? (
           <p className="social-stale" role="note">
-            委員臉書整理表已 {data.social.age_days} 天沒有新的貼文日期，「最新貼文」可能不是最新；請看卡片上的 Facebook 嵌入框（會自動載入臉書上的最新貼文）。
+            委員臉書整理表已 {data.social.age_days} 天沒有新的貼文日期，「最新貼文」可能不是最新；點卡片下方的「粉專」可以到 Facebook 看最新內容。
           </p>
         ) : null}
-
-        <label className="check wall-auto-embed" title="勾選：卡片捲進畫面就自動載入 Facebook 嵌入框（載入較慢，行動網路建議不要開）">
-          <input type="checkbox" checked={autoEmbed} onChange={(e) => toggleAutoEmbed(e.target.checked)} />
-          自動載入貼文
-        </label>
 
         <div className="wall-filters">
           <ChipRow label="依黨籍" allLabel="全部黨籍" items={data.parties} value={party} onPick={pick(setParty)} />
@@ -326,7 +214,7 @@ export function SocialWallPage({ refreshToken, onOpenId }: SocialWallPageProps) 
         <ul className="fb-wall" role="list">
           {data.items.map((item) => (
             <li key={item.id}>
-              <WallCard item={item} onOpenId={onOpenId} autoEmbed={autoEmbed} />
+              <WallCard item={item} onOpenId={onOpenId} />
             </li>
           ))}
         </ul>

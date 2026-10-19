@@ -31,7 +31,6 @@ import { legislatorDetailUrl } from '../src/lib/legislators.ts';
 import { billStage } from '../src/lib/billStage.ts';
 import { MOBILE_MAX_WIDTH, scrollBehaviorFor, shouldScrollToDirectory } from '../src/lib/scroll.ts';
 import { connectionHint, isTailnetHost } from '../src/lib/connectionHint.ts';
-import { acquireEmbedSlot, embedQueueStats } from '../src/lib/embedQueue.ts';
 import { RECONNECT_DELAYS_MS, isVisible, reconnectDelayMs } from '../src/hooks/useReconnectRefresh.ts';
 import { toCsv } from '../src/lib/csv.ts';
 import { DEFAULT_FONT_SCALE_INDEX, FONT_SCALES, loadFontScaleIndex } from '../src/lib/fontScale.ts';
@@ -568,30 +567,6 @@ async function main(): Promise<void> {
     assert.equal(reconnectDelayMs(Number.NaN), 2000);
     assert.equal(isVisible('visible'), true);
     assert.equal(isVisible('hidden'), false, '背景分頁不要浪費請求');
-  });
-
-  await check('粉專嵌入框排隊：同時最多 3 個、其餘排隊，釋放才換下一個', () => {
-    const released: Array<() => void> = [];
-    const start = (release: () => void) => { released.push(release); };
-    for (let i = 0; i < 3; i += 1) acquireEmbedSlot(start);
-    assert.deepEqual(embedQueueStats(), { active: 3, queued: 0, max: 3 });
-    // 再排兩個：不能馬上開始
-    acquireEmbedSlot(start);
-    const queued = acquireEmbedSlot(start);
-    assert.deepEqual(embedQueueStats(), { active: 3, queued: 2, max: 3 });
-    // 取消一個排隊中的
-    queued.cancel();
-    assert.deepEqual(embedQueueStats(), { active: 3, queued: 1, max: 3 });
-    // 放掉一個名額 → 排隊的那個補上
-    released[0]();
-    assert.deepEqual(embedQueueStats(), { active: 3, queued: 0, max: 3 });
-    assert.equal(released.length, 4, '補上的那個要拿到 release');
-    // 重複 release 不會多扣名額
-    released[0]();
-    assert.deepEqual(embedQueueStats(), { active: 3, queued: 0, max: 3 });
-    // 全部放掉回到 0
-    for (const release of released) release();
-    assert.deepEqual(embedQueueStats(), { active: 0, queued: 0, max: 3 });
   });
 
   console.log(`\n全部通過：${passed} 項`);
