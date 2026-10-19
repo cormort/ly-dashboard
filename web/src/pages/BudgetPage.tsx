@@ -536,6 +536,33 @@ export function BudgetPage({ refreshToken, onOpenId, onNavigate }: BudgetPagePro
  * 所以某一關這一年度沒有會議是常態（實測 115 年度：聯席 0、公聽會 0）——照實顯示「無」，
  * 不要因為是 0 就整關藏起來，那會讓「這一年到底有沒有公聽會」變成猜謎。
  */
+/**
+ * 審查歷程「依委員會」分組的固定順序（使用者 2026-10-19 指定）：院會 → 朝野黨團協商 → 內政 → 外交及國防 →
+ * 經濟 → 財政 → 教育及文化 → 交通 → 司法及法制 → 社會福利及衛生環境。不在清單上的（聯席、跨委員會）排最後，
+ * 再照最近一場排。
+ */
+export const BUDGET_COMMITTEE_ORDER = [
+  '院會',
+  '朝野黨團協商',
+  '內政',
+  '外交及國防',
+  '經濟',
+  '財政',
+  '教育及文化',
+  '交通',
+  '司法及法制',
+  '社會福利及衛生環境',
+] as const;
+
+/** 分組排序用的名次：清單裡有就照清單，沒有就排到最後 */
+export function budgetCommitteeRank(key: string): number {
+  const name = shortCommittee(String(key ?? '').replace(/[（(].*$/, '').trim());
+  if (!name) return BUDGET_COMMITTEE_ORDER.length;
+  // 「交通、教育及文化」這種聯席：取清單裡最前面那個委員會
+  const hit = BUDGET_COMMITTEE_ORDER.findIndex((c) => name === c || name.startsWith(c));
+  return hit === -1 ? BUDGET_COMMITTEE_ORDER.length : hit;
+}
+
 export const BUDGET_PROCESS_STEPS = [
   { id: 'report', label: '院會報告並備質詢', hint: '行政院院長、主計長、財政部部長列席報告預算編製經過並備質詢，並交付委員會依分配表分送審查' },
   { id: 'committee', label: '委員會分組審查', hint: '各委員會分組審查主管機關的預算（主戰場）' },
@@ -545,7 +572,6 @@ export const BUDGET_PROCESS_STEPS = [
   { id: 'negotiation', label: '黨團協商', hint: '朝野黨團協商（保留案在這裡處理）' },
   // 115 年度院會的 6 場其實是「建請院會作成決議」（先行動支、辯論會、復議…），不是二三讀
   { id: 'plenary', label: '院會（二讀／三讀、決議案）', hint: '院會逐案表決、三讀通過，也包含院會對預算作的決議（先行動支、復議等）' },
-  { id: 'resolution', label: '決議處理', hint: '通過後處理凍結案解凍、附帶決議' },
 ] as const;
 
 /**
@@ -703,7 +729,7 @@ export function BudgetTimeline({
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(m);
     }
-    // 組與組之間也照「最近的會議」排（日期降冪），場次多寡只在同一天時當第二順位
+    // 組與組之間照立法院的委員會固定順序（使用者 2026-10-19 指定）；不在清單上的（聯席等）排最後
     return [...map]
       .map(([key, list]) => ({
         key,
@@ -714,6 +740,7 @@ export function BudgetTimeline({
       }))
       .sort(
         (a, b) =>
+          budgetCommitteeRank(a.key) - budgetCommitteeRank(b.key) ||
           b.latest.localeCompare(a.latest) ||
           b.items.length - a.items.length ||
           a.key.localeCompare(b.key, 'zh-Hant'),

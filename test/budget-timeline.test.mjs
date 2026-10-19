@@ -13,9 +13,35 @@ test('預算審查階段：協商／聯席／公聽會／院會／委員會', ()
   assert.equal(budgetReviewStage({ committee: '財政委員會', name: '財政委員會公聽會' }), 'hearing');
   assert.equal(budgetReviewStage({ committee: '全院委員會', name: '全院委員會會議' }), 'plenary');
   assert.equal(budgetReviewStage({ committee: '財政委員會', name: '立法院第11屆第6會期財政委員會第3次全體委員會議' }), 'committee');
-  // 預算通過後的「處理總預算決議／凍結案」不是審查，另標一階
-  assert.equal(budgetReviewStage({ committee: '財政委員會', name: '財政委員會第2次全體委員會議', content: '處理中華民國115年度中央政府總預算決議，有關財政部主管預算凍結書面報告案 43 案。' }), 'resolution');
-  assert.equal(budgetReviewStage({ committee: '教育及文化委員會', name: '教育及文化委員會第4次全體委員會議', content: '解凍案審查' }), 'resolution');
+  // 解凍案是「法定預算之後」的執行事項，不算預算審議（使用者 2026-10-19）
+  assert.equal(
+    budgetReviewStage({ committee: '財政委員會', name: '財政委員會第2次全體委員會議', content: '處理中華民國115年度中央政府總預算決議，有關財政部主管預算凍結書面報告案 43 案。' }),
+    'unfreeze',
+  );
+  assert.equal(budgetReviewStage({ committee: '教育及文化委員會', name: '教育及文化委員會第4次全體委員會議', content: '解凍案審查' }), 'unfreeze');
+  // 混合場：「審查或處理…預算凍結案」的那個「審查」是在審凍結案，不是審預算 → 一樣是 unfreeze
+  assert.equal(
+    budgetReviewStage({
+      committee: '內政委員會',
+      name: '內政委員會第7次全體委員會議',
+      content: '審查或處理113年度中央政府總預算案有關大陸委員會預算凍結案計5案。',
+    }),
+    'unfreeze',
+  );
+  // 但同一場的另一句真的在審今年度總預算案（2026-06-17 交通委員會）→ 仍算委員會審查
+  assert.equal(
+    budgetReviewStage(
+      {
+        committee: '交通委員會',
+        name: '交通委員會第14次全體委員會議',
+        content:
+          '一、處理114年度中央政府總預算附屬單位預算營業部分關於交通部主管國營臺灣鐵路股份有限公司預算凍結案計6案。' +
+          '二、繼續審查115年度中央政府總預算案關於國家運輸安全調查委員會單位預算。',
+      },
+      115,
+    ),
+    'committee',
+  );
   // 缺欄位不要炸
   assert.equal(budgetReviewStage(), 'committee');
 });

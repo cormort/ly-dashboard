@@ -327,7 +327,9 @@ Query 參數（全部可選）：
 回應：
 
 - `year`、`years[]`（`{ year, count }`，各年度場次）
-- `stages[]`（`{ id, label, count }`：`report`（院會報告並備質詢）／`committee`／`joint`／`hearing`／`summary`（財政委員會彙總審查總報告）／`negotiation`／`resolution`／`plenary`／`briefing`（專案報告，非審查程序））
+- `stages[]`（`{ id, label, count }`：`report`（院會報告並備質詢）／`committee`／`joint`／`hearing`／`summary`（財政委員會彙總審查總報告）／`negotiation`／`plenary`／`briefing`（專案報告，非審查程序））
+- **解凍案不算**：委員會「處理…預算凍結書面報告案」「解凍案」是法定預算之後的執行事項，`budgetReviewStage()` 回 `unfreeze`，
+  `items` 直接把它濾掉（連場次都不計）；同一場如果另有一句真的在審今年度總預算案（例 2026-06-17 交通委員會一併解凍 114 年度鐵路凍結案），仍算 `committee`。
 - `summary`：`total`、`first`、`last`、`committees[]`、`agencies[]`（審查單位／主管機關的出現次數）、
   `speakers[]`（登記發言最多的在職委員）
 - `items[]`：`{ id, date, stage, stage_label, committee, joint, name, agenda, speakers[], speaker_count, video_url,

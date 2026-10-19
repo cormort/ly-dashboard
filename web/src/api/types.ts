@@ -780,7 +780,7 @@ export interface BudgetTimelineItem {
   id: number;
   date: string | null;
   /** 階段是從會議名稱判斷的；resolution＝通過後處理凍結案／附帶決議那一段 */
-  stage: 'report' | 'committee' | 'joint' | 'hearing' | 'summary' | 'negotiation' | 'plenary' | 'resolution' | 'briefing';
+  stage: 'report' | 'committee' | 'joint' | 'hearing' | 'summary' | 'negotiation' | 'plenary' | 'briefing' | 'unfreeze';
   /** 同一場的議程前半是「邀請…專案報告」，後半才是預算審查 */
   has_briefing?: boolean;
   stage_label: string;

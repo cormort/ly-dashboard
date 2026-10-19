@@ -45,7 +45,7 @@ import { SyncStatusBanner } from '../src/components/SyncStatusBanner';
 import { RankingsPage, RankingBoardView } from '../src/pages/RankingsPage';
 import { TopicsPanel, tagTier } from '../src/components/TopicsPanel';
 import { ComparePage } from '../src/pages/ComparePage';
-import { BUDGET_PROCESS_STEPS, BudgetPage, BudgetProcessRail, BudgetTimeline, progressDateText, scopeAfterCategoryChange } from '../src/pages/BudgetPage';
+import { BUDGET_COMMITTEE_ORDER, BUDGET_PROCESS_STEPS, BudgetPage, BudgetProcessRail, BudgetTimeline, budgetCommitteeRank, progressDateText, scopeAfterCategoryChange } from '../src/pages/BudgetPage';
 import { YearProgressList, budgetProgressBar, budgetProgressText, budgetRecordsText, hasReviewableItems, yearLabel } from '../src/components/BudgetProgress';
 import { syncProgressText, syncRunningText } from '../src/lib/format';
 import { DashboardPage } from '../src/pages/DashboardPage';
@@ -1255,13 +1255,13 @@ expectAll(
 // ── 預算審查流程帶（2026-10-19）──
 const railStages = [
   { id: 'report', label: '院會報告並備質詢', count: 1 },
-  { id: 'committee', label: '委員會審查', count: 107 },
+  { id: 'committee', label: '委員會審查', count: 109 },
   { id: 'joint', label: '聯席審查', count: 0 },
   { id: 'hearing', label: '公聽會', count: 0 },
   { id: 'summary', label: '彙總審查總報告', count: 2 },
   { id: 'negotiation', label: '黨團協商', count: 13 },
-  { id: 'resolution', label: '決議處理', count: 4 },
-  { id: 'plenary', label: '院會', count: 6 },
+  // 解凍案（決議處理）已依使用者指示移出預算審議：後端不再回傳這個階段
+  { id: 'plenary', label: '院會', count: 10 },
   // 「邀請機關專案報告」不是預算審查的一關（使用者 2026-10-19 指正）：它出現在 stages 裡，但不得變成流程帶的一關
   { id: 'briefing', label: '專案報告（非審查）', count: 2 },
 ];
@@ -1277,20 +1277,28 @@ const railHtml = render(
   }),
 );
 check(
-  '預算審查流程：照立法院實際順序排（院會報告→委員會→聯席→公聽→彙總→協商→院會→決議處理）',
+  '預算審查流程：照立法院實際順序排（院會報告→委員會→聯席→公聽→彙總→協商→院會）',
   (() => {
     const labels = [...railHtml.matchAll(/class="process-label">([^<]+)</g)].map((m) => m[1]);
-    return labels.join('→') === '院會報告並備質詢→委員會分組審查→聯席審查→公聽會→彙總審查總報告→黨團協商→院會（二讀／三讀、決議案）→決議處理';
+    return labels.join('→') === '院會報告並備質詢→委員會分組審查→聯席審查→公聽會→彙總審查總報告→黨團協商→院會（二讀／三讀、決議案）';
   })(),
   [...railHtml.matchAll(/class="process-label">([^<]+)</g)].map((m) => m[1]).join('→'),
 );
 check(
-  '預算審查流程：畫面上的流程順序與後端階段清單脫鉤（後端把決議處理排在院會前面，畫面照實際流程排）',
-  BUDGET_PROCESS_STEPS.map((s) => s.id).join(',') === 'report,committee,joint,hearing,summary,negotiation,plenary,resolution'
-    && railStages.map((s) => s.id).join(',') === 'report,committee,joint,hearing,summary,negotiation,resolution,plenary,briefing',
+  '預算審查流程：畫面上的流程順序與後端階段清單脫鉤（後端把解凍案排在院會之後，畫面照實際流程排）',
+  BUDGET_PROCESS_STEPS.map((s) => s.id).join(',') === 'report,committee,joint,hearing,summary,negotiation,plenary'
+    && railStages.map((s) => s.id).join(',') === 'report,committee,joint,hearing,summary,negotiation,plenary,briefing',
 );
-expectAll('預算審查流程：有會議的關卡寫場次、沒有的照實寫「無」', railHtml, ['107 場', '13 場', '6 場', '4 場', '2 場', '1 場', '>無<']);
+expectAll('預算審查流程：有會議的關卡寫場次、沒有的照實寫「無」', railHtml, ['109 場', '13 場', '10 場', '2 場', '1 場', '>無<']);
 expectAll('預算審查流程：立法院程序裡獨立的「彙總審查總報告」是一關（財政委員會彙總各委員會結果、提報院會）', railHtml, ['彙總審查總報告']);
+check(
+  '審查歷程：委員會分組照立法院固定順序（院會→協商→內政→外交及國防→經濟→財政→教育及文化→交通→司法及法制→社福衛環）',
+  BUDGET_COMMITTEE_ORDER.map((c) => budgetCommitteeRank(c)).join(',') === '0,1,2,3,4,5,6,7,8,9'
+    // 聯席（交通、教育及文化）取清單裡最前面的那個委員會 → 交通（7）
+    && budgetCommitteeRank('交通、教育及文化') === 7
+    // 不在清單上的排最後
+    && budgetCommitteeRank('程序委員會') === BUDGET_COMMITTEE_ORDER.length,
+);
 check(
   '預算審查流程：目前看的那一關標成選中（aria-pressed）',
   /aria-pressed="true"[\s\S]{0,200}黨團協商/.test(railHtml),
@@ -1355,11 +1363,11 @@ expectAll('預算審查流程：流程帶外另列「邀請機關專案報告／
     detailAt > row115At && row115At > row116At,
     `detail@${detailAt} 115@${row115At} 116@${row116At}`,
   );
-  expectAll('預算審查流程：展開區塊裡就是六關流程帶', listHtml, [
+  expectAll('預算審查流程：展開區塊裡就是七關流程帶', listHtml, [
     'class="year-detail"',
     'class="process-flow"',
     '委員會分組審查',
-    '決議處理',
+    '院會報告並備質詢',
   ]);
   check(
     '預算審查流程：沒有選年度（全部年度）時，流程放在年度清單上方（清單沒有「全部年度」那一列可以掛）',

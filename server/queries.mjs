@@ -2423,7 +2423,6 @@ export const BUDGET_REVIEW_STAGES = [
    */
   { id: 'summary', label: '彙總審查總報告' },
   { id: 'negotiation', label: '黨團協商' },
-  { id: 'resolution', label: '決議處理' },
   { id: 'plenary', label: '院會' },
   /**
    * 「邀請○○部長就○○專案報告（業務報告），並備質詢」**不是預算審查的一關**：
@@ -2464,7 +2463,7 @@ export function reportsBudgetInPlenary({ date = null, content = '' } = {}, wante
   return false;
 }
 
-export function budgetReviewStage({ committee = '', name = '', content = '' } = {}) {
+export function budgetReviewStage({ committee = '', name = '', content = '' } = {}, wanted = null) {
   const c = cjkNormalize(committee);
   const n = cjkNormalize(name);
   const text = `${n} ${cjkNormalize(content)}`;
@@ -2483,7 +2482,24 @@ export function budgetReviewStage({ committee = '', name = '', content = '' } = 
   // 財政委員會彙總各委員會審查結果、提出「審查總報告」提報院會（LIS 程序裡的一步，不是普通審查場次）
   // 注意：這裡要用**原字串**判斷——「審查總報告」正是被引號包起來的那個報告名稱（拿掉引號就比對不到了）
   if (/彙總[^。]{0,40}審查總報告|審查總報告[^。]{0,20}提報院會/.test(text)) return 'summary';
-  if (/總預算決議|預算凍結|凍結案|解凍/.test(text)) return 'resolution';
+  /**
+   * 凍結／解凍案是**法定預算之後**的執行事項（委員會只是收書面報告、解除凍結），不是預算審議的一關
+   * ——使用者 2026-10-19：「這類解凍案的書面報告已經是法定預算之後的事了，不要列在預算審議」。
+   * 但同一場會議常是「一、處理…凍結案　二、繼續審查今年度總預算案」（例 2026-06-17 交通），
+   * 那種混合場仍算委員會審查，不能因為夾了一個解凍案就整場不算。
+   */
+  if (/總預算決議|預算凍結|凍結案|解凍/.test(text)) {
+    /**
+     * 混合場的判準要**逐句**看：「審查或處理113年度中央政府總預算案有關…預算凍結案」那個「審查」是在審凍結案，
+     * 不是審預算（實測 2024-04-08 內政委員會就是這樣被誤收成委員會審查）。
+     * 所以一句一句看：只有「不含凍結／解凍／決議，且真的在審今年度總預算案」的句子才算還在審。
+     */
+    const yearPart = wanted ? `${wanted}\\s*年度` : '';
+    const stillReviewing = unquoted
+      .split(/[。；\n]/)
+      .some((s) => !/凍結|解凍|決議/.test(s) && new RegExp(`審查[^。]{0,60}${yearPart}中央政府總預算案`).test(s));
+    if (!stillReviewing) return 'unfreeze';
+  }
   // 「邀請…專案報告／業務報告，並備質詢」不是預算審查的一般程序：整場沒有「審查」字樣就標成 briefing
   if (/邀請|專案報告|業務報告/.test(unquoted) && !/審查/.test(unquoted)) return 'briefing';
   /**
@@ -2622,7 +2638,9 @@ export function listBudgetTimeline(db, { year = '' } = {}) {
   const items = picked
     .map((row) => {
       const list = JSON.parse(row.speakers || '[]');
-      const stage = budgetReviewStage(row);
+      const stage = budgetReviewStage(row, wanted);
+      // 解凍案（法定預算之後的書面報告）不列在預算審議：連場次統計都不算，直接丟掉
+      if (stage === 'unfreeze') return null;
       stageCount.set(stage, (stageCount.get(stage) ?? 0) + 1);
       const base = baseCommittee(row.committee);
       if (base) committeeCount.set(base, (committeeCount.get(base) ?? 0) + 1);
@@ -2650,6 +2668,7 @@ export function listBudgetTimeline(db, { year = '' } = {}) {
         qa_only: units.qa_only,
       };
     })
+    .filter(Boolean)
     .sort((a, b) => String(a.date).localeCompare(String(b.date)) || a.committee.localeCompare(b.committee, 'zh-Hant'));
 
   /**
