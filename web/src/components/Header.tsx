@@ -10,6 +10,7 @@ import {
   Newspaper,
   RefreshCw,
   Search,
+  Type,
   Users,
   Vote,
   X,
@@ -382,7 +383,15 @@ export function Header({
           <span className="date-long">{formatDateTime(fetchedAt, '尚無成功同步紀錄')}</span>
           <span className="date-short">{formatRelative(fetchedAt, '尚無成功同步紀錄')}</span>
         </button>
-        <FontSizeControl />
+        {/* 字體大小收進一顆「Aa」：三顆按鈕常駐會把頁首擠成兩行（2026-10-19）。原生 details，不用自己管開關 */}
+        <details className="display-menu">
+          <summary className="icon-button" title="字體大小" aria-label="字體大小">
+            <Type aria-hidden="true" />
+          </summary>
+          <div className="display-menu-pop">
+            <FontSizeControl />
+          </div>
+        </details>
         <span className={`sync-progress ${syncTone}`} role="status" aria-live="polite">
           {syncMessage}
           {syncTone === 'blocked' ? (

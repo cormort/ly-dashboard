@@ -13,7 +13,7 @@ import { useApi } from './hooks/useApi';
 import { useReconnectRefresh } from './hooks/useReconnectRefresh';
 import { useQueryState } from './hooks/useQueryState';
 import { useSync } from './hooks/useSync';
-import { syncRunningText } from './lib/format';
+import { formatDateTime, formatRelative, syncRunningText } from './lib/format';
 import { EmptyState } from './components/DataStates';
 import { pathFor, useRoute } from './hooks/useRoute';
 import { CountiesEnabledContext } from './lib/features';
@@ -237,11 +237,22 @@ export default function App() {
       >
         <OfflineNotice />
 
-        {/* 同步有問題時一定顯示；正常時由頁首狀態鈕展開 */}
-        {syncOpen || failed || stale ? (
+        {/* 展開（頁首狀態鈕）才顯示完整面板；同步有問題但沒展開時只留一行提示——
+            完整面板每頁都攤開，手機上會吃掉半個首屏（2026-10-19） */}
+        {syncOpen ? (
           <div id="sync-panel">
             <SyncStatusBanner health={health} refreshToken={refreshToken} sources={syncSources.data?.scopes ?? null} />
           </div>
+        ) : failed || stale ? (
+          <p id="sync-panel" className={`status-compact ${failed ? 'error' : 'warning'}`} role="status">
+            <span>
+              <b>{failed ? '最近一次同步失敗' : '資料可能非最新'}</b>：資料截至 {formatDateTime(fetchedAt, '尚無成功同步紀錄')}
+              {fetchedAt ? `（${formatRelative(fetchedAt)}）` : ''}
+            </span>
+            <button type="button" className="link-button" onClick={() => setSyncOpen(true)}>
+              詳情
+            </button>
+          </p>
         ) : null}
 
         {pendingId ? (

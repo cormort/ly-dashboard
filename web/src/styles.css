@@ -273,6 +273,12 @@ header nav a[aria-current='page'], .subnav a[aria-current='page'] { color: var(-
 .sync-pill.error { color: var(--error); background: var(--error-bg); }
 .sync-pill.error .dot { background: var(--error); }
 .font-size-control { display: inline-flex; align-items: center; gap: 2px; }
+.display-menu { position: relative; }
+.display-menu summary { list-style: none; display: inline-flex; cursor: pointer; border-radius: var(--radius-md); }
+.display-menu summary::-webkit-details-marker { display: none; }
+.display-menu summary svg { width: 16px; height: 16px; }
+.display-menu[open] summary { background: var(--rule-soft); }
+.display-menu-pop { position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; padding: 6px; background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius-md); box-shadow: var(--shadow-md); }
 .font-size-control button { padding: 2px 8px; min-width: 32px; font-size: var(--fs-sm); font-weight: 700; }
 .sync-progress { font-size: var(--fs-sm); color: var(--muted); }
 .sync-progress:empty { display: none; }
@@ -336,10 +342,10 @@ header nav, .subnav-row { position: relative; }
 .page-lead { margin: 0; max-width: 760px; color: var(--muted); font-size: var(--fs-base); line-height: 1.65; }
 .panel {
   background: var(--surface);
-  border: 1px solid var(--card-line);
+  border: 1px solid var(--rule);
   border-radius: var(--radius-lg);
   padding: 18px 20px;
-  box-shadow: var(--card-base);
+  box-shadow: var(--shadow-sm);
 }
 .period-list { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; margin: 0; font-size: var(--fs-sm); color: var(--muted); }
 .period-list dt { font-weight: 600; color: var(--ink-2); }
@@ -391,6 +397,11 @@ header nav, .subnav-row { position: relative; }
 .status.warning { border-color: var(--warn-line); background: var(--warn-bg); }
 .status.error { border-color: var(--error-line); background: var(--error-bg); }
 .status-icon svg { width: 20px; height: 20px; }
+/* 同步有問題但面板沒展開時：一行提示（App.tsx） */
+.status-compact { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin: 0 0 var(--space-4); padding: 8px 14px; border: 1px solid; border-radius: var(--radius-md); font-size: var(--fs-sm); }
+.status-compact.error { border-color: var(--error-line); background: var(--error-bg); color: var(--error); }
+.status-compact.warning { border-color: var(--warn-line); background: var(--warn-bg); color: var(--warn); }
+.status-compact .link-button { color: inherit; text-decoration: underline; }
 .status-main { flex: 1; min-width: 260px; }
 .status-main small { display: block; color: var(--muted); }
 .status.warning .status-main small, .status.error .status-main small { color: inherit; opacity: 0.85; }
@@ -681,6 +692,8 @@ h3 .convener-mark, h1 .convener-mark { margin-left: 0; }
 .topic-delta.up { color: var(--success-ink, #067647); }
 .topic-list .bar { grid-column: 2 / -1; height: 6px; }
 .topic-note { margin: 2px 0 0; font-size: var(--fs-sm); }
+details.topic-note > summary { cursor: pointer; }
+details.topic-note[open] > summary { margin-bottom: 4px; }
 .topic-skew {
   margin: 0;
   padding: 6px 10px;
@@ -872,9 +885,9 @@ button.chip:hover:not(:disabled) { border-color: var(--accent-line); background:
 .stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--space-3); }
 .stat-tile {
   background: var(--surface);
-  border: 1px solid var(--card-line);
+  border: 1px solid var(--rule);
   border-radius: var(--radius-lg);
-  box-shadow: var(--card-base);
+  box-shadow: var(--shadow-sm);
   padding: 14px var(--space-4);
   display: grid;
   gap: 2px;
@@ -1030,7 +1043,10 @@ select { max-width: 100%; }
 /* ---------- 預算審議 ---------- */
 /* 8 格（全部＋預算四類＋法人預算／決議書面報告／行政命令）：150px 最小寬在 1200px 版面只排得下 7 格，
    最後一格會孤零零掉到第二列；130px 剛好 8 格一行，窄螢幕自動變 4＋4。 */
-.category-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: var(--space-3); }
+.category-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
+/* 格數隨檢視變（8 或 4）：中寬固定 4 欄、寬螢幕排成一列，不會剩一格孤零零掉到下一行 */
+@media (min-width: 600px) { .category-tiles { grid-template-columns: repeat(4, 1fr); } }
+@media (min-width: 1100px) { .category-tiles { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: 1fr; } }
 .category-tiles .stat-tile { display: grid; justify-items: start; gap: 2px; text-align: left; padding: 14px 16px; }
 .category-tiles .stat-tile[aria-pressed='true'] { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent-ink); }
 .category-tiles .stat-tile[aria-pressed='true'] .stat-label { color: var(--accent-ink); }
@@ -1092,9 +1108,10 @@ button.chip[aria-pressed='true'] { background: var(--accent-soft); border-color:
 }
 
 /* ---------- 總覽 ---------- */
-a.stat-tile { text-decoration: none; color: inherit; transition: border-color var(--t-fast), box-shadow var(--t-fast), transform var(--t-fast); }
+/* 立體底座只給「可點」的方塊（連結／按鈕），純資訊的卡片是平的——一眼分得出哪些能點（2026-10-19） */
+a.stat-tile, button.stat-tile { border-color: var(--card-line); box-shadow: var(--card-base); text-decoration: none; color: inherit; transition: border-color var(--t-fast), box-shadow var(--t-fast), transform var(--t-fast); }
 /* 可點的方塊滑過時「浮起」：底座變厚、整塊上移 2px */
-a.stat-tile:hover { border-color: #98a2b3; box-shadow: var(--card-base-hover); transform: translateY(-2px); }
+a.stat-tile:hover, button.stat-tile:hover:not(:disabled) { border-color: #98a2b3; box-shadow: var(--card-base-hover); transform: translateY(-2px); }
 /* 固定兩欄（寬螢幕）：第一張卡橫跨兩欄當作「主要焦點」，其餘是等重的次要卡。
    原本 auto-fill 會讓 8 張卡擠成 3-4 欄，每張都一樣大 → 看不出重點。 */
 .dash-section { display: grid; gap: var(--space-3); }
@@ -1554,7 +1571,7 @@ main:has(.fb-wall) { max-width: min(1840px, 96vw); }
   .sync-progress { flex-basis: 100%; min-width: 0; }
   .sync-progress:empty { display: none; }
   /* 字體大小控制在手機是多餘的（系統本身就有字級設定），讓頁首少一行 */
-  .font-size-control { display: none; }
+  .display-menu { display: none; }
 
   /* 2) 主導覽固定一列、可橫向捲動：原本 flex-wrap: wrap 會折成兩列，多占約 40px */
   header nav { flex-wrap: nowrap; }
