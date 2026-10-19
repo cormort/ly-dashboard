@@ -336,6 +336,9 @@ export function createServer(db) {
             return sendJson(res, 200, listBudgetReports(db, { type: q.type, q: q.q, limit: q.limit, offset: q.offset }));
           case '/api/v1/budget/meetings':
             return sendJson(res, 200, listBudgetMeetings(db, { limit: q.limit }));
+          case '/api/v1/budget/timeline':
+            // 同一個預算年度在委員會／聯席／公聽會／黨團協商開過的會議（依時間排）
+            return sendJson(res, 200, listBudgetTimeline(db, { year: q.year }));
           case '/api/v1/regions':
             return sendJson(res, 200, listRegions(db, { per: q.per }));
           case '/api/v1/counties':

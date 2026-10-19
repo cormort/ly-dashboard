@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Download, ExternalLink, FileText, X } from 'lucide-react';
 import { buildUrl } from '../api/client';
-import type { BudgetItem, BudgetMeetingsResponse, BudgetReportsResponse, BudgetResponse, BudgetState, BudgetType } from '../api/types';
+import type { BudgetItem, BudgetMeetingsResponse, BudgetReportsResponse, BudgetResponse, BudgetState, BudgetTimelineResponse, BudgetTimelineItem, BudgetType } from '../api/types';
 import { EmptyState, ErrorState, LoadingState } from '../components/DataStates';
 import { InfoTip } from '../components/InfoTip';
 import { YearProgressList, budgetProgressText, budgetRecordsText, hasReviewableItems, yearLabel } from '../components/BudgetProgress';
@@ -354,6 +354,8 @@ export function BudgetPage({ refreshToken, onOpenId, onNavigate }: BudgetPagePro
         </p>
       ) : null}
 
+      <BudgetTimeline refreshToken={refreshToken} />
+
       <div className="budget-layout">
         <section className="panel" aria-label="預算案列表" id="budget-results">
           <div className="sectionhead">
@@ -467,6 +469,124 @@ export function BudgetPage({ refreshToken, onOpenId, onNavigate }: BudgetPagePro
         </div>
       </div>
     </>
+  );
+}
+
+/**
+ * 預算審查歷程：同一個預算年度在**委員會分組審查、聯席、公聽會、黨團協商**開過的會議，依時間排。
+ * 實務上總預算不是一次會議審完，中間會開很多場；這裡把官方 ID223 的會議紀錄排成一條時間軸，
+ * 有對到 IVOD 場次就附影片連結。（院會二讀／三讀不在 ID223 裡，看上面的審議進度。）
+ */
+function BudgetTimeline({ refreshToken }: { refreshToken: number }) {
+  const [year, setYear] = useState('');
+  const [stage, setStage] = useState('');
+  const [limit, setLimit] = useState(20);
+  const res = useApi<BudgetTimelineResponse>(buildUrl('/budget/timeline', { year }), { refreshToken });
+  const data = res.data;
+  const stages = (data?.stages ?? []).filter((s) => s.count > 0);
+  const items = (data?.items ?? []).filter((m) => !stage || m.stage === stage);
+  const shown = items.slice(0, limit);
+  const groups: { key: string; label: string; items: BudgetTimelineItem[] }[] = [];
+  for (const m of shown) {
+    const key = (m.date ?? '').slice(0, 7) || '未知';
+    const label = key === '未知' ? '日期不明' : `${key.slice(0, 4)} 年 ${Number(key.slice(5, 7))} 月`;
+    if (!groups.length || groups[groups.length - 1].key !== key) groups.push({ key, label, items: [m] });
+    else groups[groups.length - 1].items.push(m);
+  }
+
+  return (
+    <section className="panel" aria-label="預算審查歷程">
+      <div className="sectionhead">
+        <h2>預算審查歷程</h2>
+        {(data?.years.length ?? 0) > 1 ? (
+          <div className="law-facets" role="group" aria-label="預算年度">
+            {data!.years.map((y) => (
+              <button
+                key={y.year}
+                type="button"
+                className="chip"
+                aria-pressed={String(data!.year) === String(y.year)}
+                onClick={() => {
+                  setYear(String(y.year));
+                  setStage('');
+                  setLimit(20);
+                }}
+              >
+                {y.year} 年度 <span className="muted">{y.count}</span>
+              </button>
+            ))}
+          </div>
+        ) : null}
+      </div>
+      {res.phase === 'loading' && !data ? <LoadingState label="讀取審查歷程…" /> : null}
+      {res.phase === 'error' ? (
+        <ErrorState title="無法取得審查歷程（/api/v1/budget/timeline）" error={res.error} onRetry={res.reload} />
+      ) : null}
+      {data && data.summary.total === 0 ? (
+        <EmptyState message="這個年度還沒有會議紀錄" hint="立法院開放資料同步後會出現在這裡。" />
+      ) : null}
+      {data && data.summary.total > 0 ? (
+        <>
+          <p className="muted topic-note">
+            {data.year} 年度中央政府總預算：共 {data.summary.total} 場審查會議
+            {data.summary.first && data.summary.last ? `（${formatDay(data.summary.first)} ～ ${formatDay(data.summary.last)}）` : ''}，
+            包含 {stages.map((s) => `${s.label} ${s.count} 場`).join('、')}。
+          </p>
+          <div className="wall-filter-row" role="group" aria-label="會議階段">
+            <span className="wall-filter-label">階段</span>
+            <div className="law-facets">
+              <button type="button" className="chip" aria-pressed={!stage} onClick={() => { setStage(''); setLimit(20); }}>
+                全部
+              </button>
+              {stages.map((s) => (
+                <button key={s.id} type="button" className="chip" aria-pressed={stage === s.id} onClick={() => { setStage(s.id); setLimit(20); }}>
+                  {s.label} <span className="muted">{s.count}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {groups.map((g) => (
+            <div key={g.key}>
+              <h3 className="subhead">{g.label}</h3>
+              <ul className="meeting-list budget-timeline">
+                {g.items.map((m) => (
+                  <li key={`${m.id}-${m.date}`}>
+                    <div className="timeline-head">
+                      <time dateTime={m.date ?? undefined}>{formatDay(m.date, '—')}</time>
+                      <span className={`stage-badge stage-${m.stage}`}>{m.stage_label}</span>
+                      <b>{shortCommittee(m.committee)}</b>
+                      {m.joint ? <span className="muted">（聯席：{shortCommittee(m.joint)}）</span> : null}
+                    </div>
+                    <p className="clamp-2" title={m.agenda}>
+                      {m.agenda}
+                    </p>
+                    <small className="muted">
+                      {m.speaker_count > 0 ? `${m.speaker_count} 位委員登記發言` : '沒有登記發言名單'}
+                      {m.speakers.length > 0 ? `（${m.speakers.slice(0, 4).map((s) => s.name).join('、')}${m.speakers.length > 4 ? ' 等' : ''}）` : ''}
+                      {m.video_url ? (
+                        <>
+                          {' · '}
+                          <a href={m.video_url} target="_blank" rel="noopener noreferrer">
+                            IVOD 影片
+                            <ExternalLink aria-hidden="true" />
+                          </a>
+                        </>
+                      ) : null}
+                    </small>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+          {items.length > limit ? (
+            <button type="button" className="more" onClick={() => setLimit((n) => n + 30)}>
+              顯示更多（還有 {items.length - limit} 場）
+            </button>
+          ) : null}
+        </>
+      ) : null}
+    </section>
   );
 }
 

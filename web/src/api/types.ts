@@ -774,6 +774,38 @@ export interface BudgetMeetingsResponse {
   items: BudgetMeeting[];
 }
 
+/* ---------- /budget/timeline ---------- */
+
+export interface BudgetTimelineItem {
+  id: number;
+  date: string | null;
+  stage: 'committee' | 'joint' | 'hearing' | 'negotiation' | 'plenary';
+  stage_label: string;
+  committee: string;
+  joint: string | null;
+  name: string;
+  agenda: string;
+  speakers: { name: string; id: string | null }[];
+  speaker_count: number;
+  video_url: string | null;
+}
+
+export interface BudgetTimelineResponse {
+  meta: Meta & { meetings_fetched_at: string | null };
+  /** 目前選的預算年度（民國年）；沒有資料時為 null */
+  year: number | null;
+  years: { year: number; count: number }[];
+  stages: { id: string; label: string; count: number }[];
+  summary: {
+    total: number;
+    first: string | null;
+    last: string | null;
+    committees: BillLawCount[];
+    speakers: { legislator: { id: string; name: string; party: string }; count: number }[];
+  };
+  items: BudgetTimelineItem[];
+}
+
 /* ---------- /regions ---------- */
 
 export interface RegionLatest {

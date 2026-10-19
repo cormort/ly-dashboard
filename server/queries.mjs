@@ -2227,6 +2227,146 @@ export function listBudgetReports(db, { type = '', q = '', limit = 20, offset = 
  * 議程涉及預算的委員會會議（會議事由含「預算」），附發言委員排行。
  * ponytail: 以關鍵字判斷「預算會議」，會把順帶處理預算書面報告的會議也算進去；要更準再改成比對議程類型。
  */
+/** 預算審查的階段（選單順序就是實務流程）。 */
+export const BUDGET_REVIEW_STAGES = [
+  { id: 'committee', label: '委員會審查' },
+  { id: 'joint', label: '聯席審查' },
+  { id: 'hearing', label: '公聽會' },
+  { id: 'negotiation', label: '黨團協商' },
+  { id: 'resolution', label: '決議處理' },
+  { id: 'plenary', label: '院會' },
+];
+
+/**
+ * 從會議紀錄判斷它在預算審查流程的哪一段（純函式，方便測試）。
+ * 判準只有名稱／委員會欄位；官方資料沒有「階段」欄位。
+ */
+export function budgetReviewStage({ committee = '', name = '', content = '' } = {}) {
+  const c = String(committee ?? '');
+  const n = String(name ?? '');
+  const text = `${n} ${content ?? ''}`;
+  if (c.startsWith('朝野黨團協商')) return 'negotiation';
+  if (n.includes('聯席')) return 'joint';
+  if (n.includes('公聽會')) return 'hearing';
+  if (n.includes('院會') || n.includes('全院委員會') || c.includes('全院')) return 'plenary';
+  // 預算通過之後才發生的「處理總預算決議／凍結案」：也是預算會議，但不是審查，另外標一階
+  if (/總預算決議|預算凍結|凍結案|解凍/.test(text)) return 'resolution';
+  return 'committee';
+}
+
+/**
+ * 會議文字裡「與總預算同一個句子」的所有民國年度（115 → [115]）。
+ * 一場會議常同時處理好幾個年度（例：協商同時研商 114 與 115 年度總預算），
+ * 所以回傳**全部**年度，讓那場會議同時出現在兩個年度的歷程裡（不要只取第一個而漏掉）。
+ */
+export function budgetYearsOf({ name = '', content = '' } = {}) {
+  const text = `${name ?? ''} ${content ?? ''}`;
+  const re = /(\d{2,3})\s*年度[^。；\n]{0,24}?總預算|總預算[^。；\n]{0,24}?(\d{2,3})\s*年度/g;
+  const years = [];
+  let match;
+  while ((match = re.exec(text))) {
+    const year = Number(match[1] ?? match[2]);
+    if (Number.isFinite(year) && year >= 80 && year <= 200 && !years.includes(year)) years.push(year);
+  }
+  return years;
+}
+
+const stageLabel = (id) => BUDGET_REVIEW_STAGES.find((s) => s.id === id)?.label ?? id;
+
+/**
+ * 中央總預算的**審查歷程**：同一個預算年度在委員會（各委員會分組審查）、聯席、
+ * 公聽會、黨團協商開過的會議，依時間排。資料來源是官方 ID223（委員會登記發言名單，
+ * 每場都有議事內容摘要）；有對到 g0v 的 IVOD 場次就一併附影片連結。
+ *
+ * 注意：官方資料沒有院會（二讀／三讀）的會議紀錄，所以最後一段仍以預算案的
+ * 審議狀態（/api/v1/budget 的狀態）為準；這裡只列「中間開過的會」。
+ */
+export function listBudgetTimeline(db, { year = '' } = {}) {
+  const rows = db
+    .prepare("SELECT id, date, committee, joint, name, content, speakers FROM committee_meetings WHERE name LIKE '%總預算%' OR content LIKE '%總預算%'")
+    .all();
+
+  const byYear = new Map();
+  for (const row of rows) {
+    for (const y of budgetYearsOf(row)) {
+      if (!byYear.has(y)) byYear.set(y, []);
+      byYear.get(y).push(row);
+    }
+  }
+  const years = [...byYear].map(([y, list]) => ({ year: y, count: list.length })).sort((a, b) => b.year - a.year);
+  // 預設選「最近一個有實際審查會議的年度」：剛開始的新年度常常只有 1 場（還沒審），直接選它沒東西看
+  const wanted = Number(year) || years.find((y) => y.count >= 5)?.year || years[0]?.year || null;
+  const picked = byYear.get(wanted) ?? [];
+
+  const meetsByDate = new Map();
+  for (const meet of db.prepare('SELECT date, title, video_url FROM committee_meets').all()) {
+    if (!meetsByDate.has(meet.date)) meetsByDate.set(meet.date, []);
+    meetsByDate.get(meet.date).push(meet);
+  }
+  const baseCommittee = (name) => String(name ?? '').replace(/[（(].*$/, '').trim();
+  const videoOf = (row) => {
+    const list = meetsByDate.get(row.date);
+    if (!list) return null;
+    const want = baseCommittee(row.committee);
+    const sameCommittee = list.find((m) => want && m.title.includes(want));
+    if (sameCommittee?.video_url) return sameCommittee.video_url;
+    if (String(row.committee).startsWith('朝野黨團協商')) {
+      return list.find((m) => m.title.includes('協商'))?.video_url ?? null;
+    }
+    return null;
+  };
+
+  const partyOf = new Map(db.prepare('SELECT id, party FROM legislators').all().map((l) => [l.id, l.party]));
+  const stageCount = new Map();
+  const committeeCount = new Map();
+  const speakers = new Map();
+
+  const items = picked
+    .map((row) => {
+      const list = JSON.parse(row.speakers || '[]');
+      const stage = budgetReviewStage(row);
+      stageCount.set(stage, (stageCount.get(stage) ?? 0) + 1);
+      const base = baseCommittee(row.committee);
+      if (base) committeeCount.set(base, (committeeCount.get(base) ?? 0) + 1);
+      for (const s of new Set(list.map((x) => x.id).filter(Boolean))) speakers.set(s, (speakers.get(s) ?? 0) + 1);
+      return {
+        id: row.id,
+        date: row.date,
+        stage,
+        stage_label: stageLabel(stage),
+        committee: row.committee,
+        joint: row.joint,
+        name: row.name,
+        agenda: row.content,
+        speakers: list,
+        speaker_count: new Set(list.map((x) => x.id).filter(Boolean)).size || list.length,
+        video_url: videoOf(row),
+      };
+    })
+    .sort((a, b) => String(a.date).localeCompare(String(b.date)) || a.committee.localeCompare(b.committee, 'zh-Hant'));
+
+  const people = new Map(db.prepare('SELECT id, name, party, leave_flag FROM legislators').all().map((l) => [l.id, l]));
+  return {
+    meta: { ...envelope(db), meetings_fetched_at: getMeta(db, 'meetings_fetched_at') },
+    year: wanted,
+    years,
+    stages: BUDGET_REVIEW_STAGES.map((s) => ({ ...s, count: stageCount.get(s.id) ?? 0 })),
+    summary: {
+      total: items.length,
+      first: items[0]?.date ?? null,
+      last: items.at(-1)?.date ?? null,
+      committees: [...committeeCount].sort((a, b) => b[1] - a[1]).map(([name, count]) => ({ name, count })),
+      speakers: [...speakers]
+        .map(([id, count]) => ({ legislator: people.get(id), count }))
+        .filter((x) => x.legislator && Number(x.legislator.leave_flag) === 0)
+        .sort((a, b) => b.count - a.count || a.legislator.name.localeCompare(b.legislator.name, 'zh-Hant'))
+        .slice(0, 15)
+        .map(({ legislator: l, count }) => ({ legislator: { id: l.id, name: l.name, party: l.party }, count })),
+    },
+    items,
+  };
+}
+
 export function listBudgetMeetings(db, { limit = 15 } = {}) {
   const resolvedLimit = Math.max(1, Math.min(Number(limit) || 15, 100));
   const rows = db.prepare("SELECT * FROM committee_meetings WHERE content LIKE '%預算%'").all().sort(budgetOrder);
@@ -2266,6 +2406,7 @@ export function listBudgetMeetings(db, { limit = 15 } = {}) {
  */
 const OFFICIALS = JSON.parse(readFileSync(new URL('./officials.json', import.meta.url), 'utf8')).officials;
 const FUND_CONFIG = JSON.parse(readFileSync(new URL('./fund-config.json', import.meta.url), 'utf8'));
+
 export const OTHER_FUND = '其他基金';
 export const OTHER_FOUNDATION = '其他基金會';
 export const ENTITY_TYPES = ['fund', 'agency', 'foundation', 'administrative'];
