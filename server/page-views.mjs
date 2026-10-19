@@ -37,15 +37,50 @@ const PATH_LABELS = {
 
 const pad2 = (n) => String(n).padStart(2, '0');
 
-/** 當地日期 YYYY-MM-DD（伺服器在台北，用本地時間切日） */
-export function localDay(input = Date.now()) {
-  const d = new Date(input);
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+/**
+ * 用哪個時區切日：預設台北（伺服器在這台 Mac 上跑）。
+ *
+ * **不要**用 `new Date(ts).getHours()` 這種「跟隨系統時區」的寫法 —— CI 跑在 UTC，
+ * 台北 09:20 會被記成 01 時、台北 00:30 會被記到前一天，測試就會紅在別人的機器上（實際踩過）。
+ * 這裡一律走 `Intl` 指定時區，行為與機器時區無關。
+ */
+export const DEFAULT_TIME_ZONE = process.env.LY_TIMEZONE || 'Asia/Taipei';
+
+/** 某個時間點在指定時區的「日期」與「小時」 */
+export function localParts(input = Date.now(), timeZone = DEFAULT_TIME_ZONE) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    hour12: false,
+  }).formatToParts(new Date(input));
+  const get = (type) => parts.find((part) => part.type === type)?.value ?? '';
+  return {
+    day: `${get('year')}-${get('month')}-${get('day')}`,
+    // 有些 ICU 會在午夜回 "24"（hour12: false 的怪癖）→ 取餘數
+    hour: Number(get('hour')) % 24,
+  };
+}
+
+/** 指定時區的 HH:MM（日報「最早／最晚」用） */
+export function localClock(input, timeZone = DEFAULT_TIME_ZONE) {
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone, hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(
+    new Date(input),
+  );
+  const get = (type) => parts.find((part) => part.type === type)?.value ?? '';
+  return `${String(Number(get('hour')) % 24).padStart(2, '0')}:${get('minute')}`;
+}
+
+/** 當地日期 YYYY-MM-DD */
+export function localDay(input = Date.now(), timeZone = DEFAULT_TIME_ZONE) {
+  return localParts(input, timeZone).day;
 }
 
 /** 前一天的字串（日報預設看昨天） */
-export function previousDay(input = Date.now()) {
-  return localDay(new Date(input).getTime() - 86_400_000);
+export function previousDay(input = Date.now(), timeZone = DEFAULT_TIME_ZONE) {
+  return localDay(new Date(input).getTime() - 86_400_000, timeZone);
 }
 
 /**
@@ -88,13 +123,13 @@ CREATE INDEX IF NOT EXISTS idx_page_views_day ON page_views(day);
 }
 
 /** 記一筆。`ts` 可指定（測試用），其餘由呼叫端決定 */
-export function recordPageView(db, { path, kind = 'page', sessionHash = '', ua = 'unknown', ts = Date.now() }) {
+export function recordPageView(db, { path, kind = 'page', sessionHash = '', ua = 'unknown', ts = Date.now(), timeZone = DEFAULT_TIME_ZONE }) {
   if (!PAGE_VIEW_KINDS.includes(kind)) throw new Error(`未知的 kind：${kind}`);
-  const date = new Date(ts);
+  const parts = localParts(ts, timeZone);
   db.prepare('INSERT INTO page_views(ts, day, hour, path, kind, session, ua) VALUES(?, ?, ?, ?, ?, ?, ?)').run(
-    date.toISOString(),
-    localDay(ts),
-    date.getHours(),
+    new Date(ts).toISOString(),
+    parts.day,
+    parts.hour,
     String(path ?? '/'),
     kind,
     String(sessionHash ?? ''),
@@ -146,8 +181,8 @@ export function dailyPageViews(db, { date }) {
 }
 
 /** 清掉太舊的資料（預設留 400 天）；回傳刪掉幾筆 */
-export function prunePageViews(db, { keepDays = 400, now = Date.now() } = {}) {
-  const cutoff = localDay(now - Math.max(1, Number(keepDays) || 400) * 86_400_000);
+export function prunePageViews(db, { keepDays = 400, now = Date.now(), timeZone = DEFAULT_TIME_ZONE } = {}) {
+  const cutoff = localDay(now - Math.max(1, Number(keepDays) || 400) * 86_400_000, timeZone);
   const info = db.prepare('DELETE FROM page_views WHERE day < ?').run(cutoff);
   return Number(info.changes ?? 0);
 }
@@ -182,12 +217,8 @@ export function pageViewsText(summary) {
   const busiest = busiestHours(summary)[0];
   if (busiest) lines.push(`最忙：${pad2(busiest.from)}–${pad2(busiest.to)} 時（${busiest.views} 次）`);
   if (summary.first && summary.last) {
-    // ts 存 UTC；這裡換成當地時間（伺服器在台北）
-    const fmt = (iso) => {
-      const d = new Date(iso);
-      return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
-    };
-    lines.push(`最早 ${fmt(summary.first)}・最晚 ${fmt(summary.last)}`);
+    // ts 存 UTC；這裡換成指定時區（預設台北），不要跟隨系統時區
+    lines.push(`最早 ${localClock(summary.first)}・最晚 ${localClock(summary.last)}`);
   }
   return lines.join('\n');
 }
