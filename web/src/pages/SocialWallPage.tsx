@@ -1,4 +1,4 @@
-import { type CSSProperties } from 'react';
+import { useRef, type CSSProperties } from 'react';
 import { ExternalLink, MapPin, MessageCircle, ThumbsUp } from 'lucide-react';
 import { buildUrl } from '../api/client';
 import type { SocialWallItem, SocialWallResponse } from '../api/types';
@@ -6,6 +6,7 @@ import { EmptyState, ErrorState, LoadingState } from '../components/DataStates';
 import { PartyTag } from '../components/PartyTag';
 import { Portrait } from '../components/Portrait';
 import { useApi } from '../hooks/useApi';
+import { useMasonry } from '../hooks/useMasonry';
 import { useParam } from '../hooks/useParam';
 import { formatDay, formatPostStamp, text } from '../lib/format';
 import { partyStyle } from '../lib/parties';
@@ -127,7 +128,7 @@ export function WallCard({ item, onOpenId }: { item: SocialWallItem; onOpenId?: 
 
 /**
  * 委員粉專牆（委員 › 粉專牆）：把在職委員的 Facebook 粉專攤成一面瀑布流。
- * 預設只顯示最近更新的 5 位；選了黨籍或縣市就展開整個粉專牆（條件寫在網址，可分享）。
+ * 預設只顯示「本日及昨日」有更新貼文的委員（人數依當天更新量而定）；選了黨籍或縣市就展開整個粉專牆（條件寫在網址，可分享）。
  * 順序、篩選與筆數都由後端算（`/api/v1/social/wall`），前端不重算。
  */
 export function SocialWallPage({ refreshToken, onOpenId }: SocialWallPageProps) {
@@ -138,13 +139,16 @@ export function SocialWallPage({ refreshToken, onOpenId }: SocialWallPageProps) 
   // 網址參數是使用者可以隨手改的：不認識的值一律落回 compact（見 useParam 的說明）
   const [view, setView] = useParam<'compact' | 'all'>('view', 'compact', ['compact', 'all']);
 
-  // 沒套條件也沒按「展開」時不送 limit，讓後端用它自己的預設值（最近更新的 5 位）
+  // 沒套條件也沒按「展開」時不送 limit，讓後端回「本日及昨日」有更新貼文的委員
   const expanded = Boolean(party || region || committee) || view === 'all';
   const res = useApi<SocialWallResponse>(
     buildUrl('/social/wall', { party, region, committee, limit: expanded ? EXPANDED_LIMIT : undefined }),
     { refreshToken },
   );
   const data = res.data;
+  // 瀑布流靠 Grid ＋ JS 撐高度；卡片數量／篩選／展開變了要重量（最新的一定在最上面）
+  const wallRef = useRef<HTMLUListElement>(null);
+  useMasonry(wallRef, { rowUnit: 8, deps: [data?.items.length ?? 0, party, region, committee, view] });
 
   if (res.phase === 'loading' && !data) return <LoadingState label="載入粉專牆…" />;
   if (res.phase === 'error') return <ErrorState title="無法取得粉專牆（/api/v1/social/wall）" error={res.error} onRetry={res.reload} />;
@@ -167,13 +171,21 @@ export function SocialWallPage({ refreshToken, onOpenId }: SocialWallPageProps) 
       <section className="panel" aria-label="粉專牆篩選">
         <div className="sectionhead">
           <h2>粉專牆</h2>
-          <span className="muted">{filtered || view === 'all' ? `${data.items.length} / ${data.total} 位` : `最近更新的 ${data.items.length} 位`}</span>
+          <span className="muted">
+            {filtered || view === 'all'
+              ? `${data.items.length} / ${data.total} 位`
+              : data.window_fallback
+                ? `本日及昨日沒更新，顯示最近 ${data.items.length} 位`
+                : data.window_capped
+                  ? `本日及昨日有更新 ${data.window_total} 位，先列前 ${data.items.length} 位`
+                  : `本日及昨日有更新 ${data.items.length} 位`}
+          </span>
         </div>
 
         <p className="muted">
           {expanded
             ? '依黨籍、縣市或委員會展開的粉專牆，新的貼文排在前面。卡片顯示整理表裡的最新貼文（文字、讚數、留言數）；要看完整貼文或照片請點「粉專」到 Facebook。'
-            : `預設只顯示最近更新的 ${data.default_limit} 位委員；選黨籍、縣市或委員會就會展開整個粉專牆。卡片顯示最新貼文摘要，不載入 Facebook 嵌入框。`}
+            : `預設只顯示「本日及昨日」有更新貼文的委員（依整理表的最新貼文日期，從 ${formatDay(data.window_from, '—')} 起算${data.window_fallback ? '；這兩天沒有人更新，先列出最近更新的幾位' : `，最多先列 ${data.window_cap} 位`}）；選黨籍、縣市或委員會就會展開整個粉專牆。卡片顯示最新貼文摘要，不載入 Facebook 嵌入框。`}
           {data.social.as_of ? `「最新貼文」來自委員臉書整理表，資料截至 ${formatDay(data.social.as_of, '—')}。` : ''}
         </p>
         {data.social.stale ? (
@@ -197,7 +209,7 @@ export function SocialWallPage({ refreshToken, onOpenId }: SocialWallPageProps) 
         {filtered || view === 'all' ? (
           <p className="wall-bulk">
             <button type="button" className="quiet" onClick={clear}>
-              清除條件，只看最近更新的 {data.default_limit} 位
+              清除條件，只看本日及昨日有更新的
             </button>
           </p>
         ) : data.total > data.items.length ? (
@@ -215,7 +227,7 @@ export function SocialWallPage({ refreshToken, onOpenId }: SocialWallPageProps) 
           hint="換一個黨籍、縣市或委員會，或按「清除條件」。沒有粉專資料的委員不會出現（來源是委員臉書整理表）。"
         />
       ) : (
-        <ul className="fb-wall" role="list">
+        <ul className="fb-wall" role="list" ref={wallRef}>
           {data.items.map((item) => (
             <li key={item.id}>
               <WallCard item={item} onOpenId={onOpenId} />

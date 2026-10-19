@@ -534,6 +534,32 @@ Query 參數（全部可選）：
   `scope=agencies` 另多一欄「提到的機關」。
 - `items[].legislators`：委員新聞為 `{ id, name, party }`；首長新聞為 `{ id: 姓名, name, party: 機關＋職稱 }`。指定 `legislator` 時只列該人。媒體不明時 `source` 為 `未知`。
 
+## GET /api/v1/social/wall?party=&region=&committee=&limit=&offset=0
+
+委員粉專牆（委員頁 › 粉專牆）：把在職委員的 Facebook 粉專攤成一面牆，依整理表記錄的 `latest_post_date` 新到舊，
+沒有日期的排最後。只有**目前會期常設委員會**可當篩選維度；聽不懂的名稱一律當作沒篩（回應也回空字串）。
+
+- **沒給 `limit`（或給 0／負數）＝「本日及昨日」有更新貼文的人**（2026-10-19 起；原本是固定的最近 5 位）：
+
+  - `recent_days`：日期窗天數（2＝今天與昨天，以**臺灣日期**算）
+  - `window_from`：日期窗起日（含，`YYYY-MM-DD`）——畫面要寫出來，否則看不出是哪兩天
+  - `window_fallback`：日期窗內**一個人都沒有**時為 `true`，此時改回最近更新的 `fallback_limit`（5）位；
+    牆不能是空的（空白畫面會像壞掉），但要看得出是「退回」而不是「沒資料」
+  - `window_total`：日期窗內實際有更新的人數；`window_cap`（30）是預設一次先列幾位，
+    `window_capped: true` 代表窗內超過上限、這一頁只列了前面這些（畫面寫「本日及昨日有更新 87 位，先列前 30 位」）
+  - `count` 是這一頁的筆數（日期窗模式下 ≤ `window_cap`），`total` 仍是符合條件的全部
+- 給了 `limit`（前端「展開」與任何篩選都走這條）就回 `min(limit, 符合條件數)`，上限 500；
+  日期窗與 `window_cap` 都**不套用**，`window_fallback`／`window_capped` 固定 `false`（＝使用者要全部）。
+- `parties`／`regions`／`committees` 三組 facet 互相交叉（各自排除自己那一維），避免出現「點了變空牆」的選項。
+
+```json
+{ "count": 12, "total": 113, "recent_days": 2, "window_from": "2026-10-18", "window_fallback": false, "fallback_limit": 5,
+  "committee_session": "11-5",
+  "items": [ { "id": "…", "name": "王世堅", "party": "民主進步黨", "region": "臺北市", "page_name": "王世堅",
+               "url": "https://www.facebook.com/…", "latest_post_date": "2026-10-19", "latest_post_summary": "…",
+               "latest_post_likes": 1465, "latest_post_comments": 103, "source": "sheet" } ] }
+```
+
 ## GET /api/v1/rankings
 
 三種排行榜：新聞曝光、臉書發文、法案提案。**只列入在職委員**（離職者仍有歷史提案，放進排行榜會誤導）。

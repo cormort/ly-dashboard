@@ -1176,15 +1176,28 @@ function ensureCouncilGroups(db, entry) {
  * 同名的議員（不同縣市）都會標上，選了縣市就只算那個縣市的。標記結果掛在全部新聞的快取上，資料沒變就不重算。
  */
 const OTHER_OFFICE_BEFORE = /(縣長|市長|立委|委員|部長|院長|總統|主委|署長|局長|區長|鄉長|鎮長)$/;
-/** 粉專牆沒給 limit 時只回最近更新的這幾位（需求：預設 5 位） */
-export const SOCIAL_WALL_DEFAULT_LIMIT = 5;
+/**
+ * 粉專牆沒給 limit 時：只回**本日及昨日**有更新貼文的委員（2026-10-19 起，原本是固定 5 位）。
+ * 需求原話：「更新的不要只限制 5 位，而是本日及昨日有更新的」——人數由當天實際更新量決定。
+ * 日期是整理表的 `latest_post_date`（貼文日期，不是抓取時間），以臺灣的「今天」為準。
+ */
+export const SOCIAL_WALL_RECENT_DAYS = 2;
+/** 日期窗內一個人都沒更新時退回最近更新的這幾位——牆不能是空的，否則看起來像壞掉 */
+export const SOCIAL_WALL_FALLBACK_LIMIT = 5;
+/**
+ * 日期窗模式一次最多先列幾位（2026-10-19 使用者：「最多顯示 N 位（例如 30）＋展開全部」）。
+ * 選舉期一天就有 80+ 位更新，全部倒出來手機要滑很久；預設只列前面這幾位，
+ * 其餘靠畫面的「展開全部」按鈕（帶 limit）取回，`window_capped: true` 讓畫面講得出來。
+ */
+export const SOCIAL_WALL_WINDOW_CAP = 30;
 const SOCIAL_WALL_MAX_LIMIT = 500;
 
 /**
  * 委員粉專牆（`/api/v1/social/wall`）：把在職委員的 Facebook 粉專攤成一面牆。
  *
- * - 預設只回**最近更新**的前 5 位（依 `latest_post_date` 新到舊，沒有日期的排最後）；
- *   套了黨籍／縣市／委員會條件才把整個篩選結果展開（limit 由呼叫端決定，上限 500）。
+ * - 預設（呼叫端沒給 limit）只回**本日及昨日**有更新貼文的委員：`latest_post_date >= 臺灣今天-1`，
+ *   依 `latest_post_date` 新到舊；日期窗內沒人更新時退回最近更新的 5 位（`window_fallback: true`）。
+ *   套了黨籍／縣市／委員會條件、或呼叫端明給 limit，就照 limit 展開（上限 500）。
  * - 三組 facet 互相交叉：每個 facet 只排除自己那一維、套用另外兩維，
  *   否則會出現「點了變成空牆」的選項（只有一組條件時保證不會空）。
  * - 委員會用**目前會期**的 `committee_seats`（跟委員頁的委員會篩選同一份資料）；
@@ -1194,8 +1207,9 @@ const SOCIAL_WALL_MAX_LIMIT = 500;
  * - 沒有粉專的委員不會出現（社群整理表沒有他的臉書網址），所以牆上的總數會小於委員總數。
  * - 這裡只讀整理表已經填好的日期，不猜、不補：抓不到貼文的委員就是沒有日期、排在最後。
  */
-export function listSocialWall(db, { party = '', region = '', committee = '', limit = SOCIAL_WALL_DEFAULT_LIMIT, offset = 0 } = {}) {
-  const resolvedLimit = Math.max(1, Math.min(Number(limit) || SOCIAL_WALL_DEFAULT_LIMIT, SOCIAL_WALL_MAX_LIMIT));
+export function listSocialWall(db, { party = '', region = '', committee = '', limit, offset = 0, now = Date.now() } = {}) {
+  // limit 沒給（undefined／null／''）＝走「本日及昨日」的日期窗；給了（含 0）才算明示
+  const askedLimit = Number(limit) > 0 ? Math.max(1, Math.min(Number(limit), SOCIAL_WALL_MAX_LIMIT)) : null;
   const resolvedOffset = Math.max(0, Math.trunc(Number(offset) || 0));
   const wantedParty = String(party ?? '').trim();
   const wantedRegion = String(region ?? '').trim();
@@ -1275,11 +1289,40 @@ export function listSocialWall(db, { party = '', region = '', committee = '', li
     .map(([name, count]) => ({ name, count }))
     .sort((a, b) => (committeeOrder.indexOf(a.name) + 1 || 99) - (committeeOrder.indexOf(b.name) + 1 || 99) || a.name.localeCompare(b.name, 'zh-Hant'));
 
+  // 沒給 limit ⇒ 只留「本日及昨日」有貼文的委員（臺灣日期；YYYY-MM-DD 字串可直接比大小）
+  const today = new Date(now + 8 * 3_600_000).toISOString().slice(0, 10);
+  const windowFrom = new Date(Date.parse(today) - (SOCIAL_WALL_RECENT_DAYS - 1) * 86_400_000).toISOString().slice(0, 10);
+  const inWindow = matched.filter((row) => row.latest_post_date && row.latest_post_date >= windowFrom);
+  const windowFallback = askedLimit === null && inWindow.length === 0;
+  // 日期窗模式預設只列前 window_cap 位（其餘請畫面用「展開全部」帶 limit 取回）
+  const windowCapped = askedLimit === null && !windowFallback && inWindow.length > SOCIAL_WALL_WINDOW_CAP;
+  const pool =
+    askedLimit !== null
+      ? matched
+      : windowFallback
+        ? matched.slice(0, SOCIAL_WALL_FALLBACK_LIMIT)
+        : windowCapped
+          ? inWindow.slice(0, SOCIAL_WALL_WINDOW_CAP)
+          : inWindow;
+  const pageLimit = askedLimit ?? pool.length;
+
   return {
     meta: envelope(db, { term: currentTerm(db), session }),
-    count: Math.max(0, Math.min(resolvedLimit, matched.length - resolvedOffset)),
+    count: Math.max(0, Math.min(pageLimit, pool.length - resolvedOffset)),
     total: matched.length,
-    default_limit: SOCIAL_WALL_DEFAULT_LIMIT,
+    /** 沒給 limit 時的日期窗：「本日及昨日」＝今天往回 recent_days-1 天（含今天） */
+    recent_days: SOCIAL_WALL_RECENT_DAYS,
+    /** 日期窗的起日（含）——畫面要寫出來，否則看不出「本日及昨日」是哪兩天 */
+    window_from: windowFrom,
+    /** 日期窗內一個人都沒更新 ⇒ 退回最近更新的 fallback_limit 位（牆不能是空的） */
+    window_fallback: windowFallback,
+    fallback_limit: SOCIAL_WALL_FALLBACK_LIMIT,
+    /** 日期窗內實際有更新的人數（可能大於這一頁的 count；capped 時畫面要講得出總數） */
+    window_total: inWindow.length,
+    /** 日期窗人數上限：預設只先列 window_cap 位，其餘用「展開全部」（帶 limit）取回 */
+    window_cap: SOCIAL_WALL_WINDOW_CAP,
+    /** true＝窗內人數超過 window_cap，這一頁只列了前面這幾位 */
+    window_capped: windowCapped,
     party: wantedParty,
     region: wantedRegion,
     committee: wantedCommittee,
@@ -1291,7 +1334,7 @@ export function listSocialWall(db, { party = '', region = '', committee = '', li
     committees,
     // 整理表是人工／AI 維護的：過期時前端要標出來，否則舊日期看起來像最新
     social: socialFreshness(db),
-    items: matched.slice(resolvedOffset, resolvedOffset + resolvedLimit),
+    items: pool.slice(resolvedOffset, resolvedOffset + pageLimit),
   };
 }
 

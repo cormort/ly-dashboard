@@ -1106,8 +1106,19 @@ export interface SocialWallResponse {
   count: number;
   /** 符合條件的全部筆數（套用黨籍／縣市／委員會條件之後） */
   total: number;
-  /** 沒有給 limit 時後端用的預設值（5＝最近更新的 5 位） */
-  default_limit: number;
+  /** 沒給 limit 時的日期窗天數（2＝本日及昨日）；人數由當天實際更新量決定，不是固定幾位 */
+  recent_days: number;
+  /** 日期窗的起日（含，YYYY-MM-DD，臺灣日期） */
+  window_from: string;
+  /** 日期窗內一個人都沒更新 ⇒ 退回最近更新的 fallback_limit 位 */
+  window_fallback: boolean;
+  fallback_limit: number;
+  /** 日期窗內實際有更新的人數（capped 時比這一頁的 count 多） */
+  window_total: number;
+  /** 日期窗一次最多先列幾位（預設 30）；其餘靠「展開全部」帶 limit 取回 */
+  window_cap: number;
+  /** true＝窗內人數超過 window_cap，這一頁只列了前面這幾位 */
+  window_capped: boolean;
   party: string;
   region: string;
   /** 目前生效的委員會條件（聽不懂的名稱後端會回空字串＝沒有篩） */

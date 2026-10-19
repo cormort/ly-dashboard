@@ -1390,24 +1390,37 @@ a.stat-tile:hover { border-color: #98a2b3; box-shadow: var(--card-base-hover); t
 .wall-bulk { margin: var(--space-2) 0 0; }
 
 /*
- * 全站唯一的瀑布流：CSS multi-column。卡片高度不一致（有沒有人像、摘要長短、
- * 有沒有展開嵌入框）時，multi-column 會自動把下一張補進最短的那一欄，不必用 JS 量高度。
- * `columns: 3 300px`＝最多 3 欄、每欄理想寬度 300px，寬度不足時自動減欄，所以不用另外寫 media query。
+ * 全站唯一的瀑布流：CSS Grid ＋ JS 量高度的 span（`useMasonry`）。
+ *
+ * 為什麼不是 CSS multi-column：multi-column 由上往下填滿第一欄才換第二欄，卡片一多
+ * （例如粉專牆預設就可能 80+ 位），最新的全部擠在最左那一欄，看起來像「最左一欄才是
+ * 最新的」。Grid 逐列填＝第一列就是最新那幾位，閱讀順序由左到右、由上到下。
+ * `grid-auto-rows: 8px` 是量測單位，要跟 `useMasonry({ rowUnit: 8 })` 一致。
+ * 寬度不足時 `auto-fill` + `minmax(300px, 1fr)` 會自動減欄，不必另外寫 media query。
  */
 .fb-wall {
   list-style: none;
   margin: 0;
   padding: 0;
-  columns: 3 300px;
-  column-gap: var(--space-3);
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  grid-auto-rows: 8px;
+  gap: var(--space-3);
+  align-items: start;
 }
 .fb-wall > li {
-  /* 沒有 break-inside: avoid 的話，卡片會被從中間切到下一個直欄 */
+  /* 高度由 useMasonry 用 grid-row-end: span N 撐開，這裡不再留 margin（會讓量測失準） */
+  margin: 0;
   break-inside: avoid;
-  margin: 0 0 var(--space-3);
 }
 /* .member-card 在格線裡是 height:100%（等高）；瀑布流裡要各自依內容高，否則會留一大塊空白 */
 .fb-wall .member-card { height: auto; }
+/*
+ * 這一頁用滿桌面寬度：卡片是「姓名＋日期＋兩三行摘要」的純文字，
+ * 沿用全站的 1360px 上限時，大螢幕（1920 以上）兩側會留下大片空白，
+ * 看起來像「內容只有一半」。`:has()` 只在這一頁生效，不動其他頁的版面。
+ */
+main:has(.fb-wall) { max-width: min(1840px, 96vw); }
 .wall-page { margin: 0; color: var(--muted); font-size: var(--fs-sm); overflow-wrap: anywhere; }
 .wall-actions { display: inline-flex; align-items: center; gap: var(--space-2); }
 .wall-card footer a { display: inline-flex; align-items: center; gap: 2px; font-size: var(--fs-sm); }

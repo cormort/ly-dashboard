@@ -346,7 +346,7 @@ export function createServer(db) {
           case '/api/v1/council/activity':
             return sendJson(res, 200, listCouncilActivity(db, { county: q.county, councilor: q.councilor, q: q.q, source: q.source, limit: q.limit, offset: q.offset }));
           case '/api/v1/social/wall':
-            // 沒給 limit 時只回最近更新的 5 位（見 listSocialWall）；committee 用目前會期的常設委員會席位
+            // 沒給 limit 時只回「本日及昨日」有更新貼文的委員（見 listSocialWall）；committee 用目前會期的常設委員會席位
             return sendJson(res, 200, listSocialWall(db, { party: q.party, region: q.region, committee: q.committee, limit: q.limit, offset: q.offset }));
           case '/api/v1/council': {
             // ?only=counties：只回有建置的縣市清單（縣市地圖判斷要不要連到議員頁用，不必抓整包選舉資料）

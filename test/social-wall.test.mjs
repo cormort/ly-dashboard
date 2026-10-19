@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { openDb, applyDataset, applySocial } from '../server/db.mjs';
 import { buildDataset } from '../server/normalize.mjs';
-import { listSocialWall, SOCIAL_WALL_DEFAULT_LIMIT } from '../server/queries.mjs';
+import { listSocialWall, SOCIAL_WALL_RECENT_DAYS, SOCIAL_WALL_FALLBACK_LIMIT, SOCIAL_WALL_WINDOW_CAP } from '../server/queries.mjs';
 
 const fixture = (name) => JSON.parse(readFileSync(fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url)), 'utf8'));
 const FETCHED_AT = '2026-09-30T09:00:00.000Z';
@@ -44,17 +44,64 @@ const ACCOUNTS = [
   { legislator_id: '00002', platform: 'threads', page_name: '', url: 'https://www.threads.com/@niu', latest_post_date: '2026-09-30', latest_post_summary: 'Threads 貼文' },
 ];
 
-test('粉專牆：預設只回最近更新的 5 位，且依貼文日期新到舊', () => {
-  const wall = listSocialWall(seeded(ACCOUNTS), {});
-  assert.equal(wall.default_limit, SOCIAL_WALL_DEFAULT_LIMIT);
-  assert.equal(SOCIAL_WALL_DEFAULT_LIMIT, 5);
-  assert.equal(wall.items.length, 5, '預設回 5 筆');
-  assert.deepEqual(
-    wall.items.map((i) => i.name),
-    ['丁學忠', '王世堅', '王育敏', '王定宇', '王美惠'],
-  );
-  assert.equal(wall.total, 7, 'total 是符合條件的全部（7 位有臉書粉專），不是這一頁的 5 筆');
-  assert.equal(wall.count, 5);
+/** 日期窗的「現在」：資料最新那天（2026-09-30）中午，臺灣時間 */
+const WALL_NOW = Date.parse('2026-09-30T04:00:00.000Z');
+
+test('粉專牆：預設只回「本日及昨日」有更新貼文的委員，人數依更新量（不是固定 5 位）', () => {
+  const wall = listSocialWall(seeded(ACCOUNTS), { now: WALL_NOW });
+  assert.equal(SOCIAL_WALL_RECENT_DAYS, 2);
+  assert.equal(wall.recent_days, SOCIAL_WALL_RECENT_DAYS);
+  assert.equal(wall.window_from, '2026-09-29', '本日及昨日＝09-30、09-29');
+  assert.equal(wall.window_fallback, false);
+  assert.deepEqual(wall.items.map((i) => i.name), ['丁學忠', '王世堅'], '只有這兩位在這兩天有貼文');
+  assert.equal(wall.total, 7, 'total 是符合條件的全部（7 位有臉書粉專），不是日期窗內的筆數');
+  assert.equal(wall.count, 2);
+});
+
+test('粉專牆：日期窗內沒人更新時退回最近更新的幾位，並標記 window_fallback', () => {
+  const wall = listSocialWall(seeded(ACCOUNTS), { now: Date.parse('2026-10-10T04:00:00.000Z') });
+  assert.equal(wall.window_from, '2026-10-09');
+  assert.equal(wall.window_fallback, true, '牆不能是空的：退回最近更新的幾位，並讓畫面講得出原因');
+  assert.equal(wall.items.length, SOCIAL_WALL_FALLBACK_LIMIT);
+  assert.equal(wall.items[0].name, '丁學忠', '退回時仍是新到舊');
+});
+
+test('粉專牆：日期窗兩天的邊界（前天不算）', () => {
+  const db = seeded([fb('00001', '丁學忠', '2026-09-30'), fb('00003', '王世堅', '2026-09-28')]);
+  const wall = listSocialWall(db, { now: WALL_NOW });
+  assert.deepEqual(wall.items.map((i) => i.name), ['丁學忠'], '09-28 是前天，不算「本日及昨日」');
+});
+
+/**
+ * 造 n 位「今天」有貼文的委員。id 一定要用名錄裡真的有的人：
+ * listSocialWall 是 social_accounts JOIN legislators，捏造的 id 會被 JOIN 濾掉（實測 35→23）。
+ */
+const manyToday = (n) => {
+  const ids = seeded([])
+    .prepare('SELECT id FROM legislators WHERE leave_flag = 0 ORDER BY id LIMIT ?')
+    .all(n)
+    .map((r) => r.id);
+  return ids.map((id, i) => fb(id, `委員${i}`, '2026-09-30'));
+};
+
+test('粉專牆：日期窗人數超過上限時只先列 window_cap 位，其餘靠「展開全部」', () => {
+  assert.equal(SOCIAL_WALL_WINDOW_CAP, 30);
+  const wall = listSocialWall(seeded(manyToday(35)), { now: WALL_NOW });
+  assert.equal(wall.window_total, 35, '窗內實際有 35 位');
+  assert.equal(wall.window_capped, true);
+  assert.equal(wall.window_cap, SOCIAL_WALL_WINDOW_CAP);
+  assert.equal(wall.count, SOCIAL_WALL_WINDOW_CAP, '預設只先列 30 位（不是 35 位全部倒出來）');
+  assert.equal(wall.total, 35);
+
+  // 剛好等於上限：不算截斷（畫面不該寫「先列前 30 位」）
+  const exact = listSocialWall(seeded(manyToday(SOCIAL_WALL_WINDOW_CAP)), { now: WALL_NOW });
+  assert.equal(exact.window_capped, false);
+  assert.equal(exact.count, SOCIAL_WALL_WINDOW_CAP);
+
+  // 「展開全部」帶 limit ⇒ 不受 window_cap 限制
+  const expanded = listSocialWall(seeded(manyToday(35)), { now: WALL_NOW, limit: 500 });
+  assert.equal(expanded.window_capped, false);
+  assert.equal(expanded.count, 35);
 });
 
 test('粉專牆：帶著最新一則貼文的讚數／留言數；抓不到就是 null（不寫 0）', () => {
@@ -115,10 +162,10 @@ test('粉專牆：兩組 facet 互相交叉，不會給出點了變空白的選�
   );
 });
 
-test('粉專牆：套了條件就展開整個篩選結果，預設的 5 筆不再是上限', () => {
+test('粉專牆：套了條件就展開整個篩選結果，日期窗不再是上限', () => {
   const db = seeded(ACCOUNTS);
-  const noFilter = listSocialWall(db, {});
-  assert.equal(noFilter.items.length, 5, '沒條件時預設 5 筆');
+  const noFilter = listSocialWall(db, { now: WALL_NOW });
+  assert.equal(noFilter.items.length, 2, '沒條件時只回本日及昨日有更新的');
 
   const filtered = listSocialWall(db, { party: '中國國民黨', limit: 60 });
   assert.equal(filtered.total, 4);
@@ -131,8 +178,8 @@ test('粉專牆：套了條件就展開整個篩選結果，預設的 5 筆不�
 
 test('粉專牆：limit／offset 有界，且不會超過總數', () => {
   const db = seeded(ACCOUNTS);
-  assert.equal(listSocialWall(db, { limit: 0 }).items.length, SOCIAL_WALL_DEFAULT_LIMIT, 'limit=0 視為沒給，回預設');
-  assert.equal(listSocialWall(db, { limit: -3 }).items.length, 1, '負數夾成 1 筆，不會整批倒出');
+  assert.equal(listSocialWall(db, { limit: 0, now: WALL_NOW }).items.length, 2, 'limit=0 視為沒給，走日期窗（本日及昨日）');
+  assert.equal(listSocialWall(db, { limit: -3, now: WALL_NOW }).items.length, 2, '不合法的負數也視為沒給，走日期窗而不是倒出整批');
   assert.equal(listSocialWall(db, { limit: 99999 }).items.length, 7, '上限夾住，且不超過實際筆數');
   assert.equal(listSocialWall(db, { limit: 3, offset: 5 }).items.length, 2);
   assert.equal(listSocialWall(db, { limit: 3, offset: 99 }).items.length, 0);
@@ -221,8 +268,11 @@ test('粉專牆：聽不懂的委員會名稱當作沒篩（舊網址不會變�
   }
 });
 
-test('粉專牆：委員會是有效條件時，limit 沒給也照樣展開（不是只回最近 5 位）', () => {
-  const wall = listSocialWall(seeded(ACCOUNTS), { committee: '內政委員會' });
+test('粉專牆：沒給 limit 時，日期窗套在篩選結果上（不是回滿整個篩選結果）', () => {
+  // 內政委員會 3 位：丁學忠 09-30、王美惠 09-26、王鴻薇 09-25 → 只有丁學忠在「本日及昨日」
+  const wall = listSocialWall(seeded(ACCOUNTS), { committee: '內政委員會', now: WALL_NOW });
   assert.equal(wall.total, 3);
-  assert.equal(wall.count, 3, '只有 3 位時就全部回，不受預設 5 位影響');
+  assert.equal(wall.count, 1);
+  // 前端「展開」時一定會帶 limit（EXPANDED_LIMIT），那時才回整個篩選結果
+  assert.equal(listSocialWall(seeded(ACCOUNTS), { committee: '內政委員會', limit: 500 }).count, 3);
 });
