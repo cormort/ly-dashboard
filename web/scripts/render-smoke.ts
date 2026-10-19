@@ -1257,6 +1257,7 @@ const railStages = [
   { id: 'committee', label: '委員會審查', count: 109 },
   { id: 'joint', label: '聯席審查', count: 0 },
   { id: 'hearing', label: '公聽會', count: 0 },
+  { id: 'summary', label: '彙總審查總報告', count: 2 },
   { id: 'negotiation', label: '黨團協商', count: 13 },
   { id: 'resolution', label: '決議處理', count: 4 },
   { id: 'plenary', label: '院會', count: 6 },
@@ -1278,16 +1279,17 @@ check(
   '預算審查流程：照立法院實際順序排（委員會→聯席→公聽→協商→院會→決議處理）',
   (() => {
     const labels = [...railHtml.matchAll(/class="process-label">([^<]+)</g)].map((m) => m[1]);
-    return labels.join('→') === '委員會分組審查→聯席審查→公聽會→黨團協商→院會二讀／三讀→決議處理';
+    return labels.join('→') === '委員會分組審查→聯席審查→公聽會→彙總審查總報告→黨團協商→院會二讀／三讀→決議處理';
   })(),
   [...railHtml.matchAll(/class="process-label">([^<]+)</g)].map((m) => m[1]).join('→'),
 );
 check(
   '預算審查流程：畫面上的流程順序與後端階段清單脫鉤（後端把決議處理排在院會前面，畫面照實際流程排）',
-  BUDGET_PROCESS_STEPS.map((s) => s.id).join(',') === 'committee,joint,hearing,negotiation,plenary,resolution'
-    && railStages.map((s) => s.id).join(',') === 'committee,joint,hearing,negotiation,resolution,plenary,briefing',
+  BUDGET_PROCESS_STEPS.map((s) => s.id).join(',') === 'committee,joint,hearing,summary,negotiation,plenary,resolution'
+    && railStages.map((s) => s.id).join(',') === 'committee,joint,hearing,summary,negotiation,resolution,plenary,briefing',
 );
-expectAll('預算審查流程：有會議的關卡寫場次、沒有的照實寫「無」', railHtml, ['109 場', '13 場', '6 場', '4 場', '>無<']);
+expectAll('預算審查流程：有會議的關卡寫場次、沒有的照實寫「無」', railHtml, ['109 場', '13 場', '6 場', '4 場', '2 場', '>無<']);
+expectAll('預算審查流程：立法院程序裡獨立的「彙總審查總報告」是一關（財政委員會彙總各委員會結果、提報院會）', railHtml, ['彙總審查總報告']);
 check(
   '預算審查流程：目前看的那一關標成選中（aria-pressed）',
   /aria-pressed="true"[\s\S]{0,200}黨團協商/.test(railHtml),

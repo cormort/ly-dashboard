@@ -64,6 +64,21 @@ test('「邀請機關專案報告／業務報告」不是預算審查的一關',
     }),
     'committee',
   );
+  // 立法院資料夾 CJK 相容表意字（「年」U+FA8E、「度」U+FA01）：看起來一樣，但 regex 比對不到
+  // U+F98E＝「年」的相容表意字、U+FA01＝「度」的相容表意字（立法院 LIS 匯出的字就是這兩個）
+  const compat = { committee: '財政委員會', name: '立法院第11屆第5會期財政委員會第20次全體委員會議', content: '一、彙總整理提出「中華民國115\uF98E\uFA01中央政府總預算案審查總報告草案」提報院會案。' };
+  assert.deepEqual(budgetYearsOf(compat), [115], '相容表意字的「115年度」也要認得出來是哪一年度');
+  assert.equal(budgetReviewStage(compat), 'summary');
+
+  // 財政委員會「彙總整理提出審查總報告」是獨立一階（LIS 程序裡的一步）
+  assert.equal(
+    budgetReviewStage({
+      committee: '財政委員會',
+      name: '立法院第11屆第5會期財政委員會第20次全體委員會議',
+      content: '一、彙總整理提出「中華民國115年度中央政府總預算案審查總報告（公務預算部分）草案」提報院會案。二、審查本院委員擬具「會計師法部分條文修正草案」案。',
+    }),
+    'summary',
+  );
   // 協商／凍結案處理即使提到專案報告，仍照原本的階段走
   assert.equal(
     budgetReviewStage({ committee: '朝野黨團協商', name: '立法院黨團協商', content: '研商總預算案及專案報告事宜。' }),

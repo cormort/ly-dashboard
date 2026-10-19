@@ -2414,6 +2414,11 @@ export const BUDGET_REVIEW_STAGES = [
   { id: 'committee', label: '委員會審查' },
   { id: 'joint', label: '聯席審查' },
   { id: 'hearing', label: '公聽會' },
+  /**
+   * 財政委員會「彙總整理提出審查總報告草案提報院會」——立法院程序裡獨立的一步
+   * （115 年度是 2026-07-01 財政委員會第20次會議，見 DECISIONS D302）。
+   */
+  { id: 'summary', label: '彙總審查總報告' },
   { id: 'negotiation', label: '黨團協商' },
   { id: 'resolution', label: '決議處理' },
   { id: 'plenary', label: '院會' },
@@ -2430,9 +2435,9 @@ export const BUDGET_REVIEW_STAGES = [
  * 判準只有名稱／委員會欄位；官方資料沒有「階段」欄位。
  */
 export function budgetReviewStage({ committee = '', name = '', content = '' } = {}) {
-  const c = String(committee ?? '');
-  const n = String(name ?? '');
-  const text = `${n} ${content ?? ''}`;
+  const c = cjkNormalize(committee);
+  const n = cjkNormalize(name);
+  const text = `${n} ${cjkNormalize(content)}`;
   /**
    * 引號裡的文字是**專題名稱**，不是這場會議在做什麼。
    * 例：「邀請…就『115年度中央政府總預算案至今尚未審查，近3000億元之新興、新增計畫將無法推動』進行專題報告」
@@ -2445,6 +2450,9 @@ export function budgetReviewStage({ committee = '', name = '', content = '' } = 
   if (n.includes('公聽會')) return 'hearing';
   if (n.includes('院會') || n.includes('全院委員會') || c.includes('全院')) return 'plenary';
   // 預算通過之後才發生的「處理總預算決議／凍結案」：也是預算會議，但不是審查，另外標一階
+  // 財政委員會彙總各委員會審查結果、提出「審查總報告」提報院會（LIS 程序裡的一步，不是普通審查場次）
+  // 注意：這裡要用**原字串**判斷——「審查總報告」正是被引號包起來的那個報告名稱（拿掉引號就比對不到了）
+  if (/彙總[^。]{0,40}審查總報告|審查總報告[^。]{0,20}提報院會/.test(text)) return 'summary';
   if (/總預算決議|預算凍結|凍結案|解凍/.test(text)) return 'resolution';
   // 「邀請…專案報告／業務報告，並備質詢」不是預算審查的一般程序：整場沒有「審查」字樣就標成 briefing
   if (/邀請|專案報告|業務報告/.test(unquoted) && !/審查/.test(unquoted)) return 'briefing';
@@ -2461,8 +2469,18 @@ export function budgetReviewStage({ committee = '', name = '', content = '' } = 
  * 一場會議常同時處理好幾個年度（例：協商同時研商 114 與 115 年度總預算），
  * 所以回傳**全部**年度，讓那場會議同時出現在兩個年度的歷程裡（不要只取第一個而漏掉）。
  */
+/**
+ * 立法院的會議資料（尤其 LIS 轉出的字）常夾 **CJK 相容表意字**：例「年」是 U+FA8E、「度」是 U+FA01，
+ * 看起來跟 U+5E74／U+5EA6 一樣，但所有 regular expression 都比對不到。
+ * 實測影響：2026-07-01（115 年度）與 2025-01-06（114 年度）兩場「彙總整理提出審查總報告」整場從歷程消失，
+ * 因為 budgetYearsOf 認不出「115年度」。比對前先把它們換成標準字；**顯示仍用原字串**。
+ */
+export function cjkNormalize(value) {
+  return String(value ?? '').replace(/[\uF900-\uFAFF]/g, (ch) => ch.normalize('NFKC'));
+}
+
 export function budgetYearsOf({ name = '', content = '' } = {}) {
-  const text = `${name ?? ''} ${content ?? ''}`;
+  const text = cjkNormalize(`${name ?? ''} ${content ?? ''}`);
   const re = /(\d{2,3})\s*年度[^。；\n]{0,24}?總預算|總預算[^。；\n]{0,24}?(\d{2,3})\s*年度/g;
   const years = [];
   let match;
