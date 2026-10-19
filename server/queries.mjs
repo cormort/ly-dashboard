@@ -355,6 +355,7 @@ const HEALTH_TABLES = [
   ['committee_meetings', 'committee_meetings'],
   ['votes', 'rollcall_votes'],
   ['resolutions', 'bill_resolutions'],
+  ['agendas', 'meeting_agendas'],
   ['news', 'news'],
   ['social_accounts', 'social_accounts'],
   ['social_posts', 'social_posts'],
@@ -2411,6 +2412,8 @@ export function listBudgetReports(db, { type = '', q = '', limit = 20, offset = 
  */
 /** 預算審查的階段（選單順序就是實務流程）。 */
 export const BUDGET_REVIEW_STAGES = [
+  /** 院會「報告預算編製經過並備質詢、交付委員會」：立法院程序的第一步（115 年度是 2026-04-21） */
+  { id: 'report', label: '院會報告並備質詢' },
   { id: 'committee', label: '委員會審查' },
   { id: 'joint', label: '聯席審查' },
   { id: 'hearing', label: '公聽會' },
@@ -2434,6 +2437,33 @@ export const BUDGET_REVIEW_STAGES = [
  * 從會議紀錄判斷它在預算審查流程的哪一段（純函式，方便測試）。
  * 判準只有名稱／委員會欄位；官方資料沒有「階段」欄位。
  */
+/**
+ * 院會議程裡「院會報告預算編製經過並備質詢」那一天是哪一天。
+ *
+ * 三個實測過的坑（見 DECISIONS D304）：
+ *   ①「113年度…總預算案**追加**預算案」是另一本預算，不算當年度總預算的報告；
+ *     但同一句同時報告總預算與特別預算的（114 年度的議程就是）要算。
+ *   ②同一場會議跨多天時會在句尾註記「（4月21日）」——那才是報告日（2026-04-17 那列也含這一句）。
+ *   ③沒有註明日期的，以這場會議最早的一天為準（2024-11-01／11-05 兩天的第7次會議）。
+ */
+export function reportsBudgetInPlenary({ date = null, content = '' } = {}, wanted, earliestDate = '') {
+  const text = cjkNormalize(content);
+  for (const sentence of text.split(/[。；\n]/)) {
+    if (!sentence.includes('編製經過') || !sentence.includes('中央政府總預算')) continue;
+    if (/總預算案(追加|特別)預算/.test(sentence)) continue;
+    const year = Number(/(\d{2,3})\s*年度\s*中央政府總預算案/.exec(sentence)?.[1]);
+    if (year !== Number(wanted)) continue;
+    const at = text.indexOf('編製經過');
+    const stamp = /（(\d{1,2})月(\d{1,2})日）/.exec(text.slice(at, at + 120));
+    if (stamp) {
+      const md = `${String(date ?? '').slice(5, 7)}-${String(date ?? '').slice(8, 10)}`;
+      return md === `${stamp[1].padStart(2, '0')}-${stamp[2].padStart(2, '0')}`;
+    }
+    return String(date ?? '') === String(earliestDate ?? '');
+  }
+  return false;
+}
+
 export function budgetReviewStage({ committee = '', name = '', content = '' } = {}) {
   const c = cjkNormalize(committee);
   const n = cjkNormalize(name);
@@ -2622,23 +2652,44 @@ export function listBudgetTimeline(db, { year = '' } = {}) {
     })
     .sort((a, b) => String(a.date).localeCompare(String(b.date)) || a.committee.localeCompare(b.committee, 'zh-Hant'));
 
-  // 院會：g0v meets 的院會場次（會議事由提到該年度總預算）。ID223 只有委員會，院會要靠這一份。
-  for (const row of db.prepare("SELECT code, date, title, video_url, agenda FROM committee_meets WHERE code LIKE '院會-%'").all()) {
-    if (!budgetYearsOf({ name: row.title, content: row.agenda }).includes(wanted)) continue;
-    stageCount.set('plenary', (stageCount.get('plenary') ?? 0) + 1);
+  /**
+   * 院會：以 ID42「會議資訊」的完整議程為準。
+   * g0v 的 meets 只有片段（2026-04-21 只留討論事項），ID223 根本沒有院會，
+   * 「行政院院長、主計長、財政部部長列席報告『115年度中央政府總預算案』編製經過並備質詢」只在 ID42 裡。
+   *
+   * 判「院會報告」這一關要看**那一句**，不能只看整場：
+   *   ①「113年度…總預算案**追加**預算案」是另一本預算，不算當年度總預算的報告（實測 2024-11-15 就是這樣被誤收）
+   *   ②同一場會議跨多天時，議程會在句尾註明「（4月21日）」——那天才是報告日（實測 2026-04-17 那列也含這一句）
+   *   ③沒有註明日期的（例如 2024-11-01 那場），取這場會議最早的那一天
+   */
+  const plenaryRows = db
+    .prepare('SELECT code, date, name, content FROM meeting_agendas WHERE is_plenary = 1')
+    .all()
+    .map((row) => ({ ...row, text: cjkNormalize(row.content) }))
+    .filter((row) => budgetYearsOf({ name: row.name, content: row.text }).includes(wanted));
+  const earliestByName = new Map();
+  for (const row of plenaryRows) {
+    const prev = earliestByName.get(row.name);
+    if (!prev || String(row.date ?? '') < prev) earliestByName.set(row.name, String(row.date ?? ''));
+  }
+  const isReportRow = (row) => reportsBudgetInPlenary({ date: row.date, content: row.text }, wanted, earliestByName.get(row.name) ?? '');
+  for (const row of plenaryRows) {
+    // 「列席報告…總預算案…編製經過並備質詢」＝院會報告那一關，其餘院會場次（二三讀、決議動議）算院會
+    const stage = isReportRow(row) ? 'report' : 'plenary';
+    stageCount.set(stage, (stageCount.get(stage) ?? 0) + 1);
     committeeCount.set('院會', (committeeCount.get('院會') ?? 0) + 1);
     items.push({
-      id: `meet:${row.code}`,
+      id: `agenda:${row.code}`,
       date: row.date,
-      stage: 'plenary',
-      stage_label: stageLabel('plenary'),
+      stage,
+      stage_label: stageLabel(stage),
       committee: '院會',
       joint: null,
-      name: row.title,
-      agenda: row.agenda ?? '',
+      name: row.name,
+      agenda: String(row.content ?? '').replace(/\r\n?/g, '\n'),
       speakers: [],
       speaker_count: 0,
-      video_url: row.video_url,
+      video_url: null,
       agencies: [],
       funds: [],
       subsidiary: false,

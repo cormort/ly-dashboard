@@ -1733,9 +1733,11 @@ main:has(.fb-wall) { max-width: min(1840px, 96vw); }
   grid-template-rows: auto auto;
   gap: 2px 8px;
   align-items: center;
-  /* 七關要在 1440px 的年度面板裡排得下（含兩端說明）：150px 會讓最後一關被切掉 */
-  min-width: 112px;
-  padding: 8px 10px;
+  /* 八關要在 1440px 的年度面板裡排得下（含兩端說明）：150px 會讓最後一關被切掉；
+     標籤像「院會（二讀／三讀、決議案）」會撐到 217px，所以除了 min-width 還要 max-width 逼它折行 */
+  min-width: 96px;
+  max-width: 132px;
+  padding: 7px 8px;
   text-align: left;
   cursor: pointer;
   background: var(--surface);

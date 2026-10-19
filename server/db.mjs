@@ -292,6 +292,26 @@ CREATE TABLE IF NOT EXISTS vote_ballots (
 );
 CREATE INDEX IF NOT EXISTS idx_vote_ballots_vote ON vote_ballots(vote_id);
 CREATE INDEX IF NOT EXISTS idx_vote_ballots_legislator ON vote_ballots(legislator_id);
+/**
+ * 會議資訊（ID42）：每場會議的完整議程。立法院的「院會報告預算編製經過並備質詢」只寫在院會議程裡，
+ * ID223（委員會登記發言）與 g0v 的 meets 都只有片段（實測 115/04/21 的 sections 只留討論事項）。
+ */
+CREATE TABLE IF NOT EXISTS meeting_agendas (
+  code TEXT PRIMARY KEY,
+  date TEXT,
+  name TEXT NOT NULL,
+  term INTEGER,
+  session_period TEXT,
+  session_times TEXT,
+  unit TEXT,
+  room TEXT,
+  content TEXT,
+  /** 院會＝會議名稱就是「第N屆第M會期第K次會議」，沒有「委員會」「協商」「公聽會」 */
+  is_plenary INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_meeting_agendas_date ON meeting_agendas(date);
+CREATE INDEX IF NOT EXISTS idx_meeting_agendas_plenary ON meeting_agendas(is_plenary);
+
 CREATE TABLE IF NOT EXISTS bill_resolutions (
   id TEXT PRIMARY KEY,
   docu_no TEXT NOT NULL,
@@ -780,6 +800,18 @@ export function applyCommitteeMeets(db, meets, { fetchedAt }) {
  * 院會表決（ID370）：整批覆寫。名單欄位存 JSON 給畫面用，另外展開成 `vote_ballots`
  * （一場表決 × 每位投票者一列）給「某委員投過什麼」查。
  */
+export function applyAgendas(db, agendas, { fetchedAt }) {
+  replaceAll(
+    db,
+    'meeting_agendas',
+    ['code', 'date', 'name', 'term', 'session_period', 'session_times', 'unit', 'room', 'content', 'is_plenary'],
+    agendas.map((a) => ({ ...a, is_plenary: a.is_plenary ? 1 : 0 })),
+    'agendas_fetched_at',
+    fetchedAt,
+  );
+  return agendas.length;
+}
+
 export function applyRollcalls(db, votes, { fetchedAt }) {
   const rows = votes.map((vote) => ({
     ...vote,

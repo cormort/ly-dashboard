@@ -30,6 +30,8 @@ export const CONFIG = {
     pageSize: 1000,
     maxPages: 40,
     votes: { id: 370, label: '院會表決資料' },
+    /** 會議資訊：每場會議（含院會）的完整議程，用來判斷「院會報告預算編製經過並備質詢」 */
+    agendas: { id: 42, label: '會議資訊' },
     resolutions: { id: 373, label: '三讀通過條文&附帶決議資訊' },
   },
   // 議案：g0v 社群維護的立法院 API（非官方），已把議案與提案委員對好，官方 data.ly.gov.tw 沒有這層關聯。

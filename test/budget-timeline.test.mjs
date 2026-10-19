@@ -4,7 +4,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { budgetReviewStage, budgetReviewUnits, budgetYearsOf } from '../server/queries.mjs';
+import { budgetReviewStage, budgetReviewUnits, budgetYearsOf, reportsBudgetInPlenary } from '../server/queries.mjs';
 
 test('預算審查階段：協商／聯席／公聽會／院會／委員會', () => {
   assert.equal(budgetReviewStage({ committee: '朝野黨團協商', name: '立法院黨團協商' }), 'negotiation');
@@ -64,6 +64,29 @@ test('「邀請機關專案報告／業務報告」不是預算審查的一關',
     }),
     'committee',
   );
+  // 院會報告並備質詢：只有「列席報告『今年度中央政府總預算案』編製經過並備質詢」那一句才算
+  const budgetReportText =
+    '一、討論事項：本院國民黨黨團，建請院會作成決議：「針對開放印度移工來台…」是否有當？請公決案等4案。（4月17日）' +
+    '二、對行政院院長提出施政方針及施政報告繼續質詢。（4月17日）' +
+    '三、行政院院長、主計長、財政部部長列席報告「115年度中央政府總預算案」編製經過並備質詢（含志願役軍人加薪及警消人員退休金等預算編製處理情形併予報告）。（4月21日）';
+  assert.equal(reportsBudgetInPlenary({ date: '2026-04-21', content: budgetReportText }, 115, '2026-04-17'), true, '句尾註明（4月21日）→ 只有 04-21 那天算院會報告');
+  assert.equal(reportsBudgetInPlenary({ date: '2026-04-17', content: budgetReportText }, 115, '2026-04-17'), false, '同一場的前一天不算（那天在質詢別的案子）');
+  // 沒有註明日期 → 取這場會議最早的一天（2024-11-01／11-05 的第7次會議）
+  const noStamp = '一、行政院院長、主計長、財政部部長列席報告「114年度中央政府總預算案」及「中央政府前瞻基礎建設計畫第5期特別預算案」編製經過並備質詢。';
+  assert.equal(reportsBudgetInPlenary({ date: '2024-11-01', content: noStamp }, 114, '2024-11-01'), true, '同句同時報告總預算與特別預算 → 算');
+  assert.equal(reportsBudgetInPlenary({ date: '2024-11-05', content: noStamp }, 114, '2024-11-01'), false, '沒有日期註記時只算最早一天');
+  // 追加預算是另一本預算，不算當年度總預算的報告（2024-11-15 實測誤收）
+  assert.equal(
+    reportsBudgetInPlenary(
+      { date: '2024-11-15', content: '二、行政院院長、主計長、財政部部長及相關部會首長列席報告「113年度中央政府總預算案追加預算案」編製經過並備質詢。' },
+      113,
+      '2024-11-15',
+    ),
+    false,
+  );
+  // 別的年度 → 不算
+  assert.equal(reportsBudgetInPlenary({ date: '2026-04-21', content: budgetReportText }, 114, '2026-04-21'), false);
+
   // 立法院資料夾 CJK 相容表意字（「年」U+FA8E、「度」U+FA01）：看起來一樣，但 regex 比對不到
   // U+F98E＝「年」的相容表意字、U+FA01＝「度」的相容表意字（立法院 LIS 匯出的字就是這兩個）
   const compat = { committee: '財政委員會', name: '立法院第11屆第5會期財政委員會第20次全體委員會議', content: '一、彙總整理提出「中華民國115\uF98E\uFA01中央政府總預算案審查總報告草案」提報院會案。' };

@@ -1,8 +1,8 @@
 import { pathToFileURL } from 'node:url';
 import { readFileSync } from 'node:fs';
 import { CONFIG } from './config.mjs';
-import { openDb, recordSyncRun, saveSnapshot, applyDataset, applyBills, applyLawAgencies, applyBudget, applyBudgetReports, applyCommitteeMeets, applyCommitteeRecords, applyMeetings, applyRollcalls, applyResolutions, applySocial, applySocialPosts, applyCouncilSocial, upsertNews, upsertTopicNews, upsertArticles, pruneNews, pruneLogs, getMeta, setMeta, upsertProgressOverride, getProgressOverrides, applyProgressOverrides, upsertBudgetCommittees, getBudgetCommittees } from './db.mjs';
-import { buildDataset, normalizeCouncilSocial, normalizeBills, normalizeBudget, normalizeBudgetReports, normalizeCommitteeMeets, normalizeCommitteeRecords, normalizeMeetings, normalizeRollcalls, normalizeResolutions, normalizeSocial, normalizeSocialPosts, newsName, parseNewsRss, DataValidationError, NORMALIZER_VERSION } from './normalize.mjs';
+import { openDb, recordSyncRun, saveSnapshot, applyDataset, applyBills, applyLawAgencies, applyBudget, applyBudgetReports, applyCommitteeMeets, applyCommitteeRecords, applyMeetings, applyRollcalls, applyResolutions, applyAgendas, applySocial, applySocialPosts, applyCouncilSocial, upsertNews, upsertTopicNews, upsertArticles, pruneNews, pruneLogs, getMeta, setMeta, upsertProgressOverride, getProgressOverrides, applyProgressOverrides, upsertBudgetCommittees, getBudgetCommittees } from './db.mjs';
+import { buildDataset, normalizeAgendas, normalizeCouncilSocial, normalizeBills, normalizeBudget, normalizeBudgetReports, normalizeCommitteeMeets, normalizeCommitteeRecords, normalizeMeetings, normalizeRollcalls, normalizeResolutions, normalizeSocial, normalizeSocialPosts, newsName, parseNewsRss, DataValidationError, NORMALIZER_VERSION } from './normalize.mjs';
 import { applySeatOverrides, loadSeatOverrides, seatOverridesDigest } from './committee-overrides.mjs';
 import { fetchJson, FetchError, sha256 } from './fetch-ly.mjs';
 import { ambiguousCouncilorNames, currentCouncilors, entityNewsTerms, makeTagger, mentionsKnownEntity } from './queries.mjs';
@@ -333,6 +333,25 @@ async function fetchOpenDatasetRows(dataset, fetchImpl) {
  * 院會表決（ID370）＋附帶決議（ID373）：兩個都是「整批覆寫」的小資料集（一天更新一次），
  * 合成同一個階段，抓取時間總共約 10 秒以內。
  */
+/**
+ * 會議資訊（ID42）：每場會議的完整議程。整批覆寫、約 12,000 筆。
+ * 用途：院會的「行政院院長、主計長、財政部部長列席報告『115年度中央政府總預算案』編製經過並備質詢」只寫在這裡，
+ * ID223 與 g0v 的 meets 都只有片段，抓不到那一列（見 DECISIONS D304）。
+ */
+export function runAgendasIngest(db, { logger = console, fetchImpl = fetchJson, now = () => new Date() } = {}) {
+  return runStage(db, 'agendas', { logger, now }, async () => {
+    const fetchedAt = now().toISOString();
+    const { agendas, warnings } = normalizeAgendas(await fetchOpenDatasetRows(CONFIG.openData.agendas, fetchImpl));
+    for (const warning of warnings.slice(0, 5)) logger.warn(`[agendas] 警告：${warning}`);
+    guardShrink(db, 'agendas', '會議資訊', agendas.length);
+    const count = applyAgendas(db, agendas, { fetchedAt });
+    recordCount(db, 'agendas', agendas.length);
+    const plenary = agendas.filter((a) => a.is_plenary).length;
+    logger.log(`[agendas] 已套用：${count} 場會議（其中院會 ${plenary} 場）`);
+    return { records: count, plenary, warnings };
+  });
+}
+
 export function runVotesIngest(db, { logger = console, fetchImpl = fetchJson, now = () => new Date() } = {}) {
   return runStage(db, 'votes', { logger, now }, async () => {
     const fetchedAt = now().toISOString();
@@ -1369,6 +1388,7 @@ export async function runAll(db, options = {}) {
     social_posts: () => (CONFIG.skip.social ? skipped('social_posts') : runSocialPostsIngest(db, options)),
     council_social: () => (CONFIG.skip.social ? skipped('council_social') : runCouncilSocialIngest(db, options)),
     news: () => (CONFIG.skip.news ? skipped('news') : runNewsIngest(db, options)),
+    agendas: () => (CONFIG.skip.bills ? skipped('agendas') : runAgendasIngest(db, options)),
     progress: () => runProgressDates(db, options),
     committees: () => runBudgetCommittees(db, options),
   };

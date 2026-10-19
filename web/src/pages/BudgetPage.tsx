@@ -537,6 +537,7 @@ export function BudgetPage({ refreshToken, onOpenId, onNavigate }: BudgetPagePro
  * 不要因為是 0 就整關藏起來，那會讓「這一年到底有沒有公聽會」變成猜謎。
  */
 export const BUDGET_PROCESS_STEPS = [
+  { id: 'report', label: '院會報告並備質詢', hint: '行政院院長、主計長、財政部部長列席報告預算編製經過並備質詢，並交付委員會依分配表分送審查' },
   { id: 'committee', label: '委員會分組審查', hint: '各委員會分組審查主管機關的預算（主戰場）' },
   { id: 'joint', label: '聯席審查', hint: '兩個以上委員會聯席審查' },
   { id: 'hearing', label: '公聽會', hint: '審查期間舉行的公聽會' },
@@ -635,8 +636,8 @@ export function BudgetProcessRail({
 
       <p className="muted topic-note">
         點一關只看那一關的會議，再點一次取消。流程兩端是「行政院編製概算、送立法院」與「總統公布」（沒有會議紀錄）。
-        立法院程序上，委員會審查之前還有一步「院會聽取預算編製報告並備質詢、交付委員會依分配表分送各委員會審查」
-        （115 年度是 2026-04-21）；那一步的會議資料我們還沒接進來，所以流程帶從委員會審查開始。
+        最前面那一關是「院會聽取預算編製報告並備質詢、交付委員會依分配表分送各委員會審查」，資料來自立法院
+        「會議資訊」的院會議程；同一場會議跨多天時只算實際報告的那一天（115 年度是 2026-04-21）。
         「無」＝這一年度沒有那種會議紀錄（階段是從會議名稱判斷的，官方資料沒有階段欄位）；
         預算中心的評估報告在下方，與這裡的會議是不同來源。
       </p>
@@ -672,12 +673,16 @@ export function BudgetTimeline({
   const reviewTotal = Math.max(0, (data?.summary.total ?? 0) - briefingCount);
   const stages = allStages.filter((s) => s.count > 0 && s.id !== 'briefing');
   const agencies = (data?.summary.agencies ?? []).filter((a) => a.count > 0);
-  const items = (data?.items ?? []).filter(
-    (m) =>
-      // 沒指定階段時：非審查程序（專案報告）不進審查歷程，要看就從流程帶那一行切過去
-      (!stage ? m.stage !== 'briefing' : m.stage === stage) &&
-      (!agency || (m.agencies ?? []).includes(agency)),
-  );
+  // 審查歷程一律**日期降冪**（最近的排最前面）：組內、依時間分組、以及各組之間都照這個順序
+  const items = (data?.items ?? [])
+    .filter(
+      (m) =>
+        // 沒指定階段時：非審查程序（專案報告）不進審查歷程，要看就從流程帶那一行切過去
+        (!stage ? m.stage !== 'briefing' : m.stage === stage) &&
+        (!agency || (m.agencies ?? []).includes(agency)),
+    )
+    .slice()
+    .sort((a, b) => String(b.date ?? '').localeCompare(String(a.date ?? '')));
   /** 分組用的鍵：委員會名稱（去掉「第N次」「（台灣民眾黨黨團）」這種尾巴），院會／表決歸在「院會」 */
   const committeeKeyOf = (m: BudgetTimelineItem) =>
     shortCommittee(String(m.committee ?? '').replace(/[（(].*$/, '').trim()) || '（未標示委員會）';
@@ -698,9 +703,21 @@ export function BudgetTimeline({
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(m);
     }
+    // 組與組之間也照「最近的會議」排（日期降冪），場次多寡只在同一天時當第二順位
     return [...map]
-      .map(([key, list]) => ({ key, label: key, items: list, range: rangeOf(list) }))
-      .sort((a, b) => b.items.length - a.items.length || a.key.localeCompare(b.key, 'zh-Hant'));
+      .map(([key, list]) => ({
+        key,
+        label: key,
+        items: list,
+        range: rangeOf(list),
+        latest: list.reduce((max, m) => (String(m.date ?? '') > max ? String(m.date ?? '') : max), ''),
+      }))
+      .sort(
+        (a, b) =>
+          b.latest.localeCompare(a.latest) ||
+          b.items.length - a.items.length ||
+          a.key.localeCompare(b.key, 'zh-Hant'),
+      );
   })();
   // 依時間：原本的「年 月」分段，先顯示前 N 場
   const shown = items.slice(0, limit);

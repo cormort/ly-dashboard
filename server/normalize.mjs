@@ -1091,6 +1091,48 @@ const voteCount = (value) => {
  * 注意：ID370 只有 `voteIssue` 文字，**沒有案號**，所以對不到 bills 的議案編號
  * （要對得靠文字比對，誤配風險高，這裡不做——見 DECISIONS D296）。
  */
+/** 立法院資料夾 CJK 相容表意字（年＝U+F98E、度＝U+FA01）：比對前先換成標準字，顯示用原字串 */
+const normCjk = (value) => String(value ?? '').replace(/[\uF900-\uFAFF]/g, (ch) => ch.normalize('NFKC'));
+
+/**
+ * 會議資訊（ID42）→ meeting_agendas。
+ *
+ * 欄位：meetingNo（會議代碼）、meetingName、meetingDateDesc（例「115/04/21 09:00-18:00」）、
+ * meetingContent（完整議程）、meetingUnit、meetingRoom、term、sessionPeriod、sessionTimes。
+ * 只有「院會」才有「行政院院長、主計長、財政部部長列席報告『115年度中央政府總預算案』編製經過並備質詢」
+ * 這種議程，所以順手標 is_plenary（名稱就是第N屆第M會期第K次會議，沒有委員會／協商／公聽會）。
+ */
+export function normalizeAgendas(rows) {
+  const agendas = [];
+  const warnings = [];
+  const seen = new Set();
+  for (const row of rows) {
+    const name = normCjk(String(row.meetingName ?? '')).trim();
+    if (!name) continue;
+    // meetingNo 不是唯一鍵（同一場會議跨多天會重複、也有整批空值）→ 用「會議代碼＋日期＋會次」當主鍵
+    const code = [String(row.meetingNo ?? '').trim() || name, String(row.meetingDateDesc ?? '').trim(), String(row.sessionTimes ?? '').trim()].join('@');
+    if (seen.has(code)) continue;
+    seen.add(code);
+    const date = rocDate(String(row.meetingDateDesc ?? '').split(/\s+/)[0]);
+    const term = Number(String(row.term ?? '').replace(/^0+/, '') || 0) || null;
+    const isPlenary = /^第\d+屆第\d+會期第\d+次會議/.test(name) && !/委員會|協商|公聽會|談話會/.test(name);
+    agendas.push({
+      code,
+      date,
+      name,
+      term,
+      session_period: String(row.sessionPeriod ?? '').replace(/^0+/, '') || null,
+      session_times: String(row.sessionTimes ?? '').replace(/^0+/, '') || null,
+      unit: String(row.meetingUnit ?? '').trim() || null,
+      room: String(row.meetingRoom ?? '').trim() || null,
+      content: normCjk(String(row.meetingContent ?? '')).replace(/\r\n?/g, '\n').trim(),
+      is_plenary: isPlenary,
+    });
+    if (!date) warnings.push(`${name} 的日期無法解析（${row.meetingDateDesc}）`);
+  }
+  return { agendas, warnings };
+}
+
 export function normalizeRollcalls(rows, legislatorIdByName) {
   if (!Array.isArray(rows)) throw new DataValidationError('ID370 回應缺少 jsonList');
   if (rows.length === 0) throw new DataValidationError('ID370 沒有任何表決資料');

@@ -321,12 +321,13 @@ Query 參數（全部可選）：
 
 ## GET /api/v1/budget/timeline
 
-中央總預算的**審查歷程**：同一個預算年度在委員會（各委員會分組審查）、聯席、公聽會、黨團協商、
-院會開過的會議，依時間排序。參數 `year`（民國年，例 `115`；不給＝最近一個有 5 場以上會議的年度）。
+中央總預算的**審查歷程**：同一個預算年度在院會（報告編製經過並備質詢）、委員會（各委員會分組審查）、聯席、
+公聽會、財政委員會彙總審查總報告、黨團協商、院會、決議處理開過的會議。`items` 由後端照日期**升冪**回傳，
+前端顯示時反轉成**降冪**（最近的排最前面）。參數 `year`（民國年，例 `115`；不給＝最近一個有 5 場以上會議的年度）。
 回應：
 
 - `year`、`years[]`（`{ year, count }`，各年度場次）
-- `stages[]`（`{ id, label, count }`：`committee`／`joint`／`hearing`／`negotiation`／`resolution`／`plenary`）
+- `stages[]`（`{ id, label, count }`：`report`（院會報告並備質詢）／`committee`／`joint`／`hearing`／`summary`（財政委員會彙總審查總報告）／`negotiation`／`resolution`／`plenary`／`briefing`（專案報告，非審查程序））
 - `summary`：`total`、`first`、`last`、`committees[]`、`agencies[]`（審查單位／主管機關的出現次數）、
   `speakers[]`（登記發言最多的在職委員）
 - `items[]`：`{ id, date, stage, stage_label, committee, joint, name, agenda, speakers[], speaker_count, video_url,
