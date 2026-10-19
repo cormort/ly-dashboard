@@ -662,10 +662,17 @@ export function BudgetTimeline({
   const [groupBy, setGroupBy] = useState<'committee' | 'date'>('committee');
   const [limit, setLimit] = useState(20);
   const res = { phase, error, reload };
-  const stages = (data?.stages ?? []).filter((s) => s.count > 0);
+  const allStages = data?.stages ?? [];
+  /** 「專案報告／程序事項」不是審查：不列進「共 N 場審查會議」，也不預設出現在審查歷程裡 */
+  const briefingCount = allStages.find((s) => s.id === 'briefing')?.count ?? 0;
+  const reviewTotal = Math.max(0, (data?.summary.total ?? 0) - briefingCount);
+  const stages = allStages.filter((s) => s.count > 0 && s.id !== 'briefing');
   const agencies = (data?.summary.agencies ?? []).filter((a) => a.count > 0);
   const items = (data?.items ?? []).filter(
-    (m) => (!stage || m.stage === stage) && (!agency || (m.agencies ?? []).includes(agency)),
+    (m) =>
+      // 沒指定階段時：非審查程序（專案報告）不進審查歷程，要看就從流程帶那一行切過去
+      (!stage ? m.stage !== 'briefing' : m.stage === stage) &&
+      (!agency || (m.agencies ?? []).includes(agency)),
   );
   /** 分組用的鍵：委員會名稱（去掉「第N次」「（台灣民眾黨黨團）」這種尾巴），院會／表決歸在「院會」 */
   const committeeKeyOf = (m: BudgetTimelineItem) =>
@@ -755,16 +762,19 @@ export function BudgetTimeline({
       {res.phase === 'error' ? (
         <ErrorState title="無法取得審查歷程（/api/v1/budget/timeline）" error={res.error} onRetry={res.reload} />
       ) : null}
-      {data && data.summary.total === 0 ? (
+      {data && data.summary.total - briefingCount === 0 ? (
         <EmptyState message="這個年度還沒有會議紀錄" hint="立法院開放資料同步後會出現在這裡。" />
       ) : null}
       {data && data.summary.total > 0 ? (
         <>
           <p className="muted topic-note">
-            {data.year} 年度中央政府總預算：共 {data.summary.total} 場審查會議
+            {data.year} 年度中央政府總預算：共 {reviewTotal} 場審查會議
             {data.summary.first && data.summary.last ? `（${fullDate(data.summary.first)} ～ ${fullDate(data.summary.last)}）` : ''}，
             包含 {stages.map((s) => `${s.label} ${s.count} 場`).join('、')}；
             分屬 {committeeGroups.length} 個委員會。
+            {briefingCount > 0
+              ? `另有 ${briefingCount} 場「邀請機關專案報告／業務報告」（不是審查，未列在上面）：從上方流程帶那一行點進去看。`
+              : ''}
           </p>
           {stage ? (
             <p className="wall-bulk">
@@ -776,7 +786,7 @@ export function BudgetTimeline({
                   setLimit(20);
                 }}
               >
-                只看「{stages.find((s) => s.id === stage)?.label ?? stage}」，按這裡看全部階段
+                只看「{allStages.find((s) => s.id === stage)?.label ?? stage}」，按這裡看全部階段
               </button>
             </p>
           ) : null}

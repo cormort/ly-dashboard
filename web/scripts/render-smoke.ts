@@ -45,7 +45,7 @@ import { SyncStatusBanner } from '../src/components/SyncStatusBanner';
 import { RankingsPage, RankingBoardView } from '../src/pages/RankingsPage';
 import { TopicsPanel, tagTier } from '../src/components/TopicsPanel';
 import { ComparePage } from '../src/pages/ComparePage';
-import { BUDGET_PROCESS_STEPS, BudgetPage, BudgetProcessRail, progressDateText, scopeAfterCategoryChange } from '../src/pages/BudgetPage';
+import { BUDGET_PROCESS_STEPS, BudgetPage, BudgetProcessRail, BudgetTimeline, progressDateText, scopeAfterCategoryChange } from '../src/pages/BudgetPage';
 import { YearProgressList, budgetProgressBar, budgetProgressText, budgetRecordsText, hasReviewableItems, yearLabel } from '../src/components/BudgetProgress';
 import { syncProgressText, syncRunningText } from '../src/lib/format';
 import { DashboardPage } from '../src/pages/DashboardPage';
@@ -1375,6 +1375,46 @@ expectAll('預算審查流程：流程帶外另列「邀請機關專案報告／
       return detailAt >= 0 && detailAt < firstRowAt && html.indexOf('flow-marker') > detailAt;
     })(),
   );
+}
+
+
+// ── 審查歷程：非審查程序（專案報告）不得混進預算審查（2026-10-19 使用者指正）──
+{
+  const met = { generated_at: '2026-10-19T00:00:00+08:00', meetings_fetched_at: null } as never;
+  const item = (over: Record<string, unknown>) => ({
+    id: 1, date: '2026-01-05', stage: 'committee', stage_label: '委員會審查', committee: '立法院財政委員會',
+    joint: null, name: '財政委員會全體委員會議', agenda: '審查115年度中央政府總預算案', speakers: [], speaker_count: 0,
+    video_url: null, agencies: [], funds: [], subsidiary: false, qa_only: false, ...over,
+  });
+  const fixture = {
+    meta: met,
+    year: 115,
+    years: [{ year: 115, count: 3 }],
+    stages: [
+      { id: 'committee', label: '委員會審查', count: 2 },
+      { id: 'briefing', label: '專案報告（非審查）', count: 1 },
+    ],
+    summary: { total: 3, first: '2025-12-24', last: '2026-05-06', committees: [], agencies: [], speakers: [] },
+    items: [
+      item({ id: 1, date: '2025-12-24', stage: 'briefing', stage_label: '專案報告（非審查）', agenda: '邀請主計長就「115年度中央政府總預算案至今尚未審查」進行專題報告' }),
+      item({ id: 2, date: '2026-04-29', stage: 'committee', agenda: '審查115年度中央政府總預算案有關財政部部分' }),
+      item({ id: 3, date: '2026-05-06', stage: 'committee', has_briefing: true, agenda: '一、邀請部長專題報告。二、繼續審查115年度中央政府總預算案。（處理）' }),
+    ],
+  } as never;
+  const plainHtml = render(createElement(BudgetTimeline, { data: fixture, phase: 'ready', error: null, reload: () => undefined, stage: '', onStageChange: () => undefined }));
+  check(
+    '預算審查歷程：預設不列非審查程序（專案報告）的場次',
+    !plainHtml.includes('進行專題報告') && plainHtml.includes('有關財政部部分'),
+  );
+  check(
+    '預算審查歷程：標題的「共 N 場審查會議」不把專案報告算進去（3 場會議 − 1 場專案報告 = 2）',
+    plainHtml.includes('共 2 場審查會議') && !plainHtml.includes('共 3 場審查會議'),
+  );
+  expectAll('預算審查歷程：另列專案報告的場次並指路到流程帶那一行', plainHtml, [
+    '另有 1 場「邀請機關專案報告／業務報告」（不是審查，未列在上面）',
+  ]);
+  const onlyBriefing = render(createElement(BudgetTimeline, { data: fixture, phase: 'ready', error: null, reload: () => undefined, stage: 'briefing', onStageChange: () => undefined }));
+  check('預算審查歷程：切到專案報告那一階時就看得到它', onlyBriefing.includes('進行專題報告'));
 }
 
 expectAll('預算頁：loading 態有類別、篩選與三個區塊骨架', render(createElement(BudgetPage, { refreshToken: 0, onOpenId: () => undefined, onNavigate: () => undefined })), [

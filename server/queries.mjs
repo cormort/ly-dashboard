@@ -2433,6 +2433,13 @@ export function budgetReviewStage({ committee = '', name = '', content = '' } = 
   const c = String(committee ?? '');
   const n = String(name ?? '');
   const text = `${n} ${content ?? ''}`;
+  /**
+   * 引號裡的文字是**專題名稱**，不是這場會議在做什麼。
+   * 例：「邀請…就『115年度中央政府總預算案至今尚未審查，近3000億元之新興、新增計畫將無法推動』進行專題報告」
+   * —— 那句話裡有「審查」兩個字，但整場只有報告與質詢，實際上一件預算都沒審。
+   * 所以判斷「這場有沒有審查」之前，先把引號內容拿掉。
+   */
+  const unquoted = text.replace(/「[^」]{0,400}」/g, ' ').replace(/『[^』]{0,400}』/g, ' ').replace(/“[^”]{0,400}”/g, ' ');
   if (c.startsWith('朝野黨團協商')) return 'negotiation';
   if (n.includes('聯席')) return 'joint';
   if (n.includes('公聽會')) return 'hearing';
@@ -2440,7 +2447,7 @@ export function budgetReviewStage({ committee = '', name = '', content = '' } = 
   // 預算通過之後才發生的「處理總預算決議／凍結案」：也是預算會議，但不是審查，另外標一階
   if (/總預算決議|預算凍結|凍結案|解凍/.test(text)) return 'resolution';
   // 「邀請…專案報告／業務報告，並備質詢」不是預算審查的一般程序：整場沒有「審查」字樣就標成 briefing
-  if (/邀請|專案報告|業務報告/.test(text) && !/審查/.test(text)) return 'briefing';
+  if (/邀請|專案報告|業務報告/.test(unquoted) && !/審查/.test(unquoted)) return 'briefing';
   return 'committee';
 }
 
