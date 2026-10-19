@@ -1598,3 +1598,45 @@ main:has(.fb-wall) { max-width: min(1840px, 96vw); }
   background: var(--warn-bg); color: var(--warn);
 }
 .offline-notice small { color: var(--warn); opacity: 0.85; }
+
+/* ---------- 院會表決（/votes）與附帶決議（/resolutions） ---------- */
+.vote-list, .resolution-list { list-style: none; margin: var(--space-3) 0 0; padding: 0; display: grid; gap: var(--space-2); }
+.vote-card, .resolution-card { border-top: 1px solid var(--rule-soft); padding-top: var(--space-2); }
+.vote-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; font-size: var(--fs-sm); color: var(--ink-2); }
+.vote-issue { margin: 4px 0 6px; font-weight: 600; }
+.vote-tally { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: var(--fs-sm); color: var(--muted); }
+.vote-tally strong { color: var(--ink); }
+/* 名單：預設收起（一場表決可能上百人），點開才展開 */
+.vote-names { margin-top: 4px; font-size: var(--fs-sm); }
+.vote-names > summary { cursor: pointer; color: var(--ink-2); display: inline-flex; align-items: center; gap: 6px; }
+.vote-names p { margin: 4px 0 0; line-height: 1.6; }
+.vote-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; }
+.vote-dot-agree { background: #2f855a; }
+.vote-dot-against { background: #c53030; }
+.vote-dot-abstain { background: #a0aec0; }
+.vote-mine { font-size: var(--fs-sm); padding: 1px 8px; border-radius: 999px; color: #fff; }
+.vote-mine.vote-dot-agree { background: #2f855a; }
+.vote-mine.vote-dot-against { background: #c53030; }
+.vote-mine.vote-dot-abstain { background: #718096; }
+.resolution-title { font-weight: 600; }
+.resolution-note { margin: 4px 0 6px; line-height: 1.7; white-space: pre-wrap; }
+
+/* 預算審查歷程：時間軸（日期＋階段徽章＋委員會），沿用 meeting-list 的間距 */
+.budget-timeline li { border-top: 1px solid var(--rule-soft); padding-top: 10px; }
+.budget-timeline li:first-of-type { border-top: 0; padding-top: 0; }
+.timeline-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; }
+.timeline-head time { font-variant-numeric: tabular-nums; color: var(--muted); font-size: var(--fs-sm); }
+.timeline-head b { font-size: var(--fs-md); }
+.stage-badge {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--rule);
+  font-size: var(--fs-xs, 11px);
+  line-height: 1.6;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.stage-badge.stage-committee { color: var(--accent-ink, #0e2a35); background: var(--accent-soft, #dff0f6); border-color: var(--accent-line, #93d3e8); }
+.stage-badge.stage-negotiation { color: #7a4a00; background: #fdf0d5; border-color: #f0c26a; }
+.stage-badge.stage-joint { color: #1f4d2b; background: #e3f4e8; border-color: #9fd4ad; }

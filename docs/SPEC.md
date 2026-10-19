@@ -174,6 +174,7 @@
 | g0v `ly.govapi.tw/v2`（非官方） | 議案、法案、預算、公報議程、會議、逐案委員會 | `bills`／`bill_sponsors`／`bill_cosigners`／`budget_bills`／`committee_records`／`committee_meets`／`budget_committees` | 24h（委員會逐案 30 天內不重查） |
 | 立法院預算中心 WebAPI | 預算報告 | `budget_reports` | 24h |
 | 立法院開放資料 ID223 | 委員會登記發言 | `committee_meetings` | 24h |
+| 立法院開放資料 ID370／ID373 | 院會表決、三讀通過條文與附帶決議 | `rollcall_votes`＋`vote_ballots`／`bill_resolutions` | 24h |
 | `ppg.ly.gov.tw` | 議案審議進度 | `progress_overrides`（再套回議案） | 同議案 20h 內不重查 |
 | 法務部全國法規資料庫 | 法規 → 主管機關 | `moj_law_agencies` | 距上次 12h 內完全不抓 |
 | 委員 Facebook 粉專 | 最新貼文／貼文層級 | CSV → Google 試算表 → `fb-data` → `social_posts` | 每日 08:00（launchd） |

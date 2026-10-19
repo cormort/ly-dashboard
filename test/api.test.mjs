@@ -119,7 +119,7 @@ test('health / meta / changes / sync-runs 端點形狀正確', () => {
   // db 欄位是固定清單產生（CR-9），不該因為沒有資料而少欄位
   assert.deepEqual(
     Object.keys(health.db),
-    ['legislators', 'memberships', 'committee_seats', 'sessions', 'committees', 'changes', 'snapshots', 'sync_runs', 'bills', 'budget_bills', 'budget_reports', 'committee_meetings', 'news', 'social_accounts', 'social_posts'],
+    ['legislators', 'memberships', 'committee_seats', 'sessions', 'committees', 'changes', 'snapshots', 'sync_runs', 'bills', 'budget_bills', 'budget_reports', 'committee_meetings', 'votes', 'resolutions', 'news', 'social_accounts', 'social_posts'],
   );
 
   const meta = getMetaPayload(db);

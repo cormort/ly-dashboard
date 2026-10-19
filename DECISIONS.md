@@ -1109,3 +1109,21 @@ SW 已是 `ly-shell-v2` —— 所以不是服務沒更新，是手機端的**�
 | 測試踩到的坑 | 造資料的 id 必須取自名錄（`WHERE leave_flag = 0`），不能自己編 | `listSocialWall` 是 `social_accounts JOIN legislators` 且只留 `leave_flag = 0`；捏造的 id 會被 JOIN 濾掉（實測 35 → 23），在職名單裡也有離職者（→ 32），兩次都紅在這裡 |
 | 驗收 | API：`count 30 / window_total 87 / window_capped true / total 112`；畫面：標頭「本日及昨日有更新 87 位，先列前 30 位」、30 張卡、按鈕「展開全部 112 位粉專」，按下後 `?view=all`、112 張卡、標頭「112 / 112 位」 | 上限這種東西要同時看「預設少」與「展開後完整」，只驗一邊會漏掉另一邊 |
 
+## D293：接進立法院開放資料 ID370（院會表決）與 ID373（附帶決議）
+
+2026-10-19 使用者：「看看還有什麼事可以接進來的」＋丟了 data.ly.gov.tw 目錄與三條 LIS 網址。查了 52 個資料集的
+詮釋資料（ID999）與實際抓取後，先接這兩支（結構化、每天更新、資料量小）。
+
+| 岔路 | 選擇 | 理由 |
+| --- | --- | --- |
+| 為什麼是這兩支 | ID373 附帶決議 673 筆、ID370 院會表決 1,513 筆 | 兩個都**結構化**（不是只有 PDF 連結）、一天更新、抓完約 17 秒；站上原本**完全沒有表決資料**（`legislator-votes` 是選舉得票，不是表決），附帶決議則是主計／審計最常追的「機關被要求做什麼」 |
+| 沒接哪些 | ID444 預算提案、ID43 總預算審查資訊、ID365 機關回復、ID368 審查報告、ID2 行政院答復（102 萬筆）、ID19 法律條文對照（216 萬筆） | 實測 ID444 是空殼（2,679 筆的 `resolutionContent`／`proposer`／`subjectContent` **全 null**，只剩機關＋款項＋決議類別）；ID43 只有流程節點＋檔案連結；ID365／ID368 只有 PDF 連結（要 OCR 才有內容）；後兩者量太大 |
+| 抓取端點 | `openDatasetJson.action?id=N&selectTerm=all&page=N`，每頁 1000 筆、**回應沒有總頁數** → 翻到不滿一頁為止（`maxPages=40` 防呆） | 一般直覺的 `odw/IDxxAction.action` 對這兩支只回「資料集說明頁」HTML（31 KB，HTTP 200），會被誤判成「抓不到」；`getds.action?id=N` 對部分資料集回「系統維護中」 |
+| 表決的儲存形狀 | 主表 `rollcall_votes`（一場一列，名單存 JSON）＋ `vote_ballots`（一位委員一票一列） | 名單存 JSON 給畫面直接用；再展開成 ballots 才查得動「某人投過什麼」（`?legislator=` 走的就是這張表，1513 場 × 平均 99 人 ≈ 15 萬列） |
+| 對不到委員怎麼辦 | 照收，`vote_ballots.legislator_id` 留 null，畫面只顯示姓名 | 表決資料包含第 10 屆，卸任委員（王婉諭、陳椒華…）本來就不在本屆名錄；實測 150,054 票有 9,322 票屬此類（6.2%）。另把名錄的原住民委員用**中文前綴**建第二個鍵（`伍麗華Saidhai‧Tahovecahe` ↔ `伍麗華`），未對到從 12,167 降到 9,322 |
+| 官方人數 vs 名單長度 | 兩個都回（`agree/against/abstain` 與 `counts`），畫面並排 | 實測兩者會不一致；只挑一個等於默默改資料，查證時會對不上立法院網站 |
+| 有沒有對到法案 | **沒有** | ID370 只有 `voteIssue` 文字、沒有案號；硬用文字模糊比對會誤配，寧可先不做（畫面上明講這件事） |
+| 階段與範圍 | 新階段 `votes`（含 `votes`／`resolutions` 兩個 dataset），掛進「全部」與「議事與預算」範圍 | 抓取時間短，跟議事資料一起跑最省事；`sync_runs` 分開記才看得出哪一支壞掉 |
+| 驗收 | ① `npm test` 412 條全綠（含新檔 `test/votes.test.mjs` 7 條：分頁、族名、日期、屆次兩種寫法、查詢、mine）② 實跑 `runVotesIngest`：1,513 場／150,054 票／673 筆，17.5 秒 ③ `/api/v1/votes`、`/api/v1/resolutions` 有資料 ④ 瀏覽器實開 `/votes`、`/resolutions`，導覽「議事」多了兩頁 | 「接了」要用真資料與真畫面證明；測試裡也放了「第 10 屆卸任委員」與「四段式 thirdReading（10-07-02-02）」這兩個真實邊界 |
+| 為什麼沒接 LIS 兩個知識庫 | `budgetc/budgetkmout`（預決算知識庫）、`lydbc/lydbkmout`（立法智庫）實測三條網址都只回**檢索表單** | 結果綁在伺服器端 session（網址那串 hex），沒有 API；要接只能用瀏覽器逐頁抓，慢且不穩。改成在頁面提供「到 LIS 查」的連結，資料仍以官方 open data 為準 |
+| 踩到的坑（已修） | 用 Python `str.replace` 插新函式時，`queries.mjs` 的 `const OFFICIALS`／`const FUND_CONFIG` 兩行被吃掉，60 條測試紅（`FUND_CONFIG is not defined`） | 對大檔做程式化插入後**一定要立刻跑測試並看 `git diff` 的刪除行**；只看「插入的內容在不在」不夠 |

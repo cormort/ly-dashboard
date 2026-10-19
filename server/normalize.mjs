@@ -2,6 +2,7 @@
  * 純函式正規化層：不碰網路、不碰資料庫，只吃立法院 API 的原始 JSON，吐出結構化資料。
  * 這一層的所有行為都由 test/normalize.test.mjs 用真實 API fixture 驗證。
  */
+import { createHash } from 'node:crypto';
 import { CONFIG } from './config.mjs';
 
 /**
@@ -9,7 +10,7 @@ import { CONFIG } from './config.mjs';
  * ingest 用 `版本:來源 sha256` 判斷要不要重寫資料庫，否則「原始資料沒變、但解析邏輯變了」
  * 時新規則不會生效（實測踩過：把 photo_url 升級成 https 後仍顯示 http）。
  */
-export const NORMALIZER_VERSION = 4;
+export const NORMALIZER_VERSION = 5;
 
 /** "第11屆第3會期：內政委員會" → 乾淨的委員會名稱；這是舊版壞掉的地方。 */
 const SESSION_PREFIX = /^第(\d+)屆第(\d+)會期[：:]\s*/;
@@ -1052,4 +1053,127 @@ export function normalizeSocial(csvText, legislatorIdByNewsName, { overrides = [
   }
 
   return { accounts, warnings, overridesApplied: applied };
+}
+
+/* ---------------- 院會表決（ID370）／附帶決議（ID373） ---------------- */
+
+/** 表決名單的單筆：「001王婉諭」「楊　曜」都可能出現，代碼可缺 */
+function parseVoteList(text, idByKey) {
+  return String(text ?? '')
+    .split(/[；;]/)
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .map((entry) => {
+      const match = /^(\d{1,4})\s*(.+)$/.exec(entry);
+      const code = match ? match[1] : null;
+      // 姓名裡的全形空白（「楊　曜」）與族名分隔點都要去掉才對得到名錄
+      const name = (match ? match[2] : entry).replace(/[\s‧·・．.]/g, '');
+      return { code, name, id: idByKey.get(name) ?? null };
+    });
+}
+
+const voteCount = (value) => {
+  const n = Number(String(value ?? '').replace(/[^\d]/g, ''));
+  return Number.isFinite(n) ? n : null;
+};
+
+/**
+ * 院會表決（ID370）：**一場表決一列**。贊成／反對／棄權名單存成陣列（套用時轉 JSON），
+ * 另外在套用階段展開成 vote_ballots，讓「某委員投過什麼」查得動。
+ *
+ * 注意：ID370 只有 `voteIssue` 文字，**沒有案號**，所以對不到 bills 的議案編號
+ * （要對得靠文字比對，誤配風險高，這裡不做——見 DECISIONS D293）。
+ */
+export function normalizeRollcalls(rows, legislatorIdByName) {
+  if (!Array.isArray(rows)) throw new DataValidationError('ID370 回應缺少 jsonList');
+  if (rows.length === 0) throw new DataValidationError('ID370 沒有任何表決資料');
+  const key = (name) => String(name).replace(/[\s‧·・．.]/g, '');
+  // 名錄的原住民委員是「伍麗華Saidhai‧Tahovecahe」，表決名單只寫「伍麗華」→ 中文前綴也建一個鍵
+  const idByKey = new Map();
+  for (const [name, id] of legislatorIdByName) {
+    idByKey.set(key(name), id);
+    const cjk = /^[\u4e00-\u9fff]+/.exec(String(name))?.[0];
+    if (cjk && cjk !== String(name)) idByKey.set(key(cjk), id);
+  }
+  const unmatched = new Set();
+  const votes = [];
+  const seen = new Set();
+  for (const row of rows) {
+    const date = rocDate(row.voteDate);
+    const issue = String(row.voteIssue ?? '').trim();
+    if (!date || !issue) continue; // 沒有日期或議題的表決沒有排序與搜尋價值
+    const term = Number(row.term) || null;
+    const sessionPeriod = String(row.sessionPeriod ?? '').trim().padStart(2, '0') || null;
+    const sessionTimes = String(row.sessionTimes ?? '').trim().padStart(2, '0') || null;
+    const time = String(row.voteTime ?? '').trim();
+    const id = createHash('sha1').update([term, sessionPeriod, sessionTimes, date, time, issue].join('|')).digest('hex').slice(0, 16);
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const collect = (text) => {
+      const list = parseVoteList(text, idByKey);
+      for (const person of list) if (!person.id) unmatched.add(person.name);
+      return list;
+    };
+    votes.push({
+      id,
+      term,
+      session_period: sessionPeriod,
+      session_times: sessionTimes,
+      meeting_name: String(row.meetingName ?? '').trim(),
+      vote_date: date,
+      vote_time: time,
+      issue,
+      vote_type: String(row.voteType ?? '').trim(),
+      present: voteCount(row.votePresence),
+      agree: voteCount(row.voteAgree),
+      against: voteCount(row.voteAgainst),
+      abstain: voteCount(row.voteAbstain),
+      supporters: collect(row.supporter),
+      opposers: collect(row.opposer),
+      abstainers: collect(row.abstainer),
+    });
+  }
+  if (votes.length === 0) throw new DataValidationError('ID370 沒有任何可用的表決（日期或議題解析失敗）');
+  votes.sort((a, b) => b.vote_date.localeCompare(a.vote_date) || (b.vote_time || '').localeCompare(a.vote_time || ''));
+  const warnings = unmatched.size
+    ? [`表決名單有 ${unmatched.size} 個姓名對不到本屆委員：${[...unmatched].slice(0, 5).join('、')}`]
+    : [];
+  return { votes, warnings };
+}
+
+/**
+ * 三讀通過條文與附帶決議（ID373）：`note` 就是附帶決議全文（主計／審計最關心的一段），
+ * `thirdReading` 形如 `11-05-23`（屆-會期-會次），拆出來當篩選維度。
+ */
+export function normalizeResolutions(rows) {
+  if (!Array.isArray(rows)) throw new DataValidationError('ID373 回應缺少 jsonList');
+  if (rows.length === 0) throw new DataValidationError('ID373 沒有任何附帶決議');
+  const resolutions = [];
+  const seen = new Set();
+  for (const row of rows) {
+    const docuNo = String(row.docuNo ?? '').trim();
+    const itemNo = String(row.itemNo ?? '').trim();
+    const note = String(row.note ?? '').trim();
+    if (!docuNo || !note) continue; // 沒有決議全文的列沒有價值
+    const id = `${docuNo}-${itemNo || '000'}`;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const third = String(row.thirdReading ?? '').trim();
+    // 實測兩種寫法：`11-05-23`（屆-會期-會次）與 `10-07-02-02`（多一段），只取前三段
+    const parsed = /^(\d{1,3})-(\d{2})-(\d{2})(?:-\d{2})?$/.exec(third);
+    resolutions.push({
+      id,
+      docu_no: docuNo,
+      item_no: itemNo || null,
+      title: String(row.title ?? '').trim(),
+      note,
+      third_reading: third || null,
+      term: parsed ? Number(parsed[1]) : null,
+      session_period: parsed ? parsed[2] : null,
+      session_times: parsed ? parsed[3] : null,
+      url: String(row.url ?? '').trim() || null,
+    });
+  }
+  if (resolutions.length === 0) throw new DataValidationError('ID373 沒有可用的附帶決議（note 全空）');
+  return { resolutions };
 }

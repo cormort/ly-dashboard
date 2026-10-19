@@ -262,6 +262,47 @@ CREATE TABLE IF NOT EXISTS committee_meets (
   video_url TEXT,
   attachments TEXT NOT NULL DEFAULT '[]'
 );
+CREATE TABLE IF NOT EXISTS rollcall_votes (
+  id TEXT PRIMARY KEY,
+  term INTEGER,
+  session_period TEXT,
+  session_times TEXT,
+  meeting_name TEXT,
+  vote_date TEXT NOT NULL,
+  vote_time TEXT,
+  issue TEXT NOT NULL,
+  vote_type TEXT,
+  present INTEGER,
+  agree INTEGER,
+  against INTEGER,
+  abstain INTEGER,
+  supporters TEXT NOT NULL DEFAULT '[]',
+  opposers TEXT NOT NULL DEFAULT '[]',
+  abstainers TEXT NOT NULL DEFAULT '[]'
+);
+CREATE INDEX IF NOT EXISTS idx_rollcall_votes_date ON rollcall_votes(vote_date);
+-- 一位委員一票一列：查「這個人投過什麼」不必解析 JSON
+CREATE TABLE IF NOT EXISTS vote_ballots (
+  vote_id TEXT NOT NULL,
+  legislator_id TEXT,
+  name TEXT NOT NULL,
+  position TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_vote_ballots_vote ON vote_ballots(vote_id);
+CREATE INDEX IF NOT EXISTS idx_vote_ballots_legislator ON vote_ballots(legislator_id);
+CREATE TABLE IF NOT EXISTS bill_resolutions (
+  id TEXT PRIMARY KEY,
+  docu_no TEXT NOT NULL,
+  item_no TEXT,
+  title TEXT,
+  note TEXT NOT NULL,
+  third_reading TEXT,
+  term INTEGER,
+  session_period TEXT,
+  session_times TEXT,
+  url TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_bill_resolutions_term ON bill_resolutions(term);
 CREATE TABLE IF NOT EXISTS meta (
   key TEXT PRIMARY KEY,
   value TEXT
@@ -728,6 +769,57 @@ export function applyCommitteeMeets(db, meets, { fetchedAt }) {
  * 新聞是**累積**的（不像名錄整批覆寫）：RSS 只給近期，覆寫會把歷史洗掉。
  * 同一連結只存一次、同一位委員的同一個標題也只存一次（見 titleKey）；超過 keepDays 的刪除。
  */
+/**
+ * 院會表決（ID370）：整批覆寫。名單欄位存 JSON 給畫面用，另外展開成 `vote_ballots`
+ * （一場表決 × 每位投票者一列）給「某委員投過什麼」查。
+ */
+export function applyRollcalls(db, votes, { fetchedAt }) {
+  const rows = votes.map((vote) => ({
+    ...vote,
+    supporters: JSON.stringify(vote.supporters ?? []),
+    opposers: JSON.stringify(vote.opposers ?? []),
+    abstainers: JSON.stringify(vote.abstainers ?? []),
+  }));
+  replaceAll(
+    db,
+    'rollcall_votes',
+    ['id', 'term', 'session_period', 'session_times', 'meeting_name', 'vote_date', 'vote_time', 'issue', 'vote_type', 'present', 'agree', 'against', 'abstain', 'supporters', 'opposers', 'abstainers'],
+    rows,
+    'votes_fetched_at',
+    fetchedAt,
+  );
+  // replaceAll 自己開交易，所以 ballots 另開一個，不能包在同一個 BEGIN 裡
+  db.exec('BEGIN');
+  try {
+    db.exec('DELETE FROM vote_ballots');
+    const insert = db.prepare('INSERT INTO vote_ballots(vote_id, legislator_id, name, position) VALUES(?, ?, ?, ?)');
+    for (const vote of votes) {
+      for (const [position, list] of [['贊成', vote.supporters], ['反對', vote.opposers], ['棄權', vote.abstainers]]) {
+        for (const person of list ?? []) insert.run(vote.id, person.id ?? null, person.name, position);
+      }
+    }
+    db.exec('COMMIT');
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
+  return rows.length;
+}
+
+/** 三讀通過條文與附帶決議（ID373）：整批覆寫 */
+export function applyResolutions(db, resolutions, { fetchedAt }) {
+  replaceAll(
+    db,
+    'bill_resolutions',
+    ['id', 'docu_no', 'item_no', 'title', 'note', 'third_reading', 'term', 'session_period', 'session_times', 'url'],
+    resolutions,
+    'resolutions_fetched_at',
+    fetchedAt,
+  );
+  return resolutions.length;
+}
+
+
 export function upsertNews(db, legislatorId, items, { fetchedAt }) {
   const insert = db.prepare(
     'INSERT OR IGNORE INTO news(legislator_id, url, title, source, published_at, fetched_at, title_key) VALUES(?, ?, ?, ?, ?, ?, ?)',

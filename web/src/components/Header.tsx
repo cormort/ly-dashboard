@@ -122,6 +122,8 @@ const NAV: NavGroup[] = [
       { route: 'budget', label: '預算審議' },
       { route: 'committees', label: '委員會' },
       { route: 'bills', label: '法案查詢' },
+      { route: 'votes', label: '院會表決' },
+      { route: 'resolutions', label: '附帶決議' },
     ],
   },
   {

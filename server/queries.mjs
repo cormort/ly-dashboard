@@ -352,6 +352,8 @@ const HEALTH_TABLES = [
   ['budget_bills', 'budget_bills'],
   ['budget_reports', 'budget_reports'],
   ['committee_meetings', 'committee_meetings'],
+  ['votes', 'rollcall_votes'],
+  ['resolutions', 'bill_resolutions'],
   ['news', 'news'],
   ['social_accounts', 'social_accounts'],
   ['social_posts', 'social_posts'],
@@ -2250,6 +2252,126 @@ export function budgetOrder(a, b) {
 }
 
 /** 預算中心評估報告：依撰成日期新→舊；`type` 精確、`q` 比對標題 */
+/**
+ * 院會表決（`/api/v1/votes`，ID370）：一場表決一列，新到舊。
+ *
+ * - `legislator` 可給委員 id 或姓名：只回他**有投票**的那幾場，並在每一列附上他自己的票（`mine`）。
+ * - 名單（supporters／opposers／abstainers）直接回陣列給畫面；`counts` 是三個名單的實際人數，
+ *   與官方給的 `agree／against／abstain` 分開（官方那三個是**人數欄位**，抓回來時就不一定與名單等長）。
+ * - 注意：ID370 沒有案號，對不到 `bills`（見 DECISIONS D293）。
+ */
+export function listRollcalls(db, { term = '', q = '', legislator = '', from = '', to = '', limit = 30, offset = 0 } = {}) {
+  const resolvedLimit = Math.max(1, Math.min(Number(limit) || 30, 200));
+  const resolvedOffset = Math.max(0, Math.trunc(Number(offset) || 0));
+  const needle = String(q ?? '').trim();
+  const wanted = String(legislator ?? '').trim();
+  const clauses = [];
+  const params = [];
+  if (term) {
+    clauses.push('term = ?');
+    params.push(Number(term));
+  }
+  if (from) {
+    clauses.push('vote_date >= ?');
+    params.push(String(from));
+  }
+  if (to) {
+    clauses.push('vote_date <= ?');
+    params.push(String(to));
+  }
+  if (needle) {
+    clauses.push('(issue LIKE ? OR meeting_name LIKE ?)');
+    params.push(`%${needle}%`, `%${needle}%`);
+  }
+  if (wanted) {
+    clauses.push('id IN (SELECT vote_id FROM vote_ballots WHERE legislator_id = ? OR name = ?)');
+    params.push(wanted, wanted);
+  }
+  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+  const rows = db.prepare(`SELECT * FROM rollcall_votes ${where} ORDER BY vote_date DESC, vote_time DESC`).all(...params);
+  const items = rows.slice(resolvedOffset, resolvedOffset + resolvedLimit).map((row) => {
+    const supporters = JSON.parse(row.supporters || '[]');
+    const opposers = JSON.parse(row.opposers || '[]');
+    const abstainers = JSON.parse(row.abstainers || '[]');
+    const find = (list) => list.find((person) => person.id === wanted || person.name === wanted) ?? null;
+    return {
+      id: row.id,
+      term: row.term,
+      session: row.session_period ? `${row.term}-${Number(row.session_period)}` : null,
+      session_times: row.session_times ? Number(row.session_times) : null,
+      meeting_name: row.meeting_name,
+      date: row.vote_date,
+      time: row.vote_time,
+      issue: row.issue,
+      vote_type: row.vote_type,
+      present: row.present,
+      agree: row.agree,
+      against: row.against,
+      abstain: row.abstain,
+      counts: { 贊成: supporters.length, 反對: opposers.length, 棄權: abstainers.length },
+      supporters,
+      opposers,
+      abstainers,
+      // 只有指定 legislator 時才有：這個人這一場投什麼
+      mine: wanted ? (find(supporters) ? '贊成' : find(opposers) ? '反對' : find(abstainers) ? '棄權' : null) : undefined,
+    };
+  });
+  return {
+    meta: { ...envelope(db), votes_fetched_at: getMeta(db, 'votes_fetched_at') },
+    total: rows.length,
+    term: term ? Number(term) : null,
+    q: needle,
+    legislator: wanted || '',
+    items,
+  };
+}
+
+/**
+ * 三讀通過條文與附帶決議（`/api/v1/resolutions`，ID373）：新到舊（屆-會期-會次降冪）。
+ * `note` 是附帶決議全文，`url` 是立法院的 PDF。
+ */
+export function listResolutions(db, { term = '', q = '', limit = 30, offset = 0 } = {}) {
+  const resolvedLimit = Math.max(1, Math.min(Number(limit) || 30, 200));
+  const resolvedOffset = Math.max(0, Math.trunc(Number(offset) || 0));
+  const needle = String(q ?? '').trim();
+  const clauses = [];
+  const params = [];
+  if (term) {
+    clauses.push('term = ?');
+    params.push(Number(term));
+  }
+  if (needle) {
+    clauses.push('(note LIKE ? OR title LIKE ?)');
+    params.push(`%${needle}%`, `%${needle}%`);
+  }
+  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+  const rows = db
+    .prepare(`SELECT * FROM bill_resolutions ${where} ORDER BY third_reading DESC, docu_no DESC, item_no DESC`)
+    .all(...params);
+  const termCounts = new Map();
+  for (const row of db.prepare('SELECT term, COUNT(*) AS n FROM bill_resolutions GROUP BY term').all()) {
+    termCounts.set(row.term, Number(row.n));
+  }
+  return {
+    meta: { ...envelope(db), resolutions_fetched_at: getMeta(db, 'resolutions_fetched_at') },
+    total: rows.length,
+    term: term ? Number(term) : null,
+    q: needle,
+    terms: [...termCounts].map(([name, count]) => ({ name: name === null ? '未標屆次' : `${name} 屆`, term: name, count })).sort((a, b) => (b.term ?? 0) - (a.term ?? 0)),
+    items: rows.slice(resolvedOffset, resolvedOffset + resolvedLimit).map((row) => ({
+      id: row.id,
+      docu_no: row.docu_no,
+      item_no: row.item_no,
+      title: row.title,
+      note: row.note,
+      third_reading: row.third_reading,
+      term: row.term,
+      session: row.term && row.session_period ? `${row.term}-${Number(row.session_period)}` : null,
+      url: row.url,
+    })),
+  };
+}
+
 export function listBudgetReports(db, { type = '', q = '', limit = 20, offset = 0 } = {}) {
   const resolvedLimit = Math.max(1, Math.min(Number(limit) || 20, 100));
   const resolvedOffset = Math.max(0, Math.trunc(Number(offset) || 0));

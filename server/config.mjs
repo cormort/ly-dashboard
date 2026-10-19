@@ -20,6 +20,18 @@ export const CONFIG = {
     id9: 'https://data.ly.gov.tw/odw/ID9Action.action?fileType=json',
     id14: 'https://data.ly.gov.tw/odw/ID14Action.action?fileType=json',
   },
+  /**
+   * 立法院開放資料平台的通用 JSON 端點（2026-10-19 實測）：`odw/IDxxAction.action` 對多數資料集
+   * 只回「資料集說明頁」HTML（約 31 KB），真正拿到資料是這支 openDatasetJson；
+   * 而且**每頁固定 1000 筆**，要自己翻頁（回應沒有總頁數）。
+   */
+  openData: {
+    jsonUrl: 'https://data.ly.gov.tw/odw/openDatasetJson.action',
+    pageSize: 1000,
+    maxPages: 40,
+    votes: { id: 370, label: '院會表決資料' },
+    resolutions: { id: 373, label: '三讀通過條文&附帶決議資訊' },
+  },
   // 議案：g0v 社群維護的立法院 API（非官方），已把議案與提案委員對好，官方 data.ly.gov.tw 沒有這層關聯。
   bills: {
     url: 'https://ly.govapi.tw/v2/bills',

@@ -28,7 +28,7 @@ Base URL（開發）：`http://127.0.0.1:8787`
   "meta": { "generated_at": "...", "fetched_at": "...", "stale": false, "source": { "...": "..." } },
   "ok": true,
   "db": { "legislators": 123, "memberships": 567, "committee_seats": 783, "sessions": 5, "committees": 11,
-          "changes": 37, "snapshots": 6, "bills": 7402, "news": 3261, "social_accounts": 113 },
+          "changes": 37, "snapshots": 6, "bills": 7402, "votes": 1513, "resolutions": 673, "news": 3261, "social_accounts": 113 },
   "datasets": {
     "id9":    { "fetched_at": "2026-09-30T08:59:55.000Z", "count": 123 },
     "id14":   { "fetched_at": "2026-09-30T08:59:55.000Z", "count": 783 },
@@ -558,6 +558,42 @@ Query 參數（全部可選）：
   "items": [ { "id": "…", "name": "王世堅", "party": "民主進步黨", "region": "臺北市", "page_name": "王世堅",
                "url": "https://www.facebook.com/…", "latest_post_date": "2026-10-19", "latest_post_summary": "…",
                "latest_post_likes": 1465, "latest_post_comments": 103, "source": "sheet" } ] }
+```
+
+## GET /api/v1/votes?term=&q=&legislator=&from=&to=&limit=30&offset=0
+
+院會記名表決（立法院開放資料 **ID370**，`rollcall_votes`＋`vote_ballots`）。**一場表決一列**，新到舊（`vote_date` → `vote_time`）。
+
+- `q`：比對表決議題與會議名稱；`from`／`to`：`YYYY-MM-DD`；`term`：屆別。
+- `legislator`：委員 id 或姓名，只回他**有投票**的場次，每列另附 `mine`（`贊成`／`反對`／`棄權`／`null`）。
+- `agree`／`against`／`abstain` 是**官方給的人數欄位**；`counts` 是名單實際人數。實測兩者可能不一致（官方欄位先寫），
+  所以兩個都照原樣回，畫面並排顯示、不互相取代。
+- 名單元素 `{ code, name, id }`：`code` 是立法院的委員編號（三位數）、`id` 對到本屆委員名錄；**第 10 屆已卸任者**
+  `id` 為 `null`（實測 15 萬票裡約 9 千票屬於卸任委員，只顯示姓名）。
+- ⚠️ ID370 **沒有案號**，`voteIssue` 只是一段文字，所以對不到 `bills` 的議案編號；要做「哪個法案表決」得靠文字比對（未做）。
+
+```json
+{ "total": 1513, "legislator": "",
+  "meta": { "votes_fetched_at": "2026-10-19T02:51:36.343Z" },
+  "items": [ { "id": "…", "date": "2026-08-21", "time": "11:45", "session": "11-5", "session_times": 23,
+               "meeting_name": "第11屆第5會期第23次會議", "issue": "討論事項第一案，台灣民眾黨黨團提議逕付二讀",
+               "vote_type": "記名", "present": 104, "agree": 56, "against": 48, "abstain": 0,
+               "counts": { "贊成": 56, "反對": 48, "棄權": 0 },
+               "supporters": [ { "code": "001", "name": "王定宇", "id": "LY-…" } ], "opposers": [], "abstainers": [] } ] }
+```
+
+## GET /api/v1/resolutions?term=&q=&limit=30&offset=0
+
+三讀通過條文與**附帶決議**（立法院開放資料 **ID373**，`bill_resolutions`）。`note` 就是附帶決議全文
+（要求主管機關提供資料、檢討制度、限期報告等）；`third_reading` 是 `屆-會期-會次`（如 `11-05-23`）。
+`q` 比對 `note` 與法案名稱；`terms` 是屆次統計（給 chips 用）。
+
+```json
+{ "total": 673, "terms": [ { "name": "11 屆", "term": 11, "count": 351 } ],
+  "meta": { "resolutions_fetched_at": "2026-10-19T02:51:36.343Z" },
+  "items": [ { "id": "1150703496-001", "docu_no": "1150703496", "item_no": "001",
+               "title": "修正產業創新條例部分條文，咨請公布。", "note": "（一）請經濟部提供…",
+               "third_reading": "11-05-23", "term": 11, "session": "11-5", "url": "https://ppg.ly.gov.tw/…pdf" } ] }
 ```
 
 ## GET /api/v1/rankings

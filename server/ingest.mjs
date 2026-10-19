@@ -1,8 +1,8 @@
 import { pathToFileURL } from 'node:url';
 import { readFileSync } from 'node:fs';
 import { CONFIG } from './config.mjs';
-import { openDb, recordSyncRun, saveSnapshot, applyDataset, applyBills, applyLawAgencies, applyBudget, applyBudgetReports, applyCommitteeMeets, applyCommitteeRecords, applyMeetings, applySocial, applySocialPosts, applyCouncilSocial, upsertNews, upsertTopicNews, upsertArticles, pruneNews, pruneLogs, getMeta, setMeta, upsertProgressOverride, getProgressOverrides, applyProgressOverrides, upsertBudgetCommittees, getBudgetCommittees } from './db.mjs';
-import { buildDataset, normalizeCouncilSocial, normalizeBills, normalizeBudget, normalizeBudgetReports, normalizeCommitteeMeets, normalizeCommitteeRecords, normalizeMeetings, normalizeSocial, normalizeSocialPosts, newsName, parseNewsRss, DataValidationError, NORMALIZER_VERSION } from './normalize.mjs';
+import { openDb, recordSyncRun, saveSnapshot, applyDataset, applyBills, applyLawAgencies, applyBudget, applyBudgetReports, applyCommitteeMeets, applyCommitteeRecords, applyMeetings, applyRollcalls, applyResolutions, applySocial, applySocialPosts, applyCouncilSocial, upsertNews, upsertTopicNews, upsertArticles, pruneNews, pruneLogs, getMeta, setMeta, upsertProgressOverride, getProgressOverrides, applyProgressOverrides, upsertBudgetCommittees, getBudgetCommittees } from './db.mjs';
+import { buildDataset, normalizeCouncilSocial, normalizeBills, normalizeBudget, normalizeBudgetReports, normalizeCommitteeMeets, normalizeCommitteeRecords, normalizeMeetings, normalizeRollcalls, normalizeResolutions, normalizeSocial, normalizeSocialPosts, newsName, parseNewsRss, DataValidationError, NORMALIZER_VERSION } from './normalize.mjs';
 import { applySeatOverrides, loadSeatOverrides, seatOverridesDigest } from './committee-overrides.mjs';
 import { fetchJson, FetchError, sha256 } from './fetch-ly.mjs';
 import { ambiguousCouncilorNames, currentCouncilors, entityNewsTerms, makeTagger, mentionsKnownEntity } from './queries.mjs';
@@ -309,6 +309,63 @@ export function runMeetingsIngest(db, { logger = console, fetchImpl = fetchJson,
     recordCount(db, 'meetings', meetings.length);
     logger.log(`[meetings] 已套用：${records} 場委員會會議`);
     return { records, warnings };
+  });
+}
+
+/**
+ * 立法院開放資料平台的資料集：每頁固定 1000 筆、回應**沒有總頁數**，所以翻到「不滿一頁」為止。
+ * `maxPages` 是防呆：分頁若壞掉（每頁都回滿），不會無限抓下去。
+ */
+async function fetchOpenDatasetRows(dataset, fetchImpl) {
+  const rows = [];
+  for (let page = 1; page <= CONFIG.openData.maxPages; page++) {
+    const url = `${CONFIG.openData.jsonUrl}?${new URLSearchParams({ id: String(dataset.id), selectTerm: 'all', page: String(page) })}`;
+    const { json } = await fetchImpl(url, { ua: CONFIG.userAgent, timeoutMs: 60_000 });
+    const chunk = json?.jsonList;
+    if (!Array.isArray(chunk)) throw new DataValidationError(`${dataset.label} 第 ${page} 頁回應缺少 jsonList`);
+    rows.push(...chunk);
+    if (chunk.length < CONFIG.openData.pageSize) return rows;
+  }
+  throw new DataValidationError(`${dataset.label} 超過 ${CONFIG.openData.maxPages} 頁，疑似分頁異常`);
+}
+
+/**
+ * 院會表決（ID370）＋附帶決議（ID373）：兩個都是「整批覆寫」的小資料集（一天更新一次），
+ * 合成同一個階段，抓取時間總共約 10 秒以內。
+ */
+export function runVotesIngest(db, { logger = console, fetchImpl = fetchJson, now = () => new Date() } = {}) {
+  return runStage(db, 'votes', { logger, now }, async () => {
+    const fetchedAt = now().toISOString();
+    const idByName = new Map(db.prepare('SELECT name, id FROM legislators').all().map((r) => [r.name, r.id]));
+
+    const { votes, warnings } = normalizeRollcalls(await fetchOpenDatasetRows(CONFIG.openData.votes, fetchImpl), idByName);
+    for (const warning of warnings) logger.warn(`[votes] 警告：${warning}`);
+    guardShrink(db, 'votes', '院會表決', votes.length);
+    const voteCount = applyRollcalls(db, votes, { fetchedAt });
+    recordCount(db, 'votes', votes.length);
+
+    const resolutionStartedAt = now().toISOString();
+    const resolutionStartedMs = Date.now();
+    const { resolutions } = normalizeResolutions(await fetchOpenDatasetRows(CONFIG.openData.resolutions, fetchImpl));
+    guardShrink(db, 'resolutions', '附帶決議', resolutions.length);
+    const resolutionCount = applyResolutions(db, resolutions, { fetchedAt });
+    recordCount(db, 'resolutions', resolutions.length);
+    // 同一個階段寫兩個 dataset（STAGE_DATASETS.votes = ['votes','resolutions']）：
+    // 分開記 sync_runs，「上次同步」與同步紀錄才看得出是哪一支在跑／哪一支壞掉
+    recordSyncRun(db, {
+      dataset: 'resolutions',
+      status: 'success',
+      records: resolutionCount,
+      attempt: 1,
+      http_status: 200,
+      started_at: resolutionStartedAt,
+      finished_at: now().toISOString(),
+      duration_ms: Date.now() - resolutionStartedMs,
+      ua: CONFIG.userAgent,
+    });
+
+    logger.log(`[votes] 已套用：${voteCount} 場院會表決、${resolutionCount} 筆附帶決議`);
+    return { records: voteCount, votes: voteCount, resolutions: resolutionCount, warnings };
   });
 }
 
@@ -1303,6 +1360,7 @@ export async function runAll(db, options = {}) {
   const runners = {
     roster: () => runIngest(db, options),
     bills: () => (CONFIG.skip.bills ? skipped('bills') : runBillsIngest(db, options)),
+    votes: () => (CONFIG.skip.bills ? skipped('votes') : runVotesIngest(db, options)),
     budget: () => (CONFIG.skip.budget ? skipped('budget') : runBudgetIngest(db, options)),
     budget_reports: () => (CONFIG.skip.budget ? skipped('budget_reports') : runBudgetReportsIngest(db, options)),
     meetings: () => (CONFIG.skip.budget ? skipped('meetings') : runMeetingsIngest(db, options)),

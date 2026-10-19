@@ -514,7 +514,7 @@ check(
 
 // 子頁也依首長與幕僚的使用頻率排，主題的預設頁就是第一個子頁
 check(
-  '子頁順序：議事 預算→委員會→法案、新聞 首長→機關→委員→全部、機關／基金 機關在前，社群自成一個頁籤（委員粉專牆→議員近期動態），議員與縣市地圖各自成頁籤',
+  '子頁順序：議事 預算→委員會→法案→院會表決→附帶決議、新聞 首長→機關→委員→全部、機關／基金 機關在前，社群自成一個頁籤（委員粉專牆→議員近期動態），議員與縣市地圖各自成頁籤',
   (() => {
     const subOf = (route: Route) => {
       const sub = render(createElement(Header, { ...headerProps, route })).match(/<nav class="subnav"[^>]*>([\s\S]*?)<\/nav>/)?.[1] ?? '';
@@ -522,7 +522,8 @@ check(
     };
     const top = render(createElement(Header, { ...headerProps, route: 'dashboard' as const })).match(/<nav aria-label="主要頁面">([\s\S]*?)<\/nav>/)?.[1] ?? '';
     return (
-      subOf('budget') === '預算審議→委員會→法案查詢' &&
+      // 2026-10-19 起議事多了「院會表決」「附帶決議」兩頁（ID370／ID373）
+      subOf('budget') === '預算審議→委員會→法案查詢→院會表決→附帶決議' &&
       // 新聞主題最前面多一個跨主題捷徑「我的機關」（用分隔線隔開，見 D227）：四個新聞子頁都一樣
       subOf('officials') === '我的機關→機關首長新聞→機關新聞→委員新聞→全部新聞' &&
       subOf('agencynews') === '我的機關→機關首長新聞→機關新聞→委員新聞→全部新聞' &&

@@ -6,9 +6,9 @@ import { pathToFileURL } from 'node:url';
 import { CONFIG } from './config.mjs';
 import { openDb, getMeta } from './db.mjs';
 import {
-  billsCsv, budgetCsv, newsCsv, compareLegislators, listBudget, listCounties, listLegislatorVotes, listSplitTicket, listDemographics, listPopulationTrend, getTownMap, listRegions, listFunds, getAgencyHome, listCommitteeActivity, listBudgetMeetings, listBudgetReports, getHealth, getMetaPayload, listActivity, listBills, listCosponsors, listNews, listNewsArticles, listTopics, listChanges,
+  billsCsv, budgetCsv, newsCsv, compareLegislators, listBudget, listCounties, listLegislatorVotes, listSplitTicket, listDemographics, listPopulationTrend, getTownMap, listRegions, listFunds, getAgencyHome, listCommitteeActivity, listBudgetMeetings, listBudgetTimeline, listBudgetReports, getHealth, getMetaPayload, listActivity, listBills, listCosponsors, listNews, listNewsArticles, listTopics, listChanges,
   listCommittees, listLegislators, listRankings, listSyncRuns, listRecalls, listCouncil, listCouncilActivity, councilCounties,
-  listSocialWall,
+  listSocialWall, listRollcalls, listResolutions,
   listSyncSources,
 } from './queries.mjs';
 import { runAll, runOutletPoll } from './ingest.mjs';
@@ -370,6 +370,10 @@ export function createServer(db) {
             return sendJson(res, 200, listSplitTicket(db, { year: q.year }));
           case '/api/v1/legislator-votes':
             return sendJson(res, 200, listLegislatorVotes(db, { id: q.id || null }));
+          case '/api/v1/votes':
+            return sendJson(res, 200, listRollcalls(db, { term: q.term, q: q.q, legislator: q.legislator, from: q.from, to: q.to, limit: q.limit, offset: q.offset }));
+          case '/api/v1/resolutions':
+            return sendJson(res, 200, listResolutions(db, { term: q.term, q: q.q, limit: q.limit, offset: q.offset }));
           case '/api/v1/committee-activity':
             return sendJson(res, 200, listCommitteeActivity(db, { committee: q.committee, q: q.q, limit: q.limit }));
           case '/api/v1/agency':

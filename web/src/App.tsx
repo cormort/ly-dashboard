@@ -20,6 +20,8 @@ import type { Route } from './hooks/useRoute';
 import { useTracked } from './hooks/useTracked';
 import { sessionLabelIndex } from './lib/sessions';
 import { BillsPage } from './pages/BillsPage';
+import { VotesPage } from './pages/VotesPage';
+import { ResolutionsPage } from './pages/ResolutionsPage';
 import { BudgetPage } from './pages/BudgetPage';
 import { CommitteesPage } from './pages/CommitteesPage';
 import { CountiesPage } from './pages/CountiesPage';
@@ -132,6 +134,8 @@ export default function App() {
       ) : null}
       {target === 'socialwall' ? <SocialWallPage refreshToken={refreshToken} onOpenId={setPendingId} /> : null}
       {target === 'bills' ? <BillsPage refreshToken={refreshToken} onOpenId={setPendingId} /> : null}
+      {target === 'votes' ? <VotesPage refreshToken={refreshToken} /> : null}
+      {target === 'resolutions' ? <ResolutionsPage refreshToken={refreshToken} /> : null}
       {target === 'dashboard' ? <DashboardPage refreshToken={refreshToken} onOpenId={setPendingId} onNavigate={navigate} /> : null}
       {target === 'budget' ? <BudgetPage refreshToken={refreshToken} onOpenId={setPendingId} onNavigate={navigate} /> : null}
       {target in FUND_TYPE ? (

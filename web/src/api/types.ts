@@ -1445,3 +1445,75 @@ export interface AgencyHomeResponse {
     }>;
   } | null;
 }
+
+/* ---------- /votes（院會表決，ID370）---------- */
+
+export interface RollcallVoter {
+  /** 立法院的委員編號（三位數，可能為 null） */
+  code: string | null;
+  name: string;
+  /** 對到本屆委員名錄才有；卸任委員（第 10 屆）為 null */
+  id: string | null;
+}
+
+export interface RollcallItem {
+  id: string;
+  term: number | null;
+  /** 會期代號，例如 11-5 */
+  session: string | null;
+  session_times: number | null;
+  meeting_name: string;
+  date: string;
+  time: string;
+  issue: string;
+  vote_type: string;
+  /** 官方給的人數欄位（與名單長度不一定相同） */
+  present: number | null;
+  agree: number | null;
+  against: number | null;
+  abstain: number | null;
+  /** 名單實際人數 */
+  counts: { 贊成: number; 反對: number; 棄權: number };
+  supporters: RollcallVoter[];
+  opposers: RollcallVoter[];
+  abstainers: RollcallVoter[];
+  /** 指定 legislator 時才有：這個人這一場投什麼（不在名單上為 null） */
+  mine?: '贊成' | '反對' | '棄權' | null;
+}
+
+export interface RollcallsResponse {
+  meta: Meta & { votes_fetched_at: string | null };
+  total: number;
+  term: number | null;
+  q: string;
+  legislator: string;
+  items: RollcallItem[];
+}
+
+/* ---------- /resolutions（三讀通過條文與附帶決議，ID373）---------- */
+
+export interface ResolutionItem {
+  id: string;
+  /** 公文號（立法院議案編號的另一種寫法） */
+  docu_no: string;
+  item_no: string | null;
+  /** 通過的法案 */
+  title: string;
+  /** 附帶決議全文（主計／審計最關心的一段） */
+  note: string;
+  /** 屆-會期-會次，例如 11-05-23 */
+  third_reading: string | null;
+  term: number | null;
+  session: string | null;
+  /** 立法院的三讀條文 PDF */
+  url: string | null;
+}
+
+export interface ResolutionsResponse {
+  meta: Meta & { resolutions_fetched_at: string | null };
+  total: number;
+  term: number | null;
+  q: string;
+  terms: { name: string; term: number | null; count: number }[];
+  items: ResolutionItem[];
+}

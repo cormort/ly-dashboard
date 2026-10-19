@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 
-export type Route = 'home' | 'dashboard' | 'legislators' | 'socialwall' | 'bills' | 'budget' | 'rankings' | 'compare' | 'funds' | 'agencies' | 'foundations' | 'administrative' | 'dgbas' | 'committees' | 'news' | 'allnews' | 'agencynews' | 'officials' | 'counties' | 'council' | 'councilactivity' | 'my';
+export type Route = 'home' | 'dashboard' | 'legislators' | 'socialwall' | 'bills' | 'votes' | 'resolutions' | 'budget' | 'rankings' | 'compare' | 'funds' | 'agencies' | 'foundations' | 'administrative' | 'dgbas' | 'committees' | 'news' | 'allnews' | 'agencynews' | 'officials' | 'counties' | 'council' | 'councilactivity' | 'my';
 
 const PATHS: Record<Route, string> = {
   // 預設首頁是總覽；最近動態移到 /activity
@@ -11,6 +11,8 @@ const PATHS: Record<Route, string> = {
   socialwall: '/facebook/wall',
   councilactivity: '/facebook/council',
   bills: '/bills',
+  votes: '/votes',
+  resolutions: '/resolutions',
   budget: '/budget',
   rankings: '/rankings',
   compare: '/compare',
@@ -49,6 +51,8 @@ export function routeOf(pathname: string): Route {
   if (pathname.startsWith('/legislators')) return 'legislators';
   if (pathname.startsWith('/activity')) return 'home';
   if (pathname.startsWith('/bills')) return 'bills';
+  if (pathname.startsWith('/votes')) return 'votes';
+  if (pathname.startsWith('/resolutions')) return 'resolutions';
   if (pathname.startsWith('/budget')) return 'budget';
   if (pathname.startsWith('/rankings')) return 'rankings';
   if (pathname.startsWith('/compare')) return 'compare';
