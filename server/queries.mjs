@@ -1954,6 +1954,17 @@ function listAllNewsArticles(db, { keyword, source, kind, limit, offset }) {
  * 認不得的狀態一律算 pending（保守：不謊稱審竣）。
  */
 const BUDGET_TYPES = ['general', 'subsidiary', 'supplementary', 'special'];
+
+/**
+ * 一筆預算案要歸到哪一個年度（純函式，給測試用）。
+ * 沒年度的**特別預算**歸 `special`（期間概念：前瞻第5期 114–118、花蓮馬太鞍溪災後重建…），
+ * 其餘沒年度的（多半是決議函）歸 `unknown`。
+ */
+export function budgetYearGroup(row) {
+  const y = row?.fiscal_year;
+  if (y !== null && y !== undefined && y !== '') return String(y);
+  return (row?.types ?? []).includes('special') ? 'special' : 'unknown';
+}
 const BUDGET_STATE = new Map([
   ...['審查完畢', '審查完畢(逾審查期限)', '審查完畢(三讀)', '三讀', '三讀 (//通過)', '視同審議通過'].map((s) => [s, 'reviewed']),
   ...['交付審查', '交付處理', '交付協商', '復議', '排入院會(討論事項)'].map((s) => [s, 'in_review']),
@@ -2147,8 +2158,17 @@ export function listBudget(
   const typeCounts = Object.fromEntries(BUDGET_TYPES.map((t) => [t, base.filter((r) => r.types.includes(t)).length]));
   const byType = BUDGET_TYPES.includes(type) ? base.filter((r) => r.types.includes(type)) : base;
   // 年度：`unknown` 代表上游沒給年度（實測 1,565 筆，多半是決議函），要看得見而不是被藏起來
-  const yearKey = (r) => (r.fiscal_year === null || r.fiscal_year === undefined || r.fiscal_year === '' ? 'unknown' : String(r.fiscal_year));
-  const byYearOrder = (a, b) => (a === 'unknown' ? 1 : b === 'unknown' ? -1 : Number(b) - Number(a));
+  /**
+   * 特別預算是「期間」的概念（前瞻第5期 114–118 年度、花蓮馬太鞍溪災後重建、丹娜絲颱風復原重建…），
+   * 案由常常只寫計畫名稱、不寫年度，硬歸成「年度不明」會跟決議函混在一起（使用者 2026-10-19：
+   * 「因為特別預算常常會是期間的概念」）。所以沒年度的特別預算另立一組 `special`。
+   */
+  const yearKey = budgetYearGroup;
+  // 有年度的照年份新到舊，接著「特別預算（跨年度）」，最後才是年度不明
+  const byYearOrder = (a, b) => {
+    const rank = (k) => (k === 'unknown' ? 2 : k === 'special' ? 1 : 0);
+    return rank(a) - rank(b) || (rank(a) === 0 ? Number(b) - Number(a) : 0);
+  };
   const yearKeys = [...new Set(byType.map(yearKey))].sort(byYearOrder);
   const years = yearKeys.map((name) => {
     const list = byType.filter((r) => yearKey(r) === name);

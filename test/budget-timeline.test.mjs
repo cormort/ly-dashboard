@@ -4,7 +4,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { budgetReportSentence, budgetEvidenceSentence, budgetReviewStage, budgetReviewUnits, budgetYearsOf, reportsBudgetInPlenary } from '../server/queries.mjs';
+import { budgetEvidenceSentence, budgetReportSentence, budgetReviewStage, budgetReviewUnits, budgetYearGroup, budgetYearsOf, reportsBudgetInPlenary } from '../server/queries.mjs';
 
 test('預算審查階段：協商／聯席／公聽會／院會／委員會', () => {
   assert.equal(budgetReviewStage({ committee: '朝野黨團協商', name: '立法院黨團協商' }), 'negotiation');
@@ -229,4 +229,15 @@ test('認定依據：報告那一句不會被別的場次借去當依據', () =>
   const evidence = budgetEvidenceSentence(text, 115, 'plenary');
   assert.ok(evidence && !evidence.includes('編製經過'), '不能拿報告那句當別場次的依據');
   assert.ok(evidence.includes('115年度中央政府總預算'), '還是要挑到講今年度總預算的那一句');
+});
+
+test('年度分組：沒年度的特別預算歸「跨年度」，不是「年度不明」', () => {
+  // 特別預算是期間的概念（前瞻第5期 114–118 年度、花蓮馬太鞍溪災後重建…），案由常常不寫年度
+  assert.equal(budgetYearGroup({ fiscal_year: 115, types: ['general'] }), '115');
+  assert.equal(budgetYearGroup({ fiscal_year: '', types: ['special'] }), 'special');
+  assert.equal(budgetYearGroup({ fiscal_year: null, types: ['special'] }), 'special');
+  assert.equal(budgetYearGroup({ fiscal_year: '', types: ['general'] }), 'unknown');
+  assert.equal(budgetYearGroup({ fiscal_year: '', types: [] }), 'unknown');
+  // 有寫年度的特別預算照年份走（例：保衛國家安全特別預算 115 年度）
+  assert.equal(budgetYearGroup({ fiscal_year: 115, types: ['special'] }), '115');
 });

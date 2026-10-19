@@ -326,7 +326,8 @@ export function BudgetPage({ refreshToken, onOpenId, onNavigate }: BudgetPagePro
   const [showProgressAnyway, setShowProgressAnyway] = useState(false);
   const [stage, setStage] = useState('');
   /** 年度只有一個來源：頁面的 year 篩選（'' ＝全部年度）；歷程跟著它走，不再有第二組年度 chips */
-  const timelineYear = filters.year === 'unknown' ? '' : filters.year;
+  // 審查歷程是部會首長預算的會議紀錄；「年度不明」與「特別預算（跨年度）」都不是單一年度，沒有歷程可對
+  const timelineYear = filters.year === 'unknown' || filters.year === 'special' ? '' : filters.year;
   const timeline = useApi<BudgetTimelineResponse>(
     buildUrl('/budget/timeline', { year: timelineYear }),
     { refreshToken },

@@ -14,7 +14,8 @@ import type { BudgetProgress, BudgetYear } from '../api/types';
  */
 
 /** 年度名稱：上游沒給年度的是 `unknown`（實測 1,565 筆，多半是決議函） */
-export const yearLabel = (name: string): string => (name === 'unknown' ? '年度不明' : `${name} 年度`);
+export const yearLabel = (name: string): string =>
+  name === 'unknown' ? '年度不明' : name === 'special' ? '特別預算（期間）' : `${name} 年度`;
 
 /** 這一年有沒有需要審查的案子？（全是函件處理的年度＝沒有） */
 export const hasReviewableItems = (progress: BudgetProgress): boolean => progress.reviewed + progress.awaiting > 0;
