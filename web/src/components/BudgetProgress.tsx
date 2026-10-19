@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
+import type { ReactNode } from 'react';
 import type { BudgetProgress, BudgetYear } from '../api/types';
 
 /**
@@ -73,13 +74,19 @@ export interface YearProgressListProps {
   /** 目前條件的整體進度（選「全部年度」時顯示） */
   progress?: BudgetProgress | null;
   onPick: (year: string) => void;
+  /**
+   * 夾在「選中那一年」下面的內容（預算審查流程帶）。
+   * 流程是**這一年**的流程，所以掛在年度清單裡面，不再另外開一個面板：
+   * 頁面上只留一組年度控制，選哪一年就在那一列下面展開那年的六關。
+   */
+  detail?: ReactNode;
 }
 
 /**
  * 各年度的審議進度一覽：每一列是一個年度，數字與長條都來自後端統計。
  * 點一列就只看那一年（等同套用年度條件）。
  */
-export function YearProgressList({ years, active, progress = null, onPick }: YearProgressListProps) {
+export function YearProgressList({ years, active, progress = null, onPick, detail = null }: YearProgressListProps) {
   const [showLetterOnly, setShowLetterOnly] = useState(false);
   if (years.length === 0) return null;
   const toRow = (key: string, label: string, p: BudgetProgress) => ({ key, label, progress: p });
@@ -121,9 +128,17 @@ export function YearProgressList({ years, active, progress = null, onPick }: Yea
     );
   };
 
+  /** 選中的年度不一定是清單上的一列（「全部年度」沒有那一列）→ 那時把 detail 放在清單上方 */
+  const hasActiveRow = main.some((r) => r.key === active);
   return (
     <div className="year-progress" role="group" aria-label="各年度審議進度">
-      {main.map(row)}
+      {!hasActiveRow && detail ? <div className="year-detail is-all-years">{detail}</div> : null}
+      {main.map((r) => (
+        <Fragment key={r.key || 'all'}>
+          {row(r)}
+          {r.key === active && detail ? <div className="year-detail">{detail}</div> : null}
+        </Fragment>
+      ))}
       {letterOnly.length > 0 ? (
         <>
           <button

@@ -1444,6 +1444,7 @@ main:has(.fb-wall) { max-width: min(1840px, 96vw); }
   justify-content: start;
   padding: 5px 9px; border: 1px solid var(--rule-soft); border-radius: var(--radius-md);
   background: var(--surface); color: inherit; text-align: left; font: inherit; cursor: pointer;
+  min-width: 0;
 }
 .year-progress-row:hover { border-color: var(--rule); }
 /* 全域 `button[aria-pressed='true']` 是「深底白字」，這裡只有換底色 → 一定要把字色改回來，
@@ -1700,8 +1701,20 @@ main:has(.fb-wall) { max-width: min(1840px, 96vw); }
 /* 專案報告（非審查程序）：虛線、灰階，不要長得像流程上的關卡 */
 .stage-badge.stage-briefing { background: transparent; border: 1px dashed var(--rule-soft); color: var(--muted); }
 
-/* ---------- 預算審查流程（流程帶）：一列六關，年度只有這一組 ---------- */
-.process-panel .process-rail {
+/* ---------- 預算審查流程（流程帶）：一列六關，掛在「各年度審議進度」選中那一年下面 ---------- */
+/* 展開區塊在兩欄的年度清單裡要橫跨整列 */
+.year-detail {
+  grid-column: 1 / -1;
+  /* grid item 的自動最小尺寸＝內容的 min-content：流程帶六關會把整個年度清單撐到 794px（390 視窗溢出 437px）
+     → 一定要 min-width: 0，讓裡面的 overflow-x 去處理 */
+  min-width: 0;
+  margin: 2px 0 6px; padding: 10px 12px 4px;
+  border: 1px solid var(--rule-soft); border-radius: var(--radius-md);
+  background: var(--paper, #fbfcfe);
+}
+.process-flow { min-width: 0; }
+.process-flow .process-caption { margin: 0 0 2px; font-size: var(--fs-sm); }
+.process-flow .process-rail {
   display: flex;
   align-items: stretch;
   gap: 6px;

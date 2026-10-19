@@ -1265,12 +1265,7 @@ const railStages = [
 ];
 const railHtml = render(
   createElement(BudgetProcessRail, {
-    years: [
-      { year: 116, count: 1 },
-      { year: 115, count: 132 },
-    ],
     year: '115',
-    onYearChange: () => undefined,
     stages: railStages,
     total: 132,
     apiYear: 115,
@@ -1297,15 +1292,16 @@ check(
   '預算審查流程：目前看的那一關標成選中（aria-pressed）',
   /aria-pressed="true"[\s\S]{0,200}黨團協商/.test(railHtml),
 );
-expectAll('預算審查流程：年度 chips 在流程帶上（同一頁只有一組年度）', railHtml, ['全部年度', '115 年度 <span class="muted">132</span>']);
-expectAll('預算審查流程：標題寫出是哪一年度的幾場會議，並講明其中幾場不是審查程序', railHtml, ['115 年度・132 場會議（含 2 場專案報告，非審查程序）']);
+check(
+  '預算審查流程：整合進「各年度審議進度」後，流程帶不再有自己的年度 chips（年度只在年度清單選一次）',
+  !railHtml.includes('aria-label="預算年度"') && !railHtml.includes('class="chip"'),
+);
+expectAll('預算審查流程：標題寫出是哪一年度的幾場會議，並講明其中幾場不是審查程序', railHtml, ['115 年度的審查流程・132 場會議（含 2 場專案報告，非審查程序）']);
 check(
   '預算審查流程：沒選年度時明講「會議以最新年度計」（清單是全部年度，兩者不是同一件事）',
   render(
     createElement(BudgetProcessRail, {
-      years: [],
       year: '',
-      onYearChange: () => undefined,
       stages: railStages,
       total: 132,
       apiYear: 115,
@@ -1325,6 +1321,61 @@ check(
 expectAll('預算審查流程：流程帶外另列「邀請機關專案報告／業務報告」（不是預算審查的一關）', railHtml, [
   '另有 2 場「邀請機關專案報告／業務報告」（不是預算審查的一關）',
 ]);
+
+// 整合：流程掛在「各年度審議進度」選中那一年的下面（2026-10-19「把預算審查流程整合到各年度審議進度裡面」）
+{
+  const listHtml = render(
+    createElement(YearProgressList, {
+      years: [
+        { name: '116', count: 1, progress: { total: 1, reviewed: 0, in_review: 0, pending: 1, letter: 0, returned: 0, awaiting: 1 } },
+        { name: '115', count: 132, progress: { total: 132, reviewed: 60, in_review: 40, pending: 32, letter: 0, returned: 0, awaiting: 72 } },
+      ],
+      active: '115',
+      progress: null,
+      onPick: () => undefined,
+      detail: createElement(BudgetProcessRail, {
+        year: '115',
+        stages: railStages,
+        total: 132,
+        apiYear: 115,
+        briefing: 2,
+        stage: '',
+        onStageChange: () => undefined,
+      }),
+    }),
+  );
+  const detailAt = listHtml.indexOf('class="year-detail"');
+  const row115At = listHtml.indexOf('115 年度');
+  const row116At = listHtml.indexOf('116 年度');
+  check(
+    '預算審查流程：掛在選中年度那一列的正下方（116 年度 → 115 年度 → 展開的流程）',
+    detailAt > row115At && row115At > row116At,
+    `detail@${detailAt} 115@${row115At} 116@${row116At}`,
+  );
+  expectAll('預算審查流程：展開區塊裡就是六關流程帶', listHtml, [
+    'class="year-detail"',
+    'class="process-flow"',
+    '委員會分組審查',
+    '決議處理',
+  ]);
+  check(
+    '預算審查流程：沒有選年度（全部年度）時，流程放在年度清單上方（清單沒有「全部年度」那一列可以掛）',
+    (() => {
+      const html = render(
+        createElement(YearProgressList, {
+          years: [{ name: '115', count: 132, progress: { total: 132, reviewed: 60, in_review: 40, pending: 32, letter: 0, returned: 0, awaiting: 72 } }],
+          active: '',
+          progress: { total: 132, reviewed: 60, in_review: 40, pending: 32, letter: 0, returned: 0, awaiting: 72 },
+          onPick: () => undefined,
+          detail: createElement('span', { className: 'flow-marker' }, '流程'),
+        }),
+      );
+      const detailAt = html.indexOf('year-detail is-all-years');
+      const firstRowAt = html.indexOf('year-progress-row');
+      return detailAt >= 0 && detailAt < firstRowAt && html.indexOf('flow-marker') > detailAt;
+    })(),
+  );
+}
 
 expectAll('預算頁：loading 態有類別、篩選與三個區塊骨架', render(createElement(BudgetPage, { refreshToken: 0, onOpenId: () => undefined, onNavigate: () => undefined })), [
   '預算審議',

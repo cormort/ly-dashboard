@@ -236,6 +236,23 @@ export function BudgetPage({ refreshToken, onOpenId, onNavigate }: BudgetPagePro
     window.history.replaceState(null, '', pathFor('budget', { ...next, q: next.q.trim(), category: next.category === DEFAULT_CATEGORY ? '' : next.category }));
   };
 
+  /**
+   * 預算審查流程：不是獨立面板，而是「各年度審議進度」面板裡、選中那一年下面展開的內容。
+   * 流程與年度是同一件事（「這一年走到哪一關」），分兩個面板等於年度又出現兩組控制。
+   */
+  const flow = (
+    <BudgetProcessRail
+      year={timelineYear}
+      stages={timeline.data?.stages ?? []}
+      total={timeline.data?.summary.total ?? 0}
+      apiYear={timeline.data?.year ?? null}
+      briefing={timeline.data?.stages.find((s) => s.id === 'briefing')?.count ?? 0}
+      stage={stage}
+      onStageChange={setStage}
+      loading={timeline.phase === 'loading' && !timeline.data}
+    />
+  );
+
   return (
     <>
       <h1 className="sr-only">預算審議</h1>
@@ -260,39 +277,30 @@ export function BudgetPage({ refreshToken, onOpenId, onNavigate }: BudgetPagePro
         ))}
       </div>
 
-      <BudgetProcessRail
-        years={timeline.data?.years ?? []}
-        year={timelineYear}
-        onYearChange={(year) => change({ year })}
-        stages={timeline.data?.stages ?? []}
-        total={timeline.data?.summary.total ?? 0}
-        apiYear={timeline.data?.year ?? null}
-        briefing={timeline.data?.stages.find((s) => s.id === 'briefing')?.count ?? 0}
-        stage={stage}
-        onStageChange={setStage}
-        loading={timeline.phase === 'loading' && !timeline.data}
-      />
-
-      {data && data.years.length > 1 ? (
-        <section className="panel year-panel" aria-label="各年度審議進度">
-          <div className="sectionhead">
-            <h2>各年度審議進度</h2>
-            <InfoTip align="inline-end" label="審議狀態的定義">
-              {STATE_HINT}
-            </InfoTip>
-          </div>
-          <p className="muted year-summary">
-            {budgetProgressText(filters.year ? data.years.find((y) => y.name === filters.year)?.progress : data.progress)}
-          </p>
-          <YearProgressList
-            years={data.years}
-            active={filters.year}
-            progress={data.progress}
-            onPick={(year) => change({ year, state: filters.state })}
-          />
-        </section>
-      ) : null}
-
+      <section className="panel year-panel" aria-label="各年度審議進度">
+        <div className="sectionhead">
+          <h2>各年度審議進度</h2>
+          <InfoTip align="inline-end" label="審議狀態的定義">
+            {STATE_HINT}
+          </InfoTip>
+        </div>
+        {data && data.years.length > 1 ? (
+          <>
+            <p className="muted year-summary">
+              {budgetProgressText(filters.year ? data.years.find((y) => y.name === filters.year)?.progress : data.progress)}
+            </p>
+            <YearProgressList
+              years={data.years}
+              active={filters.year}
+              progress={data.progress}
+              onPick={(year) => change({ year, state: filters.state })}
+              detail={flow}
+            />
+          </>
+        ) : (
+          flow
+        )}
+      </section>
 
       <BudgetTimeline
         key={timelineYear}
@@ -545,9 +553,7 @@ export const BUDGET_PROCESS_STEPS = [
  * 「115 年度走到協商了沒」。流程帶把「年度 ＋ 走到哪一關 ＋ 幾場」放在同一列。
  */
 export function BudgetProcessRail({
-  years,
   year,
-  onYearChange,
   stages,
   total,
   /** 「邀請…專案報告／業務報告」的場次：不是預算審查的一關，放在流程帶外面 */
@@ -558,10 +564,8 @@ export function BudgetProcessRail({
   onStageChange,
   loading = false,
 }: {
-  years: { year: number; count: number }[];
-  /** 目前選的年度（'' ＝全部年度） */
+  /** 目前選的年度（'' ＝全部年度）；年度是從上方的年度清單選的，這裡只讀來寫標題 */
   year: string;
-  onYearChange: (year: string) => void;
   stages: { id: string; label: string; count: number }[];
   /** 這一年度的審查會議總場次 */
   total: number;
@@ -579,36 +583,14 @@ export function BudgetProcessRail({
     if (next) document.getElementById('budget-timeline')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
   return (
-    <section className="panel process-panel" aria-label="預算審查流程">
-      <div className="sectionhead">
-        <h2>預算審查流程</h2>
-        <span className="muted">
-          {loading
-            ? '讀取會議資料…'
-            : `${apiYear ? `${apiYear} 年度` : '會議年度不明'}・${total.toLocaleString()} 場會議${
-                briefing > 0 ? `（含 ${briefing} 場專案報告，非審查程序）` : ''
-              }${year ? '' : '（清單是全部年度，會議以最新年度計）'}`}
-        </span>
-      </div>
-
-      {years.length > 1 ? (
-        <div className="law-facets" role="group" aria-label="預算年度">
-          <button type="button" className="chip" aria-pressed={!year} onClick={() => onYearChange('')}>
-            全部年度
-          </button>
-          {years.map((y) => (
-            <button
-              key={y.year}
-              type="button"
-              className="chip"
-              aria-pressed={String(y.year) === year}
-              onClick={() => onYearChange(String(y.year))}
-            >
-              {y.year} 年度 <span className="muted">{y.count}</span>
-            </button>
-          ))}
-        </div>
-      ) : null}
+    <div className="process-flow" aria-label="預算審查流程">
+      <p className="muted process-caption">
+        {loading
+          ? '讀取會議資料…'
+          : `${apiYear ? `${apiYear} 年度` : '會議年度不明'}的審查流程・${total.toLocaleString()} 場會議${
+              briefing > 0 ? `（含 ${briefing} 場專案報告，非審查程序）` : ''
+            }${year ? '' : '（清單是全部年度，會議以最新年度計）'}`}
+      </p>
 
       <ol className="process-rail" role="list">
         <li className="process-context">行政院編製概算、送立法院</li>
@@ -654,7 +636,7 @@ export function BudgetProcessRail({
         「無」＝這一年度沒有那種會議紀錄（階段是從會議名稱判斷的，官方資料沒有階段欄位）；
         預算中心的評估報告在下方，與這裡的會議是不同來源。
       </p>
-    </section>
+    </div>
   );
 }
 
