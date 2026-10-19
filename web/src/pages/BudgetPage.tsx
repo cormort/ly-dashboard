@@ -403,6 +403,9 @@ export function BudgetPage({ refreshToken, onOpenId, onNavigate }: BudgetPagePro
     <>
       <h1 className="sr-only">預算審議</h1>
 
+      {/* 預算中心評估報告是備詢時最常翻的：2026-10-19 從右欄搬到整頁最上方（原本要捲過進度與歷程才看得到） */}
+      <BudgetReports refreshToken={refreshToken} />
+
       {/* 類別磚：「總預算案」不再是一格，而是拆成 總預算（單位預算）／總預算附屬單位預算（含信託基金）／
           總預算追加預算／特別預算（使用者 2026-10-19：「我是指在全部旁邊的總預算案」）。
           決議案與定期報告那個檢視沒有預算類型，就不放這四格。 */}
@@ -666,9 +669,7 @@ export function BudgetPage({ refreshToken, onOpenId, onNavigate }: BudgetPagePro
           ) : null}
         </section>
 
-        {/* 右欄：預算中心報告是備詢時最常翻的，放最上面；原本這兩塊排在 30 筆清單之後，要捲很久才看得到 */}
         <div className="home-side">
-        <BudgetReports refreshToken={refreshToken} />
         <section className="panel" aria-label="提案單位">
           <h2>提案單位</h2>
           <p className="muted topic-note">點機關只看它送的項目</p>
@@ -1165,7 +1166,8 @@ function BudgetMeetings({ refreshToken, onOpenId }: { refreshToken: number; onOp
 /** 立法院預算中心的評估報告 */
 function BudgetReports({ refreshToken }: { refreshToken: number }) {
   const [type, setType] = useState('');
-  const [limit, setLimit] = useState(10);
+  // 在頁面最上方：先列 5 筆，不把審議進度推出首屏；要看更多按「顯示更多」
+  const [limit, setLimit] = useState(5);
   const res = useApi<BudgetReportsResponse>(buildUrl('/budget/reports', { type, limit }), { refreshToken });
   const data = res.data;
   return (
