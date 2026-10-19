@@ -219,16 +219,17 @@ expectNone('最近動態不再放最新新聞', homeHtml, ['讀取新聞']);
 const topNav = homeHtml.match(/<nav aria-label="主要頁面">([\s\S]*?)<\/nav>/)?.[1] ?? '';
 expectNone('最上層導覽不該再把所有子頁面平鋪出來', topNav, ['排行榜', '法案查詢', '委員比較', '最近動態', '機關首長新聞']);
 check('首頁初始不顯示任何委員', !homeHtml.includes('查看檔案'));
-// 上層導覽順序（機關首長視角）：總覽 → 我的機關 → 議事 → 委員 → 議員 → 社群 → 縣市地圖 → 新聞 → 機關／基金；
+// 上層導覽順序（機關首長視角）：總覽 → 我的機關 → 預算審議 → 議事 → 委員 → 議員 → 社群 → 縣市地圖 → 新聞 → 機關／基金；
+// 2026-10-19：使用者要求「預算審議拉到最上面，排在議事的左邊」，所以它自己成一個上層頁籤
 // 最近動態收進「委員」，首長新聞收進「新聞」，議員（2026-10-04 起）與縣市縣市地圖分析（2026-10-05 起）各自成一個頁籤，
 // 「社群」（2026-10-06 起，標籤原為「臉書」）收委員粉專牆與議員近期動態
 check(
-  '上層導覽的順序是 總覽→我的機關→議事→委員→議員→社群→縣市地圖→新聞→機關／基金',
+  '上層導覽的順序是 總覽→我的機關→預算審議→議事→委員→議員→社群→縣市地圖→新聞→機關／基金',
   (() => {
     const nav = dashboardHtml.match(/<nav aria-label="主要頁面">([\s\S]*?)<\/nav>/)?.[1] ?? '';
     // 2026-10-11：頁籤加了圖示（手機顯示）與 label 的 span，標籤要從 .nav-label 取
     const labels = [...nav.matchAll(/<span class="nav-label">([^<]+)<\/span>/g)].map((m) => m[1].trim()).filter(Boolean);
-    return labels.join('→') === '總覽→我的機關→議事→委員→議員→社群→縣市地圖→新聞→機關／基金';
+    return labels.join('→') === '總覽→我的機關→預算審議→議事→委員→議員→社群→縣市地圖→新聞→機關／基金';
   })(),
 );
 check(
@@ -236,7 +237,7 @@ check(
   (() => {
     const nav = dashboardHtml.match(/<nav aria-label="主要頁面">([\s\S]*?)<\/nav>/)?.[1] ?? '';
     const tabs = [...nav.matchAll(/<a [^>]*>([\s\S]*?)<\/a>/g)].map((m) => m[1]);
-    return tabs.length === 9 && tabs.every((tab) => tab.includes('class="nav-icon"') && /<svg/.test(tab));
+    return tabs.length === 10 && tabs.every((tab) => tab.includes('class="nav-icon"') && /<svg/.test(tab));
   })(),
 );
 check('不含示範／假資料字串', !/甲黨|示範資料|林怡安|陳宏宇|乙黨/.test(homeHtml));
@@ -523,7 +524,7 @@ check(
 
 // 子頁也依首長與幕僚的使用頻率排，主題的預設頁就是第一個子頁
 check(
-  '子頁順序：議事 預算→委員會→法案→院會表決→附帶決議、新聞 首長→機關→委員→全部、機關／基金 機關在前，社群自成一個頁籤（委員粉專牆→議員近期動態），議員與縣市地圖各自成頁籤',
+  '子頁順序：預算審議自成單頁頁籤、議事 委員會→法案→院會表決→附帶決議、新聞 首長→機關→委員→全部、機關／基金 機關在前，社群自成一個頁籤（委員粉專牆→議員近期動態），議員與縣市地圖各自成頁籤',
   (() => {
     const subOf = (route: Route) => {
       const sub = render(createElement(Header, { ...headerProps, route })).match(/<nav class="subnav"[^>]*>([\s\S]*?)<\/nav>/)?.[1] ?? '';
@@ -531,8 +532,10 @@ check(
     };
     const top = render(createElement(Header, { ...headerProps, route: 'dashboard' as const })).match(/<nav aria-label="主要頁面">([\s\S]*?)<\/nav>/)?.[1] ?? '';
     return (
-      // 2026-10-19 起議事多了「院會表決」「附帶決議」兩頁（ID370／ID373）
-      subOf('budget') === '預算審議→委員會→法案查詢→院會表決→附帶決議' &&
+      // 2026-10-19：預算審議拉成上層單頁頁籤（排在議事左邊），不再跟議事共用次級導覽
+      subOf('budget') === '' &&
+      // 議事剩下委員會→法案查詢→院會表決→附帶決議（ID370／ID373）
+      subOf('committees') === '委員會→法案查詢→院會表決→附帶決議' &&
       // 新聞主題最前面多一個跨主題捷徑「我的機關」（用分隔線隔開，見 D227）：四個新聞子頁都一樣
       subOf('officials') === '我的機關→機關首長新聞→機關新聞→委員新聞→全部新聞' &&
       subOf('agencynews') === '我的機關→機關首長新聞→機關新聞→委員新聞→全部新聞' &&

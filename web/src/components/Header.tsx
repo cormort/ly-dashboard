@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import {
   Building2,
+  Coins,
   Gavel,
   Landmark,
   LayoutDashboard,
@@ -85,7 +86,9 @@ export function scopeCadenceText(scope: SyncScope): string {
 
 /**
  * 導覽兩層，順序依「機關首長要面對立法院」的關心程度：
- * 總覽 → 我的機關（選定機關後以它為中心）→ 議事（預算、委員會、法案＝對機關的直接影響）→ 委員（誰在問、誰在動）→ 議員 → 社群（委員與議員的社群貼文）→ 縣市地圖 → 新聞（首長與委員的輿情）→ 機關／基金（查詢工具）。
+ * 總覽 → 我的機關（選定機關後以它為中心）→ 預算審議（單獨拉到最上層，2026-10-19 使用者要求排在議事左邊）
+ * → 議事（委員會、法案＝對機關的直接影響）→ 委員（誰在問、誰在動）→ 議員 → 社群（委員與議員的社群貼文）
+ * → 縣市地圖 → 新聞（首長與委員的輿情）→ 機關／基金（查詢工具）。
  * 每個主題的子頁也依首長與幕僚的使用頻率排，第一個就是點主題時的預設頁（例如「新聞」先開機關首長新聞）。
  * 最近動態是看委員活躍度用的，收進「委員」底下，不佔頂層；六都議員與縣市地圖分析各自成一個頂層頁籤。
  * 「社群」是 2026-10-06 從「委員」（粉專牆）與「議員」（近期動態）搬上來的：貼文是社群資料，
@@ -115,12 +118,18 @@ const NAV: NavGroup[] = [
   { id: 'overview', label: '總覽', icon: LayoutDashboard, home: 'dashboard', routes: [{ route: 'dashboard', label: '總覽' }] },
   { id: 'my', label: '我的機關', icon: Building2, home: 'my', routes: [{ route: 'my', label: '我的機關' }] },
   {
+    id: 'budget',
+    label: '預算審議',
+    icon: Coins,
+    home: 'budget',
+    routes: [{ route: 'budget', label: '預算審議' }],
+  },
+  {
     id: 'agenda',
     label: '議事',
     icon: Gavel,
-    home: 'budget',
+    home: 'committees',
     routes: [
-      { route: 'budget', label: '預算審議' },
       { route: 'committees', label: '委員會' },
       { route: 'bills', label: '法案查詢' },
       { route: 'votes', label: '院會表決' },
