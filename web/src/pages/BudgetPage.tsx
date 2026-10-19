@@ -88,8 +88,8 @@ export const progressDateText = (value: string | null | undefined): string => fo
  */
 export const AGENCY_REPORT_CATEGORY = '預(決) 算決議案、定期報告';
 /** 把上色片段渲染成 React 節點（清單與審查歷程共用） */
-export function withBudgetHit(text: string) {
-  return budgetHitParts(text).map((part, i) => (part.hit ? <mark key={i} className="budget-hit">{part.text}</mark> : <Fragment key={i}>{part.text}</Fragment>));
+export function withBudgetHit(text: string, { quotedOnly = false }: { quotedOnly?: boolean } = {}) {
+  return budgetHitParts(text, { quotedOnly }).map((part, i) => (part.hit ? <mark key={i} className="budget-hit">{part.text}</mark> : <Fragment key={i}>{part.text}</Fragment>));
 }
 
 /**
@@ -99,7 +99,7 @@ export function withBudgetHit(text: string) {
  * （使用者 2026-10-19：「115年度中央政府總預算案 要加顏色，以利辨識」）。
  * 只標「NNN 年度中央政府總預算案」；「…總預算案追加預算案」「…特別預算案」是另一本預算，不標。
  */
-export function budgetHitParts(text: string): { text: string; hit: boolean }[] {
+export function budgetHitParts(text: string, { quotedOnly = false }: { quotedOnly?: boolean } = {}): { text: string; hit: boolean }[] {
   const src = String(text ?? '');
   /**
    * 要上色的「預算名稱」。不只「NNN年度中央政府總預算案」：
@@ -108,11 +108,27 @@ export function budgetHitParts(text: string): { text: string; hit: boolean }[] {
    */
   const base =
     /(?:中華民國)?\d{2,3}\s*年度中央政府總預算案?(?:第[0-9一二三四五六七八九十]+次)?(?:追加|特別)預算案|(?:中華民國)?(?:\d{2,3}\s*年度)?中央政府總預算案(?![追特])|中央政府[^，。；\n]{0,24}?(?:特別|追加)預算案/g;
+  /**
+   * 案名一定包在「」裡（使用者 2026-10-19：「整個案子都會被包在「」裡面」）——
+   * 清單標題（`quotedOnly`）只標引號內的案名，引號外的「報告審查…」「函送…請併…」不會被誤標。
+   * 審查歷程那種整段議程沒有引號，就不套這個限制（不然「審查115年度中央政府總預算案有關…」會整段標不到）。
+   */
+  const spans = quotedOnly ? [...src.matchAll(/「([^「」]*)」/g)].map((q) => ({ start: (q.index ?? 0) + 1, end: (q.index ?? 0) + q[0].length - 1 })) : [];
+  const inside = (i: number) => spans.length === 0 || spans.some((s) => i >= s.start && i < s.end);
+  const clamp = (i: number) => {
+    const s = spans.find((x) => i > x.start && i <= x.end);
+    return s ? Math.min(i, s.end) : i;
+  };
   const out: { text: string; hit: boolean }[] = [];
   let last = 0;
   for (const m of src.matchAll(base)) {
     const at = m.index ?? 0;
     if (at > last) out.push({ text: src.slice(last, at), hit: false });
+    if (!inside(at)) {
+      out.push({ text: m[0], hit: false });
+      last = at + m[0].length;
+      continue;
+    }
     let end = at + m[0].length;
     /**
      * 關鍵詞後面常常直接接限定語：「…總預算案**附屬單位預算**（**非營業部分**）」、
@@ -132,6 +148,7 @@ export function budgetHitParts(text: string): { text: string; hit: boolean }[] {
     if (tailMatch && tailMatch[0].includes('基金') && /[：:]|關於/.test(tailMatch[0])) {
       end += tailMatch[0].replace(/[\s、]+$/, '').length;
     }
+    end = clamp(end);
     out.push({ text: src.slice(at, end), hit: true });
     last = end;
   }
@@ -251,7 +268,7 @@ function BudgetItemRow({
       <a href={item.url} target="_blank" rel="noreferrer noopener" className="bill-title" title={item.name}>
         {/* 每一列的預算名稱都上色——不分年度（114、116 一樣），也不分它寫在句首或句中
             （使用者 2026-10-19 更正：只標句中的會讓人以為「只有 115 年度有上色」） */}
-        {withBudgetHit(item.name)}
+        {withBudgetHit(item.name, { quotedOnly: true })}
         <ExternalLink aria-hidden="true" />
       </a>
       <p className="bill-meta">

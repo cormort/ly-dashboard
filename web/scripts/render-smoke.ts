@@ -1252,6 +1252,12 @@ check(
       budgetHitParts('報告審查行政院函請審議「115年度中央政府總預算第2次追加預算案」案。').filter((p) => p.hit)[0]?.text === '115年度中央政府總預算第2次追加預算案',
     );
     check('上色：沒有年度的第2次追加預算案也上色', budgetHitParts('「中央政府總預算第2次追加預算案」案。').filter((p) => p.hit).length === 1);
+    // 案名都在「」裡：引號外的文字（報告審查…、函送…請併…）不上色，只標引號內的案名
+    check(
+      '上色：只標「」裡的案名',
+      JSON.stringify(budgetHitParts('函送115年度中央政府總預算案審查報告，請併「中央政府花蓮馬太鞍溪堰塞湖災後重建特別預算案」討論案。', { quotedOnly: true }).filter((p) => p.hit).map((p) => p.text)) ===
+        JSON.stringify(['中央政府花蓮馬太鞍溪堰塞湖災後重建特別預算案']),
+    );
   }
 }
 check('統計範圍：使用者自己指定就不覆寫', scopeAfterCategoryChange({ currentScope: 'bills', isBillCategory: true, explicitScope: 'all' }) === 'all');

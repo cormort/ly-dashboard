@@ -497,6 +497,17 @@ const BUDGET_FOLLOW_UP = /決議[，,][^。]{0,40}檢送|動支數額表|勘誤|
  * 這份文件講的是哪一本預算（可多個：總預算案本身常含附屬單位預算）。
  * 只回答「哪一本」，不管它是不是議案本身——審查報告、審查總報告講的也是同一本。
  */
+/**
+ * 案名一定被「」包著（使用者 2026-10-19：「整個案子都會被包在「」裡面」）。
+ * 回傳每個引號內的文字；沒有引號就把整串當案名。
+ * 判斷「這是哪一本預算」時只看案名，不要被外面的「報告審查…」「函送…請併…」影響。
+ */
+export function budgetCoreNames(name) {
+  const text = String(name ?? '');
+  const out = [...text.matchAll(/「([^「」]{2,})」/g)].map((m) => m[1]);
+  return out.length ? out : [text];
+}
+
 export function budgetTypeTags(name) {
   const text = String(name ?? '');
   /**
@@ -506,12 +517,13 @@ export function budgetTypeTags(name) {
    * 年度由 `budgetYearOf()` 另外抽，抽不到就落在「未知年度」，不影響這裡的分類。
    */
   if (BUDGET_FOLLOW_UP.test(text)) return [];
+  const core = budgetCoreNames(text).join('｜');
   const types = [];
-  if (/總(預算案|決算)(?!附屬單位|追加)/.test(text)) types.push('general');
-  if (/附屬單位(預算|決算)/.test(text)) types.push('subsidiary');
-  if (/特別(預算案|決算)/.test(text)) types.push('special');
+  if (/總(預算案|決算)(?!附屬單位|追加)/.test(core)) types.push('general');
+  if (/附屬單位(預算|決算)/.test(core)) types.push('subsidiary');
+  if (/特別(預算案|決算)/.test(core)) types.push('special');
   // 追加預算會分次（「115年度中央政府總預算第2次追加預算案」），次別寫在案名中間，不影響類型判斷
-  if (/追加(預算案|決算)/.test(text)) types.push('supplementary');
+  if (/追加(預算案|決算)/.test(core)) types.push('supplementary');
   return types;
 }
 
