@@ -2632,12 +2632,14 @@ export function listBudgetTimeline(db, { year = '' } = {}) {
     });
   }
   items.sort((a, b) => String(a.date).localeCompare(String(b.date)) || a.committee.localeCompare(b.committee, 'zh-Hant'));
+  // 年度 chips 的數字要跟下面「共 N 場」一致：加進院會與表決之後，那個年度的場次會比 ID223 多
+  const yearsOut = years.map((y) => (y.year === wanted ? { ...y, count: items.length } : y));
 
   const people = new Map(db.prepare('SELECT id, name, party, leave_flag FROM legislators').all().map((l) => [l.id, l]));
   return {
     meta: { ...envelope(db), meetings_fetched_at: getMeta(db, 'meetings_fetched_at') },
     year: wanted,
-    years,
+    years: yearsOut,
     stages: BUDGET_REVIEW_STAGES.map((s) => ({ ...s, count: stageCount.get(s.id) ?? 0 })),
     summary: {
       total: items.length,
