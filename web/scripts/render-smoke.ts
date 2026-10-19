@@ -379,15 +379,17 @@ check('粉專牆 chips：一個選項都沒有時整列不畫（不要留一個�
 // server render 不執行 useEffect，所以這裡看到的是「還沒捲進畫面」的狀態：
 // 不得有 iframe，但要先把嵌入框的位置佔好（載入時瀑布流才不會跳）
 expectNone('粉專牆卡片：還沒捲進畫面時不載入 Facebook 嵌入框（iframe 不出現，佔位不算）', wallCardClosed, ['<iframe', 'plugins/page.php']);
-expectAll('粉專牆卡片：嵌入框先佔好位置，捲到才載入', wallCardClosed, ['fb-embed-slot', '捲到這裡就會載入 Facebook 貼文']);
+expectAll('粉專牆卡片：嵌入框先佔好位置，預設按「看貼文」才載入', wallCardClosed, ['fb-embed-slot', '按「看貼文」載入 Facebook 貼文']);
 // 自動載入的規則抽成純函式，直接驗真值表（不受 server render 不跑 effect 的限制）
 check(
-  '嵌入框載入規則：捲進畫面→載入；按過「收起」→不載入；手動按「看貼文」→載入',
-  shouldMountEmbed({ collapsed: false, inView: true, forced: false }) === true &&
-    shouldMountEmbed({ collapsed: false, inView: false, forced: false }) === false &&
-    shouldMountEmbed({ collapsed: false, inView: false, forced: true }) === true &&
-    shouldMountEmbed({ collapsed: true, inView: true, forced: false }) === false &&
-    shouldMountEmbed({ collapsed: true, inView: true, forced: true }) === false,
+  '嵌入框載入規則：預設要按「看貼文」；開「自動載入」且捲進畫面才自動掛；收起後一律不掛',
+  shouldMountEmbed({ collapsed: false, inView: true, forced: false, auto: false }) === false &&
+    shouldMountEmbed({ collapsed: false, inView: true, forced: false, auto: true }) === true &&
+    shouldMountEmbed({ collapsed: false, inView: false, forced: false, auto: true }) === false &&
+    shouldMountEmbed({ collapsed: false, inView: false, forced: true, auto: false }) === true &&
+    shouldMountEmbed({ collapsed: true, inView: true, forced: false, auto: true }) === false &&
+    shouldMountEmbed({ collapsed: true, inView: true, forced: true, auto: true }) === false &&
+    shouldMountEmbed({ collapsed: false, inView: false, forced: false }) === false,
 );
 check('嵌入框按鈕文字：掛上去＝可以收起、還沒掛＝看貼文', embedButtonLabel(true) === '收起貼文' && embedButtonLabel(false) === '看貼文');
 // 嵌入框掛上去之後的內容（iframe 只在 mounted 時出現，所以直接驗元件）

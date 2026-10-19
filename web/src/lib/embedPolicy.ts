@@ -4,12 +4,24 @@
  *
  * 規則：
  *   - 使用者按過「收起貼文」→ 不載入（他自己收起來的，就不要再自動打開）。
- *   - 否則元素捲進畫面（`inView`）就載入。
- *   - 或使用者手動按「看貼文」（`forced`）：還沒捲到的卡片也讓他直接看。
+ *   - 使用者手動按「看貼文」（`forced`）→ 一定載入。
+ *   - 否則只有 `auto`（粉專牆的「自動載入貼文」開關，預設關）且捲進畫面才載入。
+ *     粉專牆預設不自動載入：一次幾十個 facebook.com iframe 會讓頁面很慢。
  */
-export function shouldMountEmbed({ collapsed, inView, forced }: { collapsed: boolean; inView: boolean; forced: boolean }): boolean {
+export function shouldMountEmbed({
+  collapsed,
+  inView,
+  forced,
+  auto = true,
+}: {
+  collapsed: boolean;
+  inView: boolean;
+  forced: boolean;
+  auto?: boolean;
+}): boolean {
   if (collapsed) return false;
-  return inView || forced;
+  if (forced) return true;
+  return auto && inView;
 }
 
 /** 按鈕文字：載入了就可以收起；還沒載入（捲到會自動載入）就是「看貼文」 */

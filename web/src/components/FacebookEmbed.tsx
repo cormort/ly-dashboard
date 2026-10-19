@@ -8,6 +8,17 @@
 export const facebookPluginUrl = (page: string) =>
   `https://www.facebook.com/plugins/page.php?${new URLSearchParams({ href: page, tabs: 'timeline', width: '340', height: '520', small_header: 'true', hide_cover: 'true', adapt_container_width: 'true' })}`;
 
-export function FacebookEmbed({ url, name }: { url: string; name: string }) {
-  return <iframe className="fb-embed" title={`${name} 的 Facebook 貼文`} src={facebookPluginUrl(url)} width={340} height={520} loading="lazy" allow="encrypted-media" />;
+export function FacebookEmbed({ url, name, onLoad }: { url: string; name: string; onLoad?: () => void }) {
+  return (
+    <iframe
+      className="fb-embed"
+      title={`${name} 的 Facebook 貼文`}
+      src={facebookPluginUrl(url)}
+      width={340}
+      height={520}
+      loading="lazy"
+      allow="encrypted-media"
+      onLoad={onLoad}
+    />
+  );
 }
