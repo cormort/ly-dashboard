@@ -18,7 +18,7 @@ import { useApi, type ApiResource } from '../hooks/useApi';
 import { pathFor, type Route } from '../hooks/useRoute';
 import { PASSED_STATUSES } from '../lib/billStage';
 import { billTitle, formatDay, shortCommittee } from '../lib/format';
-import { partyStyle, sortParties } from '../lib/parties';
+import { partyStyle } from '../lib/parties';
 import { readPreference } from '../lib/storage';
 import { DEFAULT_AGENCY, MY_AGENCY_KEY } from './MyAgencyPage';
 import { AGENCY_REPORT_CATEGORY } from './BudgetPage';
@@ -302,32 +302,6 @@ export function DashboardPage({ refreshToken, onOpenId, onNavigate }: DashboardP
             </ul>
           )}
         </Card>
-        <Card title="新聞來源" href={link('news')} onNavigate={onNavigate} resource={news} wide>
-          {(data) => {
-            const max = Math.max(1, ...data.sources.map((s) => s.count));
-            return (
-              <>
-                <p className="muted">近 180 天 {data.source_total} 家媒體；長條為報導則數，顏色為提到的委員黨籍比例</p>
-                <ul className="source-bars">
-                  {data.sources.map((s) => {
-                    const total = Object.values(s.parties).reduce((a, b) => a + b, 0) || 1;
-                    return (
-                      <li key={s.name}>
-                        <span className="source-name">{s.name}</span>
-                        <span className="source-bar" style={{ width: `${(s.count / max) * 100}%` }} title={sortParties(Object.keys(s.parties)).map((p) => `${partyStyle(p).short} ${s.parties[p]}`).join('、')}>
-                          {sortParties(Object.keys(s.parties)).map((p) => (
-                            <span key={p} style={{ flexGrow: s.parties[p] / total, background: partyStyle(p).color }} />
-                          ))}
-                        </span>
-                        <span className="source-count">{s.count}</span>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </>
-            );
-          }}
-        </Card>
         </div>
       </section>
 
@@ -337,7 +311,7 @@ export function DashboardPage({ refreshToken, onOpenId, onNavigate }: DashboardP
           <p className="muted">誰在關注、誰最活躍</p>
         </div>
         <div className="dash-grid">
-        <Card title="最近動態" href={link('home')} onNavigate={onNavigate} resource={activity} wide>
+        <Card title="最近動態" href={link('home')} onNavigate={onNavigate} resource={activity}>
           {(data) => (
             <ul className="dash-list">
               {data.items.map((a) => {
@@ -364,7 +338,7 @@ export function DashboardPage({ refreshToken, onOpenId, onNavigate }: DashboardP
             </ul>
           )}
         </Card>
-        <Card title="排行榜（近 30 天）" href={link('rankings')} onNavigate={onNavigate} resource={rankings} wide>
+        <Card title="排行榜（近 30 天）" href={link('rankings')} onNavigate={onNavigate} resource={rankings}>
           {(data) => (
             <div className="dash-boards">
               {/* 總覽只放近期活動三榜；選舉兩榜（險勝、流失）在排行榜頁 */}
