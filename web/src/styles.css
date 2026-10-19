@@ -1734,7 +1734,7 @@ main:has(.fb-wall) { max-width: min(1840px, 96vw); }
   gap: 2px 8px;
   align-items: center;
   /* 七關要在 1440px 的年度面板裡排得下（含兩端說明）：150px 會讓最後一關被切掉 */
-  min-width: 124px;
+  min-width: 112px;
   padding: 8px 10px;
   text-align: left;
   cursor: pointer;

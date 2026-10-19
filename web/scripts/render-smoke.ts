@@ -1279,7 +1279,7 @@ check(
   '預算審查流程：照立法院實際順序排（委員會→聯席→公聽→協商→院會→決議處理）',
   (() => {
     const labels = [...railHtml.matchAll(/class="process-label">([^<]+)</g)].map((m) => m[1]);
-    return labels.join('→') === '委員會分組審查→聯席審查→公聽會→彙總審查總報告→黨團協商→院會二讀／三讀→決議處理';
+    return labels.join('→') === '委員會分組審查→聯席審查→公聽會→彙總審查總報告→黨團協商→院會（二讀／三讀、決議案）→決議處理';
   })(),
   [...railHtml.matchAll(/class="process-label">([^<]+)</g)].map((m) => m[1]).join('→'),
 );
