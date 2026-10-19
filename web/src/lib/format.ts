@@ -35,6 +35,18 @@ export function formatDay(value: string | null | undefined, fallback = '—', no
   return date.getFullYear() === now.getFullYear() ? monthDay : `${date.getFullYear()}/${monthDay}`;
 }
 
+/**
+ * 貼文的「日期＋時間」：來源有帶時間就 `10/19 14:05`，只有日期就 `10/19`（跨年補年份，規則同 formatDay）。
+ * 整理表的「最新貼文日期」目前只存 `YYYY-MM-DD`，所以多數卡片只會顯示到日期。
+ */
+export function formatPostStamp(value: string | null | undefined, fallback = '—', now: Date = new Date()): string {
+  const date = parseDate(value);
+  if (!date) return fallback;
+  const day = formatDay(value, fallback, now);
+  const hasTime = /[T ]\d{1,2}:\d{2}/.test(String(value ?? ''));
+  return hasTime ? `${day} ${pad(date.getHours())}:${pad(date.getMinutes())}` : day;
+}
+
 /** 日期＋時間（同步時間、異動紀錄）：年份規則同 formatDay */
 export function formatDateTime(value: string | null | undefined, fallback = '尚無紀錄', now: Date = new Date()): string {
   const date = parseDate(value);

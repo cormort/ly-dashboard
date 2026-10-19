@@ -55,7 +55,6 @@ import { CountiesPage, buildMetrics, perArea } from '../src/pages/CountiesPage';
 import { CouncilPage, marginText, upgradedNotes } from '../src/pages/CouncilPage';
 import { NewsPage } from '../src/pages/NewsPage';
 import { WallCard, ChipRow } from '../src/pages/SocialWallPage';
-import { FacebookEmbed } from '../src/components/FacebookEmbed';
 import { ChoroplethMap } from '../src/components/ChoroplethMap';
 import { bbox, countyViewBoxFor } from '../src/components/TownMap';
 import { resolveCounty } from '../src/pages/CountiesPage';
@@ -378,15 +377,13 @@ check('粉專牆 chips：一個選項都沒有時整列不畫（不要留一個�
 // server render 不執行 useEffect，所以這裡看到的是「還沒捲進畫面」的狀態：
 // 不得有 iframe，但要先把嵌入框的位置佔好（載入時瀑布流才不會跳）
 expectNone('粉專牆卡片：還沒捲進畫面時不載入 Facebook 嵌入框（iframe 不出現，佔位不算）', wallCardClosed, ['<iframe', 'plugins/page.php']);
-expectAll('粉專牆卡片：只顯示最新貼文文字，沒有 Facebook 嵌入框', wallCardClosed, ['wall-card', '最新貼文']);
-check('粉專牆卡片：不產生 iframe（載入速度）', !render(wallCardClosed).includes('<iframe'),);
-// 嵌入框掛上去之後的內容（iframe 只在 mounted 時出現，所以直接驗元件）
-expectAll('嵌入框：連到 Facebook 官方的粉專 plugin URL、lazy 載入', render(createElement(FacebookEmbed, { url: wallItem.url, name: wallItem.name })), [
-  'fb-embed',
-  'plugins/page.php',
-  'taipeineedyou',
-  'loading="lazy"',
+expectAll('粉專牆卡片：只顯示最新貼文文字（有更新時間與日期），沒有 Facebook 嵌入框', wallCardClosed, [
+  'wall-card',
+  '最新更新時間為',
+  'wall-post-text',
+  formatDay('2026-09-27'),
 ]);
+check('粉專牆卡片：不產生 iframe（載入速度）', !render(wallCardClosed).includes('<iframe'),);
 expectAll('粉專牆卡片：沒有貼文日期時明講，不會填上今天的日期', render(createElement(WallCard, { item: { ...wallItem, latest_post_date: null, latest_post_summary: '' } })), [
   '整理表還沒有這一位的貼文日期',
 ]);
@@ -1056,9 +1053,12 @@ const detailHtml = render(
   const fresh = withFreshness(false);
   const old = withFreshness(true);
   check('詳情側欄：最新貼文旁標整理表資料截至哪天', fresh.includes(`整理表資料截至 ${formatDay('2026-09-27')}`) && !fresh.includes('沒更新'));
-  check('詳情側欄：整理表過期時提醒、引導看嵌入貼文', old.includes('整理表已 12 天沒更新') && old.includes('看貼文'));
+  check('詳情側欄：整理表過期時提醒、引導到臉書看最新貼文', old.includes('整理表已 12 天沒更新') && old.includes('點上面的連結到臉書看最新貼文'));
 }
-check('詳情側欄：臉書帳號旁有「看貼文」（官方嵌入框點了才載入，預設不載入）', detailHtml.includes('看貼文') && !detailHtml.includes('facebook.com/plugins/page.php'));
+check(
+  '詳情側欄：不再有 Facebook 嵌入框（要看就去粉專連結）',
+  !detailHtml.includes('看貼文') && !detailHtml.includes('facebook.com/plugins/page.php'),
+);
 expectAll('詳情側欄有 dialog 語意、學經歷、會期與來源連結', detailHtml, [
   'role="dialog"',
   'aria-modal="true"',

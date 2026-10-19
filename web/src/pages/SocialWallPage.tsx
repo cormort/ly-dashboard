@@ -7,7 +7,7 @@ import { PartyTag } from '../components/PartyTag';
 import { Portrait } from '../components/Portrait';
 import { useApi } from '../hooks/useApi';
 import { useParam } from '../hooks/useParam';
-import { formatDay, formatRelative, text } from '../lib/format';
+import { formatDay, formatPostStamp, text } from '../lib/format';
 import { partyStyle } from '../lib/parties';
 
 export interface SocialWallPageProps {
@@ -79,9 +79,13 @@ export function WallCard({ item, onOpenId }: { item: SocialWallItem; onOpenId?: 
       {item.latest_post_date ? (
         <>
           <p className="council-fb-latest">
-            最新貼文 <time dateTime={item.latest_post_date}>{formatRelative(item.latest_post_date)}</time>
-            {item.latest_post_summary ? `：${item.latest_post_summary}` : ''}
+            最新更新時間為 <time dateTime={item.latest_post_date}>{formatPostStamp(item.latest_post_date)}</time>
           </p>
+          {item.latest_post_summary ? (
+            <p className="council-fb-latest wall-post-text">
+              <time dateTime={item.latest_post_date}>{formatPostStamp(item.latest_post_date)}</time>：{item.latest_post_summary}
+            </p>
+          ) : null}
           {item.latest_post_likes !== null || item.latest_post_comments !== null ? (
             <p className="wall-engagement">
               {item.latest_post_likes !== null ? (
