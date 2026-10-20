@@ -682,10 +682,21 @@ export function normalizeCommitteeMeets(pages) {
           .map((d) => String(d?.['會議事由'] ?? '').trim())
           .filter(Boolean),
       )].join('\n');
+      // 會議時間／地點：未來場次（會議預告）與院會都用得到。
+      // 一場可能有多筆會議資料（多日議程），**優先取跟這場會議同一天**的那筆，
+      // 否則院會那種「10/16 與 10/20 都開」的會，時間會顯示成別天的。
+      const date = [].concat(m['日期'] ?? []).filter(Boolean).sort().at(-1) ?? null;
+      const dataList = [].concat(m['會議資料'] ?? []).filter(Boolean);
+      const withTime = dataList.filter((d) => d['會議時間區間'] || d['會議地點']);
+      const sameDay = withTime.find((d) => String(d['日期'] ?? '').slice(0, 10) === date);
+      const firstData = sameDay ?? withTime[0] ?? {};
       meets.push({
         code,
-        date: [].concat(m['日期'] ?? []).filter(Boolean).sort().at(-1) ?? null,
+        date,
         title,
+        time_range: String(firstData['會議時間區間'] ?? '').trim() || null,
+        location: String(firstData['會議地點'] ?? '').trim() || null,
+        meeting_no: String(firstData['會議編號'] ?? '').trim() || null,
         committees: [].concat(m['委員會代號:str'] ?? []).filter(Boolean).length ? [].concat(m['委員會代號:str']).filter(Boolean) : committeesOf(title),
         video_url: days.flatMap((d) => [].concat(d?.['連結'] ?? [])).find((l) => l?.['類型'] === 'video')?.['連結'] ?? null,
         attachments: [...attachments.values()],

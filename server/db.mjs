@@ -262,7 +262,11 @@ CREATE TABLE IF NOT EXISTS committee_meets (
   video_url TEXT,
   attachments TEXT NOT NULL DEFAULT '[]',
   -- 會議事由（院會／委員會都可能有）：用來判斷「這場會議在審什麼」（例如總預算）
-  agenda TEXT
+  agenda TEXT,
+  -- 會議時間區間（例「115/10/22 09:00-17:30」）、地點與會議編號：會議預告要看得到時間與會議室
+  time_range TEXT,
+  location TEXT,
+  meeting_no TEXT
 );
 -- 會議預告（立法院議事轉播「會議預報」頁，見 server/forecast.mjs）：只放「已經排定但還沒開」的場次。
 -- 每次同步整批覆寫（頁面本來就只有下週那幾場），不保留歷史；歷史要看 committee_meets。
@@ -379,6 +383,9 @@ export function migrate(db) {
   // 舊資料庫沒有這個欄位，跑一次 records 同步就會補上。
   const meetCols = new Set(db.prepare('PRAGMA table_info(committee_meets)').all().map((c) => c.name));
   if (!meetCols.has('agenda')) db.exec('ALTER TABLE committee_meets ADD COLUMN agenda TEXT');
+  if (!meetCols.has('time_range')) db.exec('ALTER TABLE committee_meets ADD COLUMN time_range TEXT');
+  if (!meetCols.has('location')) db.exec('ALTER TABLE committee_meets ADD COLUMN location TEXT');
+  if (!meetCols.has('meeting_no')) db.exec('ALTER TABLE committee_meets ADD COLUMN meeting_no TEXT');
 
   const socialCols = new Set(db.prepare('PRAGMA table_info(social_accounts)').all().map((c) => c.name));
   if (!socialCols.has('source')) {
@@ -804,7 +811,7 @@ export function applyCommitteeRecords(db, records, { fetchedAt }) {
 
 export function applyCommitteeMeets(db, meets, { fetchedAt }) {
   const rows = meets.map((m) => ({ ...m, committees: JSON.stringify(m.committees), attachments: JSON.stringify(m.attachments) }));
-  replaceAll(db, 'committee_meets', ['code', 'date', 'title', 'committees', 'video_url', 'attachments', 'agenda'], rows, 'meets_fetched_at', fetchedAt);
+  replaceAll(db, 'committee_meets', ['code', 'date', 'title', 'committees', 'video_url', 'attachments', 'agenda', 'time_range', 'location', 'meeting_no'], rows, 'meets_fetched_at', fetchedAt);
   return rows.length;
 }
 

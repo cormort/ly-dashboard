@@ -1859,3 +1859,19 @@ cd ~/ly-dashboard && git push origin --delete feat/votes-resolutions
 驗證：`test/forecast.test.mjs` 5 條（真實頁面片段的解析、兩份清單只取一份、HTML 實體、未來場次查詢）；
 實跑 `runForecastIngest` → **19 場**（10/21 12 場、10/22 7 場，與頁面一致）；
 `/api/v1/meetings/upcoming` 回傳同數字；瀏覽器實開「議事 › 委員會」最上方看得到日期分組、時間、會議室、相關資料連結。
+
+補充（D305 的後續三件事，使用者「全部做」）：
+
+1. **總覽摘要**：總覽「議事」標題下一行「會議預告：未來 10 天 N 場（10/21 12・10/22 7）」，連到
+   「議事 › 委員會」。用 `/meetings/upcoming?days=10&limit=1` 只取總數與日期，不多抓資料。
+2. **g0v 未來場次併進預告**：`committee_meets` 新增 `time_range`／`location`／`meeting_no`
+   （`ALTER TABLE` 補欄位，同步後 1,402/1,420 場有時間）。預告 API 會把 g0v 有、IVOD 沒有的場次
+   一起回（實測多 2 場：10/20 院會、10/20 程序委員會），`source: 'g0v'` 區分來源。
+   - 時間取值有一個坑：一場會議可能有多筆「會議資料」（多日議程），院會 10/16 與 10/20 都開，
+     取第一筆會顯示成 10/16 的時間 → 改成**優先取跟這場會議同一天**的那筆。
+3. **新增場次推播**：每次 `forecast` 階段同步前後比對（`diffForecasts`，含改時間），有新場次就推
+   「📅 新增會議預告 N 場」，最多列 8 場。**第一次跑（表是空的）不推**，否則整份預告會被當成新增。
+   憑證沿用 `~/.ly-dashboard/notify.env`。
+
+驗證：`test/forecast.test.mjs` 加到 7 條（比對、推播文字截斷）；`node` 446 pass、`web` 259 pass；
+預告 API 回 21 場（ivod 19＋g0v 2）；總覽那一行實測顯示「未來 10 天 21 場（10/20 2・10/21 12・10/22 7）」。

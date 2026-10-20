@@ -105,6 +105,62 @@ export function parseForecastHtml(html = '') {
  * 未來的會議（含今天），依日期與時間排。
  * `days` 只影響回傳範圍，不影響資料庫內容（同步時整批覆寫，只留頁面上有的場次）。
  */
+/**
+ * 把 g0v meets 的未來場次併進來：IVOD 的預報以「委員會」為主，院會與部分公聽會不在上面，
+ * 但 `committee_meets` 有（`time_range`／`location` 從 2026-10-20 起才有值）。
+ * 同一場（同一天、同一個會議名稱開頭）只留 IVOD 那筆，因為它多了會議相關資料連結。
+ */
+export function mergePlenaryForecasts(db, items, { today = '', days = 10 } = {}) {
+  const start = today || new Date().toLocaleDateString('sv-SE');
+  const until = new Date(new Date(`${start}T00:00:00Z`).getTime() + Math.max(1, Number(days) || 10) * 86_400_000).toISOString().slice(0, 10);
+  const existing = new Set(items.map((i) => `${i.date}|${String(i.title).slice(0, 12)}`));
+  const rows = db
+    .prepare('SELECT code, date, title, time_range, location, video_url FROM committee_meets WHERE date >= ? AND date <= ? ORDER BY date')
+    .all(start, until);
+  const extra = [];
+  for (const row of rows) {
+    const key = `${row.date}|${String(row.title).slice(0, 12)}`;
+    if (existing.has(key)) continue;
+    existing.add(key);
+    // 「115/10/22 09:00-17:30」→ 時間 09:00；只有日期就留空
+    const time = /(\d{1,2}:\d{2})/.exec(String(row.time_range ?? ''))?.[1] ?? '';
+    extra.push({
+      date: row.date,
+      time,
+      committee: /^院會-/.test(String(row.code ?? '')) || String(row.title).includes('院會') ? '院會' : '',
+      place: row.location ?? '',
+      status: '',
+      title: row.title,
+      agenda: '',
+      materials_url: '',
+      video_url: row.video_url ?? '',
+      source: 'g0v',
+    });
+  }
+  return extra;
+}
+
+/** 兩次同步之間的差異：新排定的場次（整批覆寫前後比對用） */
+export function diffForecasts(before = [], after = []) {
+  const key = (r) => `${r.date}|${r.time}|${r.committee}|${r.title}`;
+  const seen = new Set(before.map(key));
+  return after.filter((r) => !seen.has(key(r)));
+}
+
+/** 新增預告的推播文字（給 ingest 的 Telegram 通知用） */
+export function newForecastText(added = [], { max = 8 } = {}) {
+  if (!added.length) return '';
+  const lines = [`📅 新增會議預告 ${added.length} 場`];
+  for (const m of added.slice(0, max)) {
+    const when = `${m.date.slice(5).replace('-', '/')} ${m.time}`.trim();
+    const where = [m.committee, m.place].filter(Boolean).join('・');
+    lines.push(`${when} ${where ? `｜${where}` : ''}`.trim());
+    if (m.title) lines.push(`　${String(m.title).slice(0, 40)}`);
+  }
+  if (added.length > max) lines.push(`　…還有 ${added.length - max} 場`);
+  return lines.join('\n');
+}
+
 export function listUpcomingMeetings(db, { days = 10, limit = 80, today = '' } = {}) {
   const start = /^\d{4}-\d{2}-\d{2}$/.test(String(today)) ? String(today) : new Date().toLocaleDateString('sv-SE');
   const until = new Date(`${start}T00:00:00Z`).getTime() + Math.max(1, Number(days) || 10) * 86_400_000;
@@ -112,12 +168,16 @@ export function listUpcomingMeetings(db, { days = 10, limit = 80, today = '' } =
   const rows = db
     .prepare('SELECT date, time, committee, place, status, title, agenda, materials_url FROM meeting_forecasts WHERE date >= ? AND date <= ? ORDER BY date, time, committee')
     .all(start, untilDay);
-  const items = rows.slice(0, Math.max(1, Number(limit) || 80)).map((r) => ({ ...r }));
+  const base = rows.map((r) => ({ ...r, video_url: '', source: 'ivod' }));
+  const merged = [...base, ...mergePlenaryForecasts(db, base, { today: start, days })].sort(
+    (a, b) => a.date.localeCompare(b.date) || String(a.time).localeCompare(String(b.time)),
+  );
+  const items = merged.slice(0, Math.max(1, Number(limit) || 80)).map((r) => ({ ...r }));
   const dates = [];
-  for (const row of rows) {
+  for (const row of merged) {
     const last = dates.at(-1);
     if (last && last.date === row.date) last.count += 1;
     else dates.push({ date: row.date, count: 1 });
   }
-  return { today: start, days: Math.max(1, Number(days) || 10), total: rows.length, dates, items };
+  return { today: start, days: Math.max(1, Number(days) || 10), total: merged.length, dates, items };
 }

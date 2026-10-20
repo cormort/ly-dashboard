@@ -5,7 +5,11 @@ import { openDb, recordSyncRun, saveSnapshot, applyDataset, applyBills, applyLaw
 import { buildDataset, normalizeAgendas, normalizeCouncilSocial, normalizeBills, normalizeBudget, normalizeBudgetReports, normalizeCommitteeMeets, normalizeCommitteeRecords, normalizeMeetings, normalizeRollcalls, normalizeResolutions, normalizeSocial, normalizeSocialPosts, newsName, parseNewsRss, DataValidationError, NORMALIZER_VERSION } from './normalize.mjs';
 import { applySeatOverrides, loadSeatOverrides, seatOverridesDigest } from './committee-overrides.mjs';
 import { fetchJson, FetchError, sha256 } from './fetch-ly.mjs';
-import { parseForecastHtml } from './forecast.mjs';
+import { diffForecasts, newForecastText, parseForecastHtml } from './forecast.mjs';
+import { existsSync, readFileSync as readFileSyncNode } from 'node:fs';
+import { homedir } from 'node:os';
+import { join as joinPath } from 'node:path';
+import { parseEnvFile, sendTelegram } from '../scripts/notify-telegram.mjs';
 import { ambiguousCouncilorNames, currentCouncilors, entityNewsTerms, makeTagger, mentionsKnownEntity } from './queries.mjs';
 import { feedDate, feedFileUrl, outletLabel, parseFeedFile } from './news-feed.mjs';
 import { syncNewsData } from './news-push.mjs';
@@ -294,7 +298,7 @@ export function runBudgetReportsIngest(db, { logger = console, fetchImpl = fetch
  * 為什麼算一個獨立階段：它抓的是「未來」的場次，跟其他階段（歷史資料）無關；
  * 頁面本來就只列下週那幾場，所以每次同步就是整份換掉。
  */
-export function runForecastIngest(db, { logger = console, fetchImpl = fetchJson, now = () => new Date() } = {}) {
+export function runForecastIngest(db, { logger = console, fetchImpl = fetchJson, now = () => new Date(), notify = notifyForecast } = {}) {
   return runStage(db, 'forecast', { logger, now }, async () => {
     const result = await fetchImpl(CONFIG.records.forecastUrl, { ua: CONFIG.userAgent, text: true });
     const rows = parseForecastHtml(result.text ?? '');
@@ -303,10 +307,41 @@ export function runForecastIngest(db, { logger = console, fetchImpl = fetchJson,
       logger.warn('[forecast] 解析不到任何場次（頁面可能改版），這次不覆寫');
       return { records: 0, skipped: true };
     }
+    const before = db.prepare('SELECT date, time, committee, title FROM meeting_forecasts').all();
     const records = applyMeetingForecasts(db, rows, { fetchedAt: now().toISOString() });
     logger.log(`[forecast] 已套用：${records} 場未來會議`);
-    return { records };
+    // 新排定的場次推一則 Telegram；第一次跑（before 是空的）不推，避免把整份預告當成「新增」
+    const added = before.length ? diffForecasts(before, rows) : [];
+    if (added.length) {
+      logger.log(`[forecast] 新增 ${added.length} 場，準備通知`);
+      await notify(added, { logger });
+    }
+    return { records, added: added.length };
   });
+}
+
+/** 讀 `~/.ly-dashboard/notify.env`（憑證只放那裡）；沒有就什麼都不做 */
+async function notifyForecast(added, { logger = console } = {}) {
+  const text = newForecastText(added);
+  if (!text) return;
+  try {
+    const envFile = process.env.LY_NOTIFY_ENV || joinPath(homedir(), '.ly-dashboard', 'notify.env');
+    if (!existsSync(envFile)) {
+      logger.log(`[forecast] 沒有通知憑證（${envFile}），只寫 log：\n${text}`);
+      return;
+    }
+    const env = parseEnvFile(readFileSyncNode(envFile, 'utf8'));
+    const token = process.env.LY_TELEGRAM_BOT_TOKEN || env.LY_TELEGRAM_BOT_TOKEN;
+    const chatId = process.env.LY_TELEGRAM_CHAT_ID || env.LY_TELEGRAM_CHAT_ID;
+    if (!token || !chatId) {
+      logger.log(`[forecast] 沒有通知憑證，只寫 log：\n${text}`);
+      return;
+    }
+    const sent = await sendTelegram({ token, chatId, text });
+    logger.log(sent.ok ? '[forecast] 已推播新增場次' : `[forecast] 推播失敗：${sent.detail}`);
+  } catch (error) {
+    logger.warn(`[forecast] 推播失敗：${error?.message ?? error}`);
+  }
 }
 
 /** 委員會登記發言名單：本屆起迄今一次抓 */

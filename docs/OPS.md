@@ -77,7 +77,12 @@ scripts/ly-set-password.sh --rotate-sessions  # 順便換 LY_SESSION_SECRET
 
 - 預告範圍**只有下週**（實測 2026-10-20 抓到 10/21、10/22 共 19 場）——委員會開會通知逐週公布，不是抓不到
 - 頁面改版會讓解析回 0 場：這時**不清空舊資料**，只寫 `[forecast] 解析不到任何場次` 的 warning
-- 看資料：`/api/v1/meetings/upcoming?days=10`，畫面在「議事 › 委員會」頁最上方
+- 看資料：`/api/v1/meetings/upcoming?days=10`，畫面在「議事 › 委員會」頁最上方，
+  總覽「議事」標題下也有一行摘要
+- **新增場次會推 Telegram**：每次同步前後比對 `meeting_forecasts`，有新場次（含改時間）就推一則
+  「📅 新增會議預告 N 場」；第一次跑（資料表是空的）不推，避免把整份預告當成新增
+- g0v 的未來場次也一併併進 API（`source: g0v`），所以院會、程序委員會這種 IVOD 沒列的也看得到；
+  `committee_meets` 從 2026-10-20 起多了 `time_range`／`location`／`meeting_no` 三個欄位
 
 **使用狀況（誰在開站、看了什麼）**
 

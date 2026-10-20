@@ -361,7 +361,9 @@ Query 參數（全部可選）：
 `days` 預設 10、`limit` 預設 80。
 
 - 回應：`{ today, days, total, dates[], items[] }`
-  - `items[]`：`{ date, time(HH:MM), committee, place, status, title, agenda, materials_url }`
+  - `items[]`：`{ date, time(HH:MM), committee, place, status, title, agenda, materials_url, video_url, source }`
+  - `source`：`ivod`（會議預報，有會議室與開會通知連結）或 `g0v`（`committee_meets` 的未來場次，
+    補上 IVOD 沒有的院會／程序委員會等；`video_url` 只有 g0v 那幾筆有值）
   - `materials_url` 是 ppg 的「會議相關資料」（開會通知／議程）；沒有就是空字串
   - `dates[]`：`{ date, count }` 給日期分組用
 - **預告範圍天生很短（通常只有下週 2–7 天）**：委員會的開會通知逐週公布，g0v meets 與 IVOD 都一樣；

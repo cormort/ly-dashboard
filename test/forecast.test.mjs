@@ -8,7 +8,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { openDb } from '../server/db.mjs';
 import { applyMeetingForecasts } from '../server/db.mjs';
-import { decodeEntities, listUpcomingMeetings, parseForecastHtml, splitTitleAndAgenda, FORECAST_URL } from '../server/forecast.mjs';
+import { decodeEntities, diffForecasts, listUpcomingMeetings, newForecastText, parseForecastHtml, splitTitleAndAgenda, FORECAST_URL } from '../server/forecast.mjs';
 
 // 拿真實頁面的片段改的（欄位、class 都一樣）：兩場，其中一場在「依日期」清單也出現一次
 const HTML = `
@@ -104,4 +104,34 @@ test('未來場次查詢：只回今天之後、照日期與時間排、日期�
   assert.deepEqual(result.items.map((i) => i.title), ['上午場', '下午場'], '同一天照時間排');
   assert.deepEqual(result.dates, [{ date: '2026-10-21', count: 2 }]);
   assert.ok(FORECAST_URL.startsWith('https://ivod.ly.gov.tw/'));
+});
+
+test('整批覆寫前後比對：新排定的場次才算「新增」，改時間算新的一筆', () => {
+  const before = [
+    { date: '2026-10-21', time: '09:00', committee: '內政委員會', title: 'A' },
+    { date: '2026-10-21', time: '10:00', committee: '經濟委員會', title: 'B' },
+  ];
+  const after = [...before, { date: '2026-10-22', time: '09:00', committee: '交通委員會', title: 'C' }];
+  assert.deepEqual(diffForecasts(before, after).map((m) => m.title), ['C']);
+  assert.deepEqual(diffForecasts([], after).length, 3, '第一次跑：全部都是新的（呼叫端會跳過通知）');
+  assert.deepEqual(diffForecasts(before, before), []);
+  // 時間改了＝場次資訊變了，也要通知
+  const moved = [{ ...before[0], time: '14:00' }, before[1]];
+  assert.deepEqual(diffForecasts(before, moved).map((m) => m.time), ['14:00']);
+});
+
+test('新增預告的推播文字：場次太多要截斷，最後一行說還有幾場', () => {
+  const added = Array.from({ length: 10 }, (_, i) => ({
+    date: '2026-10-21',
+    time: '09:00',
+    committee: '內政委員會',
+    place: '紅樓202會議室',
+    title: `第${i + 1}場`,
+  }));
+  const text = newForecastText(added, { max: 8 });
+  assert.match(text, /新增會議預告 10 場/);
+  assert.match(text, /10\/21 09:00/);
+  assert.match(text, /內政委員會・紅樓202會議室/);
+  assert.match(text, /還有 2 場/);
+  assert.equal(newForecastText([]), '');
 });

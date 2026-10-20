@@ -1,4 +1,5 @@
 import { getAgencyHome, listActivity, listBills, listBudget, listBudgetReports, listCommitteeActivity, listNews, listNewsArticles, listRankings, listRegions } from './queries.mjs';
+import { listUpcomingMeetings } from './forecast.mjs';
 
 /**
  * 預熱：伺服器啟動後、每次資料寫入後，在背景把「總覽頁打開時的查詢」先跑一遍。
@@ -21,6 +22,7 @@ export const WARMUP_QUERIES = [
   ['rankings', (db) => listRankings(db, { type: 'all', days: 30, limit: 3 })],
   ['committee-activity', (db) => listCommitteeActivity(db, { limit: 3 })],
   ['regions', (db) => listRegions(db, { per: 2 })],
+  ['meetings/upcoming', (db) => listUpcomingMeetings(db, { days: 10, limit: 1 })],
   ['agency', (db) => getAgencyHome(db, { name: '行政院主計總處' })],
 ];
 

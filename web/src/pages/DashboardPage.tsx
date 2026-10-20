@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { ArrowRight } from 'lucide-react';
 import { buildUrl } from '../api/client';
 import type {
+  UpcomingMeetingsResponse,
   ActivityResponse,
   AgencyHomeResponse,
   BillsResponse,
@@ -86,6 +87,8 @@ export function DashboardPage({ refreshToken, onOpenId, onNavigate }: DashboardP
   const bills = useApi<BillsResponse>(buildUrl('/bills', { limit: 3 }), opts);
   const passed = useApi<BillsResponse>(buildUrl('/bills', { status: '三讀', limit: 3 }), opts);
   const budget = useApi<BudgetResponse>(buildUrl('/budget', { limit: 3 }), opts);
+  // 會議預告：只拿總數與日期（limit=1），顯示成議事區標題下的一行
+  const upcoming = useApi<UpcomingMeetingsResponse>(buildUrl('/meetings/upcoming', { days: 10, limit: 1 }), opts);
   const reports = useApi<BudgetReportsResponse>(buildUrl('/budget/reports', { limit: 3 }), opts);
   const rankings = useApi<RankingsResponse>(buildUrl('/rankings', { type: 'all', days: 30, limit: 3 }), opts);
   const committees = useApi<CommitteeActivityResponse>(buildUrl('/committee-activity', { limit: 3 }), opts);
@@ -256,6 +259,13 @@ export function DashboardPage({ refreshToken, onOpenId, onNavigate }: DashboardP
         <div className="dash-section-head">
           <h2 id="dash-agenda">議事</h2>
           <p className="muted">預算、委員會與法案：對機關最直接的影響</p>
+          {upcoming.data && upcoming.data.total > 0 ? (
+            <RouteLink className="dash-line" href={link('committees')} onNavigate={onNavigate}>
+              會議預告：未來 {upcoming.data.days} 天 {upcoming.data.total} 場
+              {upcoming.data.dates.length ? `（${upcoming.data.dates.map((d) => `${Number(d.date.slice(5, 7))}/${Number(d.date.slice(8, 10))} ${d.count}`).join('・')}）` : ''}
+              <ArrowRight aria-hidden="true" />
+            </RouteLink>
+          ) : null}
         </div>
         <div className="dash-grid">
         <Card title="預算審議最新進度" href={link('budget', { category: 'all' })} onNavigate={onNavigate} resource={budget}>
