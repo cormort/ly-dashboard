@@ -1818,11 +1818,11 @@ API `?year=115` 的 `2026-04-21` 回報第三點那句、`2026-04-17` 不回報�
 
 ## D304：舊分支 `feat/votes-resolutions` 仍含已外流的舊密碼（待使用者刪除）
 
-2026-10-20 掃 `origin` 全部遠端分支找 `＜舊密碼＞`：只有 **`feat/votes-resolutions`**（tip `6241b80`，
+2026-10-20 掃 `origin` 全部遠端分支找**舊密碼字串**：只有 **`feat/votes-resolutions`**（tip `6241b80`，
 歷史改寫**之前**的版本）還有明文，內容就是 `test/auth.test.mjs` 那三行。
 `main` 與其他分支（`fb-data`、`feat/news-collector-pack`、`feat/pack-windows`、`fix/*`、`ccr-*`、`news-data`）都乾淨。
 
-- **風險已降低**：2026-10-19 已把密碼換成新的（`＜舊密碼＞` 實測登入回 401），外流的是**失效的舊密碼**。
+- **風險已降低**：2026-10-19 已把密碼換成新的（舊密碼實測登入回 401），外流的是**失效的舊密碼**。
 - **沒做什麼**：沒有替使用者刪遠端分支（不可逆、且是對外動作）。這條分支沒有對應的 PR、內容也已在 `main`，
   要清掉請自己執行：
 
@@ -1831,3 +1831,8 @@ cd ~/ly-dashboard && git push origin --delete feat/votes-resolutions
 ```
 
   刪掉之後 GitHub 上就只剩 `main` 的乾淨歷史。
+
+- **2026-10-20 已執行**：`git push origin --delete feat/votes-resolutions` → `[deleted]`，
+  `git ls-remote --heads` 與 GitHub API 都看不到這條分支。
+  註：這份文件一開始把密碼**明文**寫進來，反而讓 `main` 多一次紀錄，已於改寫後移除；
+  之後寫決策文件一律只寫「舊密碼字串」。
