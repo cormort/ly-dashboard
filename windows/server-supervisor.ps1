@@ -1,5 +1,5 @@
 ﻿<#
-  立委觀測站 API 伺服器的常駐監管（Windows）。等同 macOS 的 launchd KeepAlive。
+  立委輿情觀測站 API 伺服器的常駐監管（Windows）。等同 macOS 的 launchd KeepAlive。
 
   為什麼需要：`node server/index.mjs` 一當掉（或那個視窗被關掉），網站就整片掛掉，
   使用者看到的只是「無法取得新聞（/api/v1/news/articles）連線逾時」—— 沒人會發現要重開。
@@ -67,7 +67,7 @@ if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
   exit 1
 }
 
-Write-SupervisorLog "啟動立委觀測站 API 伺服器：$(if ($env:LY_HOST) { $env:LY_HOST } else { '127.0.0.1' }):$Port"
+Write-SupervisorLog "啟動立委輿情觀測站 API 伺服器：$(if ($env:LY_HOST) { $env:LY_HOST } else { '127.0.0.1' }):$Port"
 
 $restarts = 0
 $backoff = $BackoffSeconds

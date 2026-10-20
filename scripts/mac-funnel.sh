@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# 把 Mac Mini 上的立委觀測站對外公開（Tailscale Funnel），前面加帳號密碼（Caddy）。
+# 把 Mac Mini 上的立委輿情觀測站對外公開（Tailscale Funnel），前面加帳號密碼（Caddy）。
 #
 #   bash scripts/mac-funnel.sh            # 問帳密 → 裝／設定 Caddy → 開 Funnel → 驗收（可重複執行，改帳密也是重跑）
 #   bash scripts/mac-funnel.sh --off      # 關掉對外：Funnel 關閉、回到只有 tailnet 內看得到（tailscale serve → 8787）

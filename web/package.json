@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "立委觀測站前端（資料一律來自同源 /api/v1/*）",
+  "description": "立委輿情觀測站前端（資料一律來自同源 /api/v1/*）",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",

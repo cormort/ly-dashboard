@@ -372,7 +372,7 @@ README 的待處理項。桃園 2014 年底才升格，2010–2014 那一任是*
 
 | # | 事實 | 怎麼確認 | 影響 |
 | --- | --- | --- | --- |
-| D131 | **`https://cormort.github.io/ly-dashboard/` 不存在**（HTTP 404）。GitHub API 顯示 `cormort/ly-dashboard` 的 `has_pages: false`、Pages 端點回 404，該帳號其他 60 多個 repo 有 Pages，只有這個沒有 | `curl` 站台（404）＋ `GET /repos/cormort/ly-dashboard`（`has_pages: false`）＋ `GET /repos/cormort/ly-dashboard/pages`（404） | 使用者說的「同步這個網址到本地」沒有這個站台可同步。這個 repo 是 SQLite＋API 的伺服器端應用，本來也不能跑在 GitHub Pages（純靜態）。**所以「同步」照「把遠端 repo 拉到本地」做**：本地 `main` 原本落後 `origin/main` **13 個 commit**（到 e64471f），已 fast-forward。若使用者其實是指別的站台（例如舊版立委觀測站或某台自架的伺服器），要再確認網址 |
+| D131 | **`https://cormort.github.io/ly-dashboard/` 不存在**（HTTP 404）。GitHub API 顯示 `cormort/ly-dashboard` 的 `has_pages: false`、Pages 端點回 404，該帳號其他 60 多個 repo 有 Pages，只有這個沒有 | `curl` 站台（404）＋ `GET /repos/cormort/ly-dashboard`（`has_pages: false`）＋ `GET /repos/cormort/ly-dashboard/pages`（404） | 使用者說的「同步這個網址到本地」沒有這個站台可同步。這個 repo 是 SQLite＋API 的伺服器端應用，本來也不能跑在 GitHub Pages（純靜態）。**所以「同步」照「把遠端 repo 拉到本地」做**：本地 `main` 原本落後 `origin/main` **13 個 commit**（到 e64471f），已 fast-forward。若使用者其實是指別的站台（例如舊版立委輿情觀測站或某台自架的伺服器），要再確認網址 |
 | D132 | 改動要不要推上 GitHub | 第一版先只留在本地（`617c2cf`）；**使用者隨後明確要求 commit and push，已推上 `origin/main`（31e379a）** | 使用者原本只說「同步到本地」＋「繼續做」，沒有說要發佈，而這個 repo 是公開的，推上去等於對外發佈，所以先不推並在回報裡講明。使用者要求推送後執行 `git push origin main`（一般推送，不是 force push，只在 `e64471f` 之後加一個 commit），推完以 `git rev-parse HEAD origin/main` 確認兩邊同一個 sha。這一輪**沒有**動線上任何資料 |
 
 ## 議員粉專連結存活驗證（2026-10-04）
@@ -1875,3 +1875,17 @@ cd ~/ly-dashboard && git push origin --delete feat/votes-resolutions
 
 驗證：`test/forecast.test.mjs` 加到 7 條（比對、推播文字截斷）；`node` 446 pass、`web` 259 pass；
 預告 API 回 21 場（ivod 19＋g0v 2）；總覽那一行實測顯示「未來 10 天 21 場（10/20 2・10/21 12・10/22 7）」。
+
+## D315：站名改為「立委輿情觀測站」
+
+使用者 2026-10-20：「把 ly dashboard 的名稱修正為立委輿情觀測站。」原本叫「立委觀測站」，
+但站上除了名錄與議事，還有新聞曝光、粉專牆、議員動態——只講「觀測」看不出在看什麼。
+
+| 岔路 | 選擇 | 理由 |
+| --- | --- | --- |
+| 改哪些字串 | 全 repo 63 處一起換（`docs/history/*`、`docs/verification*.txt` 除外） | 那些是歷史紀錄與舊驗證輸出，改了等於篡改當時的結果 |
+| PWA 主畫面名稱 | manifest `name`／`short_name`、`apple-mobile-web-app-title` 全改 | 三處不一致會出現「桌面圖示叫舊名、站內叫新名」 |
+| Service Worker | `ly-shell-v5` → `v6` | 外框（index.html／manifest）改了，不換快取名已安裝的 PWA 會一直顯示舊站名 |
+
+**驗收**：後端 446 項、前端 259 項、`check:rwd` 21 組全過；實測 `<title>` 與頁首 `<b>` 都是
+「立委輿情觀測站」，390px 手機版站名單行不換行、導覽不溢出；`/manifest.webmanifest` 回新名稱。

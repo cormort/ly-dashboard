@@ -1,5 +1,5 @@
 #!/data/data/com.termux/files/usr/bin/bash
-# 啟動立委觀測站並在伺服器就緒後開瀏覽器。伺服器留在這個視窗的前景執行
+# 啟動立委輿情觀測站並在伺服器就緒後開瀏覽器。伺服器留在這個視窗的前景執行
 # （放背景會被 Android 在視窗關閉時一起結束）。停止：Ctrl+C 或關閉視窗。
 # Termux:Widget 的捷徑視窗環境可能帶 NODE_ENV=production，會讓 npm 略過 tsc/vite，所以明確指定。
 export NODE_ENV=development npm_config_include=dev

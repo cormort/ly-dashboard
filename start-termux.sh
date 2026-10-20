@@ -1,5 +1,5 @@
 #!/data/data/com.termux/files/usr/bin/bash
-# 一鍵啟動立委觀測站（Termux / Android）：bash start-termux.sh
+# 一鍵啟動立委輿情觀測站（Termux / Android）：bash start-termux.sh
 # 關閉：Ctrl+C。瀏覽器開 http://127.0.0.1:8787
 set -euo pipefail
 cd "$(dirname "$0")"

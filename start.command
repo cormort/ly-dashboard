@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 一鍵啟動立委觀測站：在 Finder 雙擊即可。關閉視窗或按 Ctrl+C 停止。
+# 一鍵啟動立委輿情觀測站：在 Finder 雙擊即可。關閉視窗或按 Ctrl+C 停止。
 set -euo pipefail
 cd "$(dirname "$0")"
 PORT="${PORT:-8787}"

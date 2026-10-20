@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# 一鍵安裝：不抓 FB 粉專的立委觀測站（Debian／Ubuntu，例如 GCE 免費方案的 e2-micro）。
+# 一鍵安裝：不抓 FB 粉專的立委輿情觀測站（Debian／Ubuntu，例如 GCE 免費方案的 e2-micro）。
 # 步驟與理由見 docs/DEPLOY-NO-FB.md；這支只是把那份文件串起來。
 #
 #   bash deploy/linux/bootstrap-no-fb.sh            # 用一般帳號跑（要有 sudo），不要用 root

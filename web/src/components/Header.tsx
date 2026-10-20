@@ -322,7 +322,7 @@ export function Header({
           onNavigate('/');
         }}
       >
-        <b>立委觀測站</b>
+        <b>立委輿情觀測站</b>
         <small>{source?.name ?? '立法院開放資料'}</small>
       </a>
 

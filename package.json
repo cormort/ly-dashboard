@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "立委觀測站（重寫版）：伺服器端 ingestion + SQLite + 自有 API + TypeScript 前端",
+  "description": "立委輿情觀測站（重寫版）：伺服器端 ingestion + SQLite + 自有 API + TypeScript 前端",
   "engines": {
     "node": ">=22.5.0"
   },

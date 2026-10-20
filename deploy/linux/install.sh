@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# 立委觀測站在 Linux VM 上的安裝（systemd version）。
+# 立委輿情觀測站在 Linux VM 上的安裝（systemd version）。
 #
 #   sudo deploy/linux/install.sh                       # 只裝 API 伺服器
 #   sudo deploy/linux/install.sh --with-fb             # 連每日粉專抓取一起裝（timer）

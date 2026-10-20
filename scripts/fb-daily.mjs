@@ -6,7 +6,7 @@
  *   node scripts/fb-daily.mjs --ids 1,18 --limit 5   # 手動試跑（參數直接轉給 fetch-fb-posts.mjs）
  *
  * 為什麼是 .mjs（原本是 scripts/fb-daily.sh）：
- *   這一輪要把立委觀測站搬到 Windows 上跑，而這支腳本用的全是 Windows 沒有的東西：
+ *   這一輪要把立委輿情觀測站搬到 Windows 上跑，而這支腳本用的全是 Windows 沒有的東西：
  *   bash 的 `source`、`mkdir` 當鎖、`find -mmin`、`sed`、`awk`、`date`、`trap`。
  *   與其寫第二份 PowerShell 版本（同樣的邏輯兩份，之後修一邊忘一邊），不如搬到兩平台都能跑的 Node；
  *   scripts/fb-daily.sh 從此只是一行 exec 的薄殼（launchd 的 plist 與既有測試都還指著它）。

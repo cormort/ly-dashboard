@@ -1,5 +1,5 @@
 /*
- * 立委觀測站：現代商務／SaaS 儀表板樣式。
+ * 立委輿情觀測站：現代商務／SaaS 儀表板樣式。
  * 原則：
  *  - 顏色只代表黨籍（見 src/lib/parties.ts，以 --party 傳入）；
  *    介面本身只用中性色 + accent，警示色（warn/error）只用在同步失敗、stale 資料。

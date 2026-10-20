@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# 把立委觀測站的 macOS launchd 工作裝進 ~/Library/LaunchAgents。
+# 把立委輿情觀測站的 macOS launchd 工作裝進 ~/Library/LaunchAgents。
 #
 #   scripts/launchd/install.sh              # 安裝全部（API 伺服器 + 每日抓立委粉專）
 #   scripts/launchd/install.sh server       # 只裝 API 伺服器的監管

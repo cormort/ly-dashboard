@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# 立委觀測站「這台 VM 準備好了沒」檢查（Linux）。可重複執行，只讀不寫（除了 --live 會打來源）。
+# 立委輿情觀測站「這台 VM 準備好了沒」檢查（Linux）。可重複執行，只讀不寫（除了 --live 會打來源）。
 #
 #   deploy/linux/verify-vm.sh                 # 環境＋服務＋站台（不打外部來源）
 #   deploy/linux/verify-vm.sh --live          # 另外真的打一次立法院／g0v／Google 新聞（TLS 與 WAF 實測）

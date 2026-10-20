@@ -202,7 +202,7 @@ export function busiestHours(summary, { width = 3, top = 1 } = {}) {
 /** 給 Telegram／終端機看的一段文字（沒有資料也要講清楚是「沒人來」而不是壞掉） */
 export function pageViewsText(summary) {
   const lines = [];
-  lines.push(`📊 立委觀測站 ${summary.date}`);
+  lines.push(`📊 立委輿情觀測站 ${summary.date}`);
   if (summary.pv === 0) {
     lines.push('昨天沒有人開站（0 次瀏覽）');
     return lines.join('\n');

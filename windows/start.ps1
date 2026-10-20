@@ -1,5 +1,5 @@
 ﻿<#
-  一鍵啟動立委觀測站（Windows）。等同 macOS 的 start.command。
+  一鍵啟動立委輿情觀測站（Windows）。等同 macOS 的 start.command。
 
     windows\start.cmd                  # 只綁 127.0.0.1：只有這台電腦看得到
     windows\start.cmd -Lan             # 綁 0.0.0.0：同一個區網的人用印出的網址連（同步 API 會自動停用）

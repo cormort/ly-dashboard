@@ -17,7 +17,7 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: ErrorInfo): void {
-    console.error('[立委觀測站] 未預期的前端錯誤', error, info.componentStack);
+    console.error('[立委輿情觀測站] 未預期的前端錯誤', error, info.componentStack);
   }
 
   private handleReset = (): void => {

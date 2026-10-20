@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# 立委觀測站 API 伺服器（給 macOS launchd 監管用）。
+# 立委輿情觀測站 API 伺服器（給 macOS launchd 監管用）。
 #
 # 離開碼：
 #   0 = 連接埠已經有伺服器在跑（可能是手動啟動的）→ 不搶、**不當成失敗**，
@@ -27,5 +27,5 @@ if lsof -nP -iTCP:"${PORT}" -sTCP:LISTEN >/dev/null 2>&1; then
   exit 0
 fi
 
-echo "$(date '+%F %T') 啟動立委觀測站 API 伺服器：${LY_HOST:-127.0.0.1}:${PORT}"
+echo "$(date '+%F %T') 啟動立委輿情觀測站 API 伺服器：${LY_HOST:-127.0.0.1}:${PORT}"
 exec node server/index.mjs

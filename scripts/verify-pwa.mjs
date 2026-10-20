@@ -53,7 +53,7 @@ try {
     themeColor: document.querySelector('meta[name="theme-color"]')?.getAttribute('content') ?? null,
     apple: document.querySelector('meta[name="apple-mobile-web-app-capable"]')?.getAttribute('content') ?? null,
   }));
-  check(head.title === '立委觀測站', `document.title = ${head.title}`);
+  check(head.title === '立委輿情觀測站', `document.title = ${head.title}`);
   check(head.manifest === '/manifest.webmanifest', `link[rel=manifest] href = ${head.manifest}`);
   check(head.themeColor === '#2563eb', `theme-color = ${head.themeColor}`);
   check(head.apple === 'yes', `apple-mobile-web-app-capable = ${head.apple}`);
@@ -63,7 +63,7 @@ try {
     return fetch(href).then((r) => r.json());
   });
   check(
-    manifest.name === '立委觀測站' && manifest.display === 'standalone' && manifest.start_url === '/' && manifest.icons.length >= 3,
+    manifest.name === '立委輿情觀測站' && manifest.display === 'standalone' && manifest.start_url === '/' && manifest.icons.length >= 3,
     `manifest 內容：name=${manifest.name} display=${manifest.display} start_url=${manifest.start_url} icons=${manifest.icons.length}`,
   );
 
@@ -132,7 +132,7 @@ try {
     online: navigator.onLine,
   }));
   check(offline.online === false, `navigator.onLine = ${offline.online}`);
-  check(offline.brand === '立委觀測站', `離線時畫面外框還在（.brand = ${offline.brand}）`);
+  check(offline.brand === '立委輿情觀測站', `離線時畫面外框還在（.brand = ${offline.brand}）`);
   check(/目前離線，資料需連線取得/.test(offline.notice ?? ''), `離線提示文字 = ${JSON.stringify(offline.notice)}`);
 
   mkdirSync(dirname(SHOT), { recursive: true });

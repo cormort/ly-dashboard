@@ -9,7 +9,7 @@ applyFontScale(loadFontScaleIndex());
 
 const container = document.getElementById('root');
 if (!container) {
-  throw new Error('找不到 #root 容器，無法啟動立委觀測站。');
+  throw new Error('找不到 #root 容器，無法啟動立委輿情觀測站。');
 }
 
 createRoot(container).render(
@@ -24,7 +24,7 @@ if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').catch((error) => {
       // 註冊失敗不影響功能，只是離線快取不會生效
-      console.warn('[立委觀測站] Service Worker 註冊失敗', error);
+      console.warn('[立委輿情觀測站] Service Worker 註冊失敗', error);
     });
   });
 }

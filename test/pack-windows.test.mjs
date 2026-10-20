@@ -116,7 +116,7 @@ test('新聞收集包：排程要每小時、錯過補跑、只在使用者登�
 
 test('zip 寫入器：讀回來的內容一模一樣（含中文檔名與中文內容、空檔）', () => {
   const files = [
-    { name: 'a/中文.txt', data: Buffer.from('立委觀測站'.repeat(100)) },
+    { name: 'a/中文.txt', data: Buffer.from('立委輿情觀測站'.repeat(100)) },
     { name: 'empty.txt', data: Buffer.alloc(0) },
     { name: 'bin.dat', data: Buffer.from([0, 1, 2, 255, 254]) },
   ];

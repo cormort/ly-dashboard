@@ -1,5 +1,5 @@
 /**
- * 立委觀測站前端 — 靜態渲染煙霧測試（開發用，不進 production bundle）
+ * 立委輿情觀測站前端 — 靜態渲染煙霧測試（開發用，不進 production bundle）
  *
  * 用 react-dom/server 把元件樹與各資料區塊的**四態**（loading / ready / empty / error）
  * 各渲染一次，驗證：
@@ -197,13 +197,13 @@ const { default: App } = await import('../src/App');
 
 console.log('— 整頁初始狀態（尚未取得任何 API 資料）—');
 const dashboardHtml = render(createElement(App));
-expectAll('預設首頁是總覽', dashboardHtml, ['立委觀測站', '總覽', 'aria-current="page"']);
+expectAll('預設首頁是總覽', dashboardHtml, ['立委輿情觀測站', '總覽', 'aria-current="page"']);
 
 (window as unknown as { location: { pathname: string } }).location.pathname = '/activity';
 const homeHtml = render(createElement(App));
 // 導覽改成兩層後：上層只有 5 個主題，子頁面（榜行榜／法案查詢…）改放在對應主題的次級導覽
 expectAll('最近動態（/activity）：站名、導覽、動態／議題骨架', homeHtml, [
-  '立委觀測站',
+  '立委輿情觀測站',
   '關鍵字搜尋立法委員',
   '最近動態',
   '委員',
@@ -298,7 +298,7 @@ check(
 (window as unknown as { location: { pathname: string } }).location.pathname = '/facebook/wall';
 const wallHtml = render(createElement(App));
 expectAll('粉專牆頁：站名、子頁籤高亮、載入狀態', wallHtml, [
-  '立委觀測站',
+  '立委輿情觀測站',
   '粉專牆',
   'aria-current="page"',
   '載入粉專牆',

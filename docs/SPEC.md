@@ -1,4 +1,4 @@
-# 立委觀測站 開發規格書
+# 立委輿情觀測站 開發規格書
 
 > **讀者是誰**：要改這個 repo 的人（未來的自己、Windows／Termux 的維護者、外部貢獻者）。
 > **其他文件的分工**：`docs/OPS.md`＝維運（排程、log、憑證、故障排除、備份還原）；
@@ -350,7 +350,7 @@
 
 ### 9.4 PWA
 
-- `web/public/manifest.webmanifest`：`name`／`short_name` 立委觀測站、`start_url: '/'`、`display: standalone`、`theme_color #2563eb`、`background_color #f5f7fa`、三顆圖示（192 any／512 any／512 maskable）。
+- `web/public/manifest.webmanifest`：`name`／`short_name` 立委輿情觀測站、`start_url: '/'`、`display: standalone`、`theme_color #2563eb`、`background_color #f5f7fa`、三顆圖示（192 any／512 any／512 maskable）。
 - `web/public/sw.js`：`CACHE='ly-shell-v3'`；install 用 `Promise.allSettled` 逐筆 precache app shell（容忍個別失敗）；activate 清掉舊 cache 並 `clients.claim`；
   **`/api/` 一律不進快取**（本站數字每天更新）；導覽請求一律對到 `/`；策略是 stale-while-revalidate。
 - **改了 app shell 資源（尤其圖示）要 `CACHE` +1**，否則既有安裝會一直吃舊快取。

@@ -130,7 +130,7 @@ test('PWA 圖示：不用 emoji、也不在圖示上刻站名（縮到 96px 讀�
 });
 
 test('PWA 圖示：manifest 與 index.html 的 PWA 基本設定還在', () => {
-  assert.equal(manifest.name, '立委觀測站');
+  assert.equal(manifest.name, '立委輿情觀測站');
   assert.equal(manifest.display, 'standalone');
   assert.equal(manifest.start_url, '/');
   assert.equal(manifest.theme_color, '#2563eb');

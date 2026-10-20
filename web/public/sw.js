@@ -1,5 +1,5 @@
 /*
- * 立委觀測站 Service Worker（T11）。
+ * 立委輿情觀測站 Service Worker（T11）。
  *
  * 職責只有兩個：
  *  1. 快取靜態 app shell（HTML／JS／CSS／字型／圖示），採 stale-while-revalidate ——
@@ -19,7 +19,8 @@
 // 2026-10-13 v2→v3：圖示改版（議事殿堂柱廊）且檔名加上版本（icon-192-v2.png…）。
 // v3→v4：導覽請求改為不攔截（cookie 登入），舊外框快取會被 activate 刪掉
 // v4→v5：2026-10-19 預算審議改版（統計範圍兩顆鈕、流程帶七關）——外框改了就要換名，否則畫面會一直是舊版
-const CACHE = 'ly-shell-v5';
+// v5→v6：2026-10-20 站名改為「立委輿情觀測站」（index.html／manifest 都改了）
+const CACHE = 'ly-shell-v6';
 
 // 安裝時先塞一份外框，確保「第一次離線就有東西」。
 const SHELL = [

@@ -1,5 +1,5 @@
 [Unit]
-Description=立委觀測站 API 伺服器（ly-dashboard）
+Description=立委輿情觀測站 API 伺服器（ly-dashboard）
 Documentation=https://github.com/cormort/ly-dashboard/blob/main/docs/DEPLOY-VM.md
 # 這份是「樣板」：ExecStart 的 node 路徑、User、家目錄與 WorkingDirectory 由 deploy/linux/install.sh 換成實際值。
 # 不要直接手改 /etc/systemd/system 下的檔案就期待生效 —— 改完要 systemctl daemon-reload（或重跑 install.sh）。

@@ -180,7 +180,7 @@ export function loginPageHtml({ next = '/', error = '', user = 'DGBAS', days = 1
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="robots" content="noindex">
-<title>登入 · 立委觀測站</title>
+<title>登入 · 立委輿情觀測站</title>
 <style>
   :root { color-scheme: dark; }
   * { box-sizing: border-box; }
@@ -203,7 +203,7 @@ export function loginPageHtml({ next = '/', error = '', user = 'DGBAS', days = 1
 </head>
 <body>
 <form method="post" action="/api/v1/login">
-  <h1>立委觀測站</h1>
+  <h1>立委輿情觀測站</h1>
   <p class="sub">這個站需要登入才能看資料</p>
   ${error ? `<p class="err">${escapeHtml(error)}</p>` : ''}
   <label>帳號<input name="username" value="${escapeHtml(user)}" autocomplete="username" autocapitalize="off" spellcheck="false" required></label>

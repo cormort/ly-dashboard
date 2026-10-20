@@ -1,5 +1,5 @@
 ﻿<#
-  把立委觀測站的兩個工作裝進 Windows 工作排程器。等同 macOS 的 scripts/launchd/install.sh。
+  把立委輿情觀測站的兩個工作裝進 Windows 工作排程器。等同 macOS 的 scripts/launchd/install.sh。
 
     powershell -File windows\install-tasks.ps1                  # 安裝全部（API 伺服器 + 每日抓粉專）
     powershell -File windows\install-tasks.ps1 -Target server   # 只裝 API 伺服器的常駐監管
@@ -62,7 +62,7 @@ function Install-ServerTask {
     -MultipleInstances IgnoreNew -ExecutionTimeLimit ([TimeSpan]::Zero)
   $principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType Interactive -RunLevel Limited
   Register-ScheduledTask -TaskName $ServerTask -Action $action -Trigger $trigger -Settings $settings -Principal $principal `
-    -Description '立委觀測站 API 伺服器：登入時啟動，當掉自動重啟（windows\server-supervisor.ps1）' -Force | Out-Null
+    -Description '立委輿情觀測站 API 伺服器：登入時啟動，當掉自動重啟（windows\server-supervisor.ps1）' -Force | Out-Null
   Write-Host "已註冊：$ServerTask（登入時啟動；node 當掉會自動重啟）" -ForegroundColor Green
 }
 
@@ -74,7 +74,7 @@ function Install-FbTask {
     -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Hours 2)
   $principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType Interactive -RunLevel Limited
   Register-ScheduledTask -TaskName $FbTask -Action $action -Trigger $trigger -Settings $settings -Principal $principal `
-    -Description '立委觀測站：每日抓取立委臉書粉專（windows\fb-daily.ps1 → scripts\fb-daily.mjs）' -Force | Out-Null
+    -Description '立委輿情觀測站：每日抓取立委臉書粉專（windows\fb-daily.ps1 → scripts\fb-daily.mjs）' -Force | Out-Null
   Write-Host "已註冊：$FbTask（每天 $Time，錯過會在開機後補跑）" -ForegroundColor Green
 }
 

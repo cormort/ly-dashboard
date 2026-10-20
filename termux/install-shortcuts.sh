@@ -12,8 +12,8 @@ make() { # 名稱 腳本
   echo "已建立：$DIR/$1"
 }
 
-make "立委觀測站" launch.sh
-make "更新立委觀測站" update.sh
+make "立委輿情觀測站" launch.sh
+make "更新立委輿情觀測站" update.sh
 make "回補新聞" backfill.sh
 make "Antigravity" antigravity.sh
 

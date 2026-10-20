@@ -666,7 +666,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const db = openDb(CONFIG.dbPath);
   const server = createServer(db);
   server.listen(CONFIG.port, CONFIG.host, () => {
-    console.log(`[api] 立委觀測站 API 已啟動：http://${CONFIG.host}:${CONFIG.port}（靜態檔：${CONFIG.webDist}）`);
+    console.log(`[api] 立委輿情觀測站 API 已啟動：http://${CONFIG.host}:${CONFIG.port}（靜態檔：${CONFIG.webDist}）`);
     if (CONFIG.syncToken) console.log('[api] POST /api/v1/sync 已啟用 LY_SYNC_TOKEN 驗證');
     else if (CONFIG.host !== '127.0.0.1' && CONFIG.host !== 'localhost' && CONFIG.host !== '::1') {
       console.log('[api] 注意：LY_HOST 非 loopback 且未設 LY_SYNC_TOKEN → POST /api/v1/sync 已停用（回 403）');
