@@ -41,12 +41,13 @@ const COUNTIES = [
 ];
 const fixName = (name) => (name === '桃園縣' ? '桃園市' : name.replace(/^台/, '臺'));
 
-const rows = (file) =>
-  readFileSync(file, 'utf8')
+const csv = (text) =>
+  text
     .replace(/^﻿/, '')
     .split(/\r?\n/)
     .filter(Boolean)
     .map((line) => line.split(',').map((cell) => cell.replace(/^"|"$/g, '').replace(/^'/, '').trim()));
+const rows = (file) => csv(readFileSync(file, 'utf8'));
 
 /* ---------- 人口 ---------- */
 function population(file) {
@@ -544,11 +545,48 @@ const monthly = new Map(); // 縣市 → [人口...]（對齊 months）
 const townYear = new Map(); // 鄉鎮 → { county, town, size, population: { 年: 人口 } }
 const latestMonth = months[months.length - 1];
 const missingMonths = [];
-months.forEach((ym, i) => {
+const filledMonths = [];
+/**
+ * 轉存缺月（2023-09 的 JSON 為空、raw CSV 是內政部伺服器的錯誤訊息）：改用村里檔加總縣市人口。
+ * 先試轉存的 raw CSV，不是 CSV 就依民國年月從 data.gov.tw 資料集 77132 抓官方檔；都拿不到才記 null。
+ */
+async function monthFallback(y, m) {
+  const isCsv = (text) => text.replace(/^﻿/, '').startsWith('統計年月');
+  let text = '';
+  try {
+    text = readFileSync(join(moiRoot, `raw/population/${y}/${m}/data.csv`), 'utf8');
+  } catch {}
+  if (!isCsv(text)) {
+    const roc = `${Number(y) - 1911}${m}`;
+    const { result } = await (await fetch('https://data.gov.tw/api/v2/rest/dataset/77132')).json();
+    const res = result.distribution.find((d) => d.resourceDescription.startsWith(roc));
+    if (!res) return null;
+    text = await (await fetch(res.resourceDownloadUrl)).text();
+    if (!isCsv(text)) return null;
+  }
+  const out = new Map();
+  for (const r of csv(text).slice(1).filter((x) => /^\d+$/.test(x[0]))) {
+    const county = fixName(r[2].slice(0, 3));
+    out.set(county, (out.get(county) ?? 0) + Number(r[5]));
+  }
+  return out;
+}
+for (const [i, ym] of months.entries()) {
   const [y, m] = ym.split('-');
   const list = Object.values(JSON.parse(readFileSync(join(cityDir, y, `${m}.json`), 'utf8')));
-  // 來源有缺月（2023-09 的 JSON 為空、原始檔是下載錯誤訊息）：記為 null，圖上斷線
-  if (list.length === 0) missingMonths.push(i);
+  if (list.length === 0) {
+    const counties = await monthFallback(y, m);
+    if (!counties) missingMonths.push(i);
+    else {
+      filledMonths.push(ym);
+      console.warn(`人口月報 ${ym} 轉存為空，改用村里檔：${[...counties.values()].reduce((s, n) => s + n, 0)} 人`);
+      for (const [county, n] of counties) {
+        const list = monthly.get(county) ?? new Array(months.length).fill(0);
+        list[i] = n;
+        monthly.set(county, list);
+      }
+    }
+  }
   for (const t of list) {
     const county = fixName(t.area.slice(0, 3));
     const list = monthly.get(county) ?? new Array(months.length).fill(0);
@@ -561,7 +599,7 @@ months.forEach((ym, i) => {
       townYear.set(key, town);
     }
   }
-});
+}
 
 /** 年齡結構：表頭各年不同（英文＋中文兩列、區域別欄位位置不同），以欄名找欄位 */
 function ageStructure(file) {
@@ -600,7 +638,10 @@ out(
   `${JSON.stringify({
     months,
     years: ageYears,
-    sources: [{ label: '內政部戶政司人口統計（kiang/data.moi.gov.tw 轉存）', url: 'https://github.com/kiang/data.moi.gov.tw' }],
+    sources: [
+      { label: '內政部戶政司人口統計（kiang/data.moi.gov.tw 轉存）', url: 'https://github.com/kiang/data.moi.gov.tw' },
+      ...(filledMonths.length ? [{ label: `內政部村里戶數、單一年齡人口（${filledMonths.join('、')} 轉存缺檔改用官方檔）`, url: 'https://data.gov.tw/dataset/77132' }] : []),
+    ],
     counties: COUNTIES.map((county) => ({
       county,
       monthly: monthly.get(county),

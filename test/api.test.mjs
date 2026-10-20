@@ -1010,6 +1010,8 @@ test('資料檔不變量：縣市面積與人口密度', () => {
   assert.ok(total > 36000 && total < 36500, `22 縣市面積合計在 3.6 萬平方公里上下（實得 ${total}）`);
   const densest = [...cs.counties].sort((a, b) => b.population / b.area_km2 - a.population / a.area_km2)[0];
   assert.equal(densest.county, '臺北市', '人口密度最高一直是臺北市');
+  // 2023-09 轉存缺檔，建置時改用官方村里檔補：每月都要有數字，圖上不能斷線
+  for (const c of pt.counties) assert.ok(c.monthly.every((n) => n > 0), `${c.county} 每月人口都有數字`);
 });
 
 test('資料檔不變量：margin_pct 與 margin 一致、2012 總統的政黨標籤正確', () => {

@@ -1290,7 +1290,7 @@ export interface PopulationTrendResponse {
   months: string[];
   years: string[];
   sources: { label: string; url: string }[];
-  /** 每月人口；來源缺月（2023-09）為 null */
+  /** 每月人口；轉存與官方檔都缺的月份為 null（2023-09 轉存缺檔，已改用官方檔補上） */
   counties: { county: string; monthly: (number | null)[]; ages: AgeSnapshot[] }[];
   /** 鄉鎮市區：面積（平方公里）與各年 12 月（及最新月）人口 */
   towns: { county: string; town: string; size: number; population: Record<string, number> }[];
