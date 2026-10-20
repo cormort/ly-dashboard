@@ -276,6 +276,19 @@ export function Header({
   const currentScope = syncScopes.find((scope) => scope.id === syncScope) ?? syncScopes[0] ?? null;
   const tone = failed ? 'error' : stale ? 'warning' : 'ok';
   const statusText = failed ? '同步失敗' : stale ? '可能非最新' : '資料截至';
+  // 各來源更新時間不同，單一「資料截至」會誤導：輪播每個來源，滑鼠移上去列出全部
+  const sources = [...new Map(syncScopes.flatMap((scope) => scope.sources).map((s) => [s.dataset, s])).values()];
+  const [sourceIndex, setSourceIndex] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => setSourceIndex((i) => i + 1), 4000);
+    return () => clearInterval(timer);
+  }, []);
+  // 從沒同步過的來源只放在提示裡，輪播只播有時間的
+  const synced = sources.filter((s) => s.finished_at);
+  const shownSource = synced.length ? synced[sourceIndex % synced.length] : null;
+  const sourcesTitle = sources.length
+    ? sources.map((s) => `${s.label}：${formatDateTime(s.finished_at, '尚未同步')}（${formatRelative(s.finished_at, '尚未同步')}）`).join('\n')
+    : '同步狀態與紀錄';
   // L6：同步面板是條件式 render，只有它存在時 aria-controls 才指得到東西
   const syncPanelExists = syncOpen || failed || stale;
   // 這台有沒有提供縣市地圖：伺服器 LY_HIDE_COUNTIES=1 時為 false（App 用同一份 /health 值提供 Context），
@@ -374,14 +387,14 @@ export function Header({
           aria-expanded={syncPanelExists ? syncOpen : undefined}
           aria-controls={syncPanelExists ? 'sync-panel' : undefined}
           onClick={onSyncToggle}
-          title="同步狀態與紀錄"
+          title={sourcesTitle}
         >
           <span className="dot" aria-hidden="true" />
-          {statusText}{' '}
+          {shownSource ? (failed || stale ? `${statusText} · ` : '') + `${shownSource.label}更新於` : statusText}{' '}
           {/* 手機只顯示相對時間（「1 天前」），否則整串日期會把頁首擠成三行；
               桌機維持完整的日期時間（同一個資訊，兩種寬度各用適合的寫法） */}
-          <span className="date-long">{formatDateTime(fetchedAt, '尚無成功同步紀錄')}</span>
-          <span className="date-short">{formatRelative(fetchedAt, '尚無成功同步紀錄')}</span>
+          <span className="date-long">{formatDateTime(shownSource ? shownSource.finished_at : fetchedAt, '尚無成功同步紀錄')}</span>
+          <span className="date-short">{formatRelative(shownSource ? shownSource.finished_at : fetchedAt, '尚無成功同步紀錄')}</span>
         </button>
         {/* 字體大小收進一顆「Aa」：三顆按鈕常駐會把頁首擠成兩行（2026-10-19）。原生 details，不用自己管開關 */}
         <details className="display-menu">
