@@ -1,10 +1,11 @@
 import { pathToFileURL } from 'node:url';
 import { readFileSync } from 'node:fs';
 import { CONFIG } from './config.mjs';
-import { openDb, recordSyncRun, saveSnapshot, applyDataset, applyBills, applyLawAgencies, applyBudget, applyBudgetReports, applyCommitteeMeets, applyCommitteeRecords, applyMeetings, applyRollcalls, applyResolutions, applyAgendas, applySocial, applySocialPosts, applyCouncilSocial, upsertNews, upsertTopicNews, upsertArticles, pruneNews, pruneLogs, getMeta, setMeta, upsertProgressOverride, getProgressOverrides, applyProgressOverrides, upsertBudgetCommittees, getBudgetCommittees } from './db.mjs';
+import { openDb, recordSyncRun, saveSnapshot, applyDataset, applyBills, applyLawAgencies, applyBudget, applyBudgetReports, applyCommitteeMeets, applyCommitteeRecords, applyMeetings, applyRollcalls, applyMeetingForecasts, applyResolutions, applyAgendas, applySocial, applySocialPosts, applyCouncilSocial, upsertNews, upsertTopicNews, upsertArticles, pruneNews, pruneLogs, getMeta, setMeta, upsertProgressOverride, getProgressOverrides, applyProgressOverrides, upsertBudgetCommittees, getBudgetCommittees } from './db.mjs';
 import { buildDataset, normalizeAgendas, normalizeCouncilSocial, normalizeBills, normalizeBudget, normalizeBudgetReports, normalizeCommitteeMeets, normalizeCommitteeRecords, normalizeMeetings, normalizeRollcalls, normalizeResolutions, normalizeSocial, normalizeSocialPosts, newsName, parseNewsRss, DataValidationError, NORMALIZER_VERSION } from './normalize.mjs';
 import { applySeatOverrides, loadSeatOverrides, seatOverridesDigest } from './committee-overrides.mjs';
 import { fetchJson, FetchError, sha256 } from './fetch-ly.mjs';
+import { parseForecastHtml } from './forecast.mjs';
 import { ambiguousCouncilorNames, currentCouncilors, entityNewsTerms, makeTagger, mentionsKnownEntity } from './queries.mjs';
 import { feedDate, feedFileUrl, outletLabel, parseFeedFile } from './news-feed.mjs';
 import { syncNewsData } from './news-push.mjs';
@@ -283,6 +284,27 @@ export function runBudgetReportsIngest(db, { logger = console, fetchImpl = fetch
     }
     const records = applyBudgetReports(db, normalizeBudgetReports(responses), { fetchedAt: now().toISOString() });
     logger.log(`[budget_reports] 已套用：${records} 份預算中心報告`);
+    return { records };
+  });
+}
+
+/**
+ * 會議預告：立法院議事轉播「會議預報」頁（HTML）。整批覆寫 `meeting_forecasts`。
+ *
+ * 為什麼算一個獨立階段：它抓的是「未來」的場次，跟其他階段（歷史資料）無關；
+ * 頁面本來就只列下週那幾場，所以每次同步就是整份換掉。
+ */
+export function runForecastIngest(db, { logger = console, fetchImpl = fetchJson, now = () => new Date() } = {}) {
+  return runStage(db, 'forecast', { logger, now }, async () => {
+    const result = await fetchImpl(CONFIG.records.forecastUrl, { ua: CONFIG.userAgent, text: true });
+    const rows = parseForecastHtml(result.text ?? '');
+    if (!rows.length) {
+      // 頁面改版時不要清空舊資料：沒有預告比把預告清空好
+      logger.warn('[forecast] 解析不到任何場次（頁面可能改版），這次不覆寫');
+      return { records: 0, skipped: true };
+    }
+    const records = applyMeetingForecasts(db, rows, { fetchedAt: now().toISOString() });
+    logger.log(`[forecast] 已套用：${records} 場未來會議`);
     return { records };
   });
 }
@@ -1383,6 +1405,7 @@ export async function runAll(db, options = {}) {
     budget: () => (CONFIG.skip.budget ? skipped('budget') : runBudgetIngest(db, options)),
     budget_reports: () => (CONFIG.skip.budget ? skipped('budget_reports') : runBudgetReportsIngest(db, options)),
     meetings: () => (CONFIG.skip.budget ? skipped('meetings') : runMeetingsIngest(db, options)),
+    forecast: () => runForecastIngest(db, options),
     records: () => (CONFIG.skip.bills ? skipped('records') : runRecordsIngest(db, options)),
     social: () => (CONFIG.skip.social ? skipped('social') : runSocialIngest(db, options)),
     social_posts: () => (CONFIG.skip.social ? skipped('social_posts') : runSocialPostsIngest(db, options)),

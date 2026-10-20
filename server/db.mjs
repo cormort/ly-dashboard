@@ -264,6 +264,22 @@ CREATE TABLE IF NOT EXISTS committee_meets (
   -- 會議事由（院會／委員會都可能有）：用來判斷「這場會議在審什麼」（例如總預算）
   agenda TEXT
 );
+-- 會議預告（立法院議事轉播「會議預報」頁，見 server/forecast.mjs）：只放「已經排定但還沒開」的場次。
+-- 每次同步整批覆寫（頁面本來就只有下週那幾場），不保留歷史；歷史要看 committee_meets。
+CREATE TABLE IF NOT EXISTS meeting_forecasts (
+  date TEXT NOT NULL,
+  time TEXT NOT NULL DEFAULT '',
+  committee TEXT NOT NULL DEFAULT '',
+  place TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT '',
+  title TEXT NOT NULL,
+  agenda TEXT NOT NULL DEFAULT '',
+  materials_url TEXT NOT NULL DEFAULT '',
+  fetched_at TEXT NOT NULL,
+  PRIMARY KEY (date, time, committee, title)
+);
+CREATE INDEX IF NOT EXISTS idx_meeting_forecasts_date ON meeting_forecasts(date);
+
 CREATE TABLE IF NOT EXISTS rollcall_votes (
   id TEXT PRIMARY KEY,
   term INTEGER,
@@ -810,6 +826,25 @@ export function applyAgendas(db, agendas, { fetchedAt }) {
     fetchedAt,
   );
   return agendas.length;
+}
+
+export function applyMeetingForecasts(db, rows, { fetchedAt }) {
+  db.exec('BEGIN');
+  try {
+    db.exec('DELETE FROM meeting_forecasts');
+    const insert = db.prepare(
+      'INSERT OR REPLACE INTO meeting_forecasts(date, time, committee, place, status, title, agenda, materials_url, fetched_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    );
+    for (const r of rows) {
+      insert.run(r.date, r.time ?? '', r.committee ?? '', r.place ?? '', r.status ?? '', r.title ?? '', r.agenda ?? '', r.materials_url ?? '', fetchedAt);
+    }
+    setMeta(db, 'forecasts_fetched_at', fetchedAt);
+    db.exec('COMMIT');
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
+  return rows.length;
 }
 
 export function applyRollcalls(db, votes, { fetchedAt }) {

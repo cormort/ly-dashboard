@@ -355,6 +355,19 @@ Query 參數（全部可選）：
 > 院會二讀／三讀的**精確日期**只有「有記名表決」的年度拿得到（`院會表決` 那幾筆）；
 > 其他年度看 `plenary`（院會場次）的日期與事由。
 
+## GET /api/v1/meetings/upcoming?days=10&limit=80
+
+**會議預告**（未來場次）：立法院議事轉播「會議預報」頁（`server/forecast.mjs` 解析 HTML）。
+`days` 預設 10、`limit` 預設 80。
+
+- 回應：`{ today, days, total, dates[], items[] }`
+  - `items[]`：`{ date, time(HH:MM), committee, place, status, title, agenda, materials_url }`
+  - `materials_url` 是 ppg 的「會議相關資料」（開會通知／議程）；沒有就是空字串
+  - `dates[]`：`{ date, count }` 給日期分組用
+- **預告範圍天生很短（通常只有下週 2–7 天）**：委員會的開會通知逐週公布，g0v meets 與 IVOD 都一樣；
+  查更遠的日期回 `total: 0` 是正常的，不是抓取失敗
+- 資料是每次同步**整批覆寫**（`meeting_forecasts`）；解析不到任何場次時**保留舊資料**，不會清空
+
 ## GET /api/v1/page-views?date=YYYY-MM-DD
 
 **站上自己的**頁面瀏覽統計（不是立法院資料）。`date` 是當地日期，預設**昨天**。

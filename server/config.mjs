@@ -143,6 +143,12 @@ export const CONFIG = {
     // 委員會會議的議事網資料：附件（書面報告、機關回覆＝部會對委員質詢的書面答復）與會議影片；本屆約 1,300 場、13MB／千筆
     meetsUrl: 'https://ly.govapi.tw/v2/meets',
     meetTypes: ['委員會', '聯席會議', '公聽會', '院會'],
+    /**
+     * 會議預告（未來場次）：立法院議事轉播「會議預報」頁。
+     * 為什麼不用 g0v meets 就好：兩邊的預告範圍一樣（只到下週），但 IVOD 多了「會議室」與
+     * 「會議相關資料」連結（ppg 的開會通知／議程 PDF）。解析在 server/forecast.mjs。
+     */
+    forecastUrl: 'https://ivod.ly.gov.tw/Forecast',
   },
   // 新聞：Google News RSS，以「"姓名" 立委」搜尋近 30 天；逐位委員依序抓，間隔避免被限流。
   news: {

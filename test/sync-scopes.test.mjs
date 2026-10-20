@@ -26,7 +26,8 @@ test('同步範圍：名錄這一項涵蓋官方兩個資料集（id9／id14）'
   assert.deepEqual(scopeDatasets('roster'), ['id9', 'id14']);
   // 2026-10-19：議事與預算範圍多了院會表決（ID370）與附帶決議（ID373）
   // 2026-10-19 再加會議資訊（ID42）：院會的「報告預算編製經過並備質詢」只寫在院會議程裡
-  assert.deepEqual(scopeDatasets('legislative'), ['bills', 'votes', 'resolutions', 'agendas', 'budget', 'budget_reports', 'meetings', 'records', 'ppg_progress', 'bill_committees']);
+  // 2026-10-20 再加會議預告（IVOD「會議預報」）：未來場次的時間、會議室與開會通知連結
+  assert.deepEqual(scopeDatasets('legislative'), ['bills', 'votes', 'resolutions', 'agendas', 'budget', 'budget_reports', 'meetings', 'forecast', 'records', 'ppg_progress', 'bill_committees']);
 });
 
 test('同步範圍：每個階段都要有 runner 對應的 dataset（少一個就會查不到上次同步時間）', () => {

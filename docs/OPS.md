@@ -70,6 +70,15 @@ scripts/ly-set-password.sh --rotate-sessions  # 順便換 LY_SESSION_SECRET
 - `scripts/ly-dashboard-server.sh` 與 `scripts/fb-daily.sh` 會自己載入 `~/.ly-dashboard/server.env`（一行），
   所以 `LY_SYNC_TOKEN`、登入設定都不必寫進 launchd plist。
 
+**會議預告（未來場次）**
+
+`server/forecast.mjs` 解析立法院議事轉播「會議預報」頁（`https://ivod.ly.gov.tw/Forecast`，是 HTML 不是 API），
+整批寫進 `meeting_forecasts`，掛在「議事與預算」同步範圍的 `forecast` 階段（與其他議事資料一起跑）。
+
+- 預告範圍**只有下週**（實測 2026-10-20 抓到 10/21、10/22 共 19 場）——委員會開會通知逐週公布，不是抓不到
+- 頁面改版會讓解析回 0 場：這時**不清空舊資料**，只寫 `[forecast] 解析不到任何場次` 的 warning
+- 看資料：`/api/v1/meetings/upcoming?days=10`，畫面在「議事 › 委員會」頁最上方
+
 **使用狀況（誰在開站、看了什麼）**
 
 2026-10-20 之前**完全沒有請求紀錄**（Caddy 沒開 access log、伺服器只記同步），所以「昨天有幾個人用」

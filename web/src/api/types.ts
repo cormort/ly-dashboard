@@ -821,6 +821,29 @@ export interface BudgetTimelineResponse {
   items: BudgetTimelineItem[];
 }
 
+/* ---------- /meetings/upcoming（會議預告） ---------- */
+
+export interface UpcomingMeeting {
+  date: string;
+  /** 開始時間 HH:MM（頁面只給到分鐘） */
+  time: string;
+  committee: string;
+  place: string;
+  status: string;
+  title: string;
+  agenda: string;
+  /** ppg 的「會議相關資料」（開會通知／議程） */
+  materials_url: string;
+}
+
+export interface UpcomingMeetingsResponse {
+  today: string;
+  days: number;
+  total: number;
+  dates: { date: string; count: number }[];
+  items: UpcomingMeeting[];
+}
+
 /* ---------- /regions ---------- */
 
 export interface RegionLatest {

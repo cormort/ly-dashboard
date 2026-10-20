@@ -34,6 +34,7 @@ import {
   verifySession,
 } from './auth.mjs';
 import { warmUp } from './warmup.mjs';
+import { listUpcomingMeetings } from './forecast.mjs';
 import {
   classifyUa,
   dailyPageViews,
@@ -440,6 +441,8 @@ export function createServer(db) {
             return sendJson(res, 200, listRollcalls(db, { term: q.term, q: q.q, legislator: q.legislator, from: q.from, to: q.to, limit: q.limit, offset: q.offset }));
           case '/api/v1/resolutions':
             return sendJson(res, 200, listResolutions(db, { term: q.term, q: q.q, limit: q.limit, offset: q.offset }));
+          case '/api/v1/meetings/upcoming':
+            return sendJson(res, 200, listUpcomingMeetings(db, { days: q.days, limit: q.limit }));
           case '/api/v1/committee-activity':
             return sendJson(res, 200, listCommitteeActivity(db, { committee: q.committee, q: q.q, limit: q.limit }));
           case '/api/v1/agency':
