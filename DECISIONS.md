@@ -1889,3 +1889,13 @@ cd ~/ly-dashboard && git push origin --delete feat/votes-resolutions
 
 **驗收**：後端 446 項、前端 259 項、`check:rwd` 21 組全過；實測 `<title>` 與頁首 `<b>` 都是
 「立委輿情觀測站」，390px 手機版站名單行不換行、導覽不溢出；`/manifest.webmanifest` 回新名稱。
+
+### D315 補記：主畫面名稱改短為「立委輿情」
+
+使用者 2026-10-20：「主桌面名稱改短。」iOS 桌面圖示約 6 個全形字就被截成「立委輿情觀…」，
+所以只把**主畫面**用的欄位改短，站名全名留著：
+
+- `manifest.short_name`、`apple-mobile-web-app-title` → **立委輿情**
+- `manifest.name`、`<title>`、頁首 `<b>` 仍是 **立委輿情觀測站**
+- SW 快取 `ly-shell-v6` → `v7`（外框改了）
+- 新增測試釘住：`short_name` ≤ 5 字、meta 與 `short_name` 一致、`name` 仍是全名

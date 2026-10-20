@@ -137,3 +137,12 @@ test('PWA 圖示：manifest 與 index.html 的 PWA 基本設定還在', () => {
   assert.match(indexHtml, /rel="manifest" href="\/manifest\.webmanifest"/);
   assert.match(indexHtml, /apple-mobile-web-app-capable" content="yes"/);
 });
+
+test('PWA 圖示：主畫面名稱短到不會被 iOS／Android 截字，且 manifest 與 meta 一致', () => {
+  // 使用者 2026-10-20：「主桌面名稱改短。」iOS 桌面圖示大約 6 個全形字就會被截成「立委輿情觀…」，
+  // 站名全名留給 manifest.name 與 <title>，主畫面只放前四個字。
+  assert.ok(manifest.short_name.length <= 5, `short_name 太長（${manifest.short_name}），主畫面會被截字`);
+  const apple = indexHtml.match(/apple-mobile-web-app-title" content="([^"]+)"/)?.[1];
+  assert.equal(apple, manifest.short_name, 'iOS 的 apple-mobile-web-app-title 要和 manifest.short_name 一致');
+  assert.ok(manifest.name.length > manifest.short_name.length, 'manifest.name 仍是全名，主畫面才用短的');
+});

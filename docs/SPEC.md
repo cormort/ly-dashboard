@@ -350,7 +350,7 @@
 
 ### 9.4 PWA
 
-- `web/public/manifest.webmanifest`：`name`／`short_name` 立委輿情觀測站、`start_url: '/'`、`display: standalone`、`theme_color #2563eb`、`background_color #f5f7fa`、三顆圖示（192 any／512 any／512 maskable）。
+- `web/public/manifest.webmanifest`：`name` 立委輿情觀測站、`short_name` 立委輿情（主畫面名稱短到不被 iOS 截字）、`start_url: '/'`、`display: standalone`、`theme_color #2563eb`、`background_color #f5f7fa`、三顆圖示（192 any／512 any／512 maskable）。
 - `web/public/sw.js`：`CACHE='ly-shell-v3'`；install 用 `Promise.allSettled` 逐筆 precache app shell（容忍個別失敗）；activate 清掉舊 cache 並 `clients.claim`；
   **`/api/` 一律不進快取**（本站數字每天更新）；導覽請求一律對到 `/`；策略是 stale-while-revalidate。
 - **改了 app shell 資源（尤其圖示）要 `CACHE` +1**，否則既有安裝會一直吃舊快取。

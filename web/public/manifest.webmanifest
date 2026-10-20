@@ -1,6 +1,6 @@
 {
   "name": "立委輿情觀測站",
-  "short_name": "立委輿情觀測站",
+  "short_name": "立委輿情",
   "description": "立法委員名錄、委員會席次、議案與預算、新聞與議員動態，資料來自立法院開放資料。",
   "lang": "zh-Hant-TW",
   "start_url": "/",
