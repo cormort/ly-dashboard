@@ -30,6 +30,7 @@ import { shouldOpenInCard } from '../src/lib/nav';
 import { formatDateTime, formatDay, formatDuration } from '../src/lib/format';
 import type { SyncScope } from '../src/api/types';
 import { MyAgencyPage, WatcherDetail, watchUrl } from '../src/pages/MyAgencyPage';
+import { filterAgencies, pushRecent } from '../src/lib/agencySearch';
 import { InfoTip } from '../src/components/InfoTip';
 import { PAGE_HINTS } from '../src/lib/pageHints';
 import { FundsPage } from '../src/pages/FundsPage';
@@ -399,9 +400,9 @@ console.log('\n— 我的機關 —');
 check('/my 對應我的機關頁', routeOf('/my') === 'my' && routeOf('/my?agency=%E8%B2%A1%E6%94%BF%E9%83%A8') === 'my');
 const myAgencyHtml = render(createElement(MyAgencyPage, { refreshToken: 0, onOpenId: () => undefined, onNavigate: () => undefined }));
 // 沒選過機關時預設載入行政院主計總處（不再有「尚未選機關」狀態）；有輸入清單可更換，已是預設就不顯示「回到」按鈕
-// 機關選擇改用原生 <select>（手機的 datalist 不可靠），並要有「已切換為 X」的回饋
-expectAll('我的機關：預設載入行政院主計總處', myAgencyHtml, ['<h1>行政院主計總處</h1>', '讀取「行政院主計總處」', '更換機關', '<select', 'aria-label="選擇機關"', '主計總處專頁']);
-expectNone('我的機關：不再用 datalist（手機上沒有建議清單，打了字也不會切換）', myAgencyHtml, ['<datalist', 'list="agency-options"']);
+// 機關選擇＝可搜尋的清單（datalist 在手機不可靠、原生 select 有 355 筆要滾很久），並要有「已切換為 X」的回饋
+expectAll('我的機關：預設載入行政院主計總處', myAgencyHtml, ['<h1>行政院主計總處</h1>', '讀取「行政院主計總處」', '更換機關', 'role="combobox"', 'aria-controls="agency-search-results"', '主計總處專頁']);
+expectNone('我的機關：不再用 datalist 或原生 select（前者手機沒有建議、後者要滾很久）', myAgencyHtml, ['<datalist', 'list="agency-options"', '<select']);
 check(
   '我的機關：切換後有 role=status 的「已切換為 X」一句（手機上只換內容時看不出有沒有成功）',
   (() => {
@@ -419,6 +420,17 @@ check(
     return order.every((i, k) => i > 0 && (k === 0 || i > order[k - 1])) && src.includes('className="stat-tile" href={`#${t.id}`}');
   })(),
 );
+// 機關搜尋：355 個機關要能用一兩個字縮到十筆內（使用者：「這樣會不會要滾很久」）
+{
+  const names = ['行政院主計總處', '國防部主計局', '財政部', '財政部北區國稅局', '教育部', '國立教育廣播電臺', '大陸委員會'];
+  check('機關搜尋：空字串不亂給清單（避免一打開就是 355 筆）', filterAgencies(names, '').length === 0);
+  check('機關搜尋：包含即符合，開頭符合的排在只在中間符合的前面', filterAgencies(['國立教育廣播電臺', '教育部'], '教育').join('|') === '教育部|國立教育廣播電臺');
+  check('機關搜尋：都沒有開頭符合時短的在前（「主計」實測 2 筆，同一畫面看得到）', filterAgencies(['行政院主計總處', '國防部主計局'], '主計')[0] === '國防部主計局');
+  check('機關搜尋：多筆時短的在前（「財政部」先於「財政部北區國稅局」）', filterAgencies(names, '財政').join('|') === '財政部|財政部北區國稅局');
+  check('機關搜尋：limit 切在排序之後（先排好才切，不是先切才排）', filterAgencies(names, '教育', 1).length === 1);
+  check('機關搜尋：查不到回空陣列（畫面才能說「找不到」，不要退回全部）', filterAgencies(names, '不存在').length === 0);
+  check('最近切換過：新的在前、去重、最多 4 筆', pushRecent(['財政部', '教育部'], '教育部').join('|') === '教育部|財政部' && pushRecent(['a', 'b', 'c', 'd'], 'e').length === 4);
+}
 // 「機關」頁與「我的機關」互相連結
 expectAll('我的機關連到機關頁', myAgencyHtml, ['href="/agencies"', '機關頁']);
 // 會議與備詢：未來（會議預告）那一張排在已開過的前面，說明文字不再說「沒有未來行事曆」

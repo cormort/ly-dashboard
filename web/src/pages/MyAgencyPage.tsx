@@ -9,6 +9,7 @@ import { RouteLink } from '../components/RouteLink';
 import { formatDay, shortCommittee } from '../lib/format';
 import { partyStyle } from '../lib/parties';
 import { readPreference, writePreference } from '../lib/storage';
+import { filterAgencies, pushRecent } from '../lib/agencySearch';
 import { AGENCY_REPORT_CATEGORY } from './BudgetPage';
 
 export interface MyAgencyPageProps {
@@ -21,6 +22,8 @@ export interface MyAgencyPageProps {
 export const MY_AGENCY_KEY = 'my-agency';
 /** 沒選過時預設載入的機關 */
 export const DEFAULT_AGENCY = '行政院主計總處';
+/** 最近切換過的機關（這個瀏覽器） */
+const RECENT_KEY = 'my-agency-recent';
 
 /** 網址 ?agency= 優先（可分享），其次是上次選的（存在這個瀏覽器），都沒有就用預設機關 */
 const initialAgency = (): string => new URLSearchParams(window.location.search).get('agency') || readPreference(MY_AGENCY_KEY) || DEFAULT_AGENCY;
@@ -164,6 +167,19 @@ export function MyAgencyPage({ refreshToken, onOpenId, onNavigate }: MyAgencyPag
   const [watch, setWatch] = useState(initialWatch);
   /** 剛切換過去的機關：畫面要用一句「已切換為 X」回應（手機上只換內容時，使用者不確定自己按到沒有） */
   const [switched, setSwitched] = useState('');
+  /** 搜尋框的內容與結果清單（355 個機關用滾的很痛苦，打字兩三個字就縮到十筆內） */
+  const [query, setQuery] = useState('');
+  const [openList, setOpenList] = useState(false);
+  /** 最近切換過的機關（這個瀏覽器），清單打開、還沒打字時先列出來 */
+  const [recent, setRecent] = useState<string[]>(() => {
+    try {
+      const raw = readPreference(RECENT_KEY);
+      const parsed: unknown = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string') : [];
+    } catch {
+      return [];
+    }
+  });
   useEffect(() => {
     const onPop = () => {
       setAgency(initialAgency());
@@ -184,15 +200,25 @@ export function MyAgencyPage({ refreshToken, onOpenId, onNavigate }: MyAgencyPag
   const data = res.data;
 
   const choose = (name: string) => {
-    if (!name || name === agency) return;
+    if (!name) return;
+    // 選到「現在這一個」也要把清單收掉，不然看起來像沒反應
+    setQuery('');
+    setOpenList(false);
+    if (name === agency) return;
     setAgency(name);
     setWatch('');
     setSwitched(name);
+    const nextRecent = pushRecent(recent, name);
+    setRecent(nextRecent);
+    writePreference(RECENT_KEY, JSON.stringify(nextRecent));
     writePreference(MY_AGENCY_KEY, name);
     window.history.replaceState(null, '', pathFor('my', { agency: name }));
     // 使用者可能是從頁面中間的「有首長新聞追蹤的機關」chips 切過來的，把「已切換」那句帶進視野
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
+
+  const agencyNames = (data?.agencies ?? []).map((a) => a.name);
+  const results = filterAgencies(agencyNames, query);
 
   /** 「誰在關注」的件數：點開看那 N 次是哪些資料（同一位再點一次＝收起來） */
   const toggleWatch = (id: string) => {
@@ -208,19 +234,73 @@ export function MyAgencyPage({ refreshToken, onOpenId, onNavigate }: MyAgencyPag
    * 原生 select 在手機是系統滾輪（可快速滑到「主計總處」），桌機有鍵盤搜尋，且選了就一定生效。
    * 切換後另外給一句「已切換為 X」＋捲回頁首，讓回饋落在使用者眼前。
    */
+  /**
+   * 機關選擇：可搜尋的清單（不是原生 `<select>`）。
+   *
+   * 兩個先後的教訓：
+   *  1. 原本是 `<input list>` ＋ `datalist` —— iOS Safari 幾乎不顯示建議，而且要完全等於機關名才切換，
+   *     打了字沒反應，使用者不知道有沒有成功。
+   *  2. 改原生 `<select>` 之後換成另一個問題：**355 筆**在手機是系統滾輪，要滾很久（使用者：「這樣會不會要滾很久」）。
+   *
+   * 現在：輸入一到兩個字就縮到十筆以內（「主計」2 筆、「財政」12 筆），點一列（44px）即切換；
+   * 清單還沒打字時先列「最近切換過的」，並寫出總筆數。切換後在下面回一句「已切換為 X」。
+   */
+  const pickRow = (name: string, hint?: string) => (
+    <li key={name}>
+      <button type="button" onClick={() => choose(name)} aria-label={`切換到 ${name}`}>
+        <span>{name}</span>
+        {hint ? <span className="muted">{hint}</span> : null}
+      </button>
+    </li>
+  );
   const selector = (
     <div className="agency-picker">
       <label>
         <span className="muted">{agency ? '更換機關' : '選擇機關'}</span>
-        <select value={agency} onChange={(event) => choose(event.target.value)} aria-label="選擇機關">
-          {agency ? null : <option value="">請選擇機關</option>}
-          {(data?.agencies ?? []).map((a) => (
-            <option key={a.name} value={a.name}>
-              {a.name}
-            </option>
-          ))}
-        </select>
+        <input
+          type="search"
+          value={query}
+          placeholder={agency ? `目前：${agency}` : '輸入機關名稱的一兩個字，例如 主計'}
+          onChange={(event) => {
+            setQuery(event.target.value);
+            setOpenList(true);
+          }}
+          onFocus={() => setOpenList(true)}
+          onBlur={(event) => {
+            // 點清單裡的那一列時不要先把清單收掉（不然點不到）
+            if (!event.currentTarget.closest('.agency-picker')?.contains(event.relatedTarget as Node | null)) setOpenList(false);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') setOpenList(false);
+            if (event.key === 'Enter' && results[0]) choose(results[0]);
+          }}
+          role="combobox"
+          aria-expanded={openList}
+          aria-controls="agency-search-results"
+          aria-autocomplete="list"
+        />
       </label>
+      {openList ? (
+        <div className="agency-results" id="agency-search-results">
+          {query.trim() ? (
+            results.length ? (
+              <ul aria-label={`符合「${query.trim()}」的機關`}>{results.map((name) => pickRow(name))}</ul>
+            ) : (
+              <p className="muted">找不到符合「{query.trim()}」的機關，試試更短的字（例如「主計」「財政」）。</p>
+            )
+          ) : (
+            <>
+              {recent.length ? (
+                <>
+                  <p className="agency-results-head">最近切換過</p>
+                  <ul aria-label="最近切換過的機關">{recent.map((name) => pickRow(name))}</ul>
+                </>
+              ) : null}
+              <p className="muted">共 {agencyNames.length.toLocaleString()} 個機關；輸入一兩個字就會縮到十筆以內。</p>
+            </>
+          )}
+        </div>
+      ) : null}
       {switched ? (
         <p className="switch-note" role="status" aria-live="polite">
           已切換為 <b>{switched}</b>
