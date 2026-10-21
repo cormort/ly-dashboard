@@ -1392,7 +1392,11 @@ a.stat-tile:hover, button.stat-tile:hover:not(:disabled) { border-color: #98a2b3
 /* ---------- 我的機關 ---------- */
 .agency-picker { flex: 1 1 280px; max-width: 420px; }
 .agency-picker label { display: grid; gap: 4px; }
-.agency-picker input { width: 100%; }
+/* 原生 select：手機是系統滾輪（比 datalist 可靠）、桌機可用鍵盤搜尋；44px 是最小觸控高度 */
+.agency-picker select { width: 100%; min-height: 44px; }
+/* 切換後的回饋：貼在選單正下方，4 秒後消失 */
+.switch-note { margin: 4px 0 0; font-size: var(--fs-sm); color: var(--accent-ink); }
+.switch-note b { font-weight: 700; }
 .agency-picker-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-3); }
 .watchers { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-6); }
 .watchers li { display: inline-flex; align-items: baseline; gap: 6px; }
@@ -1419,7 +1423,13 @@ a.stat-tile:hover, button.stat-tile:hover:not(:disabled) { border-color: #98a2b3
 .my-head { align-items: center; row-gap: var(--space-2); }
 .my-head .agency-picker-row { margin-left: auto; }
 .my-head .agency-picker label { display: flex; align-items: center; gap: var(--space-2); white-space: nowrap; }
-.my-head .agency-picker input { flex: 1; min-width: 15em; }
+.my-head .agency-picker select { flex: 1; min-width: 12em; }
+/* 手機／平板：機關選單自己佔一列（`white-space: nowrap` 的標籤＋12em 的選單在 390px 會擠成一團） */
+@media (max-width: 820px) {
+  .my-head .agency-picker-row { margin-left: 0; }
+  .my-head .agency-picker { flex: 1 1 100%; max-width: none; }
+  .my-head .agency-picker label { display: grid; white-space: normal; }
+}
 /* 議員分頁（/council）：靜態的中選會選舉結果。
    版面盡量沿用既有類別（panel／stat-row／roster／region-people／regions-details／stat-dual），
    這裡只留這一頁真的需要的四件事。 */

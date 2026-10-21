@@ -162,7 +162,8 @@ export function WatcherDetail({
 export function MyAgencyPage({ refreshToken, onOpenId, onNavigate }: MyAgencyPageProps) {
   const [agency, setAgency] = useState(initialAgency);
   const [watch, setWatch] = useState(initialWatch);
-  const [draft, setDraft] = useState('');
+  /** 剛切換過去的機關：畫面要用一句「已切換為 X」回應（手機上只換內容時，使用者不確定自己按到沒有） */
+  const [switched, setSwitched] = useState('');
   useEffect(() => {
     const onPop = () => {
       setAgency(initialAgency());
@@ -172,16 +173,25 @@ export function MyAgencyPage({ refreshToken, onOpenId, onNavigate }: MyAgencyPag
     return () => window.removeEventListener('popstate', onPop);
   }, []);
 
+  // 「已切換為 X」留 4 秒就收掉；連切兩個機關時計時器重來
+  useEffect(() => {
+    if (!switched) return;
+    const timer = window.setTimeout(() => setSwitched(''), 4000);
+    return () => window.clearTimeout(timer);
+  }, [switched]);
+
   const res = useApi<AgencyHomeResponse>(buildUrl('/agency', { name: agency, watch }), { refreshToken });
   const data = res.data;
-  const names = new Set(data?.agencies.map((a) => a.name));
 
   const choose = (name: string) => {
+    if (!name || name === agency) return;
     setAgency(name);
     setWatch('');
-    setDraft('');
+    setSwitched(name);
     writePreference(MY_AGENCY_KEY, name);
     window.history.replaceState(null, '', pathFor('my', { agency: name }));
+    // 使用者可能是從頁面中間的「有首長新聞追蹤的機關」chips 切過來的，把「已切換」那句帶進視野
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   /** 「誰在關注」的件數：點開看那 N 次是哪些資料（同一位再點一次＝收起來） */
@@ -190,26 +200,32 @@ export function MyAgencyPage({ refreshToken, onOpenId, onNavigate }: MyAgencyPag
     setWatch(next);
     window.history.replaceState(null, '', pathFor('my', { agency, watch: next }));
   };
+  /**
+   * 機關選擇：原生 `<select>`。
+   *
+   * 原本是可輸入的 `<input list="…">`＋`datalist`：手機上 iOS Safari 幾乎不顯示建議清單，
+   * 打一半（「主計」）又因為要完全等於機關名才切換，變成「打了字、畫面沒動」—— 使用者不知道有沒有切成功。
+   * 原生 select 在手機是系統滾輪（可快速滑到「主計總處」），桌機有鍵盤搜尋，且選了就一定生效。
+   * 切換後另外給一句「已切換為 X」＋捲回頁首，讓回饋落在使用者眼前。
+   */
   const selector = (
     <div className="agency-picker">
       <label>
         <span className="muted">{agency ? '更換機關' : '選擇機關'}</span>
-        <input
-          type="search"
-          list="agency-options"
-          value={draft}
-          placeholder="輸入機關名稱，例如 財政部"
-          onChange={(event) => {
-            setDraft(event.target.value);
-            if (names.has(event.target.value)) choose(event.target.value);
-          }}
-        />
+        <select value={agency} onChange={(event) => choose(event.target.value)} aria-label="選擇機關">
+          {agency ? null : <option value="">請選擇機關</option>}
+          {(data?.agencies ?? []).map((a) => (
+            <option key={a.name} value={a.name}>
+              {a.name}
+            </option>
+          ))}
+        </select>
       </label>
-      <datalist id="agency-options">
-        {data?.agencies.map((a) => (
-          <option key={a.name} value={a.name} />
-        ))}
-      </datalist>
+      {switched ? (
+        <p className="switch-note" role="status" aria-live="polite">
+          已切換為 <b>{switched}</b>
+        </p>
+      ) : null}
     </div>
   );
 

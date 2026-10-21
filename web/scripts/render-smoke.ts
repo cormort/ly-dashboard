@@ -399,7 +399,16 @@ console.log('\n— 我的機關 —');
 check('/my 對應我的機關頁', routeOf('/my') === 'my' && routeOf('/my?agency=%E8%B2%A1%E6%94%BF%E9%83%A8') === 'my');
 const myAgencyHtml = render(createElement(MyAgencyPage, { refreshToken: 0, onOpenId: () => undefined, onNavigate: () => undefined }));
 // 沒選過機關時預設載入行政院主計總處（不再有「尚未選機關」狀態）；有輸入清單可更換，已是預設就不顯示「回到」按鈕
-expectAll('我的機關：預設載入行政院主計總處', myAgencyHtml, ['<h1>行政院主計總處</h1>', '讀取「行政院主計總處」', '更換機關', 'list="agency-options"', 'id="agency-options"', '主計總處專頁']);
+// 機關選擇改用原生 <select>（手機的 datalist 不可靠），並要有「已切換為 X」的回饋
+expectAll('我的機關：預設載入行政院主計總處', myAgencyHtml, ['<h1>行政院主計總處</h1>', '讀取「行政院主計總處」', '更換機關', '<select', 'aria-label="選擇機關"', '主計總處專頁']);
+expectNone('我的機關：不再用 datalist（手機上沒有建議清單，打了字也不會切換）', myAgencyHtml, ['<datalist', 'list="agency-options"']);
+check(
+  '我的機關：切換後有 role=status 的「已切換為 X」一句（手機上只換內容時看不出有沒有成功）',
+  (() => {
+    const src = readFileSync(new URL('../src/pages/MyAgencyPage.tsx', import.meta.url), 'utf8');
+    return src.includes('已切換為') && src.includes('role="status" aria-live="polite"') && src.includes('className="switch-note"') && src.includes('setSwitched(name)');
+  })(),
+);
 expectNone('我的機關：已是預設機關時沒有「取消選擇」或「回到」按鈕', myAgencyHtml, ['取消選擇', '回到行政院主計總處']);
 // 我的機關的分區依首長與幕僚使用頻率：會議與備詢 → 誰在關注 → 新聞 → 預算與法案（只有資料到了才會渲染，這裡驗原始碼順序）
 check(

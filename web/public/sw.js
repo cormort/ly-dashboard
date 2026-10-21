@@ -21,7 +21,8 @@
 // v4→v5：2026-10-19 預算審議改版（統計範圍兩顆鈕、流程帶七關）——外框改了就要換名，否則畫面會一直是舊版
 // v5→v6：2026-10-20 站名改為「立委輿情觀測站」（index.html／manifest 都改了）
 // v6→v7：主畫面名稱改短為「立委輿情」（manifest short_name／apple-mobile-web-app-title）
-const CACHE = 'ly-shell-v7';
+// v7→v8：我的機關的機關選擇改成原生 select ＋「已切換為 X」回饋（版面與按鈕都變了）
+const CACHE = 'ly-shell-v8';
 
 // 安裝時先塞一份外框，確保「第一次離線就有東西」。
 const SHELL = [
