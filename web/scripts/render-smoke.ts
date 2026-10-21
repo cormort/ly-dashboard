@@ -31,6 +31,7 @@ import { formatDateTime, formatDay, formatDuration } from '../src/lib/format';
 import type { SyncScope } from '../src/api/types';
 import { MyAgencyPage, WatcherDetail, watchUrl } from '../src/pages/MyAgencyPage';
 import { filterAgencies, pushRecent } from '../src/lib/agencySearch';
+import { buildAgencyTree, unitRank } from '../src/lib/agencyTree';
 import { InfoTip } from '../src/components/InfoTip';
 import { PAGE_HINTS } from '../src/lib/pageHints';
 import { FundsPage } from '../src/pages/FundsPage';
@@ -430,6 +431,37 @@ check(
   check('機關搜尋：limit 切在排序之後（先排好才切，不是先切才排）', filterAgencies(names, '教育', 1).length === 1);
   check('機關搜尋：查不到回空陣列（畫面才能說「找不到」，不要退回全部）', filterAgencies(names, '不存在').length === 0);
   check('最近切換過：新的在前、去重、最多 4 筆', pushRecent(['財政部', '教育部'], '教育部').join('|') === '教育部|財政部' && pushRecent(['a', 'b', 'c', 'd'], 'e').length === 4);
+}
+// 依院別找：五院 → 一級部會（可收合）。355 筆全攤開會佔滿畫面，所以分類要正確、也不能漏掉任何機關
+{
+  const names = [
+    '行政院', '行政院主計總處', '行政院人事行政總處公務人力發展學院',
+    '內政部', '財政部', '財政部北區國稅局', '教育部', '國立臺灣大學', '國立臺北教育大學',
+    '考試院', '考選部', '銓敘部', '司法院', '最高法院', '監察院', '審計部',
+    '中山醫學大學', '中央銀行', '國家科學及技術委員會', '大陸委員會香港辦事處',
+  ];
+  const tree = buildAgencyTree(names);
+  const find = (yuan: string) => tree.find((g) => g.yuan === yuan)!;
+  const unit = (yuan: string, name: string) => find(yuan).units.find((u) => u.name === name);
+  check('院別樹：每個機關都被分到某一組（加總＝傳入筆數，不會有機關憑空消失）', tree.reduce((n, g) => n + g.count, 0) === names.length);
+  check('院別樹：五院都在（沒有機關的院不顯示）', ['行政院', '立法院', '司法院', '考試院', '監察院'].every((y) => !find(y as never) || find(y as never).count > 0));
+  check('院別樹：所屬機關歸到一級部會（國稅局 → 財政部）', !!unit('行政院', '財政部')?.items.includes('財政部北區國稅局'));
+  check('院別樹：國立學校歸教育部（名稱不以「教育部」開頭也要認得）', !!unit('行政院', '教育部')?.items.includes('國立臺灣大學'));
+  check('院別樹：部會本身也算在它自己那一組（點部會＝切到部會）', !!unit('行政院', '財政部')?.items.includes('財政部'));
+  check('院別樹：其他院自己有所屬（考選部 → 考試院、最高法院 → 司法院、審計部 → 監察院）',
+    !!unit('考試院', '考選部') && !!unit('司法院', '最高法院') && !!unit('監察院', '審計部'));
+  check('院別樹：對不到部會的進「其他」而不是被丟掉（私立大學）', find('其他').loose.includes('中山醫學大學'));
+  check('院別樹：只有自己的部會只給一筆（畫面用一顆按鈕，少一層點擊）', unit('行政院', '中央銀行')?.items.length === 1);
+  check('院別樹：部 → 委員會 → 總處／直屬的順序（照名字排會把「內政部」排到委員會後面）', (() => {
+    const order = find('行政院').units.map((u) => u.name);
+    const firstNonBu = order.findIndex((n) => !n.endsWith('部'));
+    return (
+      unitRank('內政部') < unitRank('公平交易委員會') &&
+      unitRank('公平交易委員會') < unitRank('行政院主計總處') &&
+      firstNonBu > 0 &&
+      order.every((n, i) => (i < firstNonBu ? n.endsWith('部') : true))
+    );
+  })());
 }
 // 「機關」頁與「我的機關」互相連結
 expectAll('我的機關連到機關頁', myAgencyHtml, ['href="/agencies"', '機關頁']);

@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { ArrowRight } from 'lucide-react';
 import { buildUrl } from '../api/client';
 import type { AgencyHomeResponse, AgencyItem, FundKind } from '../api/types';
@@ -10,6 +10,7 @@ import { formatDay, shortCommittee } from '../lib/format';
 import { partyStyle } from '../lib/parties';
 import { readPreference, writePreference } from '../lib/storage';
 import { filterAgencies, pushRecent } from '../lib/agencySearch';
+import { buildAgencyTree } from '../lib/agencyTree';
 import { AGENCY_REPORT_CATEGORY } from './BudgetPage';
 
 export interface MyAgencyPageProps {
@@ -219,6 +220,8 @@ export function MyAgencyPage({ refreshToken, onOpenId, onNavigate }: MyAgencyPag
 
   const agencyNames = (data?.agencies ?? []).map((a) => a.name);
   const results = filterAgencies(agencyNames, query);
+  // 五院 → 一級部會（可收合；355 筆全部攤開會佔滿整個畫面）
+  const tree = useMemo(() => buildAgencyTree(agencyNames), [data?.agencies]);
 
   /** 「誰在關注」的件數：點開看那 N 次是哪些資料（同一位再點一次＝收起來） */
   const toggleWatch = (id: string) => {
@@ -296,7 +299,38 @@ export function MyAgencyPage({ refreshToken, onOpenId, onNavigate }: MyAgencyPag
                   <ul aria-label="最近切換過的機關">{recent.map((name) => pickRow(name))}</ul>
                 </>
               ) : null}
-              <p className="muted">共 {agencyNames.length.toLocaleString()} 個機關；輸入一兩個字就會縮到十筆以內。</p>
+              <p className="agency-results-head">
+                依院別找（共 {agencyNames.length.toLocaleString()} 個機關，也可以直接打字）
+              </p>
+              <div className="agency-tree">
+                {tree.map((group) => (
+                  <details key={group.yuan} className="agency-yuan">
+                    <summary>
+                      <span>{group.yuan}</span>
+                      <span className="muted">{group.count.toLocaleString()}</span>
+                    </summary>
+                    <ul aria-label={group.yuan}>
+                      {/* 一級部會：部會本身＋所屬機關超過一筆才做第二層收合，只有自己就一顆按鈕（少一次點擊） */}
+                      {group.units.map((unit) =>
+                        unit.items.length === 1 && unit.items[0] === unit.name ? (
+                          <li key={unit.name}>{pickRow(unit.name)}</li>
+                        ) : (
+                          <li key={unit.name}>
+                            <details className="agency-unit">
+                              <summary>
+                                <span>{unit.name}</span>
+                                <span className="muted">{unit.items.length}</span>
+                              </summary>
+                              <ul aria-label={`${unit.name}所屬`}>{unit.items.map((name) => pickRow(name))}</ul>
+                            </details>
+                          </li>
+                        ),
+                      )}
+                      {group.loose.map((name) => pickRow(name))}
+                    </ul>
+                  </details>
+                ))}
+              </div>
             </>
           )}
         </div>
