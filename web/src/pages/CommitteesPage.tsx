@@ -30,11 +30,31 @@ const readParam = (key: string) => new URLSearchParams(window.location.search).g
  * 預告範圍天生很短：委員會的開會通知是逐週公布的，所以任何來源（g0v meets、IVOD）都只到「下週」。
  * 這裡把「為什麼只有兩天」直接寫在畫面上，免得被當成資料沒抓到。歷史會議仍在下面的「最新會議」。
  */
-function UpcomingMeetings({ refreshToken, committee }: { refreshToken: number; committee: string }) {
+/**
+ * 會議預告的篩選（純函式，render smoke 驗真值表）。
+ *
+ * `committee`＝委員會頁自己那一格；`q`＝空白分隔的關鍵字（我的機關以「全名 簡稱 …」連過來）。
+ * 兩者都是「沒有就不篩」。只比對標題與議程 —— 我的機關那張卡片用的是同一條規則，
+ * 所以「卡片寫 1 場」點進來的清單也必須是 1 場，不會變成整份 19 場。
+ */
+export function filterForecasts<T extends { committee: string; title: string; agenda: string }>(
+  items: readonly T[],
+  { committee = '', q = '' }: { committee?: string; q?: string } = {},
+): T[] {
+  const terms = String(q ?? '').split(/\s+/).map((t) => t.trim()).filter(Boolean);
+  return items.filter((m) => {
+    if (committee && !(m.committee === committee || m.committee.includes(shortCommittee(committee)))) return false;
+    if (!terms.length) return true;
+    const text = `${m.title ?? ''} ${m.agenda ?? ''}`;
+    return terms.some((t) => text.includes(t));
+  });
+}
+
+function UpcomingMeetings({ refreshToken, committee, q }: { refreshToken: number; committee: string; q: string }) {
   const res = useApi<UpcomingMeetingsResponse>(buildUrl('/meetings/upcoming', { days: 10 }), { refreshToken });
   const data = res.data;
   if (res.phase === 'error') return null; // 預告不是主功能，掛掉不要擋整頁
-  const items = (data?.items ?? []).filter((m) => !committee || m.committee === committee || m.committee.includes(shortCommittee(committee)));
+  const items = filterForecasts(data?.items ?? [], { committee, q });
   const groups: { date: string; items: typeof items }[] = [];
   for (const m of items) {
     const last = groups.at(-1);
@@ -46,7 +66,9 @@ function UpcomingMeetings({ refreshToken, committee }: { refreshToken: number; c
       <div className="sectionhead">
         <h2>會議預告</h2>
         <span className="muted">
-          {data ? `未來 ${data.days} 天・${items.length} 場${committee ? `（${shortCommittee(committee)}）` : ''}` : ''}
+          {data
+            ? `未來 ${data.days} 天・${items.length} 場${committee ? `（${shortCommittee(committee)}）` : q.trim() ? `（關鍵字：${q.trim()}）` : ''}`
+            : ''}
         </span>
       </div>
       {res.phase === 'loading' && !data ? <LoadingState label="讀取會議預告…" /> : null}
@@ -127,7 +149,7 @@ export function CommitteesPage({ refreshToken, onOpenId }: CommitteesPageProps) 
     <>
       <h1 className="sr-only">委員會</h1>
 
-      <UpcomingMeetings refreshToken={refreshToken} committee={committee} />
+      <UpcomingMeetings refreshToken={refreshToken} committee={committee} q={q} />
 
       <div className="filters bill-filters" role="search">
         <SearchField value={q} onChange={(value) => change({ q: value })} ariaLabel="搜尋會議、機關回覆與會議紀錄" placeholder="搜尋機關或議題，例如：主計總處（空白分隔，任一符合）" />

@@ -116,10 +116,11 @@ export function DashboardPage({ refreshToken, onOpenId, onNavigate }: DashboardP
           <span className="muted">我的機關</span>
           {agencyName}
         </h2>
-        {mine.data?.meetings && mine.data.replies && mine.data.kinds && mine.data.official_news ? (
+        {mine.data?.meetings && mine.data.upcoming && mine.data.replies && mine.data.kinds && mine.data.official_news ? (
           <ul>
             {(
               [
+                ['即將召開', mine.data.upcoming.total],
                 ['近期議程', mine.data.meetings.total],
                 ['書面回覆', mine.data.replies.total],
                 ['預算審議', mine.data.kinds.budget.total],

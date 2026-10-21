@@ -1467,6 +1467,11 @@ export interface AgencyHomeResponse {
     speakers: { id: string | null; name: string; party: string }[];
   }>;
   replies?: AgencyBlock<{ date: string; meeting: string; title: string; url: string }>;
+  /**
+   * 即將召開：會議預告（未來 `days` 天）裡標題或議程提到本機關的場次，最近的在前。
+   * 預告天生只有下週（開會通知逐週公布），total 少是正常的。
+   */
+  upcoming?: AgencyBlock<UpcomingMeeting> & { days: number };
   /** 誰在關注：新聞／臉書／提案掛名＋會議發言的委員，依次數排序 */
   watchers?: { id: string; name: string; party: string; count: number }[];
   /**

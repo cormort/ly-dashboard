@@ -292,10 +292,11 @@ export function MyAgencyPage({ refreshToken, onOpenId, onNavigate }: MyAgencyPag
       {res.phase === 'loading' && !data ? <LoadingState label={`讀取「${agency}」…`} /> : null}
       {res.phase === 'error' ? <ErrorState title="無法取得機關資料（/api/v1/agency）" error={res.error} onRetry={res.reload} /> : null}
 
-      {data?.agency && data.kinds && data.meetings && data.replies && data.official_news && data.watchers ? (
+      {data?.agency && data.kinds && data.meetings && data.upcoming && data.replies && data.official_news && data.watchers ? (
         <>
           <div className="stat-row">
             {[
+              { label: '即將召開', value: data.upcoming.total, id: 'my-meetings' },
               { label: '近期議程提到', value: data.meetings.total, id: 'my-meetings' },
               { label: '新聞', value: data.kinds.news.total + data.official_news.total, id: 'my-news' },
               { label: '預算審議', value: data.kinds.budget.total, id: 'my-budget' },
@@ -312,9 +313,39 @@ export function MyAgencyPage({ refreshToken, onOpenId, onNavigate }: MyAgencyPag
           <section className="dash-section" aria-labelledby="my-meetings">
             <div className="dash-section-head">
               <h2 id="my-meetings">會議與備詢</h2>
-              <p className="muted">已開過的委員會議程提到本機關者；尚無未來行事曆資料</p>
+              <p className="muted">未來 10 天的會議預告（標題或議程提到本機關者），以及已開過的委員會議程與部會的書面回覆</p>
             </div>
             <div className="dash-grid">
+              <Block
+                title="即將召開"
+                total={data.upcoming.total}
+                href={committeesLink}
+                onNavigate={onNavigate}
+                note="立法院議事轉播的「會議預報」；開會通知逐週公布，所以只有下週的場次是正常的"
+              >
+                <ul className="dash-list">
+                  {data.upcoming.items.map((m) => (
+                    <li key={`${m.date}-${m.time}-${m.committee}-${m.title}`}>
+                      <span className="kind">{m.committee ? shortCommittee(m.committee) : '會議'}</span>
+                      <span className="clamp-2">
+                        {m.materials_url ? (
+                          <a href={m.materials_url} target="_blank" rel="noreferrer noopener">
+                            {m.title}
+                            <span className="sr-only">（會議相關資料，另開新視窗）</span>
+                          </a>
+                        ) : (
+                          m.title
+                        )}
+                        {m.place ? <span className="muted">　{m.place}</span> : null}
+                      </span>
+                      <time>
+                        {formatDay(m.date)}
+                        {m.time ? ` ${m.time}` : ''}
+                      </time>
+                    </li>
+                  ))}
+                </ul>
+              </Block>
               <Block title="近期議程" total={data.meetings.total} href={committeesLink} onNavigate={onNavigate}>
                 <ul className="dash-list">
                   {data.meetings.items.map((m) => (

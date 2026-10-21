@@ -49,7 +49,7 @@ import { BUDGET_COMMITTEE_ORDER, BUDGET_PROCESS_STEPS, BudgetPage, BudgetProcess
 import { YearProgressList, budgetProgressBar, budgetProgressText, budgetRecordsText, hasReviewableItems, yearLabel } from '../src/components/BudgetProgress';
 import { syncProgressText, syncRunningText } from '../src/lib/format';
 import { DashboardPage } from '../src/pages/DashboardPage';
-import { CommitteesPage } from '../src/pages/CommitteesPage';
+import { CommitteesPage, filterForecasts } from '../src/pages/CommitteesPage';
 import { legacyRedirect, pathFor, routeOf, type Route } from '../src/hooks/useRoute';
 import { BillStageBar } from '../src/components/BillStage';
 import { CountiesPage, buildMetrics, perArea } from '../src/pages/CountiesPage';
@@ -412,6 +412,44 @@ check(
 );
 // 「機關」頁與「我的機關」互相連結
 expectAll('我的機關連到機關頁', myAgencyHtml, ['href="/agencies"', '機關頁']);
+// 會議與備詢：未來（會議預告）那一張排在已開過的前面，說明文字不再說「沒有未來行事曆」
+check(
+  '我的機關：會議與備詢第一張是「即將召開」（會議預告），排在「近期議程」前面',
+  (() => {
+    const src = readFileSync(new URL('../src/pages/MyAgencyPage.tsx', import.meta.url), 'utf8');
+    const up = src.indexOf('title="即將召開"');
+    const past = src.indexOf('title="近期議程"');
+    return up > 0 && past > up && src.includes('data.upcoming.total') && src.includes('data.upcoming.items.map');
+  })(),
+);
+check(
+  '我的機關：即將召開的每一列連到 ppg 的會議相關資料（沒有連結就純文字，不要做成假連結）',
+  (() => {
+    const src = readFileSync(new URL('../src/pages/MyAgencyPage.tsx', import.meta.url), 'utf8');
+    return src.includes('m.materials_url ?') && src.includes('href={m.materials_url}') && src.includes('{m.time ? ` ${m.time}` : \'\'}');
+  })(),
+);
+expectNone('我的機關：說明不再寫「尚無未來行事曆資料」（現在有會議預告了）', myAgencyHtml, ['尚無未來行事曆資料']);
+// 會議預告的篩選：我的機關那張卡片（1 場）與點進來的委員會頁必須是同一條規則，否則「看更多」會變成 19 場
+{
+  const forecasts = [
+    { committee: '財政委員會', title: '立法院第11屆第6會期財政委員會第3次全體委員會議', agenda: '邀請行政院主計總處陳主計長淑姿列席業務報告' },
+    { committee: '教育及文化委員會', title: '教育及文化委員會第3次全體委員會議', agenda: '邀請教育部政務次長列席專題報告' },
+    { committee: '院會', title: '第11屆第6會期第4次會議', agenda: '聽取主計總處報告' },
+  ];
+  check('會議預告篩選：沒有 committee 也沒有關鍵字＝全部都留', filterForecasts(forecasts, {}).length === 3);
+  check('會議預告篩選：關鍵字比對標題與議程（我的機關連過來的那組詞）', filterForecasts(forecasts, { q: '行政院主計總處 主計總處' }).length === 2);
+  check('會議預告篩選：committee 與關鍵字是交集，不是聯集', filterForecasts(forecasts, { committee: '財政委員會', q: '主計總處' }).length === 1);
+  check('會議預告篩選：committee 單獨用時維持原本行為（委員會頁那一格）', filterForecasts(forecasts, { committee: '教育及文化委員會' }).length === 1);
+  check('會議預告篩選：比對不到就回空陣列（畫面才能說「沒有排定的會議」）', filterForecasts(forecasts, { q: '不存在的機關' }).length === 0);
+}
+check(
+  '我的機關：會議與備詢的說明寫出來源與範圍（未來 10 天、開會通知逐週公布）',
+  (() => {
+    const src = readFileSync(new URL('../src/pages/MyAgencyPage.tsx', import.meta.url), 'utf8');
+    return src.includes('未來 10 天的會議預告') && src.includes('開會通知逐週公布');
+  })(),
+);
 {
   // 「誰在關注」的件數：連到同頁的明細卡片（?watch=），明細每一筆都連回原始資料
   const watcher = {

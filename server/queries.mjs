@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { ABOLISHED_AGENCIES, canonicalAgency } from './agency-names.mjs';
 import { budgetTypes, committeesOf, newsName, regionOf } from './normalize.mjs';
 import { SYNC_SCOPES, datasetLabel, scopeDatasets } from './sync-scopes.mjs';
+import { listUpcomingMeetings } from './forecast.mjs';
 
 const nowIso = () => new Date().toISOString();
 
@@ -3213,7 +3214,7 @@ const DGBAS_AGENCY = '行政院主計總處';
  * 讓「誰在關注」的件數可以點進去看來源，而不是只有一個數字。
  * 沒給 name 或不認得時 `agency` 為 null，只回機關清單供選單使用。
  */
-export function getAgencyHome(db, { name = '', per = 5, watch = '' } = {}) {
+export function getAgencyHome(db, { name = '', per = 5, watch = '', today = '' } = {}) {
   const agencies = listAgencies(db);
   const known = agencies.find((a) => a.name === String(name).trim());
   const base = { meta: envelope(db), agencies };
@@ -3268,6 +3269,29 @@ export function getAgencyHome(db, { name = '', per = 5, watch = '' } = {}) {
         .map((a) => ({ date: m.date, meeting: m.title, title: a.title, url: a.url })),
     );
 
+  /**
+   * 即將召開（2026-10-21 使用者：「我的機關如果有會議也要有卡片」）。
+   *
+   * 上面那張「近期議程」是**已開過**的會；這裡是還沒開的（立法院議事轉播「會議預報」＋g0v meets 的未來場次），
+   * 兩者對機關承辦人是不同的東西：「這一場我要不要去、資料準備好了沒」看的是未來的。
+   * 比對沿用同一組詞（全名＋簡稱＋首長職稱）—— 議程常直接寫「邀請行政院主計總處陳主計長淑姿…列席報告」。
+   * 預告範圍天生只有下週（開會通知逐週公布），所以場次少是正常的，不要當成沒抓到。
+   */
+  const upcoming = listUpcomingMeetings(db, { days: 10, limit: 500, today })
+    .items.filter((m) => hit(m.title) || hit(m.agenda))
+    .map((m) => ({
+      date: m.date,
+      time: m.time,
+      committee: m.committee,
+      place: m.place,
+      status: m.status,
+      title: m.title,
+      agenda: m.agenda,
+      materials_url: m.materials_url,
+      video_url: m.video_url ?? '',
+      source: m.source ?? 'ivod',
+    }));
+
   const tally = new Map();
   const bump = (l) => {
     if (l?.id) tally.set(l.id, { ...l, count: (tally.get(l.id)?.count ?? 0) + 1 });
@@ -3310,6 +3334,7 @@ export function getAgencyHome(db, { name = '', per = 5, watch = '' } = {}) {
     kinds,
     official_news: { total: officialNews.length, items: officialNews.slice(0, resolvedPer) },
     meetings: { total: meetings.length, items: meetings.slice(0, resolvedPer) },
+    upcoming: { days: 10, total: upcoming.length, items: upcoming.slice(0, resolvedPer) },
     replies: { total: replies.length, items: replies.slice(0, resolvedPer) },
     watchers,
     watcher,

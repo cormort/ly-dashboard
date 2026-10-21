@@ -260,3 +260,36 @@ test('機關檢送報告：只是從預算審議拆出來，同一機關兩個�
     .filter((b) => String(b.name).includes('財政部') || String(b.proposer).includes('財政部'));
   assert.equal(r.kinds.budget.total + r.kinds.submitted.total, matched.length, '加起來＝原本算在預算審議裡的件數（沒有少算也沒有重複算）');
 });
+
+test('我的機關：即將召開只收未來 10 天內、標題或議程提到本機關的場次，最近的在前', () => {
+  const { db } = seeded();
+  const ins = db.prepare('INSERT INTO meeting_forecasts(date, time, committee, place, status, title, agenda, materials_url, fetched_at) VALUES(?,?,?,?,?,?,?,?,?)');
+  const at = '2026-09-26T00:00:00.000Z';
+  // 兩場提到財政部（議程裡有全名），一場是別的機關，一場超出 10 天
+  ins.run('2026-09-29', '09:00', '財政委員會', '紅樓101會議室', '會議尚未開始', '第11屆第5會期財政委員會第7次全體委員會議', '邀請財政部部長列席報告', 'https://ppg/2', at);
+  ins.run('2026-09-28', '09:00', '財政委員會', '紅樓202會議室', '', '第11屆第5會期財政委員會第6次全體委員會議', '一、審查財政部函送的法案', 'https://ppg/1', at);
+  ins.run('2026-09-28', '09:00', '經濟委員會', '紅樓101會議室', '', '經濟委員會第4次全體委員會議', '審查礦業法', 'https://ppg/3', at);
+  ins.run('2026-10-30', '09:00', '財政委員會', '紅樓101會議室', '', '第11屆第6會期財政委員會第1次全體委員會議', '邀請財政部部長列席報告', 'https://ppg/4', at);
+  const r = getAgencyHome(db, { name: '財政部', today: '2026-09-26' });
+  assert.equal(r.upcoming.total, 2, '別的機關與 10 天後的那場都不算');
+  assert.deepEqual(r.upcoming.items.map((m) => m.date), ['2026-09-28', '2026-09-29'], '最近的在前（升冪）');
+  assert.deepEqual(r.upcoming.items.map((m) => m.materials_url), ['https://ppg/1', 'https://ppg/2'], '帶得出會議相關資料連結');
+  assert.equal(r.upcoming.days, 10);
+  assert.equal(getAgencyHome(db, { name: '財政部', per: 1, today: '2026-09-26' }).upcoming.items.length, 1, 'per 只切 items，total 仍是全部');
+});
+
+test('我的機關：即將召開也吃 g0v 的院會未來場次（議程提到本機關就算）', () => {
+  const { db } = seeded();
+  db.prepare('INSERT INTO committee_meets(code, date, title, committees, video_url, attachments, time_range, location) VALUES(?,?,?,?,?,?,?,?)').run(
+    'P1', '2026-09-27', '第11屆第5會期第3次會議', '["院會"]', null, '[]', '115/09/27 09:00-12:00', '議場',
+  );
+  const r = getAgencyHome(db, { name: '財政部', today: '2026-09-26' });
+  assert.equal(r.upcoming.total, 0, '院會那場的標題沒有「財政部」→ 不算');
+  assert.equal(r.upcoming.items.length, 0);
+  // 標題真的提到本機關時才算得到（g0v 來源沒有 materials_url）
+  db.prepare("UPDATE committee_meets SET title = '聽取財政部專案報告' WHERE code = 'P1'").run();
+  const r2 = getAgencyHome(db, { name: '財政部', today: '2026-09-26' });
+  assert.equal(r2.upcoming.total, 1);
+  assert.equal(r2.upcoming.items[0].source, 'g0v', '來源標成 g0v，前端才知道沒有會議相關資料連結');
+  assert.equal(r2.upcoming.items[0].time, '09:00', '時間從 time_range 取');
+});
