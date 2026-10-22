@@ -9,6 +9,8 @@ import { LegislatorDetail } from './components/LegislatorDetail';
 import { legislatorDetailUrl } from './lib/legislators';
 import { SyncStatusBanner } from './components/SyncStatusBanner';
 import { OfflineNotice } from './components/OfflineNotice';
+import { NewEventBar } from './components/NewEventBar';
+import { useNewEvents } from './hooks/useNewEvents';
 import { useApi } from './hooks/useApi';
 import { useReconnectRefresh } from './hooks/useReconnectRefresh';
 import { useQueryState } from './hooks/useQueryState';
@@ -73,6 +75,8 @@ export default function App() {
   const tracked = useTracked();
 
   const sync = useSync(() => setRefreshToken((value) => value + 1));
+  // 站內新事件：60 秒輪詢一次，只有分頁在看的時候（見 useNewEvents）
+  const newEvents = useNewEvents();
 
   const health = useApi<HealthResponse>(buildUrl('/health'), { refreshToken });
   const meta = useApi<MetaResponse>(buildUrl('/meta'), { refreshToken });
@@ -235,6 +239,8 @@ export default function App() {
           ) : null
         }
       >
+        {/* 新事件跑馬燈：正在看網頁時才輪詢（見 useNewEvents 的說明） */}
+        {newEvents.items.length ? <NewEventBar items={newEvents.items} onDismiss={newEvents.dismiss} /> : null}
         <OfflineNotice />
 
         {/* 展開（頁首狀態鈕）才顯示完整面板；同步有問題但沒展開時只留一行提示——

@@ -1,7 +1,7 @@
 import { pathToFileURL } from 'node:url';
 import { readFileSync } from 'node:fs';
 import { CONFIG } from './config.mjs';
-import { openDb, recordSyncRun, saveSnapshot, applyDataset, applyBills, applyLawAgencies, applyBudget, applyBudgetReports, applyCommitteeMeets, applyCommitteeRecords, applyMeetings, applyRollcalls, applyMeetingForecasts, applyResolutions, applyAgendas, applySocial, applySocialPosts, applyCouncilSocial, upsertNews, upsertTopicNews, upsertArticles, pruneNews, pruneLogs, getMeta, setMeta, upsertProgressOverride, getProgressOverrides, applyProgressOverrides, upsertBudgetCommittees, getBudgetCommittees } from './db.mjs';
+import { openDb, recordSyncRun, saveSnapshot, applyDataset, applyBills, applyLawAgencies, applyBudget, applyBudgetReports, applyCommitteeMeets, applyCommitteeRecords, applyMeetings, applyRollcalls, applyMeetingForecasts, applyResolutions, applyAgendas, applySocial, applySocialPosts, applyCouncilSocial, upsertNews, upsertTopicNews, upsertArticles, pruneNews, pruneLogs, getMeta, setMeta, upsertProgressOverride, getProgressOverrides, applyProgressOverrides, upsertBudgetCommittees, getBudgetCommittees, recordEvents } from './db.mjs';
 import { buildDataset, normalizeAgendas, normalizeCouncilSocial, normalizeBills, normalizeBudget, normalizeBudgetReports, normalizeCommitteeMeets, normalizeCommitteeRecords, normalizeMeetings, normalizeRollcalls, normalizeResolutions, normalizeSocial, normalizeSocialPosts, newsName, parseNewsRss, DataValidationError, NORMALIZER_VERSION } from './normalize.mjs';
 import { applySeatOverrides, loadSeatOverrides, seatOverridesDigest } from './committee-overrides.mjs';
 import { fetchJson, FetchError, sha256 } from './fetch-ly.mjs';
@@ -231,7 +231,17 @@ export async function runBudgetIngest(db, { logger = console, fetchImpl = fetchJ
       pages.push(...fetched.pages);
     }
     const items = normalizeBudget(pages, summary.total);
+    // 先記下既有 id，套用後比對出「新進的預算案」——同步是整批覆寫，不比對就全部看起來是新的
+    const knownBudgetIds = new Set(db.prepare('SELECT id FROM budget_bills').all().map((r) => r.id));
     const applied = applyBudget(db, items, { fetchedAt: now().toISOString() });
+    const newBudget = items.filter((i) => !knownBudgetIds.has(i.id));
+    if (newBudget.length) {
+      recordEvents(
+        db,
+        newBudget.map((i) => ({ kind: 'budget', ref: i.id, title: i.name, url: `/budget?id=${encodeURIComponent(i.id)}`, detail: i.status ?? '' })),
+      );
+      logger.log(`[budget] 新增 ${newBudget.length} 筆預算案（站內事件）`);
+    }
     logger.log(`[budget] 已套用：${items.length} 筆預算類議案、狀態異動 ${applied.changes} 筆`);
     record({ status: 'success', records: items.length, attempt: attempts, http_status: 200 });
     return { status: 'success', items: items.length, changes: applied.changes };
@@ -314,6 +324,17 @@ export function runForecastIngest(db, { logger = console, fetchImpl = fetchJson,
     const added = before.length ? diffForecasts(before, rows) : [];
     if (added.length) {
       logger.log(`[forecast] 新增 ${added.length} 場，準備通知`);
+      // 站內跑馬燈用同一份 added（Telegram 推播與站內提示不能各算一套，否則兩邊件數不同）
+      recordEvents(
+        db,
+        added.map((m) => ({
+          kind: 'meeting',
+          ref: `${m.date}|${m.time}|${m.committee}|${m.title}`,
+          title: `${m.date.slice(5)} ${m.time} ${m.committee} ${m.title}`.trim(),
+          url: '/committees',
+          detail: m.place ?? '',
+        })),
+      );
       await notify(added, { logger });
     }
     return { records, added: added.length };
@@ -503,7 +524,16 @@ export async function runBillsIngest(db, { logger = console, fetchImpl = fetchJs
       bytes: Buffer.byteLength(raw),
       json: { pages: pages.length, bills: pages.map((page) => page.bills) },
     });
+    const knownBillIds = new Set(db.prepare('SELECT id FROM bills').all().map((r) => r.id));
     const applied = applyBills(db, normalized, { fetchedAt: now().toISOString() });
+    const newBills = (normalized.bills ?? []).filter((b) => !knownBillIds.has(b.id));
+    if (newBills.length) {
+      recordEvents(
+        db,
+        newBills.map((b) => ({ kind: 'bill', ref: b.id, title: b.name, url: `/bills?id=${encodeURIComponent(b.id)}`, detail: b.status ?? '' })),
+      );
+      logger.log(`[bills] 新增 ${newBills.length} 筆議案（站內事件）`);
+    }
     // 法律→主管機關：「機關」頁用它把「修農業發展條例」的提案算進農業部。
     // 上游（g0v）自己填的為主；上游的寫法要先正規化（金管會→金融監督管理委員會…），否則機關頁認不出來。
     // 兩段都各自 fail soft —— 議案本身不能因為對照表抓不到就失敗，沿用上次的。

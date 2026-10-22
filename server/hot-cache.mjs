@@ -14,7 +14,8 @@
  *     第一個人進來不必付那 190 ms。
  *
  * **不要快取的**：`/api/v1/health`（前端用它顯示同步進度，快取會讓進度停住）、
- * `/api/v1/sync-sources`（按鈕上的「上次同步」時間）、`/api/v1/page-views`（統計，量很小）。
+ * `/api/v1/sync-sources`（按鈕上的「上次同步」時間）、`/api/v1/page-views`（統計，量很小）、
+ * `/api/v1/events`（跑馬燈按 since 累加，快取會讓新事件遲 60 秒才出現）。
  *
  * 金鑰一律**正規化**（參數排序、丟掉空值）：前端 `buildUrl()` 會省略空字串，但快取與預熱兩邊
  * 不見得用同一個順序組字串，不正規化就會「預熱了卻沒命中」。
@@ -30,7 +31,7 @@ export const HOT_REFRESH_MS = 5 * 60_000;
 export const MAX_ENTRIES = 400;
 
 /** 這三個端點不快取：畫面要用它們判斷「現在」的狀態 */
-export const CACHE_SKIP_PATHS = new Set(['/api/v1/health', '/api/v1/sync-sources', '/api/v1/page-views']);
+export const CACHE_SKIP_PATHS = new Set(['/api/v1/health', '/api/v1/sync-sources', '/api/v1/page-views', '/api/v1/events']);
 
 const store = new Map();
 let hits = 0;

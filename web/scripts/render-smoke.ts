@@ -33,6 +33,8 @@ import { MyAgencyPage, WatcherDetail, watchUrl } from '../src/pages/MyAgencyPage
 import { filterAgencies, pushRecent } from '../src/lib/agencySearch';
 import { buildAgencyTree, unitRank } from '../src/lib/agencyTree';
 import { InfoTip } from '../src/components/InfoTip';
+import { NewEventBar } from '../src/components/NewEventBar';
+import { EVENT_KIND_LABEL, eventLabel } from '../src/hooks/useNewEvents';
 import { PAGE_HINTS } from '../src/lib/pageHints';
 import { FundsPage } from '../src/pages/FundsPage';
 import { LegislatorGrid } from '../src/components/LegislatorGrid';
@@ -1928,6 +1930,22 @@ check(
 check('同步範圍：工具提示逐來源列出時間（下滑時看得到哪個來源舊了）', scopeDetailText(scopeFixture[0]).split('\n').length === 2 && scopeDetailText(scopeFixture[0]).includes('新聞：'), scopeDetailText(scopeFixture[0]));
 check('同步範圍：沒有同步紀錄的範圍說「尚未同步」，不是空白', scopeOptionLabel(scopeFixture[2]) === '只同步名錄（尚未同步）', scopeOptionLabel(scopeFixture[2]));
 check('同步耗時：秒／分鐘／未知都講得清楚', formatDuration(2_400) === '2 秒' && formatDuration(763_000) === '13 分鐘' && formatDuration(null) === '—', [formatDuration(2_400), formatDuration(763_000), formatDuration(null)].join(' / '));
+
+
+/* ---------- 新事件跑馬燈（D324） ---------- */
+const eventFixture = [
+  { id: 3, at: '2026-10-22T01:00:00.000Z', kind: 'meeting', ref: 'k3', title: '10-23 09:00 經濟委員會 第3次會議', url: '/committees', detail: '' },
+  { id: 2, at: '2026-10-22T00:50:00.000Z', kind: 'bill', ref: 'B1', title: '礦業法修正草案', url: '/bills?id=B1', detail: '' },
+  { id: 1, at: '2026-10-22T00:40:00.000Z', kind: 'budget', ref: 'P1', title: '某部預算案', url: '/budget?id=P1', detail: '' },
+];
+const noop = () => undefined;
+check('跑馬燈：沒有新事件就不畫（不要留一條空白聽起來像有東西）', render(createElement(NewEventBar, { items: [], onDismiss: noop })) === '');
+const bar = render(createElement(NewEventBar, { items: eventFixture, onDismiss: noop }));
+expectAll('跑馬燈：三種事件都有中文標籤與可點的連結', bar, ['新排定會議', '新提案', '新預算案', 'href="/committees"', 'href="/bills?id=B1"', 'href="/budget?id=P1"', '共 3 筆']);
+check('跑馬燈：分頁在背景時也要能被讀屏唸出來（role=status + aria-live）', /role="status"/.test(bar) && /aria-live="polite"/.test(bar));
+check('跑馬燈：重複那一份標成 aria-hidden，鍵盤不會走到兩次', /aria-hidden="true"/.test(bar) && /tabindex="-1"/.test(bar));
+check('跑馬燈：關閉是真正的按鈕（有 aria-label，不是一個 ✕ 字）', /<button[^>]*aria-label="關閉新事件提示"/.test(bar));
+check('事件文案：沒看過的種類也有標籤，不會出現 undefined', eventLabel({ ...eventFixture[0], kind: 'weird' }).startsWith('新事件：') && EVENT_KIND_LABEL.meeting === '新排定會議');
 
 /* 型別上的靜態斷言：確保測試替身符合 API 契約（不改 runtime 行為） */
 const _typecheck: ChangesResponse | null = null;

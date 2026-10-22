@@ -1895,3 +1895,81 @@ main:has(.fb-wall) { max-width: min(1840px, 96vw); }
   border-bottom: 1px solid currentColor;
 }
 .dash-line svg { width: 12px; height: 12px; }
+
+/* ---------- 新事件跑馬燈（D324） ----------
+ * 兩份相同的清單並排、整體 translateX(-50%) 就是無縫滾動：不必用 JS 量寬度，也不會在接縫處跳動。
+ * 內容是 max 6 筆，慢速滾（20 秒一輪）足夠看清楚，也不會讓畫面一直有東西在動。
+ */
+.event-bar {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--rule-soft));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+}
+.event-bar-head { display: flex; align-items: center; gap: 10px; margin: 0; font-size: var(--fs-sm); color: var(--ink-2); }
+.event-bar-head b { color: var(--ink); }
+.event-bar-close {
+  margin-left: auto;
+  min-height: 32px;
+  min-width: 32px;
+  border: 1px solid var(--rule-soft);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink-2);
+  cursor: pointer;
+  line-height: 1;
+}
+.event-bar-close:hover { color: var(--ink); border-color: var(--accent); }
+.event-bar-viewport { display: flex; overflow: hidden; gap: 0; }
+.event-bar-track {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 18px;
+  margin: 0;
+  padding: 0 18px 0 0;
+  list-style: none;
+  animation: event-scroll 22s linear infinite;
+}
+/* 兩份之間的間隔由 padding-right 撐出來，接縫才不會黏在一起 */
+.event-bar-track li { flex: 0 0 auto; }
+.event-bar-track a {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 4px;
+  color: var(--ink);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.event-bar-track a:hover .event-bar-title,
+.event-bar-track a:focus-visible .event-bar-title { text-decoration: underline; }
+.event-bar-kind {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--ink-2);
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+}
+.event-bar-title { font-size: var(--fs-sm); }
+/* 滑過或鍵盤聚焦就停下來（不然想點的那一筆會一直跑掉） */
+.event-bar:hover .event-bar-track,
+.event-bar:focus-within .event-bar-track { animation-play-state: paused; }
+@keyframes event-scroll {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+/* 不要動畫的環境：一份就好，改成可橫向滑的清單 */
+@media (prefers-reduced-motion: reduce) {
+  .event-bar-track { animation: none; }
+  .event-bar-dup { display: none; }
+  .event-bar-viewport { overflow-x: auto; }
+}
+@media (max-width: 820px) {
+  .event-bar { padding: 8px 10px; }
+  .event-bar-track { gap: 12px; animation-duration: 26s; }
+  .event-bar-track a { min-height: 44px; }
+}

@@ -78,6 +78,17 @@ CREATE TABLE IF NOT EXISTS change_log (
   new_value TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_change_log_at ON change_log(at DESC);
+CREATE TABLE IF NOT EXISTS events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  at TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  ref TEXT NOT NULL,
+  title TEXT NOT NULL DEFAULT '',
+  url TEXT NOT NULL DEFAULT '',
+  detail TEXT NOT NULL DEFAULT '',
+  UNIQUE(kind, ref)
+);
+CREATE INDEX IF NOT EXISTS idx_events_at ON events(at DESC);
 CREATE TABLE IF NOT EXISTS sync_runs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   dataset TEXT NOT NULL,
@@ -856,6 +867,40 @@ export function applyAgendas(db, agendas, { fetchedAt }) {
     fetchedAt,
   );
   return agendas.length;
+}
+
+/**
+ * 站內事件（2026-10-22 使用者：「新增的事件可以推送或跑馬燈嗎，如果 user 在瀏覽網頁時」）。
+ *
+ * 為什麼要另立一張表：`change_log` 記的是**欄位變動**（狀態從「排入院會」變「交付審查」），
+ * 用來回答「這案怎麼變的」；跑馬燈要的是「**多了什麼新東西**」——新排定的會議、新提案、新預算案。
+ * 兩者語意不同，硬把 change_log 拿來當事件流會變成幾百筆狀態變更一起跳。
+ *
+ * 同一個東西只記一次（UNIQUE(kind, ref)）：同步是整批覆寫，每次跑都會看到同一批資料，
+ * 沒有這個去重就會每跑一次同步就把所有東西當成「新的」再通知一次。
+ * 保留 120 天，太久的事件對跑馬燈沒有意義。
+ */
+export function recordEvents(db, events, { now = new Date().toISOString() } = {}) {
+  if (!events?.length) return 0;
+  const insert = db.prepare('INSERT OR IGNORE INTO events(at, kind, ref, title, url, detail) VALUES(?, ?, ?, ?, ?, ?)');
+  let added = 0;
+  db.exec('BEGIN');
+  try {
+    for (const e of events) {
+      const info = insert.run(now, e.kind, String(e.ref), e.title ?? '', e.url ?? '', e.detail ?? '');
+      added += info.changes;
+    }
+    db.exec('COMMIT');
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
+  if (added) {
+    const cutoff = new Date(Date.parse(now) - 120 * 86_400_000).toISOString();
+    db.prepare('DELETE FROM events WHERE at < ?').run(cutoff);
+    bumpDataVersion();
+  }
+  return added;
 }
 
 export function applyMeetingForecasts(db, rows, { fetchedAt }) {

@@ -3223,6 +3223,24 @@ export function listFunds(db, { type = 'fund', fund = '', kind = '', limit = 30,
  * 一個機關在文字裡可能出現的寫法：全名＋指向它的簡稱／舊名（fund-config 的 aliases）。
  * 「我的機關」比對議程、以及熱資料預熱挑「有預計會議的機關」都用這一組，兩邊才不會不一致。
  */
+/**
+ * 站內事件流（跑馬燈／「有新東西」提示用）。
+ * 回傳 `{ latest, items }`：`latest` 是目前最大的事件 id —— 前端把游標推到這裡，
+ * 就算中間有超過 limit 筆也不會漏掉（下一次不會再重播舊事件）。
+ */
+export function eventsSince(db, { since = 0, limit = 20 } = {}) {
+  const parsed = Number(since);
+  const cursor = Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 0;
+  const size = Math.max(1, Math.min(Number(limit) || 20, 50));
+  const rows = db.prepare('SELECT id, at, kind, ref, title, url, detail FROM events WHERE id > ? ORDER BY id DESC LIMIT ?').all(cursor, size);
+  const latest = db.prepare('SELECT COALESCE(MAX(id), 0) AS id FROM events').get()?.id ?? 0;
+  return {
+    latest,
+    since: cursor,
+    items: rows.map((r) => ({ id: r.id, at: r.at, kind: r.kind, ref: r.ref, title: r.title, url: r.url, detail: r.detail })),
+  };
+}
+
 export function agencyMatchTerms(name) {
   const canonical = FUND_CONFIG.aliases[name] ?? name;
   return [canonical, ...Object.entries(FUND_CONFIG.aliases).filter(([, target]) => target === canonical).map(([alias]) => alias)];

@@ -7,10 +7,46 @@ import { pathToFileURL } from 'node:url';
 import { CONFIG } from './config.mjs';
 import { openDb, getMeta, setMeta } from './db.mjs';
 import {
-  billsCsv, budgetCsv, newsCsv, compareLegislators, listBudget, listCounties, listLegislatorVotes, listSplitTicket, listDemographics, listPopulationTrend, getTownMap, listRegions, listFunds, getAgencyHome, listCommitteeActivity, listBudgetMeetings, listBudgetTimeline, listBudgetReports, getHealth, getMetaPayload, listActivity, listBills, listCosponsors, listNews, listNewsArticles, listTopics, listChanges,
-  listCommittees, listLegislators, listRankings, listSyncRuns, listRecalls, listCouncil, listCouncilActivity, councilCounties,
-  listSocialWall, listRollcalls, listResolutions,
+  billsCsv,
+  budgetCsv,
+  compareLegislators,
+  councilCounties,
+  eventsSince,
+  getAgencyHome,
+  getHealth,
+  getMetaPayload,
+  getTownMap,
+  listActivity,
+  listBills,
+  listBudget,
+  listBudgetMeetings,
+  listBudgetReports,
+  listBudgetTimeline,
+  listChanges,
+  listCommitteeActivity,
+  listCommittees,
+  listCosponsors,
+  listCouncil,
+  listCouncilActivity,
+  listCounties,
+  listDemographics,
+  listFunds,
+  listLegislatorVotes,
+  listLegislators,
+  listNews,
+  listNewsArticles,
+  listPopulationTrend,
+  listRankings,
+  listRecalls,
+  listRegions,
+  listResolutions,
+  listRollcalls,
+  listSocialWall,
+  listSplitTicket,
+  listSyncRuns,
   listSyncSources,
+  listTopics,
+  newsCsv,
 } from './queries.mjs';
 import { runAll, runOutletPoll } from './ingest.mjs';
 import { resolveScope, scopeStages } from './sync-scopes.mjs';
@@ -392,6 +428,10 @@ export function createServer(db) {
           captureIntoCache(res, cacheKeyOfRequest);
         }
         switch (path) {
+          case '/api/v1/events': {
+            // 事件流按 since 累加，不快取（見 hot-cache 的 CACHE_SKIP_PATHS）；查的是 index，幾毫秒
+            return sendJson(res, 200, eventsSince(db, { since: q.since, limit: q.limit }));
+          }
           case '/api/v1/page-views': {
             const date = /^\d{4}-\d{2}-\d{2}$/.test(String(q.date ?? '')) ? String(q.date) : previousDay();
             return sendJson(res, 200, dailyPageViews(db, { date }));
