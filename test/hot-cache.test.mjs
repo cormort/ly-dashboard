@@ -146,7 +146,20 @@ test('有預計會議的機關：用與「我的機關」同一組比對詞挑�
   assert.ok(names.includes('中央銀行'), '議程寫「央行總裁」，簡稱也要算進來');
   assert.ok(names.includes('法務部'));
   assert.equal(names.includes('內政部'), false, '過去的場次不算');
+  assert.equal(names.includes('立法院'), false, '立法院不進名單（它是提問的一方，每場標題都含它）');
   assert.equal(found[0].name, '財政部', '最早那場排最前面');
+  // 行政院要留著：院會被要求報告、函送（使用者 2026-10-22 明確指定）
+  applyMeetingForecasts(
+    db,
+    [
+      { date: '2026-10-21', time: '09:00', committee: '財政委員會', title: '財政委員會第2次會議', agenda: '邀請財政部部長報告' },
+      { date: '2026-10-23', time: '09:00', committee: '院會', title: '立法院第11屆第6會期第8次會議', agenda: '行政院函送國家通訊傳播委員會委員提名名單，請同意案' },
+    ],
+    { fetchedAt: '2026-10-20T00:00:00.000Z' },
+  );
+  const withYuan = agenciesWithUpcoming(db, { days: 10, today: '2026-10-20' }).map((a) => a.name);
+  assert.ok(withYuan.includes('行政院'), '行政院要留著');
+  assert.equal(withYuan.includes('立法院'), false, '立法院仍然排除（即使標題就是它）');
   const capped = agenciesWithUpcoming(db, { days: 10, today: '2026-10-20', cap: 1 });
   assert.equal(capped.length, 1, '上限生效');
 });

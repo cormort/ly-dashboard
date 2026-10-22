@@ -111,6 +111,15 @@ export const FIXED_TARGETS = [
 export const UPCOMING_AGENCY_CAP = 40;
 
 /**
+ * 不進動態名單的機關。
+ *
+ * `立法院`：每一場的標題都含「立法院第11屆…」，比對起來永遠是場次最多的那個，會把真正的部會擠掉；
+ * 而它是提問的一方，沒有人會開「立法院」那一頁查自己被誰備詢。
+ * `行政院` 要留著（2026-10-22 使用者：行政院留著）—— 院會被要求報告、函送，是實實在在要備詢的機關。
+ */
+export const UPCOMING_AGENCY_SKIP = new Set(['立法院']);
+
+/**
  * 有預計會議的機關（2026-10-22 使用者：「還有預計有會議的機關」）。
  *
  * 這些機關是下週真的有人要來備詢的，同事一定會先開那一頁；比「所有人平均」值得預熱。
@@ -121,7 +130,7 @@ export const UPCOMING_AGENCY_CAP = 40;
 export function agenciesWithUpcoming(db, { days = 10, cap = UPCOMING_AGENCY_CAP, names = null, today = '' } = {}) {
   const upcoming = listUpcomingMeetings(db, { days, limit: 500, today });
   if (!upcoming.items.length) return [];
-  const agencies = names ?? listAgencies(db).map((a) => a.name);
+  const agencies = (names ?? listAgencies(db).map((a) => a.name)).filter((name) => !UPCOMING_AGENCY_SKIP.has(name));
   const found = [];
   for (const name of agencies) {
     const terms = agencyMatchTerms(name);
