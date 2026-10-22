@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { openDb, applyDataset, applyLawAgencies, applyMojLawAgencies } from '../server/db.mjs';
+import { openDb, applyDataset, applyLawAgencies, applyMeetings, applyMojLawAgencies } from '../server/db.mjs';
 import { buildDataset } from '../server/normalize.mjs';
 import { getAgencyHome, listAgencies, listCommitteeActivity } from '../server/queries.mjs';
 
@@ -292,4 +292,40 @@ test('我的機關：即將召開也吃 g0v 的院會未來場次（議程提到
   assert.equal(r2.upcoming.total, 1);
   assert.equal(r2.upcoming.items[0].source, 'g0v', '來源標成 g0v，前端才知道沒有會議相關資料連結');
   assert.equal(r2.upcoming.items[0].time, '09:00', '時間從 time_range 取');
+});
+
+test('中間結果快取：資料寫入後（apply*）會自動失效，不會回舊的清單', () => {
+  const { db } = seeded();
+  const before = getAgencyHome(db, { name: '財政部' });
+  assert.equal(before.meetings.total, 1);
+  // 走真正的寫入路徑（applyMeetings 會 bump 版本號）——這就是同步每天做的事
+  applyMeetings(db, [{ date: '2026-09-28', committee: '財政委員會', joint: '無', name: '財政委員會第6次會議', content: '邀請財政部部長列席報告', speakers: [] }], { fetchedAt: '2026-09-30T00:00:00.000Z' });
+  const after = getAgencyHome(db, { name: '財政部' });
+  assert.equal(after.meetings.total, 1, 'applyMeetings 是整批覆寫：舊那場被換掉，只剩新的這一場');
+  assert.equal(after.meetings.items[0].name, '財政委員會第6次會議');
+  // 清單本身（listAgencies）也跟著重算：新增法律對照不用重啟
+  assert.equal(listAgencies(db).some((a) => a.name === '司法院'), false);
+  applyLawAgencies(db, new Map([['刑事訴訟法', ['司法院']]]));
+  assert.equal(listAgencies(db).some((a) => a.name === '司法院'), true, 'applyLawAgencies 後清單要更新（快取不能黏住）');
+});
+
+test('我的機關：會議與書面回覆用 SQL 先縮小範圍，結果要與全表比對完全一致', () => {
+  const { db } = seeded();
+  // 只提到機關簡稱（不是全名）的場次、以及完全沒提到的，各一筆
+  db.prepare('INSERT INTO committee_meetings(id, date, committee, joint, name, content, speakers) VALUES(?,?,?,?,?,?,?)').run(
+    3, '2026-09-27', '財政委員會', '無', '財政委員會第6次會議', '邀請央行總裁列席報告', '[]',
+  );
+  db.prepare('INSERT INTO committee_meetings(id, date, committee, joint, name, content, speakers) VALUES(?,?,?,?,?,?,?)').run(
+    4, '2026-09-28', '經濟委員會', '無', '經濟委員會第3次會議', '審查礦業法', '[]',
+  );
+  const terms = getAgencyHome(db, { name: '財政部' }).agency.terms;
+  const all = db.prepare('SELECT * FROM committee_meetings ORDER BY date DESC, id DESC').all();
+  const hit = (t) => terms.some((x) => String(t ?? '').includes(x));
+  const expected = all.filter((m) => hit(m.name) || hit(m.content)).map((m) => m.name);
+  const now = getAgencyHome(db, { name: '財政部' }).meetings.items.map((m) => m.name);
+  assert.deepEqual(now, expected, '簡稱命中的場次要留著、沒提到的要排除（與全表比對一致）');
+  // per 只切 items，total 是全部
+  const p1 = getAgencyHome(db, { name: '財政部', per: 1 });
+  assert.equal(p1.meetings.items.length, 1);
+  assert.equal(p1.meetings.total, expected.length);
 });

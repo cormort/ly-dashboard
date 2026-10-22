@@ -4,9 +4,44 @@ import { readFileSync } from 'node:fs';
 import { ABOLISHED_AGENCIES, canonicalAgency } from './agency-names.mjs';
 import { budgetTypes, committeesOf, newsName, regionOf } from './normalize.mjs';
 import { SYNC_SCOPES, datasetLabel, scopeDatasets } from './sync-scopes.mjs';
+import { current as dataVersionNow } from './data-version.mjs';
 import { listUpcomingMeetings } from './forecast.mjs';
 
 const nowIso = () => new Date().toISOString();
+
+/* ---------- 讀取時的中間結果快取（2026-10-22）----------
+ *
+ * 為什麼要有：`getAgencyHome` 冷查詢 214–226 ms，其中大半不是「這個機關的資料」，而是每次都要重掃
+ * 全庫再組出中間結果：bills 7,487 筆（每筆 JSON.parse laws）、budget_bills 12,153、news 34,961、
+ * social_posts 1,000、law_agencies／moj_law_agencies、以及 committee_meetings 全掃。
+ * 這些東西跟「問哪個機關」無關，只跟「資料有沒有變」有關。
+ *
+ * 做法：一個行程內的版本號。資料寫入（同步、媒體輪詢）後由 index.mjs 呼叫 `bumpDataVersion()`，
+ * 版本一變所有中間結果自動失效重算。key 用 WeakMap 綁在 db 上，測試裡每個 in-memory db 各自一套。
+ *
+ * 注意：這裡只快取**輸入相同、輸出確定**的中間結果（整批列、對照表、索引），
+ * 不快取任何跟 query 參數有關的東西 —— 那些交給 HTTP 層的 hot-cache（60 秒 TTL）。
+ */
+const memoStore = new WeakMap();
+
+/** 資料寫入後呼叫；下一次查詢就會重算中間結果（實際上由 db.mjs 的 apply* 自動叫） */
+export { bump as bumpDataVersion } from './data-version.mjs';
+
+function memoized(db, key, build) {
+  let entry = memoStore.get(db);
+  if (!entry) {
+    entry = { version: dataVersionNow(), cache: new Map() };
+    memoStore.set(db, entry);
+  }
+  if (entry.version !== dataVersionNow()) {
+    entry.version = dataVersionNow();
+    entry.cache.clear();
+  }
+  if (entry.cache.has(key)) return entry.cache.get(key);
+  const value = build();
+  entry.cache.set(key, value);
+  return value;
+}
 
 export function sourceInfo() {
   return { ...CONFIG.source };
@@ -3012,9 +3047,11 @@ const canonicalAgencyName = (name) => {
 };
 
 function lawAgencyMap(db) {
-  const upstream = new Map(db.prepare('SELECT law_name, agencies FROM law_agencies').all().map((r) => [r.law_name, JSON.parse(r.agencies)]));
-  const moj = new Map(db.prepare('SELECT law_name, agencies FROM moj_law_agencies').all().map((r) => [r.law_name, JSON.parse(r.agencies)]));
-  return (law) => (upstream.get(law)?.length ? upstream.get(law) : (moj.get(law) ?? lawAgencySupplement.get(law) ?? [])).map(canonicalAgencyName);
+  return memoized(db, 'lawAgencyMap', () => {
+    const upstream = new Map(db.prepare('SELECT law_name, agencies FROM law_agencies').all().map((r) => [r.law_name, JSON.parse(r.agencies)]));
+    const moj = new Map(db.prepare('SELECT law_name, agencies FROM moj_law_agencies').all().map((r) => [r.law_name, JSON.parse(r.agencies)]));
+    return (law) => (upstream.get(law)?.length ? upstream.get(law) : (moj.get(law) ?? lawAgencySupplement.get(law) ?? [])).map(canonicalAgencyName);
+  });
 }
 
 /**
@@ -3025,6 +3062,10 @@ function lawAgencyMap(db) {
  * ponytail: 每次請求掃全部議程（約 2 千場，數十毫秒）；變慢再在同步時預先算好。
  */
 function attendByBill(db) {
+  return memoized(db, 'attendByBill', () => buildAttendByBill(db));
+}
+
+function buildAttendByBill(db) {
   const canon = new Map(FUND_CONFIG.agencies.map((n) => [n, n]));
   for (const [alias, name] of Object.entries(FUND_CONFIG.aliases)) if (canon.has(name)) canon.set(alias, name);
   const re = new RegExp([...canon.keys()].sort((a, b) => b.length - a.length).map(escapeRe).join('|'), 'g');
@@ -3050,6 +3091,10 @@ function attendByBill(db) {
 }
 
 function collectFundRows(db, resolvedType) {
+  return memoized(db, `fundRows:${resolvedType}`, () => buildFundRows(db, resolvedType));
+}
+
+function buildFundRows(db, resolvedType) {
   const agencyOfLaw = lawAgencyMap(db);
   const attend = attendByBill(db);
   const budgetRows = db.prepare('SELECT * FROM budget_bills').all();
@@ -3177,9 +3222,12 @@ export function listFunds(db, { type = 'fund', fund = '', kind = '', limit = 30,
 export function listAgencies(db = null) {
   const heads = new Map();
   for (const o of OFFICIALS) heads.set(o.agency, [...(heads.get(o.agency) ?? []), { name: o.name, title: o.title }]);
-  return [...new Set([...FUND_CONFIG.agencies, ...heads.keys(), ...(db ? lawAgencyNames(db) : [])])]
-    .sort((a, b) => a.localeCompare(b, 'zh-Hant'))
-    .map((name) => ({ name, heads: heads.get(name) ?? [] }));
+  const build = () =>
+    [...new Set([...FUND_CONFIG.agencies, ...heads.keys(), ...(db ? lawAgencyNames(db) : [])])]
+      .sort((a, b) => a.localeCompare(b, 'zh-Hant'))
+      .map((name) => ({ name, heads: heads.get(name) ?? [] }));
+  // 有 db 時掃兩張 law_agencies 表；這份清單只跟資料版本有關
+  return db ? memoized(db, 'listAgencies', build) : build();
 }
 
 /**
@@ -3250,9 +3298,16 @@ export function getAgencyHome(db, { name = '', per = 5, watch = '', today = '' }
   ).sort(budgetOrder);
 
   const people = new Map(db.prepare('SELECT id, name, party FROM legislators').all().map((l) => [l.id, { id: l.id, name: l.name, party: l.party }]));
-  const meetings = db
-    .prepare('SELECT * FROM committee_meetings ORDER BY date DESC, id DESC')
-    .all()
+  // 先用 SQL LIKE 把「完全沒提到這個機關」的場次濾掉（全表 1,927 場每次都搬進 JS 太浪費），
+  // 再用同一個 `hit()` 當最後一道 —— 結果與「全掃再比對」完全一樣，只是搬的量少很多。
+  const meetingRows = terms.length
+    ? db
+        .prepare(
+          `SELECT * FROM committee_meetings WHERE ${terms.map(() => '(name LIKE ? OR content LIKE ?)').join(' OR ')} ORDER BY date DESC, id DESC`,
+        )
+        .all(...terms.flatMap((t) => [`%${t}%`, `%${t}%`]))
+    : [];
+  const meetings = meetingRows
     .filter((m) => hit(m.name) || hit(m.content))
     .map((m) => ({
       date: m.date,
@@ -3260,9 +3315,13 @@ export function getAgencyHome(db, { name = '', per = 5, watch = '', today = '' }
       committees: [...new Set([...committeesOf(m.committee), ...committeesOf(m.joint)])],
       speakers: JSON.parse(m.speakers || '[]').map((s) => people.get(s.id) ?? { id: null, name: s.name, party: '' }),
     }));
-  const replies = db
-    .prepare('SELECT * FROM committee_meets ORDER BY date DESC, code DESC')
-    .all()
+  // 書面回覆：機關名在 attachments 的 JSON 裡，同樣先 LIKE 縮小再逐筆比對
+  const meetRows = terms.length
+    ? db
+        .prepare(`SELECT * FROM committee_meets WHERE ${terms.map(() => 'attachments LIKE ?').join(' OR ')} ORDER BY date DESC, code DESC`)
+        .all(...terms.map((t) => `%${t}%`))
+    : [];
+  const replies = meetRows
     .flatMap((m) =>
       JSON.parse(m.attachments || '[]')
         .filter((a) => a.kind === 'reply' && hit(a.title))

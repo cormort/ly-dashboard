@@ -1,4 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
+import { bump as bumpDataVersion } from './data-version.mjs';
 import { gzipSync } from 'node:zlib';
 import { createHash } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
@@ -479,6 +480,8 @@ function readLegislatorMap(db) {
  * 任何例外都會 rollback，舊資料不會被半寫入的新資料污染。
  */
 export function applyDataset(db, dataset, { fetchedAt, sourceUrl }) {
+  // 讀取端的中間結果快取（queries.mjs 的 memoized）靠這個版本號失效
+  bumpDataVersion();
   const at = fetchedAt;
   const previousSeats = readSeatMap(db);
   const previousLegislators = readLegislatorMap(db);
@@ -662,6 +665,8 @@ export function getProgressOverrides(db) {
  * 每次同步寫完 bills／budget_bills 後呼叫，讓補過的日期不會因為同步被清掉。
  */
 export function applyProgressOverrides(db) {
+  // 讀取端的中間結果快取（queries.mjs 的 memoized）靠這個版本號失效
+  bumpDataVersion();
   const rows = db.prepare("SELECT dataset, id, date, status FROM progress_overrides WHERE date <> ''").all();
   const update = {
     bills: db.prepare("UPDATE bills SET latest_date = ? WHERE id = ? AND (latest_date = '' OR latest_date IS NULL)"),
@@ -678,6 +683,8 @@ export function applyProgressOverrides(db) {
 
 /** 法律→主管機關（整批覆寫）。上游沒填的空陣列也存，才知道「問過了但沒有」。 */
 export function applyLawAgencies(db, laws) {
+  // 讀取端的中間結果快取（queries.mjs 的 memoized）靠這個版本號失效
+  bumpDataVersion();
   return replaceLawAgencies(db, 'law_agencies', laws);
 }
 
@@ -686,6 +693,8 @@ export function applyLawAgencies(db, laws) {
  * 與 applyLawAgencies 分開存，讓 queries 的對照順序（上游 → 全國法規資料庫 → 手工補）有依據。
  */
 export function applyMojLawAgencies(db, laws) {
+  // 讀取端的中間結果快取（queries.mjs 的 memoized）靠這個版本號失效
+  bumpDataVersion();
   return replaceLawAgencies(db, 'moj_law_agencies', laws);
 }
 
@@ -703,6 +712,8 @@ function replaceLawAgencies(db, table, laws) {
 }
 
 export function applyBills(db, { bills, sponsors, cosigners = [] }, { fetchedAt }) {
+  // 讀取端的中間結果快取（queries.mjs 的 memoized）靠這個版本號失效
+  bumpDataVersion();
   const previous = new Map(db.prepare('SELECT id, status FROM bills').all().map((r) => [r.id, r.status]));
   db.exec('BEGIN');
   try {
@@ -747,6 +758,8 @@ export function applyBills(db, { bills, sponsors, cosigners = [] }, { fetchedAt 
 
 /** 預算類議案整批覆寫（與委員提案分開 fail closed），狀態變動寫入 change_log。 */
 export function applyBudget(db, items, { fetchedAt }) {
+  // 讀取端的中間結果快取（queries.mjs 的 memoized）靠這個版本號失效
+  bumpDataVersion();
   const previous = new Map(db.prepare('SELECT id, status FROM budget_bills').all().map((r) => [r.id, r.status]));
   db.exec('BEGIN');
   try {
@@ -791,6 +804,8 @@ function replaceAll(db, table, columns, rows, metaKey, fetchedAt) {
 }
 
 export function applyBudgetReports(db, reports, { fetchedAt }) {
+  // 讀取端的中間結果快取（queries.mjs 的 memoized）靠這個版本號失效
+  bumpDataVersion();
   // 同一報告編號可能同時出現在兩種類型：以後出現者為準
   const unique = [...new Map(reports.map((r) => [r.no, r])).values()];
   replaceAll(db, 'budget_reports', ['no', 'type', 'title', 'author', 'completed', 'url'], unique, 'budget_reports_fetched_at', fetchedAt);
@@ -798,18 +813,24 @@ export function applyBudgetReports(db, reports, { fetchedAt }) {
 }
 
 export function applyMeetings(db, meetings, { fetchedAt }) {
+  // 讀取端的中間結果快取（queries.mjs 的 memoized）靠這個版本號失效
+  bumpDataVersion();
   const rows = meetings.map((m) => ({ ...m, speakers: JSON.stringify(m.speakers) }));
   replaceAll(db, 'committee_meetings', ['date', 'committee', 'joint', 'name', 'content', 'speakers'], rows, 'meetings_fetched_at', fetchedAt);
   return rows.length;
 }
 
 export function applyCommitteeRecords(db, records, { fetchedAt }) {
+  // 讀取端的中間結果快取（queries.mjs 的 memoized）靠這個版本號失效
+  bumpDataVersion();
   const rows = records.map((r) => ({ ...r, committees: JSON.stringify(r.committees) }));
   replaceAll(db, 'committee_records', ['id', 'date', 'committees', 'title', 'gazette_url', 'html_url', 'pdf_url'], rows, 'records_fetched_at', fetchedAt);
   return rows.length;
 }
 
 export function applyCommitteeMeets(db, meets, { fetchedAt }) {
+  // 讀取端的中間結果快取（queries.mjs 的 memoized）靠這個版本號失效
+  bumpDataVersion();
   const rows = meets.map((m) => ({ ...m, committees: JSON.stringify(m.committees), attachments: JSON.stringify(m.attachments) }));
   replaceAll(db, 'committee_meets', ['code', 'date', 'title', 'committees', 'video_url', 'attachments', 'agenda', 'time_range', 'location', 'meeting_no'], rows, 'meets_fetched_at', fetchedAt);
   return rows.length;
@@ -824,6 +845,8 @@ export function applyCommitteeMeets(db, meets, { fetchedAt }) {
  * （一場表決 × 每位投票者一列）給「某委員投過什麼」查。
  */
 export function applyAgendas(db, agendas, { fetchedAt }) {
+  // 讀取端的中間結果快取（queries.mjs 的 memoized）靠這個版本號失效
+  bumpDataVersion();
   replaceAll(
     db,
     'meeting_agendas',
@@ -836,6 +859,8 @@ export function applyAgendas(db, agendas, { fetchedAt }) {
 }
 
 export function applyMeetingForecasts(db, rows, { fetchedAt }) {
+  // 讀取端的中間結果快取（queries.mjs 的 memoized）靠這個版本號失效
+  bumpDataVersion();
   db.exec('BEGIN');
   try {
     db.exec('DELETE FROM meeting_forecasts');
@@ -855,6 +880,8 @@ export function applyMeetingForecasts(db, rows, { fetchedAt }) {
 }
 
 export function applyRollcalls(db, votes, { fetchedAt }) {
+  // 讀取端的中間結果快取（queries.mjs 的 memoized）靠這個版本號失效
+  bumpDataVersion();
   const rows = votes.map((vote) => ({
     ...vote,
     supporters: JSON.stringify(vote.supporters ?? []),
@@ -889,6 +916,8 @@ export function applyRollcalls(db, votes, { fetchedAt }) {
 
 /** 三讀通過條文與附帶決議（ID373）：整批覆寫 */
 export function applyResolutions(db, resolutions, { fetchedAt }) {
+  // 讀取端的中間結果快取（queries.mjs 的 memoized）靠這個版本號失效
+  bumpDataVersion();
   replaceAll(
     db,
     'bill_resolutions',
@@ -1021,6 +1050,8 @@ export function pruneNews(db, { keepDays, now = new Date() }) {
 /** 社群帳號整批覆寫（來源是人工整理表，以最新一版為準）。 */
 /** 議員臉書整理表整批覆寫（來源是人工維護的試算表，以最新一版為準） */
 export function applyCouncilSocial(db, rows) {
+  // 讀取端的中間結果快取（queries.mjs 的 memoized）靠這個版本號失效
+  bumpDataVersion();
   db.exec('BEGIN');
   try {
     db.exec('DELETE FROM council_social');
@@ -1035,6 +1066,8 @@ export function applyCouncilSocial(db, rows) {
 }
 
 export function applySocial(db, accounts, { fetchedAt }) {
+  // 讀取端的中間結果快取（queries.mjs 的 memoized）靠這個版本號失效
+  bumpDataVersion();
   const previous = new Set(
     db.prepare('SELECT legislator_id, platform, url FROM social_accounts').all().map((r) => `${r.legislator_id}|${r.platform}|${r.url}`),
   );
@@ -1096,6 +1129,8 @@ export function postFingerprint(summary) {
  *   抓取端的頁面只看得到最近幾則，掉出頁面的就代表已經不是近期貼文了。
  */
 export function applySocialPosts(db, rows, { fetchedAt, source = 'fb-detail', keepDays = 90 } = {}) {
+  // 讀取端的中間結果快取（queries.mjs 的 memoized）靠這個版本號失效
+  bumpDataVersion();
   if (rows.length === 0) return { accumulated: Number(getMeta(db, 'social_posts_count', '0')) || 0, legislators: 0, added: 0, pruned: 0 };
   const legislators = [...new Set(rows.map((r) => r.legislator_id))];
   const before = Number(db.prepare('SELECT COUNT(*) AS n FROM social_posts').get().n);
