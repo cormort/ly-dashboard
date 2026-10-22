@@ -10,7 +10,7 @@
  * 兩層：
  *  1. 一般 `/api/v1/*` GET：TTL 60 秒。同步寫入資料後整批清掉（見 index.mjs 的 setAfterDataWrite），
  *     所以「剛同步完還看到舊數字」最多 60 秒，而且真的同步完會立刻失效。
- *  2. 熱門（主計總處／主計長…）：`HOT_TARGETS` 由排程每 5 分鐘主動重跑一次，讓它一直是溫的，
+ *  2. 熱門（主計總處／主計長／**有預計會議的機關**）：由排程每 5 分鐘主動重跑一次，讓它一直是溫的，
  *     第一個人進來不必付那 190 ms。
  *
  * **不要快取的**：`/api/v1/health`（前端用它顯示同步進度，快取會讓進度停住）、
@@ -19,7 +19,7 @@
  * 金鑰一律**正規化**（參數排序、丟掉空值）：前端 `buildUrl()` 會省略空字串，但快取與預熱兩邊
  * 不見得用同一個順序組字串，不正規化就會「預熱了卻沒命中」。
  */
-import { listActivity, listBills, listBudget, listCommitteeActivity, listLegislators, listNews, listNewsArticles, getAgencyHome } from './queries.mjs';
+import { agencyMatchTerms, getAgencyHome, listActivity, listAgencies, listBills, listBudget, listCommitteeActivity, listLegislators, listNews, listNewsArticles } from './queries.mjs';
 import { listUpcomingMeetings } from './forecast.mjs';
 
 /** 一般回應的存活時間（毫秒） */
@@ -93,7 +93,7 @@ export function cacheStats() {
  * 熱門資料：主計總處與主計長相關（同事一進站最常先看的那幾頁）＋總覽頁會打的便宜查詢。
  * `run(db)` 回傳的就是路由會回給前端的那個物件，`key` 則是前端實際會打的網址（正規化後）。
  */
-export const HOT_TARGETS = [
+export const FIXED_TARGETS = [
   { label: '我的機關（主計總處）', key: '/api/v1/agency?name=行政院主計總處', run: (db) => getAgencyHome(db, { name: '行政院主計總處' }) },
   { label: '主計長新聞（陳淑姿）', key: '/api/v1/news/articles?legislator=陳淑姿&limit=30&offset=0&scope=officials', run: (db) => listNewsArticles(db, { legislator: '陳淑姿', scope: 'officials', limit: 30, offset: 0 }) },
   { label: '機關首長新聞', key: '/api/v1/news/articles?limit=30&offset=0&scope=officials', run: (db) => listNewsArticles(db, { scope: 'officials', limit: 30, offset: 0 }) },
@@ -103,15 +103,63 @@ export const HOT_TARGETS = [
   { label: '總覽：法案', key: '/api/v1/bills?limit=3', run: (db) => listBills(db, { limit: 3 }) },
   { label: '總覽：預算', key: '/api/v1/budget?limit=3', run: (db) => listBudget(db, { limit: 3 }) },
   { label: '總覽：會議預告', key: '/api/v1/meetings/upcoming?days=10&limit=1', run: (db) => listUpcomingMeetings(db, { days: 10, limit: 1 }) },
+  { label: '會議預告（委員會頁）', key: '/api/v1/meetings/upcoming?days=10', run: (db) => listUpcomingMeetings(db, { days: 10 }) },
   { label: '委員名錄', key: '/api/v1/legislators?session=all', run: (db) => listLegislators(db, { session: 'all' }) },
 ];
+
+/** 動態名單最多預熱幾個機關（每次重跑約 25 ms／個，40 個約 1 秒，5 分鐘一次） */
+export const UPCOMING_AGENCY_CAP = 40;
+
+/**
+ * 有預計會議的機關（2026-10-22 使用者：「還有預計有會議的機關」）。
+ *
+ * 這些機關是下週真的有人要來備詢的，同事一定會先開那一頁；比「所有人平均」值得預熱。
+ * 判定方式跟「我的機關」的即將召開完全一樣：用 `agencyMatchTerms()` 的詞去比對場次標題與議程
+ * （簡稱也要算，例：議程寫「央行總裁」時中央銀行也要在名單裡）。
+ * 回傳照「最早場次」排，超過上限就砍後面的。
+ */
+export function agenciesWithUpcoming(db, { days = 10, cap = UPCOMING_AGENCY_CAP, names = null, today = '' } = {}) {
+  const upcoming = listUpcomingMeetings(db, { days, limit: 500, today });
+  if (!upcoming.items.length) return [];
+  const agencies = names ?? listAgencies(db).map((a) => a.name);
+  const found = [];
+  for (const name of agencies) {
+    const terms = agencyMatchTerms(name);
+    let first = null;
+    let count = 0;
+    for (const meeting of upcoming.items) {
+      const text = `${meeting.title ?? ''} ${meeting.agenda ?? ''} ${meeting.committee ?? ''}`;
+      if (!terms.some((t) => text.includes(t))) continue;
+      count += 1;
+      const at = `${meeting.date} ${meeting.time ?? ''}`;
+      if (!first || at < first) first = at;
+    }
+    if (count) found.push({ name, count, first });
+  }
+  found.sort((a, b) => a.first.localeCompare(b.first) || b.count - a.count || a.name.localeCompare(b.name, 'zh-Hant'));
+  return found.slice(0, cap);
+}
+
+/**
+ * 這一輪要預熱的清單：固定那幾支 ＋ 有預計會議的機關（每輪重算，會議過期就自動掉出名單）。
+ */
+export function buildTargets(db, { days = 10, cap = UPCOMING_AGENCY_CAP, today = '', names = null } = {}) {
+  const dynamic = agenciesWithUpcoming(db, { days, cap, today, names }).map((a) => ({
+    label: `${a.name}（有預計會議 ${a.count} 場）`,
+    key: `/api/v1/agency?name=${a.name}`,
+    run: (database) => getAgencyHome(database, { name: a.name }),
+  }));
+  return [...FIXED_TARGETS, ...dynamic];
+}
 
 /**
  * 重跑熱門查詢並寫回暫存。單一項失敗只記 log（暫存是加速，不是功能）。
  * 回傳每一項的耗時，方便 log 看得出來哪一支變慢了。
  */
-export async function refreshHotCache(db, { logger = console, targets = HOT_TARGETS, yieldFn = () => new Promise((r) => setImmediate(r)) } = {}) {
+export async function refreshHotCache(db, { logger = console, targets = null, yieldFn = () => new Promise((r) => setImmediate(r)) } = {}) {
   const started = Date.now();
+  if (!targets) targets = buildTargets(db);
+  const dynamic = targets.length - FIXED_TARGETS.length;
   const timings = [];
   let ok = 0;
   for (const target of targets) {
@@ -126,6 +174,10 @@ export async function refreshHotCache(db, { logger = console, targets = HOT_TARG
       logger.warn(`[hot-cache] ${target.label} 失敗：${error?.message ?? error}`);
     }
   }
-  logger.log(`[hot-cache] 預熱 ${ok}/${targets.length}，${Date.now() - started} ms（最慢：${timings.sort((a, b) => b.ms - a.ms)[0]?.label ?? '—'} ${timings[0]?.ms ?? 0} ms）`);
+  const slowest = timings.sort((a, b) => b.ms - a.ms)[0];
+  logger.log(
+    `[hot-cache] 預熱 ${ok}/${targets.length}（固定 ${FIXED_TARGETS.length}＋有預計會議的機關 ${dynamic}），` +
+      `${Date.now() - started} ms（最慢：${slowest?.label ?? '—'} ${slowest?.ms ?? 0} ms）`,
+  );
   return { ok, total: targets.length, timings };
 }

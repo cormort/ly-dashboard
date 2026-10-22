@@ -3219,6 +3219,15 @@ export function listFunds(db, { type = 'fund', fund = '', kind = '', limit = 30,
  * 不會出現在機關代碼表，但確實是很多法律（刑事訴訟法、法院組織法…）的主管機關。
  * `db` 沒給（或還沒同步過法律對照）時只有前兩項，行為與以前相同。
  */
+/**
+ * 一個機關在文字裡可能出現的寫法：全名＋指向它的簡稱／舊名（fund-config 的 aliases）。
+ * 「我的機關」比對議程、以及熱資料預熱挑「有預計會議的機關」都用這一組，兩邊才不會不一致。
+ */
+export function agencyMatchTerms(name) {
+  const canonical = FUND_CONFIG.aliases[name] ?? name;
+  return [canonical, ...Object.entries(FUND_CONFIG.aliases).filter(([, target]) => target === canonical).map(([alias]) => alias)];
+}
+
 export function listAgencies(db = null) {
   const heads = new Map();
   for (const o of OFFICIALS) heads.set(o.agency, [...(heads.get(o.agency) ?? []), { name: o.name, title: o.title }]);
@@ -3269,7 +3278,7 @@ export function getAgencyHome(db, { name = '', per = 5, watch = '', today = '' }
   if (!known) return { ...base, agency: null };
 
   const resolvedPer = Math.max(1, Math.min(Number(per) || 5, 20));
-  const terms = [known.name, ...Object.entries(FUND_CONFIG.aliases).filter(([, canonical]) => canonical === known.name).map(([alias]) => alias)];
+  const terms = agencyMatchTerms(known.name);
   const hit = (text) => terms.some((t) => String(text ?? '').includes(t));
   // 排序一律走 budgetOrder：日期降冪，日期相同或沒有日期時用年度降冪（預算／決算的報告與議事）
   const byDate = budgetOrder;

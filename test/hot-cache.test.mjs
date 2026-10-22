@@ -3,10 +3,13 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { createServer } from '../server/index.mjs';
-import { openDb, applyDataset } from '../server/db.mjs';
+import { openDb, applyDataset, applyMeetingForecasts } from '../server/db.mjs';
 import { buildDataset } from '../server/normalize.mjs';
 import {
   CACHE_SKIP_PATHS,
+  FIXED_TARGETS,
+  agenciesWithUpcoming,
+  buildTargets,
   cacheClear,
   cacheGet,
   cacheKey,
@@ -120,6 +123,56 @@ test('HTTP：熱門項目（主計總處）預熱後第一個使用者就命中'
     const body = await hit.json();
     assert.equal(body.agency?.name, '行政院主計總處');
     assert.ok(body.kinds && body.upcoming, '內容要是完整的那一份（不是空殼）');
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('有預計會議的機關：用與「我的機關」同一組比對詞挑出來（簡稱也算），照最早場次排', () => {
+  const db = seeded();
+  applyMeetingForecasts(
+    db,
+    [
+      { date: '2026-10-21', time: '09:00', committee: '財政委員會', title: '財政委員會第2次會議', agenda: '邀請財政部部長報告' },
+      { date: '2026-10-22', time: '09:00', committee: '經濟委員會', title: '經濟委員會第3次會議', agenda: '邀請央行總裁報告' },
+      { date: '2026-10-22', time: '14:00', committee: '司法及法制委員會', title: '司法及法制委員會第1次會議', agenda: '審查法務部組織法' },
+      { date: '2026-10-19', time: '09:00', committee: '內政委員會', title: '過去的場次', agenda: '邀請內政部部長' },
+    ],
+    { fetchedAt: '2026-10-20T00:00:00.000Z' },
+  );
+  const found = agenciesWithUpcoming(db, { days: 10, today: '2026-10-20' });
+  const names = found.map((a) => a.name);
+  assert.ok(names.includes('財政部'), '全名比對');
+  assert.ok(names.includes('中央銀行'), '議程寫「央行總裁」，簡稱也要算進來');
+  assert.ok(names.includes('法務部'));
+  assert.equal(names.includes('內政部'), false, '過去的場次不算');
+  assert.equal(found[0].name, '財政部', '最早那場排最前面');
+  const capped = agenciesWithUpcoming(db, { days: 10, today: '2026-10-20', cap: 1 });
+  assert.equal(capped.length, 1, '上限生效');
+});
+
+test('預熱清單會把「有預計會議的機關」一起排進去，第一個使用者就命中', async () => {
+  const db = seeded();
+  applyMeetingForecasts(
+    db,
+    [{ date: '2026-10-21', time: '09:00', committee: '財政委員會', title: '財政委員會第2次會議', agenda: '邀請財政部部長報告' }],
+    { fetchedAt: '2026-10-20T00:00:00.000Z' },
+  );
+  const targets = buildTargets(db, { today: '2026-10-20' });
+  assert.ok(targets.length > FIXED_TARGETS.length, '固定名單之外還要有動態的');
+  assert.ok(targets.some((t) => t.label.startsWith('財政部（有預計會議 1 場）')));
+
+  const server = createServer(db);
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  try {
+    cacheClear();
+    await refreshHotCache(db, { logger: { log() {}, warn() {} }, targets });
+    const hit = await fetch(`${base}/api/v1/agency?name=${encodeURIComponent('財政部')}`);
+    assert.equal(hit.headers.get('x-hot-cache'), 'hit', '下週要備詢的機關，第一個人打開就是溫的');
+    const body = await hit.json();
+    assert.equal(body.agency.name, '財政部');
+    assert.ok(body.meetings.total >= 0, '內容要完整');
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }

@@ -724,17 +724,21 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       warming = null;
     });
   };
-  // 資料寫入後：先讓暫存失效（不然最長 60 秒還在回舊數字），再預熱
-  setAfterDataWrite(() => {
-    cacheClear();
-    warm();
-  });
-  setTimeout(warm, 1000).unref();
-
-  // 熱資料（主計總處／主計長…）：啟動先跑一次，之後每 5 分鐘重跑，讓常用那幾頁一直是溫的
+  // 熱資料（主計總處／主計長／有預計會議的機關…）：
+  // 啟動先跑一次，之後每 5 分鐘重跑 —— 會議預告每天更新，名單每輪重算，過期的場次會自己掉出去
   const refreshHot = () => {
     refreshHotCache(db).catch((error) => console.error('[hot-cache] 預熱失敗', error));
   };
+
+  // 資料寫入後：先讓暫存失效（不然最長 60 秒還在回舊數字），再預熱。
+  // 同步完就立刻重算「有預計會議的機關」——不必等 5 分鐘那一輪，新排定的場次馬上就溫
+  setAfterDataWrite(() => {
+    cacheClear();
+    warm();
+    refreshHot();
+  });
+  setTimeout(warm, 1000).unref();
+
   setTimeout(refreshHot, 1500).unref();
   setInterval(refreshHot, HOT_REFRESH_MS).unref();
 }
