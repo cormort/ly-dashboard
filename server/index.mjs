@@ -34,6 +34,7 @@ import {
   verifySession,
 } from './auth.mjs';
 import { warmUp } from './warmup.mjs';
+import { HOT_REFRESH_MS, cacheClear, cacheGet, cacheKey, cacheSet, cacheStats, isCacheable, refreshHotCache } from './hot-cache.mjs';
 import { listUpcomingMeetings } from './forecast.mjs';
 import {
   classifyUa,
@@ -146,6 +147,40 @@ const sendJson = (res, status, payload, extraHeaders = {}) => {
     ...extraHeaders,
   });
   res.end(body);
+};
+
+/**
+ * 直接回一份暫存好的 JSON（見 server/hot-cache.mjs）。
+ * 標頭要跟 `sendJson` 一致，只多一個 `x-hot-cache: hit` —— 驗收時靠它判斷有沒有命中。
+ */
+const sendCachedJson = (res, body) => {
+  res.writeHead(200, {
+    'content-type': 'application/json; charset=utf-8',
+    'content-length': Buffer.byteLength(body),
+    'cache-control': 'public, max-age=300',
+    'x-hot-cache': 'hit',
+    ...SECURITY_HEADERS,
+  });
+  res.end(body);
+};
+
+/**
+ * 攔住這次的回應：狀態 200 才把它存進暫存。
+ * 用包 `res.end` 的方式，而不是去改三十幾個 `sendJson(...)` 呼叫點 —— 少寫就少漏，也不會有人
+ * 新增路由時忘了加暫存（新增的端點自動就有 60 秒快取）。
+ */
+const captureIntoCache = (res, key) => {
+  const chunks = [];
+  const end = res.end.bind(res);
+  let captured = false;
+  res.end = (chunk, ...rest) => {
+    if (!captured && chunk) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
+    return end(chunk, ...rest);
+  };
+  res.on('finish', () => {
+    captured = true;
+    if (res.statusCode === 200 && chunks.length) cacheSet(key, Buffer.concat(chunks).toString('utf8'));
+  });
 };
 
 // Excel 要 BOM 才會把 UTF-8 當中文；不快取，每次都是當下條件的完整結果
@@ -349,6 +384,13 @@ export function createServer(db) {
         if (req.method !== 'GET' && !(path === '/api/v1/sync' && req.method === 'POST')) {
           return sendError(res, 405, 'method_not_allowed', `${req.method} 不支援`);
         }
+        // 熱資料暫存：命中就直接回（放在登入檢查之後，不會繞過驗證）
+        if (isCacheable(path, req.method)) {
+          const cacheKeyOfRequest = cacheKey(path, url.search);
+          const cached = cacheGet(cacheKeyOfRequest);
+          if (cached) return sendCachedJson(res, cached);
+          captureIntoCache(res, cacheKeyOfRequest);
+        }
         switch (path) {
           case '/api/v1/page-views': {
             const date = /^\d{4}-\d{2}-\d{2}$/.test(String(q.date ?? '')) ? String(q.date) : previousDay();
@@ -361,6 +403,7 @@ export function createServer(db) {
             // 公開入口不提供縣市地圖與議員（D-公開站收斂）；純讀取端點照舊，只是前端不顯示
             return sendJson(res, 200, {
               ...getHealth(db),
+              hot_cache: cacheStats(),
               sync_enabled: authorizeSync({}) === null,
               counties_enabled: FEATURES.counties && !publicEntry,
               council_enabled: FEATURES.council && !publicEntry,
@@ -681,6 +724,17 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       warming = null;
     });
   };
-  setAfterDataWrite(warm);
+  // 資料寫入後：先讓暫存失效（不然最長 60 秒還在回舊數字），再預熱
+  setAfterDataWrite(() => {
+    cacheClear();
+    warm();
+  });
   setTimeout(warm, 1000).unref();
+
+  // 熱資料（主計總處／主計長…）：啟動先跑一次，之後每 5 分鐘重跑，讓常用那幾頁一直是溫的
+  const refreshHot = () => {
+    refreshHotCache(db).catch((error) => console.error('[hot-cache] 預熱失敗', error));
+  };
+  setTimeout(refreshHot, 1500).unref();
+  setInterval(refreshHot, HOT_REFRESH_MS).unref();
 }

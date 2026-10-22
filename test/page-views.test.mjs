@@ -77,7 +77,10 @@ test('每日統計：瀏覽次數、登入者數、熱門頁與裝置分開算',
   assert.equal(day.hourly[9], 2);
   assert.equal(day.hourly[21], 1);
   assert.equal(day.hourly[8], 0, '登入不算瀏覽時段');
-  assert.ok(day.first.startsWith('2026-10-19T00'), `最早從 08:00+08:00 開始（UTC 00:00），實際 ${day.first}`);
+  // 「最早／最晚」只算真人瀏覽（登入那筆不算），所以是 09:10+08:00 ＝ UTC 01:10
+  assert.ok(day.first.startsWith('2026-10-19T01'), `最早從 09:10+08:00 開始（UTC 01:10），實際 ${day.first}`);
+  assert.equal(day.human, 3, '真人頁面 3 次（這天沒有機器人）');
+  assert.equal(day.bot, 0);
 });
 
 test('切日看當地時區：台北時間 00:30 算當天，不算前一天', () => {
@@ -129,4 +132,39 @@ test('只接受認識的 kind（打錯字要炸，不要安靜寫進統計）', 
   const db = fresh();
   assert.throws(() => recordPageView(db, { path: '/', kind: 'pageview' }), /未知的 kind/);
   assert.equal(dailyPageViews(db, { date: localDay() }).pv, 0);
+});
+
+
+test('機器人與真人分開算：pv 含機器人，但熱門頁／時段／未登入只看真人', () => {
+  const db = fresh();
+  // 真人：1 台裝置看 2 頁，另有 1 次未登入
+  recordPageView(db, { path: '/', sessionHash: 'aaaa1111', ua: 'mobile', ts: at('2026-10-21', 9, 10) });
+  recordPageView(db, { path: '/budget', sessionHash: 'aaaa1111', ua: 'mobile', ts: at('2026-10-21', 9, 20) });
+  recordPageView(db, { path: '/', sessionHash: '', ua: 'mobile', ts: at('2026-10-21', 9, 30) });
+  // 機器人：早上 8 點灌 5 次（沒有 cookie —— 舊算法會算成「未登入 5 次」）
+  for (let i = 0; i < 5; i += 1) {
+    recordPageView(db, { path: '/my', sessionHash: '', ua: 'bot', ts: at('2026-10-21', 8, 10 + i) });
+  }
+  const day = dailyPageViews(db, { date: '2026-10-21' });
+  assert.equal(day.pv, 8, 'pv 仍是全部（含機器人）');
+  assert.equal(day.human, 3);
+  assert.equal(day.bot, 5);
+  assert.equal(day.anonymous, 1, '未登入只算真人（不是 6）');
+  assert.equal(day.visitors, 1);
+  assert.equal(day.paths.find((p) => p.path === '/my'), undefined, '機器人看的頁不進熱門頁');
+  assert.equal(day.hourly[8], 0, '最忙時段不能是機器人灌出來的 8 點');
+  assert.equal(day.hourly[9], 3);
+  const text = pageViewsText(day);
+  assert.match(text, /真人瀏覽 3 次・1 台裝置（另有機器人 5 次，不計入）/);
+  assert.match(text, /其中未登入 1 次/);
+  assert.ok(!text.includes('未登入 6'), '不能把機器人算成未登入');
+});
+
+test('只有機器人的那天：講清楚是機器人，不要寫成「沒有人開站」', () => {
+  const db = fresh();
+  recordPageView(db, { path: '/', sessionHash: '', ua: 'bot', ts: at('2026-10-22', 10, 0) });
+  const day = dailyPageViews(db, { date: '2026-10-22' });
+  assert.equal(day.human, 0);
+  assert.equal(day.bot, 1);
+  assert.match(pageViewsText(day), /只有機器人來（1 次/);
 });

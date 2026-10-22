@@ -138,21 +138,27 @@ export function recordPageView(db, { path, kind = 'page', sessionHash = '', ua =
 }
 
 /**
- * 某一天的統計：
- * - `pv` 瀏覽次數（含登入那筆？不含——`logins` 另外算，`pv` 只算頁面）
- * - `visitors` 不同 **session（cookie）數 ≈ 幾台裝置／幾個瀏覽器**。站上只發一組共用帳號
- *   （`DGBAS`）給同事，所以**分不出是誰**；同一個人換手機／平板會算成兩台，換瀏覽器也是。
- *   沒有 cookie 的瀏覽另外算 `anonymous`。
- * - `paths` 熱門頁面（次數、幾個 session）
- * - `ua` 裝置分類、`hourly` 24 格的瀏覽次數
+ * 某一天的統計。
+ *
+ * **真人與機器人分開算**（2026-10-22 使用者：「未登入 100 次、登入 1 次，這個要怎麼解讀？」）：
+ * 實測那天 100 次「未登入」裡有 97 次是無頭瀏覽器（驗證腳本、連結預覽、爬蟲）—— 它沒有 cookie 也請求 HTML，
+ * 就被算成「未登入」。把機器的量混進人裡面，日報讀起來像「一百個人沒登入只看一眼」，實際上是自己跑測試。
+ * 所以：
+ *  - `pv` 仍是**全部**頁面瀏覽（含機器人，向後相容）
+ *  - `human`／`bot` 分開給；`visitors`、`anonymous`、`paths`、`ua`、`hourly`、`first`／`last` **只算真人**
+ *    （熱門頁與最忙時段摻進機器人會變成「早上 8 點有 56 次瀏覽」那種假象）
+ *  - `visitors` 不同 session（cookie）數 ≈ 幾台裝置／幾個瀏覽器。站上只發一組共用帳號（`DGBAS`）給同事，
+ *    所以**分不出是誰**；同一個人換手機／平板會算成兩台，換瀏覽器也是。
  */
 export function dailyPageViews(db, { date }) {
   const rows = db.prepare('SELECT path, kind, session, ua, hour, ts FROM page_views WHERE day = ? ORDER BY ts').all(String(date));
   const pages = rows.filter((r) => r.kind === 'page');
+  const human = pages.filter((r) => r.ua !== 'bot');
+  const bots = pages.length - human.length;
   const logins = rows.filter((r) => r.kind === 'login');
-  const sessions = new Set(pages.map((r) => r.session).filter(Boolean));
+  const sessions = new Set(human.map((r) => r.session).filter(Boolean));
   const byPath = new Map();
-  for (const r of pages) {
+  for (const r of human) {
     const entry = byPath.get(r.path) ?? { path: r.path, views: 0, sessions: new Set() };
     entry.views += 1;
     if (r.session) entry.sessions.add(r.session);
@@ -160,7 +166,7 @@ export function dailyPageViews(db, { date }) {
   }
   const ua = { mobile: 0, desktop: 0, bot: 0, unknown: 0 };
   const hourly = Array.from({ length: 24 }, () => 0);
-  for (const r of pages) {
+  for (const r of human) {
     ua[r.ua in ua ? r.ua : 'unknown'] += 1;
     if (r.hour >= 0 && r.hour < 24) hourly[r.hour] += 1;
   }
@@ -168,8 +174,10 @@ export function dailyPageViews(db, { date }) {
   return {
     date: String(date),
     pv: pages.length,
+    human: human.length,
+    bot: bots,
     visitors: sessions.size,
-    anonymous: pages.filter((r) => !r.session).length,
+    anonymous: human.filter((r) => !r.session).length,
     logins: logins.length,
     loginVisitors: new Set(logins.map((r) => r.session).filter(Boolean)).size,
     paths: [...byPath.values()]
@@ -177,8 +185,8 @@ export function dailyPageViews(db, { date }) {
       .sort((a, b) => b.views - a.views || a.path.localeCompare(b.path)),
     ua,
     hourly,
-    first: rows[0]?.ts ?? null,
-    last: rows.at(-1)?.ts ?? null,
+    first: human[0]?.ts ?? null,
+    last: human.at(-1)?.ts ?? null,
   };
 }
 
@@ -199,25 +207,36 @@ export function busiestHours(summary, { width = 3, top = 1 } = {}) {
   return buckets.sort((a, b) => b.views - a.views || a.from - b.from).slice(0, top);
 }
 
-/** 給 Telegram／終端機看的一段文字（沒有資料也要講清楚是「沒人來」而不是壞掉） */
+/**
+ * 給 Telegram／終端機看的一段文字。
+ *
+ * 先用「真人」講，再把機器人另外括號講（2026-10-22 修正；見 dailyPageViews 的說明）。
+ * 只有機器人來的那天也要講清楚是哪一種，不要寫成「沒有人開站」。
+ */
 export function pageViewsText(summary) {
   const lines = [];
   lines.push(`📊 立委輿情觀測站 ${summary.date}`);
-  if (summary.pv === 0) {
+  const human = summary.human ?? summary.pv ?? 0;
+  const bots = summary.bot ?? summary.ua?.bot ?? 0;
+  if (!human && !bots) {
     lines.push('昨天沒有人開站（0 次瀏覽）');
+    return lines.join('\n');
+  }
+  if (!human) {
+    lines.push(`只有機器人來（${bots} 次，測試／預覽／爬蟲），沒有真人開站`);
     return lines.join('\n');
   }
   // 用「裝置」不是「人」：全站共用一組帳號，同一個人換裝置會算成兩台，反過來也分不出誰
   lines.push(
-    `瀏覽 ${summary.pv} 次・${summary.visitors} 台裝置${summary.anonymous > 0 ? `・未登入 ${summary.anonymous} 次` : ''}`,
+    `真人瀏覽 ${human} 次・${summary.visitors} 台裝置${bots > 0 ? `（另有機器人 ${bots} 次，不計入）` : ''}`,
   );
+  if (summary.anonymous > 0) lines.push(`其中未登入 ${summary.anonymous} 次`);
   if (summary.logins > 0) lines.push(`登入 ${summary.logins} 次`);
   const top = summary.paths.slice(0, 5).map((p) => `${p.label} ${p.views}`);
   if (top.length) lines.push(`熱門：${top.join('｜')}`);
   const ua = [];
   if (summary.ua.mobile) ua.push(`手機 ${summary.ua.mobile}`);
   if (summary.ua.desktop) ua.push(`電腦 ${summary.ua.desktop}`);
-  if (summary.ua.bot) ua.push(`機器人 ${summary.ua.bot}`);
   if (ua.length) lines.push(`裝置：${ua.join('・')}`);
   const busiest = busiestHours(summary)[0];
   if (busiest) lines.push(`最忙：${pad2(busiest.from)}–${pad2(busiest.to)} 時（${busiest.views} 次）`);
