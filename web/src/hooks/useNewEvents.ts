@@ -30,6 +30,8 @@ export interface SiteEvent {
 export interface EventsResponse {
   latest: number;
   since: number;
+  /** since 之後總共有幾筆（items 只有前 limit 筆，畫面要能說「另有 N 筆」） */
+  total: number;
   items: SiteEvent[];
 }
 
@@ -42,6 +44,10 @@ export const EVENT_KIND_LABEL: Record<string, string> = {
   meeting: '新排定會議',
   bill: '新提案',
   budget: '新預算案',
+  // 一次同步新增太多筆時會收成一筆摘要事件（見 server/ingest.mjs 的 recordAdded）
+  'bill-batch': '新提案（整批）',
+  'budget-batch': '新預算案（整批）',
+  'meeting-batch': '新排定會議（整批）',
 };
 
 export function eventLabel(event: SiteEvent): string {
@@ -69,11 +75,14 @@ function writeCursor(value: number): void {
 
 export interface NewEventsState {
   items: SiteEvent[];
+  /** 這一輪就收到、但超過顯示上限沒放進來的筆數（畫面用「另有 N 筆」交代） */
+  hidden: number;
   dismiss: () => void;
 }
 
 export function useNewEvents({ enabled = true }: { enabled?: boolean } = {}): NewEventsState {
   const [items, setItems] = useState<SiteEvent[]>([]);
+  const [hidden, setHidden] = useState(0);
   const cursorRef = useRef<number>(0);
   const startedRef = useRef(false);
 
@@ -84,6 +93,8 @@ export function useNewEvents({ enabled = true }: { enabled?: boolean } = {}): Ne
     cursorRef.current = Math.max(since, res.latest);
     writeCursor(cursorRef.current);
     if (res.items.length) {
+      // 伺服器說「後面還有更多」時，把差額記下來；跑馬燈只放得下幾筆，但不能假裝只有這幾筆
+      setHidden((prev) => Math.max(prev, Math.max(0, (res.total ?? res.items.length) - res.items.length)));
       setItems((prev) => {
         const seen = new Set(prev.map((e) => e.id));
         const merged = [...res.items.filter((e) => !seen.has(e.id)), ...prev];
@@ -131,6 +142,9 @@ export function useNewEvents({ enabled = true }: { enabled?: boolean } = {}): Ne
     };
   }, [enabled, poll]);
 
-  const dismiss = useCallback(() => setItems([]), []);
-  return { items, dismiss };
+  const dismiss = useCallback(() => {
+    setItems([]);
+    setHidden(0);
+  }, []);
+  return { items, hidden, dismiss };
 }

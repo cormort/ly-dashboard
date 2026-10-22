@@ -13,7 +13,7 @@ import { EVENT_KIND_LABEL, eventLabel, type SiteEvent } from '../hooks/useNewEve
  *    重複那一份給 `aria-hidden` 並把連結移出 Tab 順序，鍵盤不會走到兩次。
  *  - 每筆都是連結（會議 → 委員會頁；法案／預算 → 該案），點擊直接跳，不用先關提示。
  */
-export function NewEventBar({ items, onDismiss }: { items: SiteEvent[]; onDismiss: () => void }) {
+export function NewEventBar({ items, hidden = 0, onDismiss }: { items: SiteEvent[]; hidden?: number; onDismiss: () => void }) {
   if (!items.length) return null;
   const kinds = [...new Set(items.map((e) => EVENT_KIND_LABEL[e.kind] ?? '新事件'))];
   const row = (dup: boolean) => (
@@ -32,7 +32,7 @@ export function NewEventBar({ items, onDismiss }: { items: SiteEvent[]; onDismis
     <div className="event-bar" role="status" aria-live="polite">
       <p className="event-bar-head">
         <b>🆕 {kinds.join('・')}</b>
-        <span>共 {items.length} 筆</span>
+        <span>{hidden > 0 ? `顯示 ${items.length} 筆・另有 ${hidden} 筆` : `共 ${items.length} 筆`}</span>
         <button type="button" className="event-bar-close" onClick={onDismiss} aria-label="關閉新事件提示">
           ✕
         </button>

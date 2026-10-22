@@ -24,6 +24,25 @@ import { syncMojLawAgencies } from './moj-law.mjs';
  * Ingestion 管線：FETCH → VALIDATE → NORMALIZE → PERSIST。
  * 失敗策略：驗證不過或抓取失敗 → 保留舊資料、記錄失敗、標記 stale；絕不寫入半套資料、絕不放假資料。
  */
+/**
+ * 把「這次同步新增的東西」記成站內事件。
+ *
+ * 為什麼要分批：一次同步常常新增幾十筆議案（g0v 補資料時更多），逐筆記的話跑馬燈會連跳幾十筆、
+ * 事件表也會爆；改成「一筆摘要事件」——使用者在意的是「多了 30 筆新提案」，不是逐條看完那 30 筆。
+ * 少於 5 筆才逐筆記，因為這種量是真的想一條一條看。
+ *
+ * `notify`（Telegram）只存在於會議預告階段；這裡完全不碰，所以同步議案不會跳手機通知。
+ */
+function recordAdded(db, { kind, items, what, listUrl, urlOf, detailOf, max = 5, logger = console } = {}) {
+  if (!items.length) return;
+  if (items.length > max) {
+    recordEvents(db, [{ kind: `${kind}-batch`, ref: `${kind}:${items[0]?.id ?? ''}:${items.length}:${items.at(-1)?.id ?? ''}`, title: `新增 ${items.length} 筆${what}`, url: listUrl }]);
+    logger.log(`[events] ${what} 新增 ${items.length} 筆（記成一筆摘要）`);
+    return;
+  }
+  recordEvents(db, items.map((i) => ({ kind, ref: i.id, title: i.name ?? i.title ?? String(i.id), url: urlOf(i), detail: detailOf?.(i) ?? '' })));
+}
+
 export async function runIngest(db, { logger = console, fetchImpl = fetchJson, now = () => new Date(), seatOverrides = loadSeatOverrides() } = {}) {
   const startedAt = now();
   const startedMs = Date.now();
@@ -235,13 +254,15 @@ export async function runBudgetIngest(db, { logger = console, fetchImpl = fetchJ
     const knownBudgetIds = new Set(db.prepare('SELECT id FROM budget_bills').all().map((r) => r.id));
     const applied = applyBudget(db, items, { fetchedAt: now().toISOString() });
     const newBudget = items.filter((i) => !knownBudgetIds.has(i.id));
-    if (newBudget.length) {
-      recordEvents(
-        db,
-        newBudget.map((i) => ({ kind: 'budget', ref: i.id, title: i.name, url: `/budget?id=${encodeURIComponent(i.id)}`, detail: i.status ?? '' })),
-      );
-      logger.log(`[budget] 新增 ${newBudget.length} 筆預算案（站內事件）`);
-    }
+    recordAdded(db, {
+      kind: 'budget',
+      items: newBudget,
+      what: '預算案',
+      listUrl: '/budget',
+      urlOf: (i) => `/budget?id=${encodeURIComponent(i.id)}`,
+      detailOf: (i) => i.status ?? '',
+      logger,
+    });
     logger.log(`[budget] 已套用：${items.length} 筆預算類議案、狀態異動 ${applied.changes} 筆`);
     record({ status: 'success', records: items.length, attempt: attempts, http_status: 200 });
     return { status: 'success', items: items.length, changes: applied.changes };
@@ -527,13 +548,15 @@ export async function runBillsIngest(db, { logger = console, fetchImpl = fetchJs
     const knownBillIds = new Set(db.prepare('SELECT id FROM bills').all().map((r) => r.id));
     const applied = applyBills(db, normalized, { fetchedAt: now().toISOString() });
     const newBills = (normalized.bills ?? []).filter((b) => !knownBillIds.has(b.id));
-    if (newBills.length) {
-      recordEvents(
-        db,
-        newBills.map((b) => ({ kind: 'bill', ref: b.id, title: b.name, url: `/bills?id=${encodeURIComponent(b.id)}`, detail: b.status ?? '' })),
-      );
-      logger.log(`[bills] 新增 ${newBills.length} 筆議案（站內事件）`);
-    }
+    recordAdded(db, {
+      kind: 'bill',
+      items: newBills,
+      what: '議案',
+      listUrl: '/bills',
+      urlOf: (b) => `/bills?id=${encodeURIComponent(b.id)}`,
+      detailOf: (b) => b.status ?? '',
+      logger,
+    });
     // 法律→主管機關：「機關」頁用它把「修農業發展條例」的提案算進農業部。
     // 上游（g0v）自己填的為主；上游的寫法要先正規化（金管會→金融監督管理委員會…），否則機關頁認不出來。
     // 兩段都各自 fail soft —— 議案本身不能因為對照表抓不到就失敗，沿用上次的。

@@ -1945,6 +1945,9 @@ expectAll('跑馬燈：三種事件都有中文標籤與可點的連結', bar, [
 check('跑馬燈：分頁在背景時也要能被讀屏唸出來（role=status + aria-live）', /role="status"/.test(bar) && /aria-live="polite"/.test(bar));
 check('跑馬燈：重複那一份標成 aria-hidden，鍵盤不會走到兩次', /aria-hidden="true"/.test(bar) && /tabindex="-1"/.test(bar));
 check('跑馬燈：關閉是真正的按鈕（有 aria-label，不是一個 ✕ 字）', /<button[^>]*aria-label="關閉新事件提示"/.test(bar));
+const barMore = render(createElement(NewEventBar, { items: eventFixture, hidden: 12, onDismiss: noop }));
+expectAll('跑馬燈：超過顯示上限要說「另有 N 筆」，不能假裝只有這幾筆', barMore, ['顯示 3 筆', '另有 12 筆']);
+check('跑馬燈：整批摘要事件也有中文標籤', EVENT_KIND_LABEL['bill-batch'] === '新提案（整批）');
 check('事件文案：沒看過的種類也有標籤，不會出現 undefined', eventLabel({ ...eventFixture[0], kind: 'weird' }).startsWith('新事件：') && EVENT_KIND_LABEL.meeting === '新排定會議');
 
 /* 型別上的靜態斷言：確保測試替身符合 API 契約（不改 runtime 行為） */

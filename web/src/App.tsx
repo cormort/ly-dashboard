@@ -240,7 +240,7 @@ export default function App() {
         }
       >
         {/* 新事件跑馬燈：正在看網頁時才輪詢（見 useNewEvents 的說明） */}
-        {newEvents.items.length ? <NewEventBar items={newEvents.items} onDismiss={newEvents.dismiss} /> : null}
+        {newEvents.items.length ? <NewEventBar items={newEvents.items} hidden={newEvents.hidden} onDismiss={newEvents.dismiss} /> : null}
         <OfflineNotice />
 
         {/* 展開（頁首狀態鈕）才顯示完整面板；同步有問題但沒展開時只留一行提示——

@@ -3234,9 +3234,12 @@ export function eventsSince(db, { since = 0, limit = 20 } = {}) {
   const size = Math.max(1, Math.min(Number(limit) || 20, 50));
   const rows = db.prepare('SELECT id, at, kind, ref, title, url, detail FROM events WHERE id > ? ORDER BY id DESC LIMIT ?').all(cursor, size);
   const latest = db.prepare('SELECT COALESCE(MAX(id), 0) AS id FROM events').get()?.id ?? 0;
+  // 這次之後到底有幾筆：跑馬燈只拿得到 limit 筆，畫面要能誠實說「另有 N 筆」
+  const total = db.prepare('SELECT COUNT(*) AS n FROM events WHERE id > ?').get(cursor)?.n ?? 0;
   return {
     latest,
     since: cursor,
+    total,
     items: rows.map((r) => ({ id: r.id, at: r.at, kind: r.kind, ref: r.ref, title: r.title, url: r.url, detail: r.detail })),
   };
 }
